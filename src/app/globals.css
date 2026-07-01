@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+:root {
+  --color-gym-primary: #6750A4;
+  --color-gym-surface: #FDF7FF;
+  --color-family-primary: #B3261E;
+  --color-family-surface: #F8F2FB;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
