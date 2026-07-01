@@ -161,6 +161,10 @@ export interface MealLog {
   totalCaloriesMax: number;
   totalProteinMin: number;
   totalProteinMax: number;
+  totalCarbsMin: number;
+  totalCarbsMax: number;
+  totalFatMin: number;
+  totalFatMax: number;
   aiSummary?: string;
 }
 
@@ -368,6 +372,10 @@ export async function getClientMeals(clientId: string, days = 7): Promise<MealLo
     totalCaloriesMax: m.total_calories_max ?? 0,
     totalProteinMin: m.total_protein_min ?? 0,
     totalProteinMax: m.total_protein_max ?? 0,
+    totalCarbsMin: m.total_carbs_min ?? 0,
+    totalCarbsMax: m.total_carbs_max ?? 0,
+    totalFatMin: m.total_fat_min ?? 0,
+    totalFatMax: m.total_fat_max ?? 0,
     aiSummary: m.ai_summary,
   }));
 }

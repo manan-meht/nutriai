@@ -58,7 +58,7 @@ export function AdultsShaderBackground({ className = "" }: AdultsShaderBackgroun
     ro.observe(canvas);
     syncSize();
 
-    const gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+    const gl = (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
     if (!gl) return;
 
     function compileShader(type: number, src: string) {

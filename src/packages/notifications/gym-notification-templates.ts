@@ -68,6 +68,6 @@ export function buildGymNotification(
     templateKey,
     title: template.title,
     body: template.body,
-    metadata: context,
+    metadata: context as Record<string, unknown>,
   };
 }
