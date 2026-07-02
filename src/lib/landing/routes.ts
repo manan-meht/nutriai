@@ -16,7 +16,7 @@ import type {
 } from "@/types";
 
 export function getSignupUrl(params: GetSignupUrlParams): string {
-  const base = params.product === "gym" ? "/gym/signup" : "/adults/signup";
+  const base = params.product === "gym" ? "/gym/signup" : "/signup";
   const qs = new URLSearchParams({
     source: params.source,
     variant: params.variant,
@@ -26,7 +26,7 @@ export function getSignupUrl(params: GetSignupUrlParams): string {
 }
 
 export function getLoginUrl(params: GetLoginUrlParams): string {
-  const base = params.product === "gym" ? "/gym/login" : "/adults/login";
+  const base = params.product === "gym" ? "/gym/login" : "/login";
   const qs = params.source ? new URLSearchParams({ source: params.source }) : null;
   return qs ? `${base}?${qs.toString()}` : base;
 }

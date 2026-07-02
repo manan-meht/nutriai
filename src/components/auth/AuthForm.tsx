@@ -32,7 +32,7 @@ const THEME = {
     ring: "focus:ring-rose-500",
     label: "Tistra Family",
     dashboardUrl: "/adults/dashboard",
-    switchUrl: (mode: Mode) => (mode === "signin" ? "/adults/signup" : "/adults/login"),
+    switchUrl: (mode: Mode) => (mode === "signin" ? "/signup" : "/login"),
   },
 } as const;
 
@@ -113,9 +113,8 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
   return (
     <div className="flex flex-col gap-4">
 
-      {/* OAuth buttons — only for gym; adults uses email/password for separate account isolation */}
-      {product === "gym" && (
-        <>
+      {/* OAuth buttons */}
+      <>
           <button
             type="button"
             onClick={() => handleOAuth("google")}
@@ -141,8 +140,7 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
             <span className="text-xs text-gray-400 font-medium">or</span>
             <div className="flex-1 h-px bg-gray-200" />
           </div>
-        </>
-      )}
+      </>
 
       {/* Email / password form */}
       <form onSubmit={handleEmail} className="flex flex-col gap-4">
