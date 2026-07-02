@@ -38,7 +38,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             <div className="w-8 h-8 rounded-lg bg-rose-500 flex items-center justify-center">
               <span className="text-white text-sm font-bold">N</span>
             </div>
-            <span className="font-bold text-gray-900">NutriAI Family</span>
+            <span className="font-bold text-gray-900">Tistra Family</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{caregiverEmail}</span>

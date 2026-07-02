@@ -9,7 +9,7 @@ interface LandingFooterProps {
 export function LandingFooter({ product }: LandingFooterProps) {
   const switchUrl = getCrossProductSwitchUrl(product);
   const switchLabel =
-    product === "gym" ? "Family Nutrition" : "Coach Nutrition";
+    product === "gym" ? "Tistra Family" : "Tistra Coach";
   const switchPrompt =
     product === "gym"
       ? "Supporting an older family member?"
@@ -20,7 +20,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <p className="font-semibold text-gray-900 mb-1">
-            {product === "gym" ? "Coach Nutrition" : "Family Nutrition"}
+            {product === "gym" ? "Tistra Coach" : "Tistra Family"}
           </p>
           <p className="text-xs">
             Helping Indian families and fitness communities eat better, together.
@@ -35,7 +35,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
         </div>
 
         <div className="text-xs text-gray-400">
-          © {new Date().getFullYear()} Nutrition Platform. Made for India.
+          © {new Date().getFullYear()} Tistra Health. Made for India.
         </div>
       </div>
     </footer>

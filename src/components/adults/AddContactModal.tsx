@@ -82,7 +82,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
   function buildWhatsAppUrl() {
     const number = `${countryCode}${whatsapp.replace(/\D/g, "")}`;
     const msg = encodeURIComponent(
-      `Hi ${fullName}! 👋\n\n${caregiverName} has set up NutriAI to help keep an eye on your nutrition.\n\nAll you need to do is send a photo or describe what you eat — right here on WhatsApp. I'll do the rest!\n\nYou can start whenever you're ready. Just send me a photo of your next meal 😊`
+      `Hi ${fullName}! 👋\n\n${caregiverName} has set up Tistra Family to help keep an eye on your nutrition.\n\nAll you need to do is send a photo or describe what you eat — right here on WhatsApp. I'll do the rest!\n\nYou can start whenever you're ready. Just send me a photo of your next meal 😊`
     );
     return `https://wa.me/${number}?text=${msg}`;
   }

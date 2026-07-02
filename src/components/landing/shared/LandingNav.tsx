@@ -15,15 +15,15 @@ const NAV_COPY: Record<
   { logoLabel: string; crossProductPrompt: string; crossProductLabel: string; signupLabel: string }
 > = {
   gym: {
-    logoLabel: "Coach Nutrition",
+    logoLabel: "Tistra Coach",
     crossProductPrompt: "Supporting an older family member?",
-    crossProductLabel: "Switch to Family Nutrition",
+    crossProductLabel: "Switch to Tistra Family",
     signupLabel: "Start free",
   },
   adults: {
-    logoLabel: "Family Nutrition",
+    logoLabel: "Tistra Family",
     crossProductPrompt: "Are you a trainer or fitness professional?",
-    crossProductLabel: "Switch to Coach Nutrition",
+    crossProductLabel: "Switch to Tistra Coach",
     signupLabel: "Get started",
   },
 };

@@ -35,7 +35,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
             <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
               <span className="text-white text-sm font-bold">C</span>
             </div>
-            <span className="font-bold text-gray-900">Coach Nutrition</span>
+            <span className="font-bold text-gray-900">Tistra Coach</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{coachEmail}</span>

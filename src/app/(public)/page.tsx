@@ -46,7 +46,7 @@ export async function generateMetadata({ searchParams }: LandingPageProps): Prom
 
   if (product === "gym") {
     return {
-      title: "Coach Nutrition — Nutrition coaching built for Indian trainers",
+      title: "Tistra Coach — Nutrition coaching built for Indian trainers",
       description:
         "Your clients log meals from WhatsApp. AI identifies dal, roti, sabzi and more. You see who needs attention — all in one coach dashboard.",
       // Canonical prevents experiment URLs from appearing as duplicates
@@ -55,7 +55,7 @@ export async function generateMetadata({ searchParams }: LandingPageProps): Prom
   }
 
   return {
-    title: "Family Nutrition — Stay gently connected to how your family eats",
+    title: "Tistra Family — Stay gently connected to how your family eats",
     description:
       "Your parent shares a photo or a few words. You see a calm weekly summary. Their privacy, always in their hands.",
     alternates: { canonical: "/" },

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Nutrition Platform",
+  title: "Tistra Health",
   description: "Nutrition coaching and family support for India.",
 };
 

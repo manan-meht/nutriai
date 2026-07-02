@@ -95,7 +95,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
     const clean = whatsapp.replace(/\D/g, "");
     const number = `${countryCode}${clean}`;
     const msg = encodeURIComponent(
-      `Hi ${fullName}! 👋\n\n${coachName} has added you to Coach Nutrition to help track your meals.\n\nAll you need to do is send a photo or a quick description of what you eat — right here on WhatsApp. I'll take care of the rest.\n\nStart whenever you're ready — just reply with your next meal! 🥗`
+      `Hi ${fullName}! 👋\n\n${coachName} has added you to Tistra Coach to help track your meals.\n\nAll you need to do is send a photo or a quick description of what you eat — right here on WhatsApp. I'll take care of the rest.\n\nStart whenever you're ready — just reply with your next meal! 🥗`
     );
     return `https://wa.me/${number}?text=${msg}`;
   }
