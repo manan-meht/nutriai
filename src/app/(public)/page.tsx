@@ -24,14 +24,14 @@ import {
   getCookieName,
   EXPERIMENT_IDS,
 } from "@/lib/experiments/landing-page-experiment";
-import dynamic from "next/dynamic";
+import nextDynamic from "next/dynamic";
 
-const GymImmersiveLanding = dynamic(
+const GymImmersiveLanding = nextDynamic(
   () => import("@/components/landing/immersive/GymImmersiveLanding").then((m) => ({ default: m.GymImmersiveLanding })),
   { ssr: true }
 );
 
-const AdultsImmersiveLanding = dynamic(
+const AdultsImmersiveLanding = nextDynamic(
   () => import("@/components/landing/immersive/AdultsImmersiveLanding").then((m) => ({ default: m.AdultsImmersiveLanding })),
   { ssr: true }
 );
