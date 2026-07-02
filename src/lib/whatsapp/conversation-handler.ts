@@ -112,6 +112,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   const trainerId = isAdults ? entity.caregiver_id : entity.trainer_id;
   const firstName = entity.full_name.split(" ")[0];
 
+  // Mark invite accepted on first-ever message from this contact
+  if (isAdults && adultsContact.invite_sent_at && !adultsContact.invite_accepted_at) {
+    await db
+      .from("adults_contacts")
+      .update({ invite_accepted_at: new Date().toISOString() })
+      .eq("id", entityId);
+  }
+
   // Get or create conversation state
   const { data: conv } = await db
     .from("whatsapp_conversations")

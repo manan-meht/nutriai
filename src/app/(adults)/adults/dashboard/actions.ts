@@ -14,6 +14,7 @@ export interface AdultsContact {
   heightCm?: number;
   healthNotes?: string;
   inviteSentAt?: string;
+  inviteAcceptedAt?: string;
   createdAt: string;
   trackedBiomarkers: string[];
   goals: AdultsGoal[];
@@ -124,6 +125,7 @@ export async function getContacts(workspaceId: string): Promise<AdultsContact[]>
     heightCm: c.height_cm,
     healthNotes: c.health_notes,
     inviteSentAt: c.invite_sent_at,
+    inviteAcceptedAt: c.invite_accepted_at,
     createdAt: c.created_at,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsByContact[c.id]?.count ?? 0,
@@ -180,6 +182,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     heightCm: c.height_cm,
     healthNotes: c.health_notes,
     inviteSentAt: c.invite_sent_at,
+    inviteAcceptedAt: c.invite_accepted_at,
     createdAt: c.created_at,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsRes.data?.length ?? 0,
@@ -271,6 +274,20 @@ export async function addContact(formData: {
       target_protein_g: formData.targetProteinG || null,
       target_meals_per_day: formData.targetMealsPerDay || null,
     });
+  }
+
+  // Auto-send WhatsApp invite
+  try {
+    const { sendTextMessage } = await import("@/lib/whatsapp/client");
+    const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+    const caregiverName = profile?.full_name ?? "Your family member";
+    const firstName = formData.fullName.split(" ")[0];
+    await sendTextMessage(
+      formData.whatsappNumber,
+      `Hi ${firstName}! 👋\n\n${caregiverName} has set up Tistra Family to help keep an eye on your nutrition.\n\nAll you need to do is send me a photo or describe what you eat — right here on WhatsApp. I'll keep track for you!\n\nWhenever you're ready, just send me a photo of your next meal 😊`
+    );
+  } catch {
+    // Don't fail contact creation if WhatsApp send fails
   }
 
   return { contactId: contact.id };

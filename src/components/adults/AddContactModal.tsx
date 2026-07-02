@@ -89,22 +89,19 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
 
   if (success) {
     return (
-      <ModalShell onClose={onClose} title="Contact added">
+      <ModalShell onClose={onClose} title="Invite sent">
         <div className="text-center py-6">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✓</div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">{success.name} added</h3>
-          <p className="text-gray-500 text-sm mb-8 max-w-xs mx-auto">
-            Send them a WhatsApp message to get started — they just need to reply with a photo of their next meal.
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📲</div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">Invite sent to {success.name}!</h3>
+          <p className="text-gray-500 text-sm mb-2 max-w-xs mx-auto">
+            We've sent them a WhatsApp message. Once they reply, their card will update to <strong>Accepted</strong> and they can start logging meals.
           </p>
-          <a
-            href={buildWhatsAppUrl()}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-[#25D366] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[#1ebe5d] transition-colors shadow-lg"
-          >
-            <WhatsAppIcon /> Send WhatsApp invite
-          </a>
-          <button onClick={onClose} className="block mx-auto mt-4 text-sm text-gray-400 hover:text-gray-600">Done</button>
+          <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-700 mb-8 max-w-xs mx-auto">
+            ⏳ Waiting for {success.name} to accept
+          </div>
+          <button onClick={onClose} className="bg-rose-600 text-white font-semibold rounded-full px-8 py-3 text-sm hover:bg-rose-700 transition-colors">
+            Done
+          </button>
         </div>
       </ModalShell>
     );

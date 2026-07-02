@@ -119,6 +119,8 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   const activeGoal = contact.goals.find((g) => g.status === "active");
   const isActive = contact.mealCount > 0;
+  const inviteAccepted = !!contact.inviteAcceptedAt;
+  const invitePending = !!contact.inviteSentAt && !inviteAccepted;
   const emoji = contact.relationship ? (RELATIONSHIP_EMOJI[contact.relationship] ?? "🧑") : "🧑";
 
   const lastMealLabel = contact.lastMealAt ? formatRelative(new Date(contact.lastMealAt)) : null;
@@ -131,7 +133,7 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
             <div className="w-11 h-11 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
               <span className="text-sm font-bold text-rose-700">{initials}</span>
             </div>
-            {isActive && <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full" />}
+            {isActive ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full" /> : invitePending ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 border-2 border-white rounded-full" /> : null}
           </div>
           <div>
             <p className="font-semibold text-gray-900 text-sm">{contact.fullName}</p>
@@ -141,8 +143,13 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
             </p>
           </div>
         </div>
-        <span className={`text-xs font-medium px-2 py-1 rounded-full ${isActive ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-          {isActive ? "Active" : "Invited"}
+        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+          isActive ? "bg-green-50 text-green-700"
+          : inviteAccepted ? "bg-blue-50 text-blue-700"
+          : invitePending ? "bg-amber-50 text-amber-700"
+          : "bg-gray-100 text-gray-500"
+        }`}>
+          {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Invite sent" : "Not invited"}
         </span>
       </div>
 
@@ -153,6 +160,13 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
             <p className="text-xs font-medium text-green-800">{contact.mealCount} meal{contact.mealCount !== 1 ? "s" : ""} logged</p>
             {lastMealLabel && <p className="text-xs text-green-600">Last: {lastMealLabel}</p>}
           </div>
+        </div>
+      )}
+
+      {invitePending && !isActive && (
+        <div className="flex items-center gap-2 mb-4 bg-amber-50 rounded-xl px-3 py-2">
+          <span>⏳</span>
+          <p className="text-xs text-amber-700">Invite sent — waiting for their first message</p>
         </div>
       )}
 
