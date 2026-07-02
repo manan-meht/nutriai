@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getContactDetails } from "../../actions";
