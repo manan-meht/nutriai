@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
 
 export interface GymClient {
   id: string;
@@ -304,7 +303,6 @@ export async function updateTrackedBiomarkers(clientId: string, markers: string[
     .update({ tracked_biomarkers: markers })
     .eq("id", clientId);
   if (error) throw new Error(error.message);
-  revalidatePath(`/gym/dashboard/clients/${clientId}`);
 }
 
 export async function logBiomarker(clientId: string, data: {
@@ -347,7 +345,6 @@ export async function logBiomarker(clientId: string, data: {
     notes: data.notes ?? null,
   });
   if (error) throw new Error(error.message);
-  revalidatePath(`/gym/dashboard/clients/${clientId}`);
 }
 
 export async function getClientMeals(clientId: string, days = 7): Promise<MealLog[]> {
@@ -436,6 +433,5 @@ export async function addClient(formData: {
     });
   }
 
-  revalidatePath("/gym/dashboard");
   return { clientId: client.id };
 }

@@ -1,7 +1,6 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
 
 export interface AdultsContact {
   id: string;
@@ -274,6 +273,5 @@ export async function addContact(formData: {
     });
   }
 
-  revalidatePath("/adults/dashboard");
   return { contactId: contact.id };
 }
