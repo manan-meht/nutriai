@@ -16,7 +16,8 @@ export async function middleware(request: NextRequest) {
   // Set landing experiment cookie if not already present.
   // Middleware is the correct place to write cookies in the App Router.
   const hostname = request.headers.get("host") ?? "localhost:3000";
-  const product = resolveProductFromHostname(hostname) ?? "gym";
+  const searchParams = new URLSearchParams(request.nextUrl.search);
+  const product = resolveProductFromHostname(hostname, searchParams) ?? "gym";
   const cookieName = getCookieName(product);
 
   if (!request.cookies.get(cookieName)) {

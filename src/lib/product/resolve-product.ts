@@ -26,8 +26,8 @@ export function resolveProductFromHostname(
   if (GYM_DOMAINS.has(host) || host.startsWith("gym.")) return "gym";
   if (ADULTS_DOMAINS.has(host) || host.startsWith("adults.") || host.startsWith("family.")) return "adults";
 
-  // ?product= override — local dev only, never used in production
-  if (process.env.NODE_ENV === "development" && searchParams) {
+  // ?product= override — works in all environments when no subdomain is configured
+  if (searchParams) {
     const qp = searchParams.get("product");
     if (qp === "gym" || qp === "adults") return qp;
   }
@@ -60,7 +60,12 @@ export function getCrossProductSwitchUrl(
 ): string {
   const targetProduct: ProductType = currentProduct === "gym" ? "adults" : "gym";
 
-  if (process.env.NODE_ENV === "development") {
+  const gymDomain = process.env.NEXT_PUBLIC_GYM_DOMAIN;
+  const familyDomain = process.env.NEXT_PUBLIC_FAMILY_DOMAIN;
+  const hasSeparateDomains =
+    gymDomain && familyDomain && gymDomain !== familyDomain;
+
+  if (!hasSeparateDomains || process.env.NODE_ENV === "development") {
     return `${path}?product=${targetProduct}`;
   }
 
