@@ -24,8 +24,7 @@ export async function POST(request: NextRequest) {
   // Always return 200 immediately — Meta will retry if we return non-2xx
   const body = await request.json().catch(() => null);
 
-  // Fire-and-forget processing
-  processWebhook(body).catch((err) =>
+  await processWebhook(body).catch((err) =>
     console.error("[webhook] unhandled error:", err)
   );
 

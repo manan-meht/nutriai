@@ -1,0 +1,18 @@
+{
+  "runtime": "edge",
+  "name": "adults/dashboard",
+  "deploymentTarget": "v8-worker",
+  "entrypoint": "index.js",
+  "assets": [],
+  "framework": {
+    "slug": "nextjs",
+    "version": "16.2.9"
+  },
+  "environment": {
+    "__NEXT_BUILD_ID": "hRQpIvPs6iHqcfice9zJg",
+    "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "r8XGObNiyPBPlOXGN2SlduVLGTUZkwRuoYW9OCkwEQg=",
+    "__NEXT_PREVIEW_MODE_ID": "a9df57df81d252b9d9c43805d037fd89",
+    "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "822d96beef9c8aa8b00e59191c20afdc73a78c7bc7fd1bd4f52e7394e023b29d",
+    "__NEXT_PREVIEW_MODE_SIGNING_KEY": "731bae9a9026022209a6f1ce5822bc5ef87e0b9244b20681b85ef9ac05a0cdc1"
+  }
+}
