@@ -1,13 +1,14 @@
 import type { ProductType } from "@/types";
 
-// Domain mappings — update with real domains before production launch
 const GYM_DOMAINS = new Set([
+  "coach.tistrahealth.com",
   "gym.nutritionplatform.com",
   "brand-gym.com",
   "gym.localhost",
 ]);
 
 const ADULTS_DOMAINS = new Set([
+  "family.tistrahealth.com",
   "family.nutritionplatform.com",
   "brand-adults.com",
   "adults.localhost",
@@ -44,9 +45,9 @@ export function resolveProductFromHostname(
  */
 export function getProductDomain(product: ProductType): string {
   if (product === "gym") {
-    return process.env.NEXT_PUBLIC_GYM_DOMAIN ?? "gym.nutritionplatform.com";
+    return process.env.NEXT_PUBLIC_GYM_DOMAIN ?? "coach.tistrahealth.com";
   }
-  return process.env.NEXT_PUBLIC_FAMILY_DOMAIN ?? "family.nutritionplatform.com";
+  return process.env.NEXT_PUBLIC_FAMILY_DOMAIN ?? "family.tistrahealth.com";
 }
 
 /**
