@@ -12,6 +12,8 @@
  * The standard page is always the safe fallback if product cannot be determined.
  */
 
+export const dynamic = "force-dynamic";
+
 import { cookies, headers } from "next/headers";
 import type { Metadata } from "next";
 import type { ProductType } from "@/types";
