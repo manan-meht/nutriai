@@ -1,8 +1,12 @@
-export const runtime = "edge";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { getOrCreateWorkspace, getClients } from "./actions";
+import { getOrCreateWorkspace, getClients, getRemovedClients } from "./actions";
 import { GymDashboardClient } from "@/components/gym/GymDashboardClient";
+import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
+import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
+import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
 
 export default async function GymDashboardPage() {
   const supabase = await createClient();
@@ -16,7 +20,19 @@ export default async function GymDashboardPage() {
     .single();
 
   const workspace = await getOrCreateWorkspace(user.id, profile?.full_name ?? undefined);
-  const clients = await getClients(workspace.id);
+  const [clients, removedClients, entitlement] = await Promise.all([
+    getClients(workspace.id),
+    getRemovedClients(workspace.id),
+    getEntitlementSnapshot(workspace.id, "gym"),
+  ]);
+
+  const headerStore = await headers();
+  const { market } = resolveBillingMarket({
+    confirmedCountry: await getConfirmedBillingCountry(),
+    ipCountry: getIpCountry(headerStore),
+  });
+  const monthly = getPrice(market, "gym", "monthly");
+  const annual = getPrice(market, "gym", "annual");
 
   return (
     <GymDashboardClient
@@ -24,6 +40,13 @@ export default async function GymDashboardPage() {
       coachEmail={user.email ?? ""}
       workspaceId={workspace.id}
       clients={clients}
+      removedClients={removedClients}
+      extraCapacity={workspace.extraCapacity}
+      entitlement={entitlement}
+      pricing={{
+        monthlyLabel: formatMinorUnits(monthly.amountMinorUnits, monthly.currency),
+        annualLabel: formatMinorUnits(annual.amountMinorUnits, annual.currency),
+      }}
     />
   );
 }

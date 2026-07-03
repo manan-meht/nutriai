@@ -1,16 +1,30 @@
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
+import { faviconForProduct } from "@/lib/product/icons";
+
+interface LoginPageProps {
+  searchParams?: Promise<Record<string, string>>;
+}
+
+export async function generateMetadata({ searchParams }: LoginPageProps): Promise<Metadata> {
+  const headerStore = await headers();
+  const hostname = headerStore.get("host") ?? "localhost:3000";
+  const params = (await searchParams) ?? {};
+  const rawParams = new URLSearchParams(
+    Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string")
+  );
+  const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
+  return { icons: { icon: faviconForProduct(product) } };
+}
 
 export default async function LoginPage({
   searchParams,
-}: {
-  searchParams?: Promise<Record<string, string>>;
-}) {
+}: LoginPageProps) {
   const headerStore = await headers();
   const hostname = headerStore.get("host") ?? "localhost:3000";
   const params = (await searchParams) ?? {};
@@ -23,7 +37,7 @@ export default async function LoginPage({
   const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
   const next = params.next ?? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard");
 
-  const title = product === "gym" ? "Sign in to Tistra Coach" : "Sign in to Tistra Family";
+  const title = "Sign in to Tistra Health";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">

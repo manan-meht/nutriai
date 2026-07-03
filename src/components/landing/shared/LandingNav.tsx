@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import type { ProductType, LandingVariant } from "@/types";
 import { getLoginUrl, getSignupUrl } from "@/lib/landing/routes";
@@ -9,13 +10,15 @@ interface LandingNavProps {
   experimentId?: string;
 }
 
-const NAV_COPY: Record<ProductType, { logoLabel: string; signupLabel: string }> = {
+const NAV_COPY: Record<ProductType, { logoLabel: string; logoSrc: string; signupLabel: string }> = {
   gym: {
-    logoLabel: "Tistra Coach",
+    logoLabel: "Tistra Health",
+    logoSrc: "/logos/logo-purple.png",
     signupLabel: "Start free",
   },
   adults: {
-    logoLabel: "Tistra Family",
+    logoLabel: "Tistra Health",
+    logoSrc: "/logos/logo-red.png",
     signupLabel: "Get started",
   },
 };
@@ -26,8 +29,13 @@ export function LandingNav({ product, variant, experimentId }: LandingNavProps) 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-white/90 backdrop-blur-md border-b border-black/5">
       {/* Logo */}
-      <div className="text-base font-semibold tracking-tight">
-        {copy.logoLabel}
+      <div className="flex items-center gap-2.5">
+        <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center overflow-hidden">
+          <Image src={copy.logoSrc} alt="" width={28} height={28} className="w-full h-full object-contain" />
+        </div>
+        <span className="text-base font-semibold tracking-tight">
+          {copy.logoLabel}
+        </span>
       </div>
 
       {/* Actions */}

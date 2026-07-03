@@ -1,29 +1,58 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import type { GymClient } from "@/app/(gym)/gym/dashboard/actions";
+import { removeClient } from "@/app/(gym)/gym/dashboard/actions";
 import { ClientCard } from "./ClientCard";
 import { AddClientModal } from "./AddClientModal";
 import { useRouter } from "next/navigation";
+import { effectiveGymLimit, gymLimitReachedMessage } from "@/lib/limits";
+import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { GYM_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 
 interface GymDashboardClientProps {
   coachName: string;
   coachEmail: string;
   workspaceId: string;
   clients: GymClient[];
+  removedClients: GymClient[];
+  extraCapacity: number;
+  entitlement: EntitlementSnapshot;
+  pricing: { monthlyLabel: string; annualLabel: string };
 }
 
-export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients }: GymDashboardClientProps) {
+export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing }: GymDashboardClientProps) {
   const [showModal, setShowModal] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const router = useRouter();
 
   function handleAdded() {
     router.refresh();
   }
 
+  async function handleRemove(client: GymClient) {
+    if (!window.confirm(
+      `Remove ${client.fullName}? Their data will be preserved, but this frees up an active slot only — you can't add a replacement until next calendar month (removing doesn't refund this month's add quota).`
+    )) return;
+    setRemovingId(client.id);
+    try {
+      await removeClient(client.id);
+      router.refresh();
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
   const activeCount = clients.length;
   const goalsSet = clients.filter((c) => c.goals.some((g) => g.status === "active")).length;
   const invitedCount = clients.filter((c) => c.inviteSentAt).length;
+  const clientLimit = effectiveGymLimit(extraCapacity);
+  const countLimitReached = GYM_LIMIT_ENFORCEMENT_ENABLED && activeCount >= clientLimit;
+  const canAdd = !countLimitReached && !entitlement.isReadOnly;
+  const isSubscriber = entitlement.status === "active" || entitlement.status === "past_due" || entitlement.status === "cancel_at_period_end";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -32,13 +61,16 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
       <header className="bg-white border-b border-gray-100 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">C</span>
+            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
+              <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
             </div>
-            <span className="font-bold text-gray-900">Tistra Coach</span>
+            <span className="font-bold text-gray-900">Tistra Health</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{coachEmail}</span>
+            <Link href="/billing?module=gym" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+              Billing
+            </Link>
             <form action="/auth/signout" method="post">
               <button type="submit" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
                 Sign out
@@ -62,13 +94,51 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                 : `${activeCount} client${activeCount !== 1 ? "s" : ""}`}
             </p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-purple-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-purple-700 transition-colors shadow-sm flex items-center gap-2"
-          >
-            <span className="text-lg leading-none">+</span> Add client
-          </button>
+          {canAdd && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-purple-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-purple-700 transition-colors shadow-sm flex items-center gap-2"
+            >
+              <span className="text-lg leading-none">+</span> Add client
+            </button>
+          )}
         </div>
+
+        {entitlement.isReadOnly && (
+          <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
+            Your free trial has ended. Your existing clients and data are preserved and visible, but you can&apos;t invite
+            new clients or generate new AI analyses until you <Link href="/billing?module=gym" className="underline font-medium">subscribe</Link>.
+          </div>
+        )}
+
+        {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
+          <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
+            Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
+            <Link href="/billing?module=gym" className="underline font-medium">Subscribe</Link>
+          </div>
+        )}
+
+        {!entitlement.isReadOnly && countLimitReached && (
+          <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
+            {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
+          </div>
+        )}
+
+        {isSubscriber ? (
+          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+            <span>Your plan includes up to {clientLimit} clients.</span>
+            <Link href="/billing?module=gym" className="font-medium text-purple-700 underline">
+              Need more than {clientLimit} clients? Add capacity →
+            </Link>
+          </div>
+        ) : (
+          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+            Your first {clientLimit} clients are free for your first month. After that, Coaching is{" "}
+            <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+            <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
+            <Link href="/billing?module=gym" className="underline font-medium text-purple-700">See plans</Link>
+          </div>
+        )}
 
         {/* Stats */}
         {activeCount > 0 && (
@@ -89,24 +159,48 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
             <p className="text-gray-500 text-sm max-w-xs mb-8">
               Add a client and send them a WhatsApp invite. They just need to reply with their first meal.
             </p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-purple-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-purple-700 transition-colors shadow-lg shadow-purple-100"
-            >
-              Add your first client
-            </button>
+            {canAdd && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-purple-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-purple-700 transition-colors shadow-lg shadow-purple-100"
+              >
+                Add your first client
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {clients.map((client) => (
-              <button
+              <ClientCard
                 key={client.id}
-                onClick={() => router.push(`/gym/dashboard/clients/${client.id}`)}
-                className="text-left w-full"
-              >
-                <ClientCard client={client} />
-              </button>
+                client={client}
+                onOpen={() => router.push(`/gym/dashboard/clients/${client.id}`)}
+                onRemove={removingId === client.id ? undefined : () => handleRemove(client)}
+              />
             ))}
+          </div>
+        )}
+
+        {removedClients.length > 0 && (
+          <div className="mt-10">
+            <button
+              onClick={() => setShowPrevious((v) => !v)}
+              className="text-sm font-medium text-gray-500 hover:text-gray-800 mb-4"
+            >
+              {showPrevious ? "Hide" : "Show"} previous clients ({removedClients.length})
+            </button>
+            {showPrevious && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-70">
+                {removedClients.map((client) => (
+                  <div key={client.id} className="relative">
+                    <ClientCard client={client} onOpen={() => router.push(`/gym/dashboard/clients/${client.id}`)} />
+                    <span className="absolute top-3 right-3 text-xs font-medium px-2 py-1 rounded-full bg-gray-800 text-white">
+                      Removed
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>

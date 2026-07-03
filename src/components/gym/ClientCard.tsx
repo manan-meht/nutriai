@@ -20,7 +20,13 @@ const GOAL_COLORS: Record<string, string> = {
   custom: "bg-purple-50 text-purple-700",
 };
 
-export function ClientCard({ client }: { client: GymClient }) {
+interface ClientCardProps {
+  client: GymClient;
+  onOpen?: () => void;
+  onRemove?: () => void;
+}
+
+export function ClientCard({ client, onOpen, onRemove }: ClientCardProps) {
   const initials = client.fullName
     .split(" ")
     .map((n) => n[0])
@@ -36,7 +42,13 @@ export function ClientCard({ client }: { client: GymClient }) {
     : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-purple-200 hover:shadow-md transition-all cursor-pointer">
+    <div
+      className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-purple-200 hover:shadow-md transition-all cursor-pointer text-left"
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}
+    >
       {/* Header */}
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -53,15 +65,27 @@ export function ClientCard({ client }: { client: GymClient }) {
             <p className="text-xs text-gray-400">{client.whatsappNumber}</p>
           </div>
         </div>
-        {isActive ? (
-          <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-50 text-green-700">
-            Sending data
-          </span>
-        ) : (
-          <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500">
-            Invited
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {isActive ? (
+            <span className="text-xs font-medium px-2 py-1 rounded-full bg-green-50 text-green-700">
+              Sending data
+            </span>
+          ) : (
+            <span className="text-xs font-medium px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+              Invited
+            </span>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              className="text-xs text-gray-400 hover:text-red-600 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
+              aria-label={`Remove ${client.fullName}`}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Meal activity */}

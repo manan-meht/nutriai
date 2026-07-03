@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3001",
     "build": "next build",
     "pages:build": "npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "migrate:backfill-trials": "tsx scripts/backfill-trials.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -26,9 +27,11 @@
     "next": "^16.2.9",
     "openai": "^6.45.0",
     "postcss": "^8.5.16",
+    "razorpay": "^2.9.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.9.1",
+    "stripe": "^22.3.0",
     "tailwindcss": "^4.3.2",
     "typescript": "^6.0.3"
   },
@@ -37,6 +40,7 @@
     "@types/jest": "^30.0.0",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
-    "ts-jest": "^29.4.11"
+    "ts-jest": "^29.4.11",
+    "tsx": "^4.22.5"
   }
 }

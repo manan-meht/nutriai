@@ -16,18 +16,28 @@ import type {
 } from "@/types";
 
 export function getSignupUrl(params: GetSignupUrlParams): string {
+  // The adults product has no dedicated /signup route group — it shares the
+  // "/signup" route with gym and resolves which product to show from the
+  // ?product= query param (falling back to NEXT_PUBLIC_PRODUCT otherwise).
+  // Always include it explicitly so this never silently defaults to gym.
   const base = params.product === "gym" ? "/gym/signup" : "/signup";
   const qs = new URLSearchParams({
     source: params.source,
     variant: params.variant,
+    ...(params.product !== "gym" ? { product: params.product } : {}),
     ...(params.experimentId ? { exp: params.experimentId } : {}),
   });
   return `${base}?${qs.toString()}`;
 }
 
 export function getLoginUrl(params: GetLoginUrlParams): string {
+  // Same reasoning as getSignupUrl — "/login" is shared and must be told
+  // explicitly which product it's for.
   const base = params.product === "gym" ? "/gym/login" : "/login";
-  const qs = params.source ? new URLSearchParams({ source: params.source }) : null;
+  const qsParams: Record<string, string> = {};
+  if (params.source) qsParams.source = params.source;
+  if (params.product !== "gym") qsParams.product = params.product;
+  const qs = Object.keys(qsParams).length ? new URLSearchParams(qsParams) : null;
   return qs ? `${base}?${qs.toString()}` : base;
 }
 

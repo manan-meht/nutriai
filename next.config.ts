@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.supabase.co" },
     ],
   },
+  turbopack: {
+    root: process.cwd(),
+  },
 };
 
 export default nextConfig;

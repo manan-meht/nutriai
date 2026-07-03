@@ -1,6 +1,17 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  FAMILY_LIMIT_REACHED_MESSAGE,
+  FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE,
+  effectiveFamilyLimit,
+  familyLimitReachedMessage,
+  familyMonthlyQuotaReachedMessage,
+  startOfCalendarMonthUTC,
+} from "@/lib/limits";
+import { getEntitlementSnapshot, startTrialIfNeeded } from "@/lib/entitlements/entitlements";
+import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
+import { now } from "@/lib/time/clock";
 
 export interface AdultsContact {
   id: string;
@@ -16,6 +27,7 @@ export interface AdultsContact {
   inviteSentAt?: string;
   inviteAcceptedAt?: string;
   createdAt: string;
+  deletedAt?: string;
   trackedBiomarkers: string[];
   goals: AdultsGoal[];
   mealCount: number;
@@ -56,7 +68,7 @@ export interface AdultsContactDetails {
   meals: AdultsMealLog[];
 }
 
-export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string }> {
+export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number }> {
   const { createClient: createServiceClient } = await import("@supabase/supabase-js");
   const admin = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -65,14 +77,14 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
 
   const { data: existing } = await admin
     .from("workspaces")
-    .select("id, name")
+    .select("id, name, extra_capacity")
     .eq("owner_id", userId)
     .eq("type", "adults")
     .order("created_at", { ascending: true })
     .limit(1)
     .single();
 
-  if (existing) return existing;
+  if (existing) return { id: existing.id, name: existing.name, extraCapacity: existing.extra_capacity ?? 0 };
 
   const name = `${caregiverName ?? "My"}'s Family`;
   const slug = `adults-${userId.slice(0, 8)}-${Date.now()}`;
@@ -80,40 +92,15 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
   const { data: created, error } = await admin
     .from("workspaces")
     .insert({ type: "adults", name, slug, owner_id: userId })
-    .select("id, name")
+    .select("id, name, extra_capacity")
     .single();
 
   if (error || !created) throw new Error(`Failed to create workspace: ${error?.message}`);
-  return created;
+  return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0 };
 }
 
-export async function getContacts(workspaceId: string): Promise<AdultsContact[]> {
-  const supabase = await createClient();
-
-  const { data: contacts } = await supabase
-    .from("adults_contacts")
-    .select("*, goals:adults_contact_goals(*)")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: false });
-
-  if (!contacts?.length) return [];
-
-  const { data: meals } = await supabase
-    .from("meal_logs")
-    .select("adults_contact_id, logged_at")
-    .in("adults_contact_id", contacts.map((c: any) => c.id))
-    .order("logged_at", { ascending: false });
-
-  const mealsByContact: Record<string, { count: number; lastAt?: string }> = {};
-  for (const m of meals ?? []) {
-    if (!m.adults_contact_id) continue;
-    if (!mealsByContact[m.adults_contact_id]) {
-      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at };
-    }
-    mealsByContact[m.adults_contact_id].count++;
-  }
-
-  return contacts.map((c: any) => ({
+function mapContactRow(c: any, mealsByContact: Record<string, { count: number; lastAt?: string }>): AdultsContact {
+  return {
     id: c.id,
     workspaceId: c.workspace_id,
     fullName: c.full_name,
@@ -127,6 +114,7 @@ export async function getContacts(workspaceId: string): Promise<AdultsContact[]>
     inviteSentAt: c.invite_sent_at,
     inviteAcceptedAt: c.invite_accepted_at,
     createdAt: c.created_at,
+    deletedAt: c.deleted_at ?? undefined,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsByContact[c.id]?.count ?? 0,
     lastMealAt: mealsByContact[c.id]?.lastAt,
@@ -141,7 +129,76 @@ export async function getContacts(workspaceId: string): Promise<AdultsContact[]>
       targetMealsPerDay: g.target_meals_per_day,
       status: g.status,
     })),
-  }));
+  };
+}
+
+async function fetchMealsByContact(supabase: Awaited<ReturnType<typeof createClient>>, contactIds: string[]) {
+  const { data: meals } = await supabase
+    .from("meal_logs")
+    .select("adults_contact_id, logged_at")
+    .in("adults_contact_id", contactIds)
+    .order("logged_at", { ascending: false });
+
+  const mealsByContact: Record<string, { count: number; lastAt?: string }> = {};
+  for (const m of meals ?? []) {
+    if (!m.adults_contact_id) continue;
+    if (!mealsByContact[m.adults_contact_id]) {
+      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at };
+    }
+    mealsByContact[m.adults_contact_id].count++;
+  }
+  return mealsByContact;
+}
+
+export async function getContacts(workspaceId: string): Promise<AdultsContact[]> {
+  const supabase = await createClient();
+
+  const { data: contacts } = await supabase
+    .from("adults_contacts")
+    .select("*, goals:adults_contact_goals(*)")
+    .eq("workspace_id", workspaceId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
+
+  if (!contacts?.length) return [];
+
+  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+}
+
+/** Previously-removed family members — data preserved and viewable, but they
+ * no longer count as active and can't be logged against going forward. */
+export async function getRemovedContacts(workspaceId: string): Promise<AdultsContact[]> {
+  const supabase = await createClient();
+
+  const { data: contacts } = await supabase
+    .from("adults_contacts")
+    .select("*, goals:adults_contact_goals(*)")
+    .eq("workspace_id", workspaceId)
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+
+  if (!contacts?.length) return [];
+
+  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+}
+
+/** Soft-delete: preserves the contact's historical data (meals, goals) while
+ * freeing an *active* slot. Does not refund this calendar month's add quota
+ * — see supabase/migrations/0004_soft_delete_and_monthly_quota.sql. */
+export async function removeContact(contactId: string): Promise<void> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("adults_contacts")
+    .update({ deleted_at: now().toISOString() })
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id);
+
+  if (error) throw new Error(error.message);
 }
 
 export async function getContactDetails(contactId: string): Promise<AdultsContactDetails | null> {
@@ -242,6 +299,53 @@ export async function addContact(formData: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // Fast, friendly pre-check. Not authoritative on its own — the DB trigger
+  // (enforce_family_member_limit, see supabase/migrations/0002_account_limits.sql
+  // and 0003_purchasable_capacity.sql) is the source of truth, runs
+  // unconditionally regardless of FAMILY_LIMIT_ENFORCEMENT_ENABLED, and is
+  // safe under concurrent requests via an advisory lock. This block only
+  // avoids a round-trip + raw Postgres error in the common (non-racing)
+  // case, and can be turned off via the flag without weakening the actual
+  // server-authoritative limit.
+  if (FAMILY_LIMIT_ENFORCEMENT_ENABLED) {
+    const monthStart = startOfCalendarMonthUTC(now()).toISOString();
+    const [{ count: activeCount }, { count: monthCount }, { data: workspace }] = await Promise.all([
+      supabase
+        .from("adults_contacts")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", formData.workspaceId)
+        .is("deleted_at", null),
+      supabase
+        .from("adults_contacts")
+        .select("id", { count: "exact", head: true })
+        .eq("workspace_id", formData.workspaceId)
+        .gte("created_at", monthStart),
+      supabase
+        .from("workspaces")
+        .select("extra_capacity")
+        .eq("id", formData.workspaceId)
+        .single(),
+    ]);
+
+    const limit = effectiveFamilyLimit(workspace?.extra_capacity ?? 0);
+    if ((activeCount ?? 0) >= limit) {
+      throw new Error(familyLimitReachedMessage(limit));
+    }
+    // Removing a family member frees an active slot but does not refund this
+    // month's add quota — a new add is only allowed once the calendar month
+    // rolls over. See supabase/migrations/0004_soft_delete_and_monthly_quota.sql.
+    if ((monthCount ?? 0) >= limit) {
+      throw new Error(familyMonthlyQuotaReachedMessage(limit));
+    }
+  }
+
+  // Server-authoritative: block adding new family members once the trial
+  // (or a paid period) has lapsed, regardless of what the UI shows.
+  const entitlement = await getEntitlementSnapshot(formData.workspaceId, "adults");
+  if (entitlement.isReadOnly) {
+    throw new Error("Your Family trial has ended. Subscribe to add more family members.");
+  }
+
   const { data: contact, error } = await supabase
     .from("adults_contacts")
     .insert({
@@ -260,7 +364,17 @@ export async function addContact(formData: {
     .select("id")
     .single();
 
+  if (error?.message?.includes("FAMILY_MEMBER_LIMIT_REACHED")) {
+    throw new Error(FAMILY_LIMIT_REACHED_MESSAGE);
+  }
+  if (error?.message?.includes("FAMILY_MEMBER_MONTHLY_QUOTA_REACHED")) {
+    throw new Error(FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE);
+  }
   if (error || !contact) throw new Error(error?.message ?? "Failed to add contact");
+
+  // Starts the Family trial on first successful add; a no-op for every
+  // subsequent contact (see startTrialIfNeeded — idempotent per workspace).
+  await startTrialIfNeeded(formData.workspaceId, user.id, "adults");
 
   if (formData.goalType && formData.goalTitle) {
     await supabase.from("adults_contact_goals").insert({
@@ -276,18 +390,41 @@ export async function addContact(formData: {
     });
   }
 
-  // Auto-send WhatsApp invite
+  // Auto-send WhatsApp invite. Meta requires the FIRST message to someone
+  // who hasn't messaged your business number yet to be a pre-approved
+  // template — free-form text is rejected for that case in both test and
+  // production WhatsApp Business Accounts. See WHATSAPP_INVITE_TEMPLATE_NAME
+  // in .env.example for the template this expects (2 body params: first
+  // name, caregiver name) and its suggested approval-request body text.
   try {
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
     const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
     const caregiverName = profile?.full_name ?? "Your family member";
     const firstName = formData.fullName.split(" ")[0];
-    await sendTextMessage(
-      formData.whatsappNumber,
-      `Hi ${firstName}! 👋\n\n${caregiverName} has set up Tistra Family to help keep an eye on your nutrition.\n\nAll you need to do is send me a photo or describe what you eat — right here on WhatsApp. I'll keep track for you!\n\nWhenever you're ready, just send me a photo of your next meal 😊`
-    );
-  } catch {
-    // Don't fail contact creation if WhatsApp send fails
+    const templateName = process.env.WHATSAPP_INVITE_TEMPLATE_NAME;
+
+    if (templateName) {
+      const { sendTemplateMessage } = await import("@/lib/whatsapp/client");
+      await sendTemplateMessage(
+        formData.whatsappNumber,
+        templateName,
+        process.env.WHATSAPP_INVITE_TEMPLATE_LANGUAGE ?? "en_US",
+        [firstName, caregiverName]
+      );
+    } else {
+      // No approved template configured yet — best-effort free-form send,
+      // which Meta will reject for a genuinely new contact. Kept as a
+      // fallback for dev numbers that have already messaged the bot once.
+      const { sendTextMessage } = await import("@/lib/whatsapp/client");
+      await sendTextMessage(
+        formData.whatsappNumber,
+        `Hi ${firstName}! 👋\n\n${caregiverName} has set up Tistra Health to help keep an eye on your nutrition.\n\nAll you need to do is send me a photo or describe what you eat — right here on WhatsApp. I'll keep track for you!\n\nWhenever you're ready, just send me a photo of your next meal 😊`
+      );
+    }
+  } catch (err) {
+    // Don't fail contact creation if WhatsApp send fails, but log it so
+    // silent delivery failures (expired token, unapproved template, Meta's
+    // first-message policy) are visible in the server console.
+    console.error("[addContact] WhatsApp invite send failed:", err instanceof Error ? err.message : err);
   }
 
   return { contactId: contact.id };

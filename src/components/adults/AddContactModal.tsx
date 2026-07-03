@@ -82,7 +82,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
   function buildWhatsAppUrl() {
     const number = `${countryCode}${whatsapp.replace(/\D/g, "")}`;
     const msg = encodeURIComponent(
-      `Hi ${fullName}! 👋\n\n${caregiverName} has set up Tistra Family to help keep an eye on your nutrition.\n\nAll you need to do is send a photo or describe what you eat — right here on WhatsApp. I'll do the rest!\n\nYou can start whenever you're ready. Just send me a photo of your next meal 😊`
+      `Hi ${fullName}! 👋\n\n${caregiverName} has set up Tistra Health to help keep an eye on your nutrition.\n\nAll you need to do is send a photo or describe what you eat — right here on WhatsApp. I'll do the rest!\n\nYou can start whenever you're ready. Just send me a photo of your next meal 😊`
     );
     return `https://wa.me/${number}?text=${msg}`;
   }
@@ -94,7 +94,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
           <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📲</div>
           <h3 className="text-xl font-bold text-gray-900 mb-2">Invite sent to {success.name}!</h3>
           <p className="text-gray-500 text-sm mb-2 max-w-xs mx-auto">
-            We've sent them a WhatsApp message. Once they reply, their card will update to <strong>Accepted</strong> and they can start logging meals.
+            We&apos;ve sent them a WhatsApp message. Once they reply, their card will update to <strong>Accepted</strong> and they can start logging meals.
           </p>
           <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-700 mb-8 max-w-xs mx-auto">
             ⏳ Waiting for {success.name} to accept

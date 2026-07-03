@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendTextMessage, normalizePhone } from "./client";
 import { analyzeFood, buildConfirmationMessage, buildSuccessMessage, FoodAnalysisResult } from "@/lib/ai/food-analyzer";
+import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 
 function admin() {
   return createClient(
@@ -101,7 +102,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   if (!gymClient && !adultsContact) {
-    await sendTextMessage(msg.from, "Hi! 👋 I'm NutriAI, your nutrition assistant.\n\nI don't recognize this number yet — please ask the person who set this up to add you first.");
+    await sendTextMessage(msg.from, "Hi! 👋 I'm Tistra Health, your nutrition assistant.\n\nI don't recognize this number yet — please ask the person who set this up to add you first.");
     return;
   }
 
@@ -195,6 +196,18 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     : (entity.gym_client_goals ?? []).find((g: any) => g.status === "active");
 
   const targetProtein = activeGoal?.target_protein_g;
+
+  // Block new AI meal analysis (the costly path) once the owner's trial or
+  // subscription has lapsed. Greetings and workout logging above are
+  // unaffected — they don't call the AI analyzer.
+  const entitlement = await getEntitlementSnapshot(workspaceId, isAdults ? "adults" : "gym");
+  if (entitlement.isReadOnly && (state === "idle" || state === "awaiting_correction" || state === "awaiting_confirmation")) {
+    await sendTextMessage(
+      msg.from,
+      "This account's free trial has ended, so I can't analyze new meals right now. Please ask the person who set this up to subscribe — your past meals are still safe and visible in the dashboard."
+    );
+    return;
+  }
 
   if (state === "idle" || state === "awaiting_correction") {
     const isCorrecting = state === "awaiting_correction";
