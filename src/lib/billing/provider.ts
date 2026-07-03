@@ -70,6 +70,8 @@ export interface PaymentProvider {
 
   /** Verifies the raw webhook request against the provider's signature
    * scheme. Must be called before any event processing — never trust an
-   * unverified payload. */
-  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): WebhookVerifyResult;
+   * unverified payload. Async because signature verification uses the Web
+   * Crypto API (crypto.subtle), which is promise-based and Edge-Runtime
+   * compatible, unlike Node's synchronous `crypto` module. */
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult>;
 }

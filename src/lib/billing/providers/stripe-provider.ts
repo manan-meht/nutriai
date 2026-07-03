@@ -6,7 +6,10 @@ import { mapStripeStatus } from "./stripe-status";
 function client(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
-  return new Stripe(key);
+  // Explicit fetch-based HTTP client — Stripe's default Node HTTP client
+  // relies on Node's `http`/`https` modules, unavailable under Cloudflare's
+  // Edge Runtime. The fetch client works in both edge and Node.
+  return new Stripe(key, { httpClient: Stripe.createFetchHttpClient() });
 }
 
 export const stripeProvider: PaymentProvider = {
@@ -93,12 +96,15 @@ export const stripeProvider: PaymentProvider = {
     return session.url;
   },
 
-  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): WebhookVerifyResult {
+  // Uses constructEventAsync (Web Crypto / SubtleCrypto based) rather than
+  // the sync constructEvent, which relies on Node's `crypto` module and
+  // isn't available under Cloudflare's Edge Runtime.
+  async verifyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult> {
     const secret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!secret || !signatureHeader) return { valid: false };
     try {
       const stripe = client();
-      const event = stripe.webhooks.constructEvent(rawBody, signatureHeader, secret);
+      const event = await stripe.webhooks.constructEventAsync(rawBody, signatureHeader, secret);
       return { valid: true, eventId: event.id, eventType: event.type, payload: event };
     } catch {
       return { valid: false };

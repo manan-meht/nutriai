@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import Razorpay from "razorpay";
 import type { PaymentProvider, CheckoutParams, CheckoutResult, ProviderSubscriptionSnapshot, WebhookVerifyResult } from "@/lib/billing/provider";
 import { getRazorpayPlanId } from "./razorpay-plan-ids";
@@ -92,13 +91,27 @@ export const razorpayProvider: PaymentProvider = {
     return null;
   },
 
-  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): WebhookVerifyResult {
+  /**
+   * Edge-Runtime-compatible signature verification using the Web Crypto API
+   * (crypto.subtle) instead of Node's `crypto` module, which isn't available
+   * under Cloudflare's Edge Runtime. HMAC-SHA256 over the raw body, compared
+   * against the X-Razorpay-Signature header in constant time.
+   */
+  async verifyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult> {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret || !signatureHeader) return { valid: false };
 
-    const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-    const valid = timingSafeEqualHex(expected, signatureHeader);
-    if (!valid) return { valid: false };
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+    const signatureBytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+    const expectedHex = Array.from(new Uint8Array(signatureBytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    if (!timingSafeEqualHex(expectedHex, signatureHeader)) return { valid: false };
 
     try {
       const payload = JSON.parse(rawBody);
@@ -116,11 +129,9 @@ export const razorpayProvider: PaymentProvider = {
 
 function timingSafeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a, "hex"), Buffer.from(b, "hex"));
-  } catch {
-    return false;
-  }
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export function razorpaySubscriptionToSnapshot(sub: any): ProviderSubscriptionSnapshot {

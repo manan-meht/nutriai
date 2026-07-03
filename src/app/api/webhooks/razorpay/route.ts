@@ -1,3 +1,5 @@
+export const runtime = "edge";
+
 import { NextRequest, NextResponse } from "next/server";
 import { razorpayProvider } from "@/lib/billing/providers/razorpay-provider";
 import { processProviderWebhook } from "@/lib/billing/webhook-handler";

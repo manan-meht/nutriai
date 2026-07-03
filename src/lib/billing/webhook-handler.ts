@@ -25,7 +25,7 @@ export async function processProviderWebhook(
   rawBody: string,
   signatureHeader: string | null
 ): Promise<WebhookOutcome> {
-  const verified = provider.verifyWebhookSignature(rawBody, signatureHeader);
+  const verified = await provider.verifyWebhookSignature(rawBody, signatureHeader);
   if (!verified.valid || !verified.eventId || !verified.eventType) {
     return { result: "invalid_signature" };
   }

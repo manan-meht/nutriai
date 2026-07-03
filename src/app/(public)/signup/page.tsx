@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const runtime = "edge";
 
 import { headers } from "next/headers";
 import type { Metadata } from "next";
