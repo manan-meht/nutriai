@@ -1,0 +1,75 @@
+import type { BillingModule, BillingInterval, BillingMarket } from "./pricing";
+import type { EntitlementStatus } from "@/lib/entitlements/entitlements";
+
+export type PaymentProviderName = "stripe" | "razorpay";
+
+export interface CheckoutParams {
+  workspaceId: string;
+  ownerId: string;
+  ownerEmail: string;
+  module: BillingModule;
+  market: BillingMarket;
+  interval: BillingInterval;
+  /** ISO timestamp to delay the first charge to (e.g. end of an active
+   * trial). Providers that can't support this must charge immediately and
+   * the caller is responsible for disclosing that before confirmation. */
+  delayBillingUntil?: string | null;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+export interface CheckoutResult {
+  url: string;
+  /** True if the provider will charge today (delayBillingUntil was ignored
+   * or unsupported) — callers must disclose this before redirecting. */
+  chargesImmediately: boolean;
+}
+
+export interface ProviderSubscriptionSnapshot {
+  providerSubscriptionId: string;
+  providerCustomerId: string;
+  status: EntitlementStatus;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancelledAt: string | null;
+}
+
+export interface WebhookVerifyResult {
+  valid: boolean;
+  eventId?: string;
+  eventType?: string;
+  /** Parsed, provider-specific payload — passed through to processWebhookEvent. */
+  payload?: unknown;
+}
+
+/**
+ * Provider-neutral interface. Entitlement logic (trial state, read-only
+ * enforcement, account limits) never talks to Stripe or Razorpay directly —
+ * only through this interface, so adding a third provider later doesn't
+ * touch entitlement code.
+ */
+export interface PaymentProvider {
+  name: PaymentProviderName;
+
+  createOrRetrieveCustomer(params: { ownerId: string; email: string; existingCustomerId?: string | null }): Promise<string>;
+
+  createCheckoutSession(params: CheckoutParams): Promise<CheckoutResult>;
+
+  retrieveSubscription(providerSubscriptionId: string): Promise<ProviderSubscriptionSnapshot | null>;
+
+  cancelSubscription(providerSubscriptionId: string, atPeriodEnd: boolean): Promise<void>;
+
+  /** Resumes a subscription previously scheduled to cancel at period end.
+   * Not all providers support this once cancellation is scheduled. */
+  reactivateSubscription(providerSubscriptionId: string): Promise<boolean>;
+
+  /** Returns a hosted billing-management URL (payment method update,
+   * invoices, plan changes) where the provider supports one. */
+  openBillingPortal(params: { customerId: string; returnUrl: string }): Promise<string | null>;
+
+  /** Verifies the raw webhook request against the provider's signature
+   * scheme. Must be called before any event processing — never trust an
+   * unverified payload. */
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): WebhookVerifyResult;
+}

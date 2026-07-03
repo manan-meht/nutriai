@@ -1,15 +1,25 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
+import { removeContact } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
+import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
+import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 
 interface Props {
   caregiverName: string;
   caregiverEmail: string;
   workspaceId: string;
   contacts: AdultsContact[];
+  removedContacts: AdultsContact[];
+  extraCapacity: number;
+  entitlement: EntitlementSnapshot;
+  pricing: { monthlyLabel: string; annualLabel: string };
 }
 
 const GOAL_LABELS: Record<string, string> = {
@@ -22,12 +32,31 @@ const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, pricing }: Props) {
   const [showModal, setShowModal] = useState(false);
+  const [showPrevious, setShowPrevious] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const router = useRouter();
+
+  async function handleRemove(contact: AdultsContact) {
+    if (!window.confirm(
+      `Remove ${contact.fullName}? Their data will be preserved, but this frees up an active slot only — you can't add a replacement until next calendar month (removing doesn't refund this month's add quota).`
+    )) return;
+    setRemovingId(contact.id);
+    try {
+      await removeContact(contact.id);
+      router.refresh();
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   const activeCount = contacts.length;
   const sendingData = contacts.filter((c) => c.mealCount > 0).length;
+  const familyLimit = effectiveFamilyLimit(extraCapacity);
+  const countLimitReached = FAMILY_LIMIT_ENFORCEMENT_ENABLED && activeCount >= familyLimit;
+  const canAdd = !countLimitReached && !entitlement.isReadOnly;
+  const isSubscriber = entitlement.status === "active" || entitlement.status === "past_due" || entitlement.status === "cancel_at_period_end";
 
   return (
     <div className="min-h-screen bg-rose-50/40">
@@ -35,13 +64,16 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       <header className="bg-white border-b border-gray-100 px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-rose-500 flex items-center justify-center">
-              <span className="text-white text-sm font-bold">N</span>
+            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
+              <Image src="/logos/logo-red.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
             </div>
-            <span className="font-bold text-gray-900">Tistra Family</span>
+            <span className="font-bold text-gray-900">Tistra Health</span>
           </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{caregiverEmail}</span>
+            <Link href="/billing?module=adults" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+              Billing
+            </Link>
             <form action="/auth/signout" method="post">
               <button type="submit" className="text-sm text-gray-500 hover:text-gray-800 font-medium">Sign out</button>
             </form>
@@ -59,13 +91,51 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
               {activeCount === 0 ? "Add someone to get started." : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
             </p>
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-rose-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-2"
-          >
-            <span className="text-lg leading-none">+</span> Add person
-          </button>
+          {canAdd && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="bg-rose-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-2"
+            >
+              <span className="text-lg leading-none">+</span> Add person
+            </button>
+          )}
         </div>
+
+        {entitlement.isReadOnly && (
+          <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
+            Your free trial has ended. Your existing family members and their data are preserved and visible, but you
+            can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.
+          </div>
+        )}
+
+        {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
+          <div className="mb-8 rounded-xl bg-rose-50 border border-rose-100 px-4 py-3 text-sm text-rose-800">
+            Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
+            <Link href="/billing?module=adults" className="underline font-medium">Subscribe</Link>
+          </div>
+        )}
+
+        {!entitlement.isReadOnly && countLimitReached && (
+          <div className="mb-8 rounded-xl bg-rose-50 border border-rose-100 px-4 py-3 text-sm text-rose-800">
+            {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
+          </div>
+        )}
+
+        {isSubscriber ? (
+          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+            <span>Your plan includes up to {familyLimit} family members.</span>
+            <Link href="/billing?module=adults" className="font-medium text-rose-700 underline">
+              Need more than {familyLimit}? Add capacity →
+            </Link>
+          </div>
+        ) : (
+          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+            Your first {familyLimit} family members are free for your first month. After that, Family is{" "}
+            <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+            <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
+            <Link href="/billing?module=adults" className="underline font-medium text-rose-700">See plans</Link>
+          </div>
+        )}
 
         {activeCount > 0 && (
           <div className="grid grid-cols-2 gap-4 mb-8">
@@ -79,26 +149,50 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             <div className="w-24 h-24 rounded-3xl bg-rose-50 flex items-center justify-center mb-6 text-5xl">👵</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">No one added yet</h2>
             <p className="text-gray-500 text-sm max-w-xs mb-8">
-              Add a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp and you'll track their nutrition here.
+              Add a parent, grandparent, or anyone you want to help stay healthy. They&apos;ll send meal photos on WhatsApp and you&apos;ll track their nutrition here.
             </p>
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-rose-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100"
-            >
-              Add your first contact
-            </button>
+            {canAdd && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="bg-rose-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100"
+              >
+                Add your first contact
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {contacts.map((contact) => (
-              <button
+              <ContactCard
                 key={contact.id}
-                onClick={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
-                className="text-left w-full"
-              >
-                <ContactCard contact={contact} />
-              </button>
+                contact={contact}
+                onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
+                onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
+              />
             ))}
+          </div>
+        )}
+
+        {removedContacts.length > 0 && (
+          <div className="mt-10">
+            <button
+              onClick={() => setShowPrevious((v) => !v)}
+              className="text-sm font-medium text-gray-500 hover:text-gray-800 mb-4"
+            >
+              {showPrevious ? "Hide" : "Show"} previous family members ({removedContacts.length})
+            </button>
+            {showPrevious && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-70">
+                {removedContacts.map((contact) => (
+                  <div key={contact.id} className="relative">
+                    <ContactCard contact={contact} onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)} />
+                    <span className="absolute top-3 right-3 text-xs font-medium px-2 py-1 rounded-full bg-gray-800 text-white">
+                      Removed
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -115,7 +209,13 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   );
 }
 
-function ContactCard({ contact }: { contact: AdultsContact }) {
+interface ContactCardProps {
+  contact: AdultsContact;
+  onOpen?: () => void;
+  onRemove?: () => void;
+}
+
+function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   const activeGoal = contact.goals.find((g) => g.status === "active");
   const isActive = contact.mealCount > 0;
@@ -126,7 +226,13 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
   const lastMealLabel = contact.lastMealAt ? formatRelative(new Date(contact.lastMealAt)) : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-rose-200 hover:shadow-md transition-all cursor-pointer">
+    <div
+      className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-rose-200 hover:shadow-md transition-all cursor-pointer text-left"
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -143,14 +249,26 @@ function ContactCard({ contact }: { contact: AdultsContact }) {
             </p>
           </div>
         </div>
-        <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-          isActive ? "bg-green-50 text-green-700"
-          : inviteAccepted ? "bg-blue-50 text-blue-700"
-          : invitePending ? "bg-amber-50 text-amber-700"
-          : "bg-gray-100 text-gray-500"
-        }`}>
-          {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Invite sent" : "Not invited"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+            isActive ? "bg-green-50 text-green-700"
+            : inviteAccepted ? "bg-blue-50 text-blue-700"
+            : invitePending ? "bg-amber-50 text-amber-700"
+            : "bg-gray-100 text-gray-500"
+          }`}>
+            {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Invite sent" : "Not invited"}
+          </span>
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              className="text-xs text-gray-400 hover:text-red-600 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
+              aria-label={`Remove ${contact.fullName}`}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
 
       {isActive && (

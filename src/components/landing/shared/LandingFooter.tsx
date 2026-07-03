@@ -8,8 +8,7 @@ interface LandingFooterProps {
 
 export function LandingFooter({ product }: LandingFooterProps) {
   const switchUrl = getCrossProductSwitchUrl(product);
-  const switchLabel =
-    product === "gym" ? "Tistra Family" : "Tistra Coach";
+  const switchLabel = product === "gym" ? "the family view" : "the coaching view";
   const switchPrompt =
     product === "gym"
       ? "Supporting an older family member?"
@@ -19,9 +18,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
     <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
-          <p className="font-semibold text-gray-900 mb-1">
-            {product === "gym" ? "Tistra Coach" : "Tistra Family"}
-          </p>
+          <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
           <p className="text-xs">
             Helping Indian families and fitness communities eat better, together.
           </p>

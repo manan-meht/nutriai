@@ -1,0 +1,124 @@
+import Stripe from "stripe";
+import type { PaymentProvider, CheckoutParams, CheckoutResult, ProviderSubscriptionSnapshot, WebhookVerifyResult } from "@/lib/billing/provider";
+import { getStripePriceId } from "./stripe-price-ids";
+import { mapStripeStatus } from "./stripe-status";
+
+function client(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not configured");
+  return new Stripe(key);
+}
+
+export const stripeProvider: PaymentProvider = {
+  name: "stripe",
+
+  async createOrRetrieveCustomer({ ownerId, email, existingCustomerId }) {
+    const stripe = client();
+    if (existingCustomerId) {
+      const existing = await stripe.customers.retrieve(existingCustomerId);
+      if (!existing.deleted) return existing.id;
+    }
+    const customer = await stripe.customers.create({
+      email,
+      metadata: { tistra_owner_id: ownerId },
+    });
+    return customer.id;
+  },
+
+  async createCheckoutSession(params: CheckoutParams): Promise<CheckoutResult> {
+    const stripe = client();
+    const priceId = getStripePriceId(params.market, params.module, params.interval);
+
+    // Stripe supports delaying the first invoice to a future instant via
+    // subscription_data.trial_end — this is how "subscribe during an active
+    // trial, charged at trial end" is implemented for Stripe specifically.
+    const trialEnd = params.delayBillingUntil
+      ? Math.floor(new Date(params.delayBillingUntil).getTime() / 1000)
+      : undefined;
+    const chargesImmediately = !trialEnd;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: priceId, quantity: 1 }],
+      customer_email: params.ownerEmail,
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      subscription_data: {
+        trial_end: trialEnd,
+        metadata: {
+          tistra_workspace_id: params.workspaceId,
+          tistra_owner_id: params.ownerId,
+          tistra_module: params.module,
+        },
+      },
+      metadata: {
+        tistra_workspace_id: params.workspaceId,
+        tistra_owner_id: params.ownerId,
+        tistra_module: params.module,
+      },
+    });
+
+    if (!session.url) throw new Error("Stripe did not return a checkout URL");
+    return { url: session.url, chargesImmediately };
+  },
+
+  async retrieveSubscription(providerSubscriptionId: string): Promise<ProviderSubscriptionSnapshot | null> {
+    const stripe = client();
+    try {
+      const sub = await stripe.subscriptions.retrieve(providerSubscriptionId);
+      return stripeSubscriptionToSnapshot(sub);
+    } catch {
+      return null;
+    }
+  },
+
+  async cancelSubscription(providerSubscriptionId: string, atPeriodEnd: boolean): Promise<void> {
+    const stripe = client();
+    if (atPeriodEnd) {
+      await stripe.subscriptions.update(providerSubscriptionId, { cancel_at_period_end: true });
+    } else {
+      await stripe.subscriptions.cancel(providerSubscriptionId);
+    }
+  },
+
+  async reactivateSubscription(providerSubscriptionId: string): Promise<boolean> {
+    const stripe = client();
+    await stripe.subscriptions.update(providerSubscriptionId, { cancel_at_period_end: false });
+    return true;
+  },
+
+  async openBillingPortal({ customerId, returnUrl }): Promise<string | null> {
+    const stripe = client();
+    const session = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl });
+    return session.url;
+  },
+
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): WebhookVerifyResult {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!secret || !signatureHeader) return { valid: false };
+    try {
+      const stripe = client();
+      const event = stripe.webhooks.constructEvent(rawBody, signatureHeader, secret);
+      return { valid: true, eventId: event.id, eventType: event.type, payload: event };
+    } catch {
+      return { valid: false };
+    }
+  },
+};
+
+export function stripeSubscriptionToSnapshot(sub: Stripe.Subscription): ProviderSubscriptionSnapshot {
+  const item = sub.items.data[0];
+  return {
+    providerSubscriptionId: sub.id,
+    providerCustomerId: typeof sub.customer === "string" ? sub.customer : sub.customer.id,
+    status: mapStripeStatus(sub.status, sub.cancel_at_period_end ?? false),
+    currentPeriodStart: item?.current_period_start
+      ? new Date(item.current_period_start * 1000).toISOString()
+      : null,
+    currentPeriodEnd: item?.current_period_end
+      ? new Date(item.current_period_end * 1000).toISOString()
+      : null,
+    cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+    cancelledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+  };
+}

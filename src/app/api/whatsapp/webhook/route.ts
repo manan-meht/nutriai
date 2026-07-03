@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { downloadMedia } from "@/lib/whatsapp/client";
 import { handleIncomingMessage } from "@/lib/whatsapp/conversation-handler";
 
-export const runtime = "edge";
 
 // Meta webhook verification
 export async function GET(request: NextRequest) {

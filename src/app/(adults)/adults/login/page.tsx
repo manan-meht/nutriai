@@ -1,4 +1,3 @@
-export const runtime = "edge";
 import Link from "next/link";
 import { AuthForm } from "@/components/auth/AuthForm";
 
@@ -15,7 +14,7 @@ export default function AdultsLoginPage({
         <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 mb-8 block">
           ← Back
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Sign in to Tistra Family</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Sign in to Tistra Health</h1>
         <p className="text-gray-500 text-sm mb-8">
           Welcome back.
         </p>
