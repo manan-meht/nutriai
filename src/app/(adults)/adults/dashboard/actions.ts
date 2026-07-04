@@ -390,22 +390,42 @@ export async function addContact(formData: {
     });
   }
 
-  // Auto-send WhatsApp invite. Meta requires the FIRST message to someone
-  // who hasn't messaged your business number yet to be a pre-approved
-  // template — free-form text is rejected for that case in both test and
-  // production WhatsApp Business Accounts. See WHATSAPP_INVITE_TEMPLATE_NAME
-  // in .env.example for the template this expects (2 body params: first
-  // name, caregiver name) and its suggested approval-request body text.
   try {
-    const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
-    const caregiverName = profile?.full_name ?? "Your family member";
-    const firstName = formData.fullName.split(" ")[0];
-    const templateName = process.env.WHATSAPP_INVITE_TEMPLATE_NAME;
+    await sendContactInvite(supabase, user.id, formData.fullName, formData.whatsappNumber);
+  } catch {
+    // Don't fail contact creation if the initial invite send fails — the
+    // caregiver can retry via resendContactInvite. sendContactInvite already
+    // logs the underlying error.
+  }
 
+  return { contactId: contact.id };
+}
+
+// Meta requires the FIRST message to someone who hasn't messaged your
+// business number yet to be a pre-approved template — free-form text is
+// rejected for that case in both test and production WhatsApp Business
+// Accounts. See WHATSAPP_INVITE_TEMPLATE_NAME in .env.example for the
+// template this expects (2 body params: first name, caregiver name) and
+// its suggested approval-request body text. Shared by addContact (initial
+// invite, failure swallowed there) and resendContactInvite (manual resend,
+// failure surfaced to the UI there) — this function itself always throws
+// on failure; each caller decides whether to swallow or propagate it.
+async function sendContactInvite(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  contactFullName: string,
+  whatsappNumber: string
+): Promise<void> {
+  const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", userId).single();
+  const caregiverName = profile?.full_name ?? "Your family member";
+  const firstName = contactFullName.split(" ")[0];
+  const templateName = process.env.WHATSAPP_INVITE_TEMPLATE_NAME;
+
+  try {
     if (templateName) {
       const { sendTemplateMessage } = await import("@/lib/whatsapp/client");
       await sendTemplateMessage(
-        formData.whatsappNumber,
+        whatsappNumber,
         templateName,
         process.env.WHATSAPP_INVITE_TEMPLATE_LANGUAGE ?? "en_US",
         [firstName, caregiverName]
@@ -416,16 +436,33 @@ export async function addContact(formData: {
       // fallback for dev numbers that have already messaged the bot once.
       const { sendTextMessage } = await import("@/lib/whatsapp/client");
       await sendTextMessage(
-        formData.whatsappNumber,
+        whatsappNumber,
         `Hi ${firstName}! 👋\n\n${caregiverName} has set up Tistra Health to help keep an eye on your nutrition.\n\nAll you need to do is send me a photo or describe what you eat — right here on WhatsApp. I'll keep track for you!\n\nWhenever you're ready, just send me a photo of your next meal 😊`
       );
     }
   } catch (err) {
-    // Don't fail contact creation if WhatsApp send fails, but log it so
-    // silent delivery failures (expired token, unapproved template, Meta's
-    // first-message policy) are visible in the server console.
-    console.error("[addContact] WhatsApp invite send failed:", err instanceof Error ? err.message : err);
+    console.error("[sendContactInvite] WhatsApp invite send failed:", err instanceof Error ? err.message : err);
+    throw err;
   }
+}
 
-  return { contactId: contact.id };
+/** Manually resend the WhatsApp invite to an existing family member —
+ * e.g. if they never received or missed the original invite. Does not
+ * create a new contact or affect the monthly add quota. */
+export async function resendContactInvite(contactId: string): Promise<void> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("full_name, whatsapp_number")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+
+  if (!contact) throw new Error("Contact not found");
+
+  await sendContactInvite(supabase, user.id, contact.full_name, contact.whatsapp_number);
+  await supabase.from("adults_contacts").update({ invite_sent_at: now().toISOString() }).eq("id", contactId);
 }

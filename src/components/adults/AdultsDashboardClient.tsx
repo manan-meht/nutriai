@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { removeContact } from "@/app/(adults)/adults/dashboard/actions";
+import { removeContact, resendContactInvite } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
 import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
@@ -36,6 +36,8 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showModal, setShowModal] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleRemove(contact: AdultsContact) {
@@ -48,6 +50,19 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       router.refresh();
     } finally {
       setRemovingId(null);
+    }
+  }
+
+  async function handleResendInvite(contact: AdultsContact) {
+    setResendError(null);
+    setResendingId(contact.id);
+    try {
+      await resendContactInvite(contact.id);
+      router.refresh();
+    } catch (err) {
+      setResendError(err instanceof Error ? err.message : "Failed to resend invite.");
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -161,16 +176,23 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {contacts.map((contact) => (
-              <ContactCard
-                key={contact.id}
-                contact={contact}
-                onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
-                onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
-              />
-            ))}
-          </div>
+          <>
+            {resendError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">{resendError}</p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {contacts.map((contact) => (
+                <ContactCard
+                  key={contact.id}
+                  contact={contact}
+                  onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
+                  onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
+                  onResendInvite={contact.inviteAcceptedAt ? undefined : () => handleResendInvite(contact)}
+                  resending={resendingId === contact.id}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {removedContacts.length > 0 && (
@@ -213,9 +235,11 @@ interface ContactCardProps {
   contact: AdultsContact;
   onOpen?: () => void;
   onRemove?: () => void;
+  onResendInvite?: () => void;
+  resending?: boolean;
 }
 
-function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
+function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: ContactCardProps) {
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   const activeGoal = contact.goals.find((g) => g.status === "active");
   const isActive = contact.mealCount > 0;
@@ -282,9 +306,22 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
       )}
 
       {invitePending && !isActive && (
-        <div className="flex items-center gap-2 mb-4 bg-amber-50 rounded-xl px-3 py-2">
-          <span>⏳</span>
-          <p className="text-xs text-amber-700">Invite sent — waiting for their first message</p>
+        <div className="flex items-center justify-between gap-2 mb-4 bg-amber-50 rounded-xl px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span>⏳</span>
+            <p className="text-xs text-amber-700">Invite sent — waiting for their first message</p>
+          </div>
+          {onResendInvite && (
+            <button
+              type="button"
+              disabled={resending}
+              onClick={(e) => { e.stopPropagation(); onResendInvite(); }}
+              className="text-xs font-medium text-amber-800 underline hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded flex-shrink-0 disabled:opacity-50 disabled:no-underline"
+              aria-label={`Resend invite to ${contact.fullName}`}
+            >
+              {resending ? "Sending…" : "Resend"}
+            </button>
+          )}
         </div>
       )}
 
