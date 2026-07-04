@@ -466,6 +466,19 @@ export async function addClient(formData: {
   // server-authoritative limit.
   if (GYM_LIMIT_ENFORCEMENT_ENABLED) {
     const monthStart = startOfCalendarMonthUTC(now()).toISOString();
+    // extra_capacity is read via the service-role client, not the
+    // RLS-bound `supabase` client above — the "workspaces: member access"
+    // RLS policy requires a workspace_members row that workspace creation
+    // never inserts for the owner, so this select would otherwise always
+    // return no row and silently default extra_capacity to 0, blocking
+    // purchased-capacity customers at the base limit regardless of what
+    // they actually paid for. This value isn't user-sensitive, so bypassing
+    // RLS here (same pattern as getOrCreateGymWorkspace) is safe.
+    const { createClient: createServiceClient } = await import("@supabase/supabase-js");
+    const admin = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
     const [{ count: activeCount }, { count: monthCount }, { data: workspace }] = await Promise.all([
       supabase
         .from("gym_clients")
@@ -477,7 +490,7 @@ export async function addClient(formData: {
         .select("id", { count: "exact", head: true })
         .eq("workspace_id", formData.workspaceId)
         .gte("created_at", monthStart),
-      supabase
+      admin
         .from("workspaces")
         .select("extra_capacity")
         .eq("id", formData.workspaceId)

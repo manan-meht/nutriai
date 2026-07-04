@@ -87,6 +87,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: FAMILY_MEMBER_LIMIT }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: FAMILY_MEMBER_LIMIT }),
+    }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
     await expect(
@@ -98,6 +101,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: FAMILY_MEMBER_LIMIT - 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: FAMILY_MEMBER_LIMIT - 1 }),
     }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
@@ -111,6 +117,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: GYM_CLIENT_LIMIT }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: GYM_CLIENT_LIMIT }),
+    }));
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
     await expect(
@@ -122,6 +131,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: GYM_CLIENT_LIMIT - 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: GYM_CLIENT_LIMIT - 1 }),
     }));
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
@@ -137,6 +149,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
       // workspace has purchased 2 extra seats, so the effective limit is 4.
       createClient: async () => makeFakeSupabase({ activeCount: 3, extraCapacity: 2 }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 3, extraCapacity: 2 }),
+    }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
     await expect(
@@ -148,6 +163,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 4, extraCapacity: 2 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 4, extraCapacity: 2 }),
     }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
@@ -161,6 +179,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 5, extraCapacity: 3 }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 5, extraCapacity: 3 }),
+    }));
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
     await expect(
@@ -172,6 +193,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 8, extraCapacity: 3 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 8, extraCapacity: 3 }),
     }));
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
@@ -186,6 +210,10 @@ describe("account limits — server-side pre-check (defense in depth alongside t
       createClient: async () =>
         makeFakeSupabase({ activeCount: 0, insertError: "FAMILY_MEMBER_LIMIT_REACHED: workspace ws-1 already has 2 family member(s) (limit 2)" }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () =>
+        makeFakeSupabase({ activeCount: 0, insertError: "FAMILY_MEMBER_LIMIT_REACHED: workspace ws-1 already has 2 family member(s) (limit 2)" }),
+    }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
     await expect(
@@ -197,6 +225,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 1 }),
     }));
     jest.doMock("@/lib/entitlements/entitlements", () => ({
       getEntitlementSnapshot: jest.fn().mockResolvedValue({
@@ -214,6 +245,9 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 1 }),
     }));
     jest.doMock("@/lib/entitlements/entitlements", () => ({
       getEntitlementSnapshot: jest.fn().mockResolvedValue({
@@ -243,6 +277,9 @@ describe("account limits — monthly add quota survives removals", () => {
       // calendar month already — removing someone must not refund the quota.
       createClient: async () => makeFakeSupabase({ activeCount: 1, monthCount: 2 }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 1, monthCount: 2 }),
+    }));
     jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
@@ -255,6 +292,9 @@ describe("account limits — monthly add quota survives removals", () => {
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 2, monthCount: 5 }),
     }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 2, monthCount: 5 }),
+    }));
     jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
@@ -266,6 +306,9 @@ describe("account limits — monthly add quota survives removals", () => {
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({
       createClient: async () => makeFakeSupabase({ activeCount: 0, monthCount: 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 0, monthCount: 1 }),
     }));
     jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
