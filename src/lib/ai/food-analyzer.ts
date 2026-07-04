@@ -2,6 +2,23 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+/**
+ * Base64-encodes a byte array in fixed-size chunks. Spreading an entire
+ * image buffer into String.fromCharCode(...bytes) in one call — which this
+ * replaced — blows past the JS engine's max-arguments-per-call limit for
+ * any real photo (typically hundreds of KB to a few MB), crashing hard
+ * enough under Cloudflare's Edge Runtime that it never even reaches a
+ * catch block. Chunking avoids that entirely.
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const CHUNK_SIZE = 0x8000; // 32KB — comfortably under any engine's argument-count limit
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
 export interface FoodItem {
   name: string;
   quantity: string;
@@ -90,7 +107,7 @@ export async function analyzeFood(input: {
   if (input.imageBuffer) {
     parts.push({
       inlineData: {
-        data: btoa(String.fromCharCode(...input.imageBuffer)),
+        data: uint8ArrayToBase64(input.imageBuffer),
         mimeType: input.imageMimeType ?? "image/jpeg",
       },
     });
