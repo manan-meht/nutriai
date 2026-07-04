@@ -52,7 +52,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
     setError(null);
     setLoading(true);
     try {
-      await addContact({
+      const result = await addContact({
         workspaceId,
         fullName,
         whatsappNumber: `+${countryCode}${whatsapp.replace(/\D/g, "")}`,
@@ -70,6 +70,10 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
         targetProteinG: targetProtein ? parseInt(targetProtein) : undefined,
         targetMealsPerDay: targetMeals ? parseInt(targetMeals) : undefined,
       });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       setSuccess({ name: fullName, whatsapp });
       onAdded();
     } catch (err) {

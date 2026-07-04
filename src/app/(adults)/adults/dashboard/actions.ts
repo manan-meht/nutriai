@@ -294,7 +294,7 @@ export async function addContact(formData: {
   targetCaloriesMax?: number;
   targetProteinG?: number;
   targetMealsPerDay?: number;
-}): Promise<{ contactId: string }> {
+}): Promise<{ contactId: string; error?: undefined } | { contactId?: undefined; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -329,13 +329,13 @@ export async function addContact(formData: {
 
     const limit = effectiveFamilyLimit(workspace?.extra_capacity ?? 0);
     if ((activeCount ?? 0) >= limit) {
-      throw new Error(familyLimitReachedMessage(limit));
+      return { error: familyLimitReachedMessage(limit) };
     }
     // Removing a family member frees an active slot but does not refund this
     // month's add quota — a new add is only allowed once the calendar month
     // rolls over. See supabase/migrations/0004_soft_delete_and_monthly_quota.sql.
     if ((monthCount ?? 0) >= limit) {
-      throw new Error(familyMonthlyQuotaReachedMessage(limit));
+      return { error: familyMonthlyQuotaReachedMessage(limit) };
     }
   }
 
@@ -343,7 +343,7 @@ export async function addContact(formData: {
   // (or a paid period) has lapsed, regardless of what the UI shows.
   const entitlement = await getEntitlementSnapshot(formData.workspaceId, "adults");
   if (entitlement.isReadOnly) {
-    throw new Error("Your Family trial has ended. Subscribe to add more family members.");
+    return { error: "Your Family trial has ended. Subscribe to add more family members." };
   }
 
   const { data: contact, error } = await supabase
@@ -365,10 +365,10 @@ export async function addContact(formData: {
     .single();
 
   if (error?.message?.includes("FAMILY_MEMBER_LIMIT_REACHED")) {
-    throw new Error(FAMILY_LIMIT_REACHED_MESSAGE);
+    return { error: FAMILY_LIMIT_REACHED_MESSAGE };
   }
   if (error?.message?.includes("FAMILY_MEMBER_MONTHLY_QUOTA_REACHED")) {
-    throw new Error(FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE);
+    return { error: FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE };
   }
   if (error || !contact) throw new Error(error?.message ?? "Failed to add contact");
 

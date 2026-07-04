@@ -451,7 +451,7 @@ export async function addClient(formData: {
   targetCaloriesMax?: number;
   targetMealsPerDay?: number;
   deadline?: string;
-}): Promise<{ clientId: string }> {
+}): Promise<{ clientId: string; error?: undefined } | { clientId?: undefined; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
@@ -486,13 +486,13 @@ export async function addClient(formData: {
 
     const limit = effectiveGymLimit(workspace?.extra_capacity ?? 0);
     if ((activeCount ?? 0) >= limit) {
-      throw new Error(gymLimitReachedMessage(limit));
+      return { error: gymLimitReachedMessage(limit) };
     }
     // Removing a client frees an active slot but does not refund this month's
     // add quota — a new invite is only allowed once the calendar month rolls
     // over. See supabase/migrations/0004_soft_delete_and_monthly_quota.sql.
     if ((monthCount ?? 0) >= limit) {
-      throw new Error(gymMonthlyQuotaReachedMessage(limit));
+      return { error: gymMonthlyQuotaReachedMessage(limit) };
     }
   }
 
@@ -500,7 +500,7 @@ export async function addClient(formData: {
   // paid period) has lapsed, regardless of what the UI shows.
   const entitlement = await getEntitlementSnapshot(formData.workspaceId, "gym");
   if (entitlement.isReadOnly) {
-    throw new Error("Your Coaching trial has ended. Subscribe to invite more clients.");
+    return { error: "Your Coaching trial has ended. Subscribe to invite more clients." };
   }
 
   const { data: client, error } = await supabase
@@ -520,10 +520,10 @@ export async function addClient(formData: {
     .single();
 
   if (error?.message?.includes("GYM_CLIENT_LIMIT_REACHED")) {
-    throw new Error(GYM_LIMIT_REACHED_MESSAGE);
+    return { error: GYM_LIMIT_REACHED_MESSAGE };
   }
   if (error?.message?.includes("GYM_CLIENT_MONTHLY_QUOTA_REACHED")) {
-    throw new Error(GYM_MONTHLY_QUOTA_REACHED_MESSAGE);
+    return { error: GYM_MONTHLY_QUOTA_REACHED_MESSAGE };
   }
   if (error || !client) throw new Error(error?.message ?? "Failed to add client");
 

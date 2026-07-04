@@ -64,7 +64,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
     setError(null);
     setLoading(true);
     try {
-      await addClient({
+      const result = await addClient({
         workspaceId,
         fullName,
         whatsappNumber: `+${countryCode}${whatsapp.replace(/\D/g, "")}`,
@@ -82,6 +82,10 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         targetMealsPerDay: targetMeals ? parseInt(targetMeals) : undefined,
         deadline: deadline || undefined,
       });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       setSuccess({ clientName: fullName, whatsapp });
       onAdded();
     } catch (err) {

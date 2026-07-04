@@ -91,7 +91,7 @@ describe("account limits — server-side pre-check (defense in depth alongside t
 
     await expect(
       addContact({ workspaceId: "ws-1", fullName: "Third Person", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(FAMILY_LIMIT_REACHED_MESSAGE);
+    ).resolves.toEqual({ error: FAMILY_LIMIT_REACHED_MESSAGE });
   });
 
   it("family: allows adding when below the limit", async () => {
@@ -115,7 +115,7 @@ describe("account limits — server-side pre-check (defense in depth alongside t
 
     await expect(
       addClient({ workspaceId: "ws-1", fullName: "Sixth Client", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(GYM_LIMIT_REACHED_MESSAGE);
+    ).resolves.toEqual({ error: GYM_LIMIT_REACHED_MESSAGE });
   });
 
   it("coaching: allows adding when below the limit", async () => {
@@ -153,7 +153,7 @@ describe("account limits — server-side pre-check (defense in depth alongside t
 
     await expect(
       addContact({ workspaceId: "ws-1", fullName: "Fifth Person", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(familyLimitReachedMessage(FAMILY_MEMBER_LIMIT + 2));
+    ).resolves.toEqual({ error: familyLimitReachedMessage(FAMILY_MEMBER_LIMIT + 2) });
   });
 
   it("coaching: purchased extra_capacity raises the effective limit beyond the base of 5", async () => {
@@ -177,7 +177,7 @@ describe("account limits — server-side pre-check (defense in depth alongside t
 
     await expect(
       addClient({ workspaceId: "ws-1", fullName: "Ninth Client", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(gymLimitReachedMessage(GYM_CLIENT_LIMIT + 3));
+    ).resolves.toEqual({ error: gymLimitReachedMessage(GYM_CLIENT_LIMIT + 3) });
   });
 
   it("family: surfaces the friendly message when the DB trigger itself rejects the insert (race condition)", async () => {
@@ -190,7 +190,7 @@ describe("account limits — server-side pre-check (defense in depth alongside t
 
     await expect(
       addContact({ workspaceId: "ws-1", fullName: "Racer", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(FAMILY_LIMIT_REACHED_MESSAGE);
+    ).resolves.toEqual({ error: FAMILY_LIMIT_REACHED_MESSAGE });
   });
 
   it("family: blocks adding a member once the trial/subscription has lapsed, even with room under the count limit", async () => {
@@ -206,9 +206,8 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     }));
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
-    await expect(
-      addContact({ workspaceId: "ws-1", fullName: "Second Person", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(/trial has ended/i);
+    const result = await addContact({ workspaceId: "ws-1", fullName: "Second Person", whatsappNumber: "+911234567890" });
+    expect(result.error).toMatch(/trial has ended/i);
   });
 
   it("coaching: blocks inviting a client once the trial/subscription has lapsed, even with room under the count limit", async () => {
@@ -224,9 +223,8 @@ describe("account limits — server-side pre-check (defense in depth alongside t
     }));
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
-    await expect(
-      addClient({ workspaceId: "ws-1", fullName: "Second Client", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(/trial has ended/i);
+    const result = await addClient({ workspaceId: "ws-1", fullName: "Second Client", whatsappNumber: "+911234567890" });
+    expect(result.error).toMatch(/trial has ended/i);
   });
 });
 
@@ -248,9 +246,8 @@ describe("account limits — monthly add quota survives removals", () => {
     jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
     const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
 
-    await expect(
-      addContact({ workspaceId: "ws-1", fullName: "Replacement Person", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(/already added 2 family members this month/i);
+    const result = await addContact({ workspaceId: "ws-1", fullName: "Replacement Person", whatsappNumber: "+911234567890" });
+    expect(result.error).toMatch(/already added 2 family members this month/i);
   });
 
   it("coaching: blocks a new invite once this month's quota is used, even after freeing an active slot by removing someone", async () => {
@@ -261,9 +258,8 @@ describe("account limits — monthly add quota survives removals", () => {
     jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
     const { addClient } = await import("@/app/(gym)/gym/dashboard/actions");
 
-    await expect(
-      addClient({ workspaceId: "ws-1", fullName: "Replacement Client", whatsappNumber: "+911234567890" })
-    ).rejects.toThrow(/already added 5 clients this month/i);
+    const result = await addClient({ workspaceId: "ws-1", fullName: "Replacement Client", whatsappNumber: "+911234567890" });
+    expect(result.error).toMatch(/already added 5 clients this month/i);
   });
 
   it("family: allows adding when active count is low and this month's quota still has room", async () => {
