@@ -137,17 +137,25 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     .maybeSingle();
   const peekState = conv?.state ?? "idle";
 
+  // whatsapp_conversations has a single client_id column shared by both gym
+  // clients and adults contacts (no separate adults_contact_id/product_type
+  // columns exist on this table, unlike meal_logs) — writing those
+  // non-existent columns previously failed silently, so conversation state
+  // was never actually persisted for adults contacts at all.
   async function setConvState(newState: string, newPendingMeal?: FoodAnalysisResult | null) {
-    await db.from("whatsapp_conversations").upsert({
-      ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+    const { error } = await db.from("whatsapp_conversations").upsert({
+      client_id: entityId,
       workspace_id: workspaceId,
       whatsapp_number: normalizedFrom,
-      product_type: isAdults ? "adults" : "gym",
       state: newState,
       pending_meal: newPendingMeal ?? null,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: "whatsapp_number" });
+    // A write here failing silently is exactly what caused conversation
+    // state to never persist for adults contacts previously (wrong column
+    // names) — log loudly so that class of bug can't hide again.
+    if (error) console.error("[whatsapp] setConvState failed:", error.message);
   }
 
   /**
@@ -173,21 +181,24 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     const nowIso = new Date().toISOString();
 
     if (!existing) {
-      const { data: created } = await db
+      const { data: created, error } = await db
         .from("whatsapp_conversations")
         .insert({
-          ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+          client_id: entityId,
           workspace_id: workspaceId,
           whatsapp_number: normalizedFrom,
-          product_type: isAdults ? "adults" : "gym",
           state: "processing",
           last_message_at: nowIso,
           updated_at: nowIso,
         })
         .select()
         .maybeSingle();
-      // If created is null, a concurrent request beat us to creating this
-      // row first — treat as locked rather than erroring.
+      // A unique-constraint conflict here (concurrent insert race) is
+      // expected and treated as "locked". Any other error is not — log it
+      // so a schema mismatch or similar can't fail silently again.
+      if (error && !error.message?.toLowerCase().includes("duplicate")) {
+        console.error("[whatsapp] claimConversationLock insert failed:", error.message);
+      }
       return created
         ? { acquired: true, state: "idle", pendingMeal: null }
         : { acquired: false, state: "idle", pendingMeal: null };

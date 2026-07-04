@@ -22,6 +22,22 @@ jest.mock("@/lib/entitlements/entitlements", () => ({
   }),
 }));
 
+// The real whatsapp_conversations table (confirmed via information_schema)
+// has only these columns — no adults_contact_id or product_type, which a
+// prior version of the handler wrote, causing every write for an adults
+// contact to fail silently (Supabase/Postgres rejects unknown columns).
+const REAL_WHATSAPP_CONVERSATIONS_COLUMNS = new Set([
+  "id", "client_id", "workspace_id", "whatsapp_number", "state", "pending_meal", "last_message_at", "updated_at",
+]);
+
+function assertOnlyRealColumns(row: Record<string, unknown>) {
+  for (const key of Object.keys(row)) {
+    if (!REAL_WHATSAPP_CONVERSATIONS_COLUMNS.has(key)) {
+      throw new Error(`Attempted to write non-existent whatsapp_conversations column: "${key}"`);
+    }
+  }
+}
+
 // In-memory fake for the two tables handleIncomingMessage touches:
 // adults_contacts (read-only lookup) and whatsapp_conversations (the row
 // under contention). Mirrors just enough of the Supabase query builder
@@ -36,33 +52,40 @@ function makeFakeSupabase(contact: any) {
           maybeSingle: async () => ({ data: conversationRow ? { ...conversationRow } : null }),
         }),
       }),
-      insert: (row: any) => ({
-        select: () => ({
-          maybeSingle: async () => {
-            if (conversationRow) return { data: null }; // simulate unique-constraint race loss
-            conversationRow = { ...row };
-            return { data: { ...conversationRow } };
-          },
-        }),
-      }),
-      update: (patch: any) => ({
-        eq: (_col1: string, _val1: string) => ({
-          eq: (col2: string, val2: any) => ({
-            eq: (col3: string, val3: any) => ({
-              select: () => ({
-                maybeSingle: async () => {
-                  if (!conversationRow) return { data: null };
-                  const matches = conversationRow[col2] === val2 && conversationRow[col3] === val3;
-                  if (!matches) return { data: null }; // CAS failed — someone else updated first
-                  conversationRow = { ...conversationRow, ...patch };
-                  return { data: { ...conversationRow } };
-                },
+      insert: (row: any) => {
+        assertOnlyRealColumns(row);
+        return {
+          select: () => ({
+            maybeSingle: async () => {
+              if (conversationRow) return { data: null, error: null }; // simulate unique-constraint race loss
+              conversationRow = { ...row };
+              return { data: { ...conversationRow }, error: null };
+            },
+          }),
+        };
+      },
+      update: (patch: any) => {
+        assertOnlyRealColumns(patch);
+        return {
+          eq: (_col1: string, _val1: string) => ({
+            eq: (col2: string, val2: any) => ({
+              eq: (col3: string, val3: any) => ({
+                select: () => ({
+                  maybeSingle: async () => {
+                    if (!conversationRow) return { data: null };
+                    const matches = conversationRow[col2] === val2 && conversationRow[col3] === val3;
+                    if (!matches) return { data: null }; // CAS failed — someone else updated first
+                    conversationRow = { ...conversationRow, ...patch };
+                    return { data: { ...conversationRow } };
+                  },
+                }),
               }),
             }),
           }),
-        }),
-      }),
+        };
+      },
       upsert: (row: any) => {
+        assertOnlyRealColumns(row);
         conversationRow = { ...conversationRow, ...row };
         return Promise.resolve({ data: conversationRow, error: null });
       },
