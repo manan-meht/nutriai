@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { sendTextMessage, normalizePhone } from "./client";
 import { analyzeFood, buildConfirmationMessage, buildSuccessMessage, FoodAnalysisResult } from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
+
+const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
 function admin() {
   return createClient(
@@ -253,6 +256,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     });
   }
 
+  // "My Progress" — send the end-user dashboard link. Only offered when
+  // the feature flag is on; otherwise this falls through to normal
+  // meal-logging handling like any other text.
+  if (END_USER_DASHBOARD_ENABLED && msg.type === "text" && msg.text?.trim().toLowerCase() === "my progress") {
+    const { getProductDomain } = await import("@/lib/product/resolve-product");
+    const domain = getProductDomain(isAdults ? "adults" : "gym");
+    await sendTextMessage(msg.from, `📊 View your progress here:\nhttps://${domain}/my-progress`);
+    return;
+  }
+
   // Handle greeting
   if (msg.type === "text" && msg.text && isGreeting(msg.text)) {
     const greetMsg = isAdults
@@ -365,7 +378,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         const successMsg = isAdults
           ? buildAdultsSuccess(pendingMeal, targetProtein)
           : buildSuccessMessage(pendingMeal, targetProtein);
-        await sendTextMessage(msg.from, successMsg);
+        await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
       }
       await setConvState("idle", null);
       return;

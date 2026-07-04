@@ -56,6 +56,13 @@ export const ACH_ENABLED = flag("NEXT_PUBLIC_ACH_ENABLED", false);
 /** Australia: BECS Direct Debit — same caveat as ACH. */
 export const BECS_ENABLED = flag("NEXT_PUBLIC_BECS_ENABLED", false);
 
+/** Optional end-user (the family member / gym client themself, not the
+ * caregiver/coach) dashboard — WhatsApp-OTP-verified, no email/password
+ * signup. Off by default so it can be reviewed on a feature branch before
+ * any production rollout; when off, /my-progress routes and the WhatsApp
+ * "View my progress" CTA are both fully disabled. */
+export const END_USER_DASHBOARD_ENABLED = flag("NEXT_PUBLIC_END_USER_DASHBOARD_ENABLED", false);
+
 /** Configurable activation date for the account-limit/trial-enforcement
  * migration story (see spec §19) — existing users get a fresh trial dated
  * from this instant, not from whenever the migration script happens to run. */
