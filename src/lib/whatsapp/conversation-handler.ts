@@ -137,14 +137,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     .maybeSingle();
   const peekState = conv?.state ?? "idle";
 
-  // whatsapp_conversations has a single client_id column shared by both gym
-  // clients and adults contacts (no separate adults_contact_id/product_type
-  // columns exist on this table, unlike meal_logs) — writing those
-  // non-existent columns previously failed silently, so conversation state
-  // was never actually persisted for adults contacts at all.
+  // whatsapp_conversations has separate client_id (FK -> gym_clients) and
+  // adults_contact_id (FK -> adults_contacts) columns — exactly one must be
+  // set per row (see migration 0006). Writing the wrong one (or a
+  // non-existent column, per an earlier version of this fix) fails the
+  // insert/update outright.
+  const entityColumn = isAdults ? { adults_contact_id: entityId } : { client_id: entityId };
+
   async function setConvState(newState: string, newPendingMeal?: FoodAnalysisResult | null) {
     const { error } = await db.from("whatsapp_conversations").upsert({
-      client_id: entityId,
+      ...entityColumn,
       workspace_id: workspaceId,
       whatsapp_number: normalizedFrom,
       state: newState,
@@ -153,8 +155,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       updated_at: new Date().toISOString(),
     }, { onConflict: "whatsapp_number" });
     // A write here failing silently is exactly what caused conversation
-    // state to never persist for adults contacts previously (wrong column
-    // names) — log loudly so that class of bug can't hide again.
+    // state to never persist for adults contacts previously (wrong/missing
+    // columns) — log loudly so that class of bug can't hide again.
     if (error) console.error("[whatsapp] setConvState failed:", error.message);
   }
 
@@ -184,7 +186,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       const { data: created, error } = await db
         .from("whatsapp_conversations")
         .insert({
-          client_id: entityId,
+          ...entityColumn,
           workspace_id: workspaceId,
           whatsapp_number: normalizedFrom,
           state: "processing",

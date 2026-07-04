@@ -22,12 +22,15 @@ jest.mock("@/lib/entitlements/entitlements", () => ({
   }),
 }));
 
-// The real whatsapp_conversations table (confirmed via information_schema)
-// has only these columns — no adults_contact_id or product_type, which a
-// prior version of the handler wrote, causing every write for an adults
-// contact to fail silently (Supabase/Postgres rejects unknown columns).
+// The real whatsapp_conversations table (confirmed via information_schema,
+// after migration 0006 added adults_contact_id) has exactly these columns —
+// no product_type, which a prior version of the handler wrote, causing
+// every write for an adults contact to fail silently (Postgres rejects
+// unknown columns; the original client_id-only FK also rejected adults
+// contact IDs, per migration 0006's own description).
 const REAL_WHATSAPP_CONVERSATIONS_COLUMNS = new Set([
-  "id", "client_id", "workspace_id", "whatsapp_number", "state", "pending_meal", "last_message_at", "updated_at",
+  "id", "client_id", "adults_contact_id", "workspace_id", "whatsapp_number",
+  "state", "pending_meal", "last_message_at", "updated_at",
 ]);
 
 function assertOnlyRealColumns(row: Record<string, unknown>) {
