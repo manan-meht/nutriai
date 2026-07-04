@@ -1,0 +1,109 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { EndUserDashboard } from "@/lib/end-user/dashboard-service";
+import { pauseSharingAction, requestRemovalAction, signOutEndUserAction } from "@/app/(public)/my-progress/actions";
+
+export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDashboard }) {
+  const router = useRouter();
+  const [paused, setPaused] = useState(dashboard.isPaused);
+  const [removalRequested, setRemovalRequested] = useState(false);
+
+  async function handleTogglePause() {
+    const next = !paused;
+    setPaused(next);
+    await pauseSharingAction(next);
+  }
+
+  async function handleRequestRemoval() {
+    if (!confirm("Ask to be removed as a contact? The person who added you will need to confirm this.")) return;
+    await requestRemovalAction();
+    setRemovalRequested(true);
+  }
+
+  async function handleSignOut() {
+    await signOutEndUserAction();
+    router.push("/my-progress");
+  }
+
+  return (
+    <main className="min-h-screen bg-neutral-50 px-4 py-8">
+      <div className="max-w-md mx-auto space-y-6">
+        <header className="flex items-center justify-between">
+          <h1 className="text-lg font-semibold text-neutral-900">Hi {dashboard.contactName.split(" ")[0]} 👋</h1>
+          <button onClick={handleSignOut} className="text-sm text-neutral-400 underline">
+            Sign out
+          </button>
+        </header>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-neutral-500 mb-1">This week</p>
+          <p className="text-2xl font-semibold text-neutral-900">{dashboard.weeklyStats.mealsLoggedThisWeek} meals logged</p>
+          <p className="text-sm text-neutral-500 mt-2">
+            {dashboard.weeklyStats.daysWithProteinSource} day(s) with a protein source ·{" "}
+            {dashboard.weeklyStats.daysWithVegOrFruit} day(s) with veg or fruit
+          </p>
+        </section>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm">
+          <p className="text-sm text-neutral-700">{dashboard.suggestion}</p>
+        </section>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-medium text-neutral-900 mb-3">Recent meals</p>
+          {dashboard.recentMeals.length === 0 && (
+            <p className="text-sm text-neutral-400">No meals logged yet this week — just send a photo on WhatsApp anytime.</p>
+          )}
+          <ul className="space-y-3">
+            {dashboard.recentMeals.map((meal) => (
+              <li key={meal.id} className="text-sm text-neutral-700 border-b border-neutral-100 pb-2 last:border-0">
+                <span className="font-medium capitalize">{meal.mealType ?? "Meal"}</span>{" "}
+                <span className="text-neutral-400">
+                  {new Date(meal.loggedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
+                </span>
+                <div className="text-neutral-500">
+                  {meal.foods.map((f) => f.name).join(", ") || "—"}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>
+          {dashboard.accessList.length === 0 ? (
+            <p className="text-sm text-neutral-400">No one else currently has access.</p>
+          ) : (
+            <ul className="text-sm text-neutral-600 space-y-1">
+              {dashboard.accessList.map((entry, i) => (
+                <li key={i}>{entry.label}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm space-y-3">
+          <button
+            onClick={handleTogglePause}
+            className="w-full rounded-lg border border-neutral-300 py-2.5 text-sm font-medium text-neutral-700"
+          >
+            {paused ? "Resume sharing" : "Pause sharing"}
+          </button>
+          <p className="text-xs text-neutral-400">
+            {paused
+              ? "New meals you log won't be shared until you resume."
+              : "Pausing keeps your WhatsApp logging working — it just stops sharing new meals with the person above."}
+          </p>
+          <button
+            onClick={handleRequestRemoval}
+            disabled={removalRequested}
+            className="w-full text-sm text-neutral-400 underline disabled:no-underline"
+          >
+            {removalRequested ? "Removal requested" : "Request to be removed"}
+          </button>
+        </section>
+      </div>
+    </main>
+  );
+}
