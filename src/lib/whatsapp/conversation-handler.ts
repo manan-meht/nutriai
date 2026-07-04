@@ -74,6 +74,11 @@ function buildAdultsSuccess(analysis: FoodAnalysisResult, targetProteinG?: numbe
   return `✅ *${mealType} saved!*\n\n_${time}_\n${avgProtein}g protein · ${avgCal} kcal\n\n${note}`;
 }
 
+// A lock this old is treated as abandoned (e.g. the function that claimed it
+// crashed or timed out mid-analysis) rather than a genuinely in-flight
+// message, so a new message isn't locked out forever.
+const LOCK_STALE_MS = 60_000;
+
 export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: Uint8Array) {
   const db = admin();
   const normalizedFrom = normalizePhone(msg.from);
@@ -121,15 +126,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       .eq("id", entityId);
   }
 
-  // Get or create conversation state
+  // Cheap, non-authoritative peek — only used to gate the greeting/workout
+  // short-circuits below, which don't mutate conversation state and are
+  // safe to act on with a slightly stale read. The AI-analysis section
+  // further down re-reads authoritatively via claimConversationLock().
   const { data: conv } = await db
     .from("whatsapp_conversations")
     .select("*")
     .eq("whatsapp_number", normalizedFrom)
-    .single();
-
-  const state = conv?.state ?? "idle";
-  const pendingMeal = conv?.pending_meal ?? null;
+    .maybeSingle();
+  const peekState = conv?.state ?? "idle";
 
   async function setConvState(newState: string, newPendingMeal?: FoodAnalysisResult | null) {
     await db.from("whatsapp_conversations").upsert({
@@ -142,6 +148,75 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }, { onConflict: "whatsapp_number" });
+  }
+
+  /**
+   * Compare-and-swap claim on the conversation row, so two messages arriving
+   * close together (e.g. two photos sent back-to-back) can't both read the
+   * same state and race to write conflicting next-states — which is what
+   * previously caused a "Yes" reply to be misrouted into the food-analysis
+   * branch when a concurrent message had left the row in the wrong state.
+   * Returns the authoritative state/pendingMeal at claim time, or
+   * acquired:false if another message is genuinely still being processed.
+   */
+  async function claimConversationLock(): Promise<{
+    acquired: boolean;
+    state: string;
+    pendingMeal: FoodAnalysisResult | null;
+  }> {
+    const { data: existing } = await db
+      .from("whatsapp_conversations")
+      .select("*")
+      .eq("whatsapp_number", normalizedFrom)
+      .maybeSingle();
+
+    const nowIso = new Date().toISOString();
+
+    if (!existing) {
+      const { data: created } = await db
+        .from("whatsapp_conversations")
+        .insert({
+          ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+          workspace_id: workspaceId,
+          whatsapp_number: normalizedFrom,
+          product_type: isAdults ? "adults" : "gym",
+          state: "processing",
+          last_message_at: nowIso,
+          updated_at: nowIso,
+        })
+        .select()
+        .maybeSingle();
+      // If created is null, a concurrent request beat us to creating this
+      // row first — treat as locked rather than erroring.
+      return created
+        ? { acquired: true, state: "idle", pendingMeal: null }
+        : { acquired: false, state: "idle", pendingMeal: null };
+    }
+
+    const isStale = existing.state === "processing" && existing.updated_at &&
+      Date.now() - new Date(existing.updated_at).getTime() > LOCK_STALE_MS;
+
+    if (existing.state === "processing" && !isStale) {
+      return { acquired: false, state: existing.state, pendingMeal: existing.pending_meal ?? null };
+    }
+
+    // Optimistic concurrency: only succeeds if the row hasn't changed since
+    // we just read it — if a concurrent request already claimed it between
+    // our read and this write, this update matches zero rows.
+    const { data: claimed } = await db
+      .from("whatsapp_conversations")
+      .update({ state: "processing", updated_at: nowIso })
+      .eq("whatsapp_number", normalizedFrom)
+      .eq("state", existing.state)
+      .eq("updated_at", existing.updated_at)
+      .select()
+      .maybeSingle();
+
+    if (!claimed) {
+      return { acquired: false, state: existing.state, pendingMeal: existing.pending_meal ?? null };
+    }
+
+    return { acquired: true, state: existing.state, pendingMeal: existing.pending_meal ?? null };
   }
 
   async function saveMeal(analysis: FoodAnalysisResult) {
@@ -175,7 +250,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   // Workout detection (gym only)
-  if (!isAdults && state === "idle" && msg.type === "text" && msg.text && isWorkoutMessage(msg.text)) {
+  if (!isAdults && peekState === "idle" && msg.type === "text" && msg.text && isWorkoutMessage(msg.text)) {
     await db.from("workout_logs").insert({
       client_id: entityId,
       workspace_id: workspaceId,
@@ -201,13 +276,32 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // subscription has lapsed. Greetings and workout logging above are
   // unaffected — they don't call the AI analyzer.
   const entitlement = await getEntitlementSnapshot(workspaceId, isAdults ? "adults" : "gym");
-  if (entitlement.isReadOnly && (state === "idle" || state === "awaiting_correction" || state === "awaiting_confirmation")) {
+  if (entitlement.isReadOnly && (peekState === "idle" || peekState === "awaiting_correction" || peekState === "awaiting_confirmation")) {
     await sendTextMessage(
       msg.from,
       "This account's free trial has ended, so I can't analyze new meals right now. Please ask the person who set this up to subscribe — your past meals are still safe and visible in the dashboard."
     );
     return;
   }
+
+  // Everything below mutates conversation state across an AI call, so it
+  // must be serialized per phone number — claim the lock before touching
+  // any of it, and every exit path from here must release it (by calling
+  // setConvState) so a concurrent message never gets stuck behind a lock
+  // that's never freed.
+  const claim = await claimConversationLock();
+  if (!claim.acquired) {
+    await sendTextMessage(
+      msg.from,
+      isAdults
+        ? "Still working on your last message — one moment! 🙏"
+        : "Still processing your last message — hang tight! 🙏"
+    );
+    return;
+  }
+
+  const state = claim.state;
+  const pendingMeal = claim.pendingMeal;
 
   if (state === "idle" || state === "awaiting_correction") {
     const isCorrecting = state === "awaiting_correction";
@@ -231,6 +325,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
           ? "You can send me a photo of your plate or describe what you had 😊"
           : "Just send me a photo or describe what you ate and I'll log it! 🍽️";
         await sendTextMessage(msg.from, hint);
+        await setConvState(state, pendingMeal); // release lock, unchanged
         return;
       }
 
@@ -238,11 +333,12 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       await sendTextMessage(msg.from, confirmMsg);
       await setConvState("awaiting_confirmation", analysis);
     } catch (err) {
-      console.error("[NutriAI] food analysis error:", err instanceof Error ? err.message : err);
+      console.error("[whatsapp] food analysis error:", err instanceof Error ? err.message : err);
       const hint = isAdults
         ? "I couldn't quite make that out. Could you describe what you had? (e.g. \"idli, sambar and tea\")"
         : "Hmm, I couldn't quite identify that meal. Could you describe what you ate? (e.g. \"2 rotis, 1 katori dal, 1 bowl rice\")";
       await sendTextMessage(msg.from, hint);
+      await setConvState(state, pendingMeal); // release lock, unchanged
     }
     return;
   }
@@ -270,7 +366,6 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     if (msg.text && msg.text.length > 5 && !isAffirmative(text)) {
-      await setConvState("awaiting_correction", pendingMeal);
       try {
         const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
         const confirmMsg = isAdults ? buildAdultsConfirmation(analysis) : buildConfirmationMessage(analysis);
@@ -279,6 +374,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       } catch {
         const ask = isAdults ? "What should I change? 😊" : "What should I change? Just tell me what was different 😊";
         await sendTextMessage(msg.from, ask);
+        await setConvState("awaiting_confirmation", pendingMeal); // release lock, unchanged
       }
       return;
     }
@@ -287,6 +383,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       ? "Reply *Yes* to save this meal, or tell me what to correct 🙏"
       : "Reply *Yes* to log this meal, or tell me what to change 😊";
     await sendTextMessage(msg.from, repeat);
+    await setConvState("awaiting_confirmation", pendingMeal); // release lock, unchanged
     return;
   }
 }
