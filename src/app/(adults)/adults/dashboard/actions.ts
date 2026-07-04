@@ -322,7 +322,7 @@ export async function addContact(formData: {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    const [{ count: activeCount }, { count: monthCount }, { data: workspace, error: workspaceError }] = await Promise.all([
+    const [{ count: activeCount }, { count: monthCount }, { data: workspace }] = await Promise.all([
       supabase
         .from("adults_contacts")
         .select("id", { count: "exact", head: true })
@@ -339,19 +339,6 @@ export async function addContact(formData: {
         .eq("id", formData.workspaceId)
         .single(),
     ]);
-
-    // Diagnostic: extra_capacity has been silently defaulting to 0 in
-    // production for reasons not yet confirmed even after switching this
-    // read to the service-role client — log the raw inputs so the next
-    // live reproduction shows exactly what's being read/computed instead
-    // of guessing further.
-    console.error("[addContact] limit pre-check", {
-      workspaceId: formData.workspaceId,
-      activeCount,
-      monthCount,
-      workspaceRow: workspace,
-      workspaceError: workspaceError?.message,
-    });
 
     const limit = effectiveFamilyLimit(workspace?.extra_capacity ?? 0);
     if ((activeCount ?? 0) >= limit) {
