@@ -5,26 +5,27 @@ import Image from "next/image";
 import Link from "next/link";
 import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
 import { Reveal } from "@/components/motion/Reveal";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 
 const STEPS = [
   {
     number: "01",
-    heading: "Connect your own WhatsApp",
-    body: "Add your number and send one message to link your account — no app to open, no form to fill.",
+    heading: "Snap and send",
+    body: "No opening clunky apps or searching databases. Just snap a quick photo of your plate and send it to our WhatsApp bot. It takes exactly 3 seconds.",
     photo: "/landing/steps/self-step-01.jpeg",
     photoAlt: "A person opening WhatsApp on their phone at home",
   },
   {
     number: "02",
-    heading: "Send a photo of what you ate",
-    body: "Whenever you eat, snap a quick photo or type a short note. The AI identifies what's there — no gram-level precision demanded.",
+    heading: "The big picture, simplified",
+    body: "Our AI looks at your meal to track the balance. No calorie scoreboards, no gram-counting anxiety.",
     photo: "/landing/steps/self-step-02.jpeg",
     photoAlt: "A person photographing their own lunch plate",
   },
   {
     number: "03",
-    heading: "See your own weekly picture",
-    body: "A calm weekly summary — meals logged, protein consistency, gentle suggestions. Just for you, on your terms.",
+    heading: "Clear, weekly trends",
+    body: "Get a comprehensive weekly summary. Build consistent self-awareness and confidently guide your own goals.",
     photo: "/landing/steps/self-step-03.jpeg",
     photoAlt: "A person reviewing their weekly progress on their phone",
   },
@@ -55,21 +56,20 @@ export function SelfImmersiveLanding() {
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              Know how you eat.<br />
-              <span className="text-[#6750A4]">Without the friction.</span>
+              Mindful tracking.<br />
+              <span className="text-[#6750A4]">Zero food guilt.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Track your own meals through WhatsApp. No calorie counting. No complicated app. Just a calm weekly
-              picture of how you&apos;re eating.
+              The simplest way to stay accountable to yourself, right inside WhatsApp.
             </p>
           </Reveal>
           <Reveal delay={300}>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
                 className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
-                Start tracking myself
+                Get Started →
               </Link>
             </div>
           </Reveal>
@@ -126,7 +126,7 @@ export function SelfImmersiveLanding() {
           </Reveal>
           <Reveal delay={100}>
             <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              No streak-shaming, no calorie scoreboard — just a gentle, honest picture of your own eating.
+              No streak-shaming, no calorie scoreboard. Just a clear, honest overview of your daily habits.
             </p>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -134,17 +134,17 @@ export function SelfImmersiveLanding() {
               {
                 icon: "📸",
                 title: "WhatsApp logging",
-                desc: "Log a meal by sending a photo or a message. No new app to learn, no account to remember.",
+                desc: "Log a meal by sending a photo or text message. No new app to download, no sign-in required.",
               },
               {
                 icon: "🌱",
                 title: "Gentle, honest ranges",
-                desc: "Protein, calories, macros — as honest ranges, not false precision. No obsessive tracking required.",
+                desc: "Food groups, wholesome ingredients, balance. No obsessive tracking required.",
               },
               {
                 icon: "📈",
                 title: "Your own dashboard",
-                desc: "See your own weekly summary — meals logged, protein consistency, gentle suggestions.",
+                desc: "See your weekly summary - meals logged, nutritional balance, insights to improve your routine.",
               },
             ].map((f) => (
               <Reveal key={f.title}>
@@ -174,7 +174,7 @@ export function SelfImmersiveLanding() {
         <div className="max-w-2xl mx-auto">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
-              Ready to understand<br />your own eating?
+              Ready for stress-free nutrition awareness?<br />Take control.
             </h2>
           </Reveal>
           <Reveal delay={150}>
@@ -183,34 +183,13 @@ export function SelfImmersiveLanding() {
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
               className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
-              Start tracking myself →
+              Get Started →
             </Link>
           </Reveal>
         </div>
       </section>
 
-      <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div>
-            <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
-            <p className="text-xs">Nutrition tracking through WhatsApp — for yourself, your family, or your clients.</p>
-          </div>
-          <div className="flex flex-col gap-1 text-xs">
-            <span className="text-gray-400">Tracking someone else instead?</span>
-            <div className="flex gap-3">
-              <Link href="/family" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
-                Support a parent →
-              </Link>
-              <Link href="/coach" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
-                Track clients →
-              </Link>
-            </div>
-          </div>
-          <div className="text-xs text-gray-400">
-            © {new Date().getFullYear()} Tistra Health. Made for India.
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter variant="me" />
     </div>
   );
 }

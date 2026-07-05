@@ -61,17 +61,16 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
           <span className="font-bold text-gray-900">Tistra Health</span>
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-          <Link href="/#how-it-works" className="text-gray-600 hover:text-[#4F378A]">How it works</Link>
           <Link href="/family" className="text-gray-600 hover:text-[#4F378A]">Family</Link>
           <Link href="/coach" className="text-gray-600 hover:text-[#4F378A]">Coach</Link>
-          <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">Track Myself</Link>
+          <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">For Me</Link>
         </nav>
         {variant === "home" ? (
           <Link
             href="/#pick-product"
             className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
           >
-            Get Started
+            Get Started →
           </Link>
         ) : (
           <div className="flex items-center gap-3">

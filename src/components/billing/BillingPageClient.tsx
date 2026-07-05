@@ -249,6 +249,12 @@ export function BillingPageClient({
             Tistra Health is provided by Tistra Pte. Ltd. Cancellation takes effect at the end of your current billing
             period; no refunds are issued for partial periods.
           </p>
+          <p className="text-xs text-gray-400 mt-3">
+            Tistra Health is a tracking and awareness tool only. It does not provide medical advice, diagnosis,
+            treatment, or personalized nutrition therapy. AI-generated summaries may be inaccurate or incomplete. For
+            any health, diet, medical condition, medication, or nutrition concern, please consult a qualified
+            healthcare professional, doctor, or registered dietitian.
+          </p>
         </div>
       </div>
     </div>

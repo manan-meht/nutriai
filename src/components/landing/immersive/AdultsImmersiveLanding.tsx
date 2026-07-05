@@ -6,12 +6,11 @@ import Link from "next/link";
 import type { LandingVariant } from "@/types";
 import {
   getSignupUrl,
-  getLoginUrl,
   trackLandingEvent,
   storeLandingAttribution,
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
-import { LandingFooter } from "../shared/LandingFooter";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -34,21 +33,21 @@ const STEPS = [
   {
     number: "01",
     heading: "A parent shares a photo of their meal",
-    body: "They photograph their thali — dal, roti, sabzi, dahi. One WhatsApp message. No app to open, no account to sign into.",
+    body: "They photograph their thali — dal, roti, sabzi, dahi. One WhatsApp message. No app to open, no sign-in required.",
     photo: "/landing/steps/adults-step-01.jpeg",
     photoAlt: "Older Indian woman photographing her steel thali at home",
   },
   {
     number: "02",
-    heading: "AI gently understands what they ate",
+    heading: "AI highlights the essentials",
     body: "The system identifies the foods — without demanding gram-level precision. It notes what's there: protein sources, vegetables, grains. No calorie scoreboard.",
     photo: "/landing/steps/adults-step-02.jpeg",
     photoAlt: "A home-cooked steel thali with dal, roti and sabzi",
   },
   {
     number: "03",
-    heading: "You see a calm weekly picture",
-    body: "Meals shared on 5 of 7 days. Protein-rich food at most of them. Nothing alarming. Just gentle awareness — on their terms, always.",
+    heading: "Big picture, actionable data",
+    body: "Meals shared on 5 of 7 days. Get a clear overview of their weekly trends to stay proactive — whether sharing a nutrition tip or suggesting a professional check up.",
     photo: "/landing/steps/adults-step-03.jpeg",
     photoAlt: "A daughter checking on her mother's wellbeing remotely",
   },
@@ -56,7 +55,6 @@ const STEPS = [
 
 export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }: AdultsImmersiveLandingProps) {
   const signupUrl = getSignupUrl({ product: "adults", source: "landing", variant, experimentId });
-  const loginUrl = getLoginUrl({ product: "adults", source: "landing" });
 
   function handleCta() {
     storeLandingAttribution({ product: "adults", variant, experimentId, clickedAt: Date.now() });
@@ -92,19 +90,15 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Your parent shares a quick photo. You see a calm weekly picture —
-              nothing alarming, just gentle awareness. On their terms, always.
+              Your parents simply snap a photo of their meal. You get daily awareness and a weekly
+              nutrition summary, giving you the exact insights to take timely action for their health.
             </p>
           </Reveal>
           <Reveal delay={300}>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
                 className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
-                Support a family member
-              </Link>
-              <Link href={loginUrl}
-                className="text-gray-600 font-medium underline underline-offset-2 hover:text-gray-900 self-center text-sm">
-                Sign in
+                Support a family member →
               </Link>
             </div>
           </Reveal>
@@ -216,7 +210,7 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
               Start with one meal.<br />
-              <span className="text-[#6750A4]">Stay connected, gently.</span>
+              <span className="text-[#6750A4]">Stay connected, effortlessly.</span>
             </h2>
           </Reveal>
           <Reveal delay={150}>
@@ -225,13 +219,13 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
               className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
-              Create a family account →
+              Support a family member →
             </Link>
           </Reveal>
         </div>
       </section>
 
-      <LandingFooter product="adults" />
+      <MarketingFooter variant="family" />
     </div>
   );
 }

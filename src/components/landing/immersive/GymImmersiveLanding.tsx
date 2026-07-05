@@ -6,12 +6,11 @@ import Link from "next/link";
 import type { LandingVariant } from "@/types";
 import {
   getSignupUrl,
-  getLoginUrl,
   trackLandingEvent,
   storeLandingAttribution,
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
-import { LandingFooter } from "../shared/LandingFooter";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -33,39 +32,38 @@ interface GymImmersiveLandingProps {
 const STEPS = [
   {
     number: "01",
-    heading: "Client logs from WhatsApp",
-    body: "They send a photo of their meal — chicken curry, dal, idli, whatever they ate. No app to open. No form to fill.",
+    heading: "Client logs via WhatsApp",
+    body: "They send a photo of their meal — chicken curry, dosa, sandwich, etc. No app to download. No forms to fill.",
     photo: "/landing/steps/gym-step-01.jpeg",
     photoAlt: "Indian fitness client photographing his meal",
   },
   {
     number: "02",
     heading: "AI identifies the food",
-    body: "The system recognises Indian dishes and cross-references the national nutrition database. Protein, calories, macros — as honest ranges, not false precision.",
+    body: "The system recognises Indian dishes and cross-references the national nutrition database. Nutrients, calories, food groups — as honest ranges, not false precision.",
     photo: "/landing/steps/gym-step-02.jpeg",
     photoAlt: "Overhead flat-lay of a home-cooked Indian meal",
   },
   {
     number: "03",
     heading: "You see who needs attention",
-    body: "Your dashboard shows every client's week at a glance. Rohan hasn't logged in 3 days. Priya's protein is low. Your attention goes exactly where it should.",
+    body: "Your dashboard shows every client's week at a glance. Rohan hasn't logged in 3 days. Priya's nutrition balance looks off this week. Your attention goes exactly where it should.",
     photo: "/landing/steps/gym-step-03.jpeg",
     photoAlt: "Fitness coach reviewing client progress on a tablet",
   },
 ] as const;
 
 const MEALS = [
-  { name: "Dal, Rice & Sabzi", protein: "22–28g protein", src: "/landing/gym/immersive/meals/dal-rice-sabzi.jpeg" },
-  { name: "Paneer Roti", protein: "18–24g protein", src: "/landing/gym/immersive/meals/paneer-roti.jpeg" },
-  { name: "Idli Sambar", protein: "8–12g protein", src: "/landing/gym/immersive/meals/idli-sambar.jpeg" },
-  { name: "Poha & Eggs", protein: "20–26g protein", src: "/landing/gym/immersive/meals/poha-eggs.jpeg" },
-  { name: "Chicken Curry Rice", protein: "32–40g protein", src: "/landing/gym/immersive/meals/chicken-curry-rice.jpeg" },
-  { name: "Whey + Banana Smoothie", protein: "28–32g protein", src: "/landing/gym/immersive/meals/whey-smoothie.jpeg" },
+  { name: "Dal, Rice & Sabzi", tag: "Grains, greens & dal", src: "/landing/gym/immersive/meals/dal-rice-sabzi.jpeg" },
+  { name: "Paneer Roti", tag: "Wholegrain & dairy", src: "/landing/gym/immersive/meals/paneer-roti.jpeg" },
+  { name: "Idli Sambar", tag: "Light, balanced breakfast", src: "/landing/gym/immersive/meals/idli-sambar.jpeg" },
+  { name: "Poha & Eggs", tag: "Balanced breakfast plate", src: "/landing/gym/immersive/meals/poha-eggs.jpeg" },
+  { name: "Chicken Curry Rice", tag: "Hearty, balanced meal", src: "/landing/gym/immersive/meals/chicken-curry-rice.jpeg" },
+  { name: "Whey + Banana Smoothie", tag: "Quick balanced snack", src: "/landing/gym/immersive/meals/whey-smoothie.jpeg" },
 ];
 
 export function GymImmersiveLanding({ variant, experimentId, showNav = true }: GymImmersiveLandingProps) {
   const signupUrl = getSignupUrl({ product: "gym", source: "landing", variant, experimentId });
-  const loginUrl = getLoginUrl({ product: "gym", source: "landing" });
 
   function handleCta() {
     storeLandingAttribution({ product: "gym", variant, experimentId, clickedAt: Date.now() });
@@ -109,11 +107,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
                 className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
-                Start with your clients
-              </Link>
-              <Link href={loginUrl}
-                className="text-gray-600 font-medium underline underline-offset-2 hover:text-gray-900 self-center text-sm">
-                Sign in
+                Grow your roster →
               </Link>
             </div>
           </Reveal>
@@ -173,7 +167,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           </Reveal>
           <Reveal delay={100}>
             <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              Not adapted from Western apps. Designed from the ground up for Indian fitness coaching.
+              Not adapted from Western apps. Designed from the ground-up for Indian fitness coaching.
             </p>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -191,7 +185,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
               {
                 icon: "📊",
                 title: "Coach dashboard",
-                desc: "See every client's week in one view. Flagged when protein dips, when logging drops, or when a client needs a check-in.",
+                desc: "See every client's week in one view. Flagged if nutrition imbalance, when logging drops, or when a client needs a check-in.",
               },
             ].map((f) => (
               <Reveal key={f.title}>
@@ -225,7 +219,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
                   </div>
                   <div className="p-4">
                     <p className="font-semibold text-white text-sm mb-1">{meal.name}</p>
-                    <p className="text-gray-400 text-xs">{meal.protein}</p>
+                    <p className="text-gray-400 text-xs">{meal.tag}</p>
                   </div>
                 </div>
               </Reveal>
@@ -252,7 +246,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         <div className="relative z-10 max-w-2xl mx-auto">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
-              Ready to coach every client,<br />not just the ones who message you?
+              Ready to coach your entire roster?<br />Elevate every single client.
             </h2>
           </Reveal>
           <Reveal delay={150}>
@@ -261,13 +255,13 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
               className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
-              Create your coach account →
+              Grow your roster →
             </Link>
           </Reveal>
         </div>
       </section>
 
-      <LandingFooter product="gym" />
+      <MarketingFooter variant="coach" />
     </div>
   );
 }

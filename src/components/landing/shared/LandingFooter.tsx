@@ -1,10 +1,16 @@
 import React from "react";
+import Link from "next/link";
 import type { ProductType } from "@/types";
 import { getCrossProductSwitchUrl } from "@/lib/product/resolve-product";
 
 interface LandingFooterProps {
   product: ProductType;
 }
+
+const TAGLINE: Record<ProductType, string> = {
+  adults: "Bridging the distance with effortless nutrition awareness for global Indian families.",
+  gym: "Modern Indian fitness coaching. Effortless accountability, lasting habits.",
+};
 
 export function LandingFooter({ product }: LandingFooterProps) {
   const switchUrl = getCrossProductSwitchUrl(product);
@@ -20,7 +26,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
         <div>
           <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
           <p className="text-xs">
-            Helping Indian families and fitness communities eat better, together.
+            {TAGLINE[product]}
           </p>
         </div>
 
@@ -31,8 +37,23 @@ export function LandingFooter({ product }: LandingFooterProps) {
           </a>
         </div>
 
-        <div className="text-xs text-gray-400">
-          © {new Date().getFullYear()} Tistra Health. Made for India.
+        <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
+          <span>©2026 Tistra Health. Made for global Indians.</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end">
+            <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Terms &amp; Conditions
+            </Link>
+            <span aria-hidden="true">·</span>
+            <span>
+              Support:{" "}
+              <a
+                href="mailto:tistrahealth@gmail.com?subject=Tistra%20Health%20Support"
+                className="text-gray-500 hover:text-gray-900 underline underline-offset-2"
+              >
+                tistrahealth@gmail.com
+              </a>
+            </span>
+          </div>
         </div>
       </div>
     </footer>
