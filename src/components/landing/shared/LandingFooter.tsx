@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import type { ProductType } from "@/types";
 import { getCrossProductSwitchUrl } from "@/lib/product/resolve-product";
 
@@ -36,8 +37,11 @@ export function LandingFooter({ product }: LandingFooterProps) {
           </a>
         </div>
 
-        <div className="text-xs text-gray-400">
-          ©2026 Tistra Health. Made for global Indians.
+        <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
+          <span>©2026 Tistra Health. Made for global Indians.</span>
+          <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+            Terms &amp; Conditions
+          </Link>
         </div>
       </div>
     </footer>

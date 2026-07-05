@@ -161,6 +161,13 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
             </div>
           )}
         </section>
+
+        <p className="text-xs text-neutral-400 leading-relaxed px-1">
+          Tistra Health is a tracking and awareness tool only. It does not provide medical advice, diagnosis,
+          treatment, or personalized nutrition therapy. AI-generated summaries may be inaccurate or incomplete. For
+          any health, diet, medical condition, medication, or nutrition concern, please consult a qualified
+          healthcare professional, doctor, or registered dietitian.
+        </p>
       </div>
     </main>
   );

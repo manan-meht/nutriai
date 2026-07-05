@@ -213,6 +213,15 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
           {mode === "signup" ? "Sign in" : "Create one"}
         </Link>
       </p>
+
+      {mode === "signup" && (
+        <p className="text-center text-xs text-gray-400 leading-relaxed">
+          Tistra Health is a tracking and awareness tool only. It does not provide medical advice, diagnosis,
+          treatment, or personalized nutrition therapy. AI-generated summaries may be inaccurate or incomplete. For
+          any health, diet, medical condition, medication, or nutrition concern, please consult a qualified
+          healthcare professional, doctor, or registered dietitian.
+        </p>
+      )}
     </div>
   );
 }

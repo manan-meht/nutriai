@@ -34,8 +34,11 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
           </div>
         )}
 
-        <div className="text-xs text-gray-400">
-          ©2026 Tistra Pte Ltd
+        <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
+          <span>©2026 Tistra Pte Ltd</span>
+          <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+            Terms &amp; Conditions
+          </Link>
         </div>
       </div>
     </footer>
