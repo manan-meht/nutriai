@@ -1,0 +1,216 @@
+"use client";
+
+import React from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
+import { Reveal } from "@/components/motion/Reveal";
+
+const STEPS = [
+  {
+    number: "01",
+    heading: "Connect your own WhatsApp",
+    body: "Add your number and send one message to link your account — no app to open, no form to fill.",
+    photo: "/landing/steps/self-step-01.jpeg",
+    photoAlt: "A person opening WhatsApp on their phone at home",
+  },
+  {
+    number: "02",
+    heading: "Send a photo of what you ate",
+    body: "Whenever you eat, snap a quick photo or type a short note. The AI identifies what's there — no gram-level precision demanded.",
+    photo: "/landing/steps/self-step-02.jpeg",
+    photoAlt: "A person photographing their own lunch plate",
+  },
+  {
+    number: "03",
+    heading: "See your own weekly picture",
+    body: "A calm weekly summary — meals logged, protein consistency, gentle suggestions. Just for you, on your terms.",
+    photo: "/landing/steps/self-step-03.jpeg",
+    photoAlt: "A person reviewing their weekly progress on their phone",
+  },
+] as const;
+
+export function SelfImmersiveLanding() {
+  const signupUrl =
+    getSignupUrl({ product: "adults", source: "landing", variant: "immersive" }) +
+    "&next=" + encodeURIComponent("/adults/dashboard?self=1");
+
+  function handleCta() {
+    storeLandingAttribution({ product: "adults", variant: "immersive", clickedAt: Date.now() });
+    trackLandingEvent("landing_hero_cta_clicked", {
+      product: "adults", variant: "immersive", experimentId: "",
+      selectionMode: "immersive_only", deviceCategory: "desktop",
+    });
+  }
+
+  return (
+    <div className="bg-white text-gray-900">
+      {/* ── Hero ──────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden min-h-[80vh] flex flex-col md:flex-row">
+        <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 py-16 md:py-24">
+          <Reveal>
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
+              For tracking yourself
+            </p>
+          </Reveal>
+          <Reveal delay={100}>
+            <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
+              Know how you eat.<br />
+              <span className="text-[#6750A4]">Without the friction.</span>
+            </h1>
+          </Reveal>
+          <Reveal delay={200}>
+            <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
+              Track your own meals through WhatsApp. No calorie counting. No complicated app. Just a calm weekly
+              picture of how you&apos;re eating.
+            </p>
+          </Reveal>
+          <Reveal delay={300}>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Link href={signupUrl} onClick={handleCta}
+                className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
+                Start tracking myself
+              </Link>
+            </div>
+          </Reveal>
+        </div>
+
+        <div className="relative w-full md:w-[52%] h-72 md:h-auto flex-shrink-0">
+          <Image
+            src="/landing/self/immersive/hero/self-hero.jpeg"
+            alt="A person at home photographing their own meal to send on WhatsApp"
+            fill priority
+            sizes="(max-width: 768px) 100vw, 52vw"
+            className="object-cover object-center"
+          />
+        </div>
+      </section>
+
+      {/* ── How it works ─────────────────────────────────────────────────── */}
+      <section className="py-20 px-6 bg-[#F3EEFB]">
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">How it works</p>
+          </Reveal>
+          <Reveal delay={100}>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Three steps. Just for you.</h2>
+          </Reveal>
+
+          <div className="flex flex-col gap-16">
+            {STEPS.map((step, i) => (
+              <Reveal key={step.number} delay={i * 100}>
+                <div className={`flex flex-col ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"} gap-8 md:gap-14 items-center`}>
+                  <div className="w-full md:w-1/2 rounded-3xl overflow-hidden shadow-xl flex-shrink-0">
+                    <div className="relative w-full h-60 md:h-80">
+                      <Image src={step.photo} alt={step.photoAlt} fill
+                        sizes="(max-width: 768px) 100vw, 50vw" className="object-cover" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-5xl font-black text-[#E9DDFF] mb-3 leading-none">{step.number}</p>
+                    <h3 className="text-2xl md:text-3xl font-bold mb-4">{step.heading}</h3>
+                    <p className="text-base md:text-lg text-gray-600 leading-relaxed">{step.body}</p>
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features ─────────────────────────────────────────────────────── */}
+      <section className="py-20 px-6 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built to be easy to keep up with</h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
+              No streak-shaming, no calorie scoreboard — just a gentle, honest picture of your own eating.
+            </p>
+          </Reveal>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                icon: "📸",
+                title: "WhatsApp logging",
+                desc: "Log a meal by sending a photo or a message. No new app to learn, no account to remember.",
+              },
+              {
+                icon: "🌱",
+                title: "Gentle, honest ranges",
+                desc: "Protein, calories, macros — as honest ranges, not false precision. No obsessive tracking required.",
+              },
+              {
+                icon: "📈",
+                title: "Your own dashboard",
+                desc: "See your own weekly summary — meals logged, protein consistency, gentle suggestions.",
+              },
+            ].map((f) => (
+              <Reveal key={f.title}>
+                <div className="bg-gray-50 rounded-2xl p-7">
+                  <p className="text-3xl mb-4">{f.icon}</p>
+                  <h3 className="text-lg font-bold mb-2">{f.title}</h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Quote ─────────────────────────────────────────────────────────── */}
+      <section className="py-20 px-6 text-center max-w-2xl mx-auto">
+        <Reveal>
+          <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 leading-relaxed mb-4">
+            &ldquo;I just send a photo when I remember. I didn&apos;t expect to actually keep it up for two months.&rdquo;
+          </blockquote>
+          <p className="text-sm text-gray-500">— Ananya R., tracking herself since March</p>
+        </Reveal>
+      </section>
+
+      {/* ── CTA ───────────────────────────────────────────────────────────── */}
+      <section className="py-24 px-6 text-center bg-[#F3EEFB]">
+        <div className="max-w-2xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
+              Ready to understand<br />your own eating?
+            </h2>
+          </Reveal>
+          <Reveal delay={150}>
+            <p className="text-gray-600 text-lg mb-10">Free to start. No credit card. Add your number in minutes.</p>
+          </Reveal>
+          <Reveal delay={300}>
+            <Link href={signupUrl} onClick={handleCta}
+              className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
+              Start tracking myself →
+            </Link>
+          </Reveal>
+        </div>
+      </section>
+
+      <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div>
+            <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
+            <p className="text-xs">Nutrition tracking through WhatsApp — for yourself, your family, or your clients.</p>
+          </div>
+          <div className="flex flex-col gap-1 text-xs">
+            <span className="text-gray-400">Tracking someone else instead?</span>
+            <div className="flex gap-3">
+              <Link href="/family" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
+                Support a parent →
+              </Link>
+              <Link href="/coach" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
+                Track clients →
+              </Link>
+            </div>
+          </div>
+          <div className="text-xs text-gray-400">
+            © {new Date().getFullYear()} Tistra Health. Made for India.
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

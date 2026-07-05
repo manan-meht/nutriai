@@ -1,15 +1,40 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { ProductType } from "@/types";
+import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+
+export type MarketingHeaderVariant = "home" | "family" | "coach" | "me";
+
+interface MarketingHeaderProps {
+  variant: MarketingHeaderVariant;
+  /** Where the logo/brand name links to — the caller resolves this once
+   * per request (marketing homepage if logged out, the user's own
+   * dashboard if logged in) rather than the header guessing. */
+  homeHref: string;
+}
+
+const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductType> = {
+  family: "adults",
+  coach: "gym",
+  me: "adults",
+};
 
 // Shared sticky top nav for every marketing page (/, /family, /coach, /me)
 // so the menu stays steady on scroll across the whole marketing surface,
 // not just the master homepage. Purely presentational — each page keeps
 // its own hero/content below it.
-export function MarketingHeader() {
+export function MarketingHeader({ variant, homeHref }: MarketingHeaderProps) {
+  const product = variant === "home" ? null : VARIANT_PRODUCT[variant];
+  const signupUrl = product
+    ? getSignupUrl({ product, source: "nav", variant: "standard" }) +
+      (variant === "me" ? "&next=" + encodeURIComponent("/adults/dashboard?self=1") : "")
+    : null;
+  const loginUrl = product ? getLoginUrl({ product, source: "nav" }) : null;
+
   return (
     <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
       <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href={homeHref} className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
             <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
           </div>
@@ -20,14 +45,30 @@ export function MarketingHeader() {
           <Link href="/family" className="text-gray-600 hover:text-[#4F378A]">Family</Link>
           <Link href="/coach" className="text-gray-600 hover:text-[#4F378A]">Coach</Link>
           <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">Track Myself</Link>
-          <Link href="/login" className="text-gray-600 hover:text-[#4F378A]">Login</Link>
         </nav>
-        <Link
-          href="/#pick-product"
-          className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
-        >
-          Get Started
-        </Link>
+        {variant === "home" ? (
+          <Link
+            href="/#pick-product"
+            className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+          >
+            Get Started
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Link
+              href={loginUrl!}
+              className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3 py-2"
+            >
+              Sign in
+            </Link>
+            <Link
+              href={signupUrl!}
+              className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+            >
+              Sign up
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );

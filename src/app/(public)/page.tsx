@@ -15,6 +15,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { UnifiedHome } from "@/components/home/UnifiedHome";
 import { MasterHome } from "@/components/home/MasterHome";
+import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 import nextDynamic from "next/dynamic";
 
 // Feature flag: unified Tistra Health home page. When enabled, hosts that
@@ -63,7 +64,7 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
       description:
         "Send meals through WhatsApp. Tistra turns everyday food updates into simple weekly insights, progress trends, and gentle nutrition suggestions — for yourself, your family, or your clients.",
       alternates: { canonical: "/" },
-      icons: { icon: faviconForProduct(null) },
+      icons: { icon: "/logos/logo-purple.png" },
     };
   }
 
@@ -119,7 +120,10 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
   // etc.) and explicit ?product= overrides keep their existing immersive landing —
   // only the neutral/unresolved host switches to the new home page.
   if (!explicitProduct && NEW_MASTER_HOME_ENABLED) {
-    return <MasterHome />;
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const homeHref = user ? await getDashboardHrefForUser(user.id) : "/";
+    return <MasterHome homeHref={homeHref} />;
   }
 
   if (!explicitProduct && UNIFIED_HOME_ENABLED) {

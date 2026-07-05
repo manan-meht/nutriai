@@ -64,10 +64,10 @@ const WHY_WHATSAPP = [
   "Easy for clients to stick with",
 ];
 
-export function MasterHome() {
+export function MasterHome({ homeHref }: { homeHref: string }) {
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <MarketingHeader />
+      <MarketingHeader variant="home" homeHref={homeHref} />
 
       <main>
         {/* Hero */}
