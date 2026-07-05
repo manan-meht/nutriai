@@ -1,11 +1,6 @@
-export const dynamic = "force-dynamic";
-export const runtime = "edge";
-
 import type { Metadata } from "next";
 import { SelfImmersiveLanding } from "@/components/landing/immersive/SelfImmersiveLanding";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
-import { createClient } from "@/lib/supabase/server";
-import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 
 export function generateMetadata(): Metadata {
   return {
@@ -23,14 +18,13 @@ export function generateMetadata(): Metadata {
 // (creating a tracked profile for the signed-up user themself,
 // relationship_type "self", instead of inviting someone else). See
 // SELF_TRACKING_ENABLED.
-export default async function TrackMyselfPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const homeHref = user ? await getDashboardHrefForUser(user.id) : "/";
-
+//
+// Deliberately static — see the comment in ../family/page.tsx for why
+// (Cloudflare Pages edge-function bundle size limit).
+export default function TrackMyselfPage() {
   return (
     <>
-      <MarketingHeader variant="me" homeHref={homeHref} />
+      <MarketingHeader variant="me" />
       <SelfImmersiveLanding />
     </>
   );

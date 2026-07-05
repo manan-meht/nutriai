@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ProductType } from "@/types";
@@ -7,10 +10,14 @@ export type MarketingHeaderVariant = "home" | "family" | "coach" | "me";
 
 interface MarketingHeaderProps {
   variant: MarketingHeaderVariant;
-  /** Where the logo/brand name links to — the caller resolves this once
-   * per request (marketing homepage if logged out, the user's own
-   * dashboard if logged in) rather than the header guessing. */
-  homeHref: string;
+  /** Fallback/initial href for the logo/brand name — the marketing
+   * homepage by default. For "family" | "coach" | "me" (static pages,
+   * no per-request server auth check — see the /api/dashboard-href
+   * comment for why), this is upgraded client-side after mount if the
+   * visitor turns out to be logged in. The "home" variant's caller
+   * already resolves this server-side correctly, so no upgrade is
+   * needed there, but the effect below is harmless either way. */
+  homeHref?: string;
 }
 
 const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductType> = {
@@ -23,7 +30,20 @@ const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductTy
 // so the menu stays steady on scroll across the whole marketing surface,
 // not just the master homepage. Purely presentational — each page keeps
 // its own hero/content below it.
-export function MarketingHeader({ variant, homeHref }: MarketingHeaderProps) {
+export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: MarketingHeaderProps) {
+  const [homeHref, setHomeHref] = useState(initialHomeHref);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/dashboard-href")
+      .then((res) => res.json())
+      .then((data: { href: string | null }) => {
+        if (!cancelled && data.href) setHomeHref(data.href);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const product = variant === "home" ? null : VARIANT_PRODUCT[variant];
   const signupUrl = product
     ? getSignupUrl({ product, source: "nav", variant: "standard" }) +

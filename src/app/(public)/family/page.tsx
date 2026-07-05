@@ -1,12 +1,7 @@
-export const dynamic = "force-dynamic";
-export const runtime = "edge";
-
 import type { Metadata } from "next";
 import { AdultsImmersiveLanding } from "@/components/landing/immersive/AdultsImmersiveLanding";
 import { EXPERIMENT_IDS } from "@/lib/experiments/landing-page-experiment";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
-import { createClient } from "@/lib/supabase/server";
-import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 
 export function generateMetadata(): Metadata {
   return {
@@ -22,14 +17,17 @@ export function generateMetadata(): Metadata {
 // existing family.tistrahealth.com subdomain and the neutral-host `/` with
 // ?product=adults keep working unchanged (see resolve-product.ts); this is
 // an additive route, not a replacement.
-export default async function FamilyMarketingPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const homeHref = user ? await getDashboardHrefForUser(user.id) : "/";
-
+//
+// Deliberately static (no server-side auth check, no edge runtime) — the
+// logged-in→dashboard logo link is resolved client-side by MarketingHeader
+// via /api/dashboard-href instead. Making this dynamic/edge would push it
+// into the much larger Cloudflare Pages edge-function bundle bucket,
+// which has a 25 MiB total-across-all-functions limit; adding 3 dynamic
+// marketing pages (family/coach/me) tipped that over in production.
+export default function FamilyMarketingPage() {
   return (
     <>
-      <MarketingHeader variant="family" homeHref={homeHref} />
+      <MarketingHeader variant="family" />
       <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} showNav={false} />
     </>
   );
