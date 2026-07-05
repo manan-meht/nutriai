@@ -15,21 +15,24 @@ interface AuthFormProps {
   next?: string;
 }
 
+// Same purple used across the marketing site (/, /family, /coach, /me) —
+// gym and adults previously had different accent colors (purple vs rose)
+// here; unified to one color scheme per product decision.
 const THEME = {
   gym: {
-    accent: "bg-purple-600 hover:bg-purple-700 focus-visible:ring-purple-500",
-    accentText: "text-purple-600",
-    accentBorder: "border-purple-600",
-    ring: "focus:ring-purple-500",
+    accent: "bg-[#6750A4] hover:bg-[#4F378A] focus-visible:ring-[#6750A4]",
+    accentText: "text-[#6750A4]",
+    accentBorder: "border-[#6750A4]",
+    ring: "focus:ring-[#6750A4]",
     label: "Tistra Health",
     dashboardUrl: "/gym/dashboard",
     switchUrl: (mode: Mode) => (mode === "signin" ? "/gym/signup" : "/gym/login"),
   },
   adults: {
-    accent: "bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-500",
-    accentText: "text-rose-600",
-    accentBorder: "border-rose-600",
-    ring: "focus:ring-rose-500",
+    accent: "bg-[#6750A4] hover:bg-[#4F378A] focus-visible:ring-[#6750A4]",
+    accentText: "text-[#6750A4]",
+    accentBorder: "border-[#6750A4]",
+    ring: "focus:ring-[#6750A4]",
     label: "Tistra Health",
     dashboardUrl: "/adults/dashboard",
     switchUrl: (mode: Mode) => (mode === "signin" ? "/signup" : "/login"),
