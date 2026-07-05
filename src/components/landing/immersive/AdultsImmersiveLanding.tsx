@@ -10,7 +10,7 @@ import {
   storeLandingAttribution,
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
-import { LandingFooter } from "../shared/LandingFooter";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -98,7 +98,7 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
                 className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
-                Help a parent →
+                Support a family member →
               </Link>
             </div>
           </Reveal>
@@ -219,13 +219,13 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
               className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
-              Help a parent →
+              Support a family member →
             </Link>
           </Reveal>
         </div>
       </section>
 
-      <LandingFooter product="adults" />
+      <MarketingFooter />
     </div>
   );
 }

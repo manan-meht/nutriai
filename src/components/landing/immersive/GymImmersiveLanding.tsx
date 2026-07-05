@@ -10,7 +10,7 @@ import {
   storeLandingAttribution,
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
-import { LandingFooter } from "../shared/LandingFooter";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -261,7 +261,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      <LandingFooter product="gym" />
+      <MarketingFooter />
     </div>
   );
 }

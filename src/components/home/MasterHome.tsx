@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { MarketingHeader } from "./MarketingHeader";
+import { MarketingFooter } from "./MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
 
 interface UseCaseCard {
@@ -25,7 +26,7 @@ const USE_CASES: UseCaseCard[] = [
     title: "Global Family Care",
     description:
       "Keep an eye on aging parents from anywhere. They send photos via WhatsApp. You see the trends.",
-    cta: "Help a parent →",
+    cta: "Support a family member →",
   },
   {
     href: "/coach",
@@ -292,28 +293,41 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
             </div>
           </Reveal>
         </section>
+
+        {/* Final CTA */}
+        <section className="bg-gray-50 py-20">
+          <Reveal>
+            <div className="text-center max-w-3xl mx-auto px-6">
+              <h2 className="text-2xl md:text-4xl font-bold text-gray-900 mb-4">
+                Ready to start tracking without the friction?
+              </h2>
+              <p className="text-gray-600 mb-10">Join people using WhatsApp to improve their relationship with food.</p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Link
+                  href="/me"
+                  className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-8 py-4 rounded-full font-semibold transition-colors"
+                >
+                  Get Started →
+                </Link>
+                <Link
+                  href="/family"
+                  className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-8 py-4 rounded-full font-semibold transition-colors"
+                >
+                  Support a family member →
+                </Link>
+                <Link
+                  href="/coach"
+                  className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-8 py-4 rounded-full font-semibold transition-colors"
+                >
+                  Grow your roster →
+                </Link>
+              </div>
+            </div>
+          </Reveal>
+        </section>
       </main>
 
-      <footer className="bg-white border-t border-gray-100">
-        <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-10">
-          <div>
-            <div className="font-bold text-[#4F378A] mb-3">Tistra Health</div>
-            <p className="text-sm text-gray-500">Simplifying nutrition through the apps people already use.</p>
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-gray-900 mb-3">Product</h4>
-            <ul className="flex flex-col gap-2 text-sm text-gray-500">
-              <li><a href="#how-it-works" className="hover:underline">How it works</a></li>
-              <li><Link href="/family" className="hover:underline">For Families</Link></li>
-              <li><Link href="/coach" className="hover:underline">For Coaches</Link></li>
-              <li><Link href="/me" className="hover:underline">For Me</Link></li>
-            </ul>
-          </div>
-        </div>
-        <div className="border-t border-gray-100 py-6 text-center text-xs text-gray-400">
-          ©2026 Tistra Health. All rights reserved.
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

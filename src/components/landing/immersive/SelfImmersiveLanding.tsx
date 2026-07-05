@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
 import { Reveal } from "@/components/motion/Reveal";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
 
 const STEPS = [
   {
@@ -188,28 +189,7 @@ export function SelfImmersiveLanding() {
         </div>
       </section>
 
-      <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div>
-            <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
-            <p className="text-xs">Healthy Habits, simplified. Stress-free awareness for your daily routine.</p>
-          </div>
-          <div className="flex flex-col gap-1 text-xs">
-            <span className="text-gray-400">Tracking someone else instead?</span>
-            <div className="flex gap-3">
-              <Link href="/family" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
-                Help a parent →
-              </Link>
-              <Link href="/coach" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
-                Grow your roster →
-              </Link>
-            </div>
-          </div>
-          <div className="text-xs text-gray-400">
-            ©2026 Tistra Health. Made for global Indians.
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }
