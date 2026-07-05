@@ -39,9 +39,21 @@ export function LandingFooter({ product }: LandingFooterProps) {
 
         <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
           <span>©2026 Tistra Health. Made for global Indians.</span>
-          <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
-            Terms &amp; Conditions
-          </Link>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end">
+            <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Terms &amp; Conditions
+            </Link>
+            <span aria-hidden="true">·</span>
+            <span>
+              Support:{" "}
+              <a
+                href="mailto:tistrahealth@gmail.com?subject=Tistra%20Health%20Support"
+                className="text-gray-500 hover:text-gray-900 underline underline-offset-2"
+              >
+                tistrahealth@gmail.com
+              </a>
+            </span>
+          </div>
         </div>
       </div>
     </footer>
