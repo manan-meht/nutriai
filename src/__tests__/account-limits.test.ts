@@ -29,6 +29,7 @@ function makeFakeSupabase(opts: {
   monthCount?: number;
   insertError?: string;
   extraCapacity?: number;
+  plan?: string;
 }) {
   const user = { id: "owner-1", email: "owner@example.com" };
   const monthCount = opts.monthCount ?? opts.activeCount;
@@ -40,7 +41,7 @@ function makeFakeSupabase(opts: {
         if (prop === "single" || prop === "maybeSingle") {
           return async () => {
             if (table === "profiles") return { data: { full_name: "Owner" } };
-            if (table === "workspaces") return { data: { extra_capacity: opts.extraCapacity ?? 0 } };
+            if (table === "workspaces") return { data: { extra_capacity: opts.extraCapacity ?? 0, plan: opts.plan } };
             return { data: null };
           };
         }
@@ -315,6 +316,55 @@ describe("account limits — monthly add quota survives removals", () => {
 
     await expect(
       addContact({ workspaceId: "ws-1", fullName: "First Person This Month", whatsappNumber: "+911234567890" })
+    ).resolves.toEqual({ contactId: "adults_contacts-new-id" });
+  });
+});
+
+describe("self-tracking plan — base of 1 instead of the family base of 2", () => {
+  it("blocks a 2nd tracked profile on a workspace marked plan='self'", async () => {
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createClient: async () => makeFakeSupabase({ activeCount: 1, plan: "self" }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 1, plan: "self" }),
+    }));
+    jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
+    const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
+
+    const result = await addContact({ workspaceId: "ws-1", fullName: "Second Person", whatsappNumber: "+911234567890" });
+    expect(result.error).toMatch(/limit of 1 family member/i);
+  });
+
+  it("allows the first tracked profile on a workspace marked plan='self'", async () => {
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createClient: async () => makeFakeSupabase({ activeCount: 0, plan: "self" }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 0, plan: "self" }),
+    }));
+    jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
+    const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
+
+    await expect(
+      addContact({ workspaceId: "ws-1", fullName: "Myself", whatsappNumber: "+911234567890", relationshipType: "self" })
+    ).resolves.toEqual({ contactId: "adults_contacts-new-id" });
+  });
+
+  it("a workspace with no plan set (existing workspaces) still uses the family base of 2, not 1", async () => {
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createClient: async () => makeFakeSupabase({ activeCount: 1 }),
+    }));
+    jest.doMock("@supabase/supabase-js", () => ({
+      createClient: () => makeFakeSupabase({ activeCount: 1 }),
+    }));
+    jest.doMock("@/lib/entitlements/entitlements", notReadOnlyEntitlementMock);
+    const { addContact } = await import("@/app/(adults)/adults/dashboard/actions");
+
+    await expect(
+      addContact({ workspaceId: "ws-1", fullName: "Second Person", whatsappNumber: "+911234567890" })
     ).resolves.toEqual({ contactId: "adults_contacts-new-id" });
   });
 });

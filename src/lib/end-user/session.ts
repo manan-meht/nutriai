@@ -1,9 +1,17 @@
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { ContactType, EndUserContact } from "@/lib/end-user/otp";
+import { parentTrustedSessionDays } from "@/lib/billing/feature-flags";
 
 export const SESSION_COOKIE_NAME = "tistra_end_user_session";
-const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
+
+// Configurable via PARENT_TRUSTED_SESSION_DAYS (default 90, per spec) —
+// used for every end-user session, since /my-progress serves both the
+// general end-user dashboard and the parent-access flow with the same
+// underlying OTP/session infrastructure.
+function sessionTtlMs(): number {
+  return parentTrustedSessionDays() * 24 * 60 * 60 * 1000;
+}
 
 function admin() {
   return createClient(
@@ -26,16 +34,18 @@ async function hashToken(token: string): Promise<string> {
 /** Creates a new session row and sets the HTTP-only cookie. Only the
  * token's hash is stored server-side — the raw token exists only in the
  * cookie, so a DB read alone can never impersonate a session. */
-export async function createEndUserSession(contact: EndUserContact): Promise<void> {
+export async function createEndUserSession(contact: EndUserContact, deviceLabel?: string): Promise<void> {
   const token = randomToken();
   const tokenHash = await hashToken(token);
   const db = admin();
+  const ttlMs = sessionTtlMs();
 
   const { error } = await db.from("end_user_sessions").insert({
     contact_id: contact.contactId,
     contact_type: contact.contactType,
     session_token_hash: tokenHash,
-    expires_at: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+    expires_at: new Date(Date.now() + ttlMs).toISOString(),
+    device_label: deviceLabel ?? null,
   });
   if (error) throw new Error(`Failed to create session: ${error.message}`);
 
@@ -45,7 +55,7 @@ export async function createEndUserSession(contact: EndUserContact): Promise<voi
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_MS / 1000,
+    maxAge: ttlMs / 1000,
   });
 }
 
@@ -89,4 +99,49 @@ export async function clearEndUserSession(): Promise<void> {
     await admin().from("end_user_sessions").delete().eq("session_token_hash", tokenHash);
   }
   store.delete(SESSION_COOKIE_NAME);
+}
+
+export interface TrustedDevice {
+  id: string;
+  deviceLabel: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  isCurrent: boolean;
+}
+
+/** Lists every trusted-device session for the signed-in contact, so the
+ * "Trusted devices" settings UI can show what has standing access and let
+ * the user sign any of them out individually. */
+export async function listTrustedDevices(contactId: string): Promise<TrustedDevice[]> {
+  const store = await cookies();
+  const currentToken = store.get(SESSION_COOKIE_NAME)?.value;
+  const currentHash = currentToken ? await hashToken(currentToken) : null;
+
+  const db = admin();
+  const { data } = await db
+    .from("end_user_sessions")
+    .select("*")
+    .eq("contact_id", contactId)
+    .order("last_seen_at", { ascending: false });
+
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    deviceLabel: row.device_label,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    isCurrent: row.session_token_hash === currentHash,
+  }));
+}
+
+/** Signs out every trusted device for this contact (e.g. after a privacy
+ * setting change or on request) — re-verification via WhatsApp OTP is
+ * required everywhere afterward. */
+export async function signOutAllDevices(contactId: string): Promise<void> {
+  await admin().from("end_user_sessions").delete().eq("contact_id", contactId);
+  const store = await cookies();
+  store.delete(SESSION_COOKIE_NAME);
+}
+
+export async function signOutDevice(contactId: string, sessionId: string): Promise<void> {
+  await admin().from("end_user_sessions").delete().match({ id: sessionId, contact_id: contactId });
 }

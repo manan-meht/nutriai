@@ -23,6 +23,11 @@ const AdultsShaderBackground = dynamic(
 interface AdultsImmersiveLandingProps {
   variant: LandingVariant;
   experimentId?: string;
+  /** The /family route renders its own shared MarketingHeader above this
+   * component instead — set false there to avoid stacking two navs.
+   * Defaults true so the family.tistrahealth.com subdomain (which doesn't
+   * pass this) keeps its existing standalone nav unchanged. */
+  showNav?: boolean;
 }
 
 const STEPS = [
@@ -49,7 +54,7 @@ const STEPS = [
   },
 ] as const;
 
-export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiveLandingProps) {
+export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }: AdultsImmersiveLandingProps) {
   const signupUrl = getSignupUrl({ product: "adults", source: "landing", variant, experimentId });
   const loginUrl = getLoginUrl({ product: "adults", source: "landing" });
 
@@ -63,7 +68,7 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
 
   return (
     <div className="bg-white text-gray-900">
-      <LandingNav product="adults" variant={variant} experimentId={experimentId} />
+      {showNav && <LandingNav product="adults" variant={variant} experimentId={experimentId} />}
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden min-h-[90vh] flex flex-col md:flex-row">
@@ -75,14 +80,14 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
         {/* Text — left */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 pt-24 pb-12 md:py-32">
           <Reveal>
-            <p className="text-xs font-semibold text-rose-600 uppercase tracking-widest mb-4">
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
               For families across India
             </p>
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
               Know they&apos;re eating well.<br />
-              <span className="text-rose-600">Without the worry.</span>
+              <span className="text-[#6750A4]">Without the worry.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
@@ -94,7 +99,7 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
           <Reveal delay={300}>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
-                className="bg-rose-600 text-white font-bold rounded-full px-8 py-4 text-base hover:bg-rose-700 transition-colors shadow-lg shadow-rose-200 text-center">
+                className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
                 Support a family member
               </Link>
               <Link href={loginUrl}
@@ -118,10 +123,10 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-rose-50">
+      <section className="py-20 px-6 bg-[#F3EEFB]">
         <div className="max-w-5xl mx-auto">
           <Reveal>
-            <p className="text-xs font-semibold text-rose-600 uppercase tracking-widest mb-3 text-center">How it works</p>
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">How it works</p>
           </Reveal>
           <Reveal delay={100}>
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Simple for them. Reassuring for you.</h2>
@@ -140,7 +145,7 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
                   </div>
                   {/* Text */}
                   <div className="flex-1">
-                    <p className="text-5xl font-black text-rose-100 mb-3 leading-none">{step.number}</p>
+                    <p className="text-5xl font-black text-[#E9DDFF] mb-3 leading-none">{step.number}</p>
                     <h3 className="text-2xl md:text-3xl font-bold mb-4">{step.heading}</h3>
                     <p className="text-base md:text-lg text-gray-600 leading-relaxed">{step.body}</p>
                   </div>
@@ -181,9 +186,9 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
               },
             ].map((item) => (
               <Reveal key={item.what}>
-                <div className="bg-rose-50 rounded-2xl p-7 border border-rose-100">
+                <div className="bg-[#F3EEFB] rounded-2xl p-7 border border-[#E9DDFF]">
                   <p className="font-bold text-gray-900 text-lg mb-1">{item.what}</p>
-                  <p className="text-sm font-semibold text-rose-700 mb-3">{item.who}</p>
+                  <p className="text-sm font-semibold text-[#4F378A] mb-3">{item.who}</p>
                   <p className="text-sm text-gray-600 leading-relaxed">{item.detail}</p>
                 </div>
               </Reveal>
@@ -211,7 +216,7 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
               Start with one meal.<br />
-              <span className="text-rose-600">Stay connected, gently.</span>
+              <span className="text-[#6750A4]">Stay connected, gently.</span>
             </h2>
           </Reveal>
           <Reveal delay={150}>
@@ -219,7 +224,7 @@ export function AdultsImmersiveLanding({ variant, experimentId }: AdultsImmersiv
           </Reveal>
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
-              className="bg-rose-600 text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-rose-700 transition-colors shadow-xl shadow-rose-200 inline-block">
+              className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
               Create a family account →
             </Link>
           </Reveal>

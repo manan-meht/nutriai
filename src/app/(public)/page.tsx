@@ -14,6 +14,8 @@ import {
 } from "@/lib/experiments/landing-page-experiment";
 import { createClient } from "@/lib/supabase/server";
 import { UnifiedHome } from "@/components/home/UnifiedHome";
+import { MasterHome } from "@/components/home/MasterHome";
+import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 import nextDynamic from "next/dynamic";
 
 // Feature flag: unified Tistra Health home page. When enabled, hosts that
@@ -21,6 +23,12 @@ import nextDynamic from "next/dynamic";
 // don't carry an explicit ?product= override, used for local dev/testing)
 // show the unified chooser instead of defaulting to one product's landing.
 const UNIFIED_HOME_ENABLED = process.env.NEXT_PUBLIC_UNIFIED_HOME_ENABLED !== "false";
+
+// New three-use-case master homepage (Track myself / Family / Coach). Takes
+// precedence over UNIFIED_HOME_ENABLED at the same neutral-host gate below
+// — off by default so it can be reviewed before replacing the existing
+// unified chooser.
+const NEW_MASTER_HOME_ENABLED = process.env.NEXT_PUBLIC_NEW_TISTRA_HOMEPAGE_ENABLED === "true";
 
 const GymImmersiveLanding = nextDynamic(
   () => import("@/components/landing/immersive/GymImmersiveLanding").then((m) => ({ default: m.GymImmersiveLanding })),
@@ -49,6 +57,16 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
   const qp = rawParams.get("product");
   const explicitProduct: ProductType | null =
     byHostname ?? (qp === "gym" || qp === "adults" ? qp : null);
+
+  if (!byHostname && !explicitProduct && NEW_MASTER_HOME_ENABLED) {
+    return {
+      title: "Tistra Health — Nutrition tracking through WhatsApp",
+      description:
+        "Send meals through WhatsApp. Tistra turns everyday food updates into simple weekly insights, progress trends, and gentle nutrition suggestions — for yourself, your family, or your clients.",
+      alternates: { canonical: "/" },
+      icons: { icon: "/logos/logo-purple.png" },
+    };
+  }
 
   if (!byHostname && !explicitProduct && UNIFIED_HOME_ENABLED) {
     return {
@@ -100,7 +118,14 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
 
   // Dedicated marketing subdomains (coach.tistrahealth.com, family.tistrahealth.com,
   // etc.) and explicit ?product= overrides keep their existing immersive landing —
-  // only the neutral/unresolved host switches to the new unified home page.
+  // only the neutral/unresolved host switches to the new home page.
+  if (!explicitProduct && NEW_MASTER_HOME_ENABLED) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const homeHref = user ? await getDashboardHrefForUser(user.id) : "/";
+    return <MasterHome homeHref={homeHref} />;
+  }
+
   if (!explicitProduct && UNIFIED_HOME_ENABLED) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();

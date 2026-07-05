@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
 import { removeContact, resendContactInvite } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
+import { SelfSetupCard } from "./SelfSetupCard";
 import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
@@ -19,6 +20,7 @@ interface Props {
   removedContacts: AdultsContact[];
   extraCapacity: number;
   entitlement: EntitlementSnapshot;
+  promptSelfSetup?: boolean;
   pricing: { monthlyLabel: string; annualLabel: string };
 }
 
@@ -32,8 +34,9 @@ const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, pricing }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, pricing }: Props) {
   const [showModal, setShowModal] = useState(false);
+  const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -115,6 +118,15 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             </button>
           )}
         </div>
+
+        {promptSelfSetup && !dismissedSelfSetup && (
+          <SelfSetupCard
+            workspaceId={workspaceId}
+            defaultFullName={caregiverName}
+            onDone={() => { setDismissedSelfSetup(true); router.refresh(); }}
+            onSkip={() => setDismissedSelfSetup(true)}
+          />
+        )}
 
         {entitlement.isReadOnly && (
           <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
@@ -245,7 +257,9 @@ function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: C
   const isActive = contact.mealCount > 0;
   const inviteAccepted = !!contact.inviteAcceptedAt;
   const invitePending = !!contact.inviteSentAt && !inviteAccepted;
-  const emoji = contact.relationship ? (RELATIONSHIP_EMOJI[contact.relationship] ?? "🧑") : "🧑";
+  const isSelf = contact.relationshipType === "self";
+  const emoji = isSelf ? "🙋" : contact.relationship ? (RELATIONSHIP_EMOJI[contact.relationship] ?? "🧑") : "🧑";
+  const displayName = isSelf ? "You" : contact.fullName;
 
   const lastMealLabel = contact.lastMealAt ? formatRelative(new Date(contact.lastMealAt)) : null;
 
@@ -266,9 +280,9 @@ function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: C
             {isActive ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full" /> : invitePending ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 border-2 border-white rounded-full" /> : null}
           </div>
           <div>
-            <p className="font-semibold text-gray-900 text-sm">{contact.fullName}</p>
+            <p className="font-semibold text-gray-900 text-sm">{displayName}</p>
             <p className="text-xs text-gray-400">
-              {emoji} {contact.relationship ? contact.relationship.charAt(0).toUpperCase() + contact.relationship.slice(1) : "Contact"}
+              {emoji} {isSelf ? "Self-tracking" : contact.relationship ? contact.relationship.charAt(0).toUpperCase() + contact.relationship.slice(1) : "Contact"}
               {contact.age ? `, ${contact.age}y` : ""}
             </p>
           </div>
@@ -299,7 +313,11 @@ function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: C
         <div className="flex items-center gap-2 mb-4 bg-green-50 rounded-xl px-3 py-2">
           <span>🍽️</span>
           <div>
-            <p className="text-xs font-medium text-green-800">{contact.mealCount} meal{contact.mealCount !== 1 ? "s" : ""} logged</p>
+            <p className="text-xs font-medium text-green-800">
+              {isSelf
+                ? `You logged ${contact.mealCount} meal${contact.mealCount !== 1 ? "s" : ""} this week`
+                : `${contact.mealCount} meal${contact.mealCount !== 1 ? "s" : ""} logged`}
+            </p>
             {lastMealLabel && <p className="text-xs text-green-600">Last: {lastMealLabel}</p>}
           </div>
         </div>

@@ -10,9 +10,14 @@
 // the Add action should be available.
 export const FAMILY_MEMBER_LIMIT = 2;
 export const GYM_CLIENT_LIMIT = 5;
+export const SELF_TRACKING_LIMIT = 1;
 
-export function effectiveFamilyLimit(extraCapacity: number): number {
-  return FAMILY_MEMBER_LIMIT + Math.max(0, extraCapacity);
+// `basePeopleIncluded` defaults to the existing family base (2) so every
+// pre-existing call site keeps working unchanged; pass SELF_TRACKING_LIMIT
+// explicitly for a workspace on the self plan (see workspaces.plan,
+// migration 0010, and the matching branch in enforce_family_member_limit).
+export function effectiveFamilyLimit(extraCapacity: number, basePeopleIncluded: number = FAMILY_MEMBER_LIMIT): number {
+  return basePeopleIncluded + Math.max(0, extraCapacity);
 }
 
 export function effectiveGymLimit(extraCapacity: number): number {

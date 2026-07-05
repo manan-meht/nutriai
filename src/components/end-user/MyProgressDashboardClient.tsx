@@ -3,12 +3,38 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { EndUserDashboard } from "@/lib/end-user/dashboard-service";
-import { pauseSharingAction, requestRemovalAction, signOutEndUserAction } from "@/app/(public)/my-progress/actions";
+import type { TrustedDevice } from "@/lib/end-user/session";
+import {
+  pauseSharingAction,
+  requestRemovalAction,
+  signOutEndUserAction,
+  listTrustedDevicesAction,
+  signOutDeviceAction,
+  signOutAllDevicesAction,
+} from "@/app/(public)/my-progress/actions";
 
 export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDashboard }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
   const [removalRequested, setRemovalRequested] = useState(false);
+  const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
+  const [showDevices, setShowDevices] = useState(false);
+
+  async function loadDevices() {
+    setShowDevices(true);
+    setDevices(await listTrustedDevicesAction());
+  }
+
+  async function handleSignOutDevice(sessionId: string) {
+    await signOutDeviceAction(sessionId);
+    setDevices(await listTrustedDevicesAction());
+  }
+
+  async function handleSignOutAllDevices() {
+    if (!confirm("Sign out of all devices? You'll need a new WhatsApp code to log back in anywhere.")) return;
+    await signOutAllDevicesAction();
+    router.push("/my-progress");
+  }
 
   async function handleTogglePause() {
     const next = !paused;
@@ -102,6 +128,38 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
           >
             {removalRequested ? "Removal requested" : "Request to be removed"}
           </button>
+        </section>
+
+        <section className="bg-white rounded-xl p-5 shadow-sm">
+          <p className="text-sm font-medium text-neutral-900 mb-1">Trusted devices</p>
+          <p className="text-xs text-neutral-400 mb-3">This device can open your dashboard without a code.</p>
+          {!showDevices ? (
+            <button onClick={loadDevices} className="text-sm text-neutral-600 underline">
+              Show trusted devices
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <ul className="space-y-2">
+                {(devices ?? []).map((d) => (
+                  <li key={d.id} className="flex items-center justify-between text-sm text-neutral-600">
+                    <span>
+                      {d.deviceLabel ?? "Unnamed device"}
+                      {d.isCurrent && <span className="text-neutral-400"> — this device</span>}
+                    </span>
+                    {!d.isCurrent && (
+                      <button onClick={() => handleSignOutDevice(d.id)} className="text-xs text-neutral-400 underline">
+                        Sign out
+                      </button>
+                    )}
+                  </li>
+                ))}
+                {devices?.length === 0 && <li className="text-sm text-neutral-400">No trusted devices found.</li>}
+              </ul>
+              <button onClick={handleSignOutAllDevices} className="text-sm text-red-500 underline">
+                Sign out of all devices
+              </button>
+            </div>
+          )}
         </section>
       </div>
     </main>

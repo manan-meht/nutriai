@@ -73,6 +73,55 @@ export const PRICING: Record<BillingMarket, MarketPricing> = {
   },
 };
 
+// ---- Self-tracking plan (base = 1 person) + per-person add-ons ----
+// PLACEHOLDER PRICES — no final self-tracking prices were provided; these
+// are round placeholder numbers, clearly marked, for you to replace before
+// this plan is enabled/sold (see SELF_TRACKING_ENABLED). Structure mirrors
+// the existing family/coach PRICING table exactly so it stays region-aware
+// once real numbers are set. Never wired into validatePriceSelection /
+// checkout yet — self-plan checkout needs real Stripe/Razorpay price IDs
+// first, so this only powers dashboard/marketing copy for now.
+export const SELF_PRICING: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
+  US: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } }, // PLACEHOLDER
+  SG: { monthly: { amountMinorUnits: 690, currency: "SGD" }, annual: { amountMinorUnits: 6900, currency: "SGD" } }, // PLACEHOLDER
+  AU: { monthly: { amountMinorUnits: 799, currency: "AUD" }, annual: { amountMinorUnits: 7900, currency: "AUD" } }, // PLACEHOLDER
+  IN: { monthly: { amountMinorUnits: 19900, currency: "INR" }, annual: { amountMinorUnits: 199900, currency: "INR" } }, // PLACEHOLDER
+  INTL: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } }, // PLACEHOLDER
+};
+
+/** Additional tracked person, billed per-person, on top of a plan's base
+ * included count — same placeholder-price caveat as SELF_PRICING above.
+ * Shared across self/family/coach since the "add one more person" concept
+ * is identical; only the base included count (see PEOPLE_INCLUDED) differs
+ * per plan. */
+export const ADDITIONAL_PERSON_PRICE: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
+  US: { monthly: { amountMinorUnits: 299, currency: "USD" }, annual: { amountMinorUnits: 2900, currency: "USD" } }, // PLACEHOLDER
+  SG: { monthly: { amountMinorUnits: 390, currency: "SGD" }, annual: { amountMinorUnits: 3900, currency: "SGD" } }, // PLACEHOLDER
+  AU: { monthly: { amountMinorUnits: 450, currency: "AUD" }, annual: { amountMinorUnits: 4500, currency: "AUD" } }, // PLACEHOLDER
+  IN: { monthly: { amountMinorUnits: 9900, currency: "INR" }, annual: { amountMinorUnits: 99900, currency: "INR" } }, // PLACEHOLDER
+  INTL: { monthly: { amountMinorUnits: 299, currency: "USD" }, annual: { amountMinorUnits: 2900, currency: "USD" } }, // PLACEHOLDER
+};
+
+export type BillingPlan = "self" | "family" | "coach";
+
+/** Base tracked-people count included in each plan before add-on pricing
+ * kicks in. "family"/"coach" match the existing hardcoded limits in
+ * src/lib/limits.ts and the DB triggers (migrations 0002-0004, 0009) —
+ * kept here too so pricing copy and enforcement never drift apart. */
+export const PEOPLE_INCLUDED: Record<BillingPlan, number> = {
+  self: 1,
+  family: 2,
+  coach: 5,
+};
+
+export function getSelfPrice(market: BillingMarket, interval: BillingInterval): PricePoint {
+  return SELF_PRICING[market][interval];
+}
+
+export function getAdditionalPersonPrice(market: BillingMarket, interval: BillingInterval): PricePoint {
+  return ADDITIONAL_PERSON_PRICE[market][interval];
+}
+
 export const INTL_USD_DISCLOSURE =
   "Your payment will be processed in US dollars. Your bank or card provider may apply currency-conversion or foreign-transaction fees.";
 

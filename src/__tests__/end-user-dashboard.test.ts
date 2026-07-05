@@ -54,6 +54,11 @@ function makeFakeSupabase(db: FakeDb) {
           if (idx >= 0) rows.splice(idx, 1);
           return Promise.resolve({ error: null });
         },
+        match: (conditions: Record<string, any>) => {
+          const idx = rows.findIndex((r) => Object.entries(conditions).every(([k, v]) => r[k] === v));
+          if (idx >= 0) rows.splice(idx, 1);
+          return Promise.resolve({ error: null });
+        },
       }),
     };
   }
@@ -259,6 +264,108 @@ describe("end-user session", () => {
     await createEndUserSession(contact);
     db.sessions[0].expires_at = new Date(Date.now() - 1000).toISOString();
     expect(await getEndUserSession()).toBeNull();
+  });
+
+  it("uses a 90-day session by default (parent-access spec), configurable via PARENT_TRUSTED_SESSION_DAYS", async () => {
+    jest.resetModules();
+    delete process.env.PARENT_TRUSTED_SESSION_DAYS;
+    const db = freshDb();
+    const cookieStore = makeCookieStore();
+    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => makeFakeSupabase(db) }));
+    jest.doMock("next/headers", () => ({ cookies: async () => cookieStore }));
+    const { createEndUserSession } = await import("@/lib/end-user/session");
+
+    await createEndUserSession(contact);
+    const expiresAt = new Date(db.sessions[0].expires_at).getTime();
+    const daysFromNow = (expiresAt - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(daysFromNow).toBeGreaterThan(89);
+    expect(daysFromNow).toBeLessThan(91);
+  });
+});
+
+describe("trusted devices", () => {
+  afterEach(() => {
+    jest.resetModules();
+    delete process.env.PARENT_TRUSTED_SESSION_DAYS;
+  });
+
+  const contact = { contactId: "contact-1", contactType: "adults" as const, whatsappNumber: "911234567890", fullName: "Sonam" };
+
+  function makeCookieStore(initial?: string) {
+    const store = new Map<string, string>(initial ? [["tistra_end_user_session", initial]] : []);
+    return {
+      set: (name: string, value: string) => store.set(name, value),
+      get: (name: string) => (store.has(name) ? { value: store.get(name) } : undefined),
+      delete: (name: string) => store.delete(name),
+    };
+  }
+
+  it("lists every session for the contact, marking the current one", async () => {
+    jest.resetModules();
+    const db = freshDb();
+    const cookieStore = makeCookieStore();
+    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => makeFakeSupabase(db) }));
+    jest.doMock("next/headers", () => ({ cookies: async () => cookieStore }));
+    const { createEndUserSession, listTrustedDevices } = await import("@/lib/end-user/session");
+
+    await createEndUserSession(contact, "iPhone");
+    db.sessions.push({
+      id: "sessions-other",
+      contact_id: "contact-1",
+      contact_type: "adults",
+      session_token_hash: "some-other-hash",
+      device_label: "Old Android",
+      created_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    const devices = await listTrustedDevices("contact-1");
+    expect(devices).toHaveLength(2);
+    expect(devices.find((d) => d.deviceLabel === "iPhone")?.isCurrent).toBe(true);
+    expect(devices.find((d) => d.deviceLabel === "Old Android")?.isCurrent).toBe(false);
+  });
+
+  it("signOutAllDevices removes every session for the contact and clears the current cookie", async () => {
+    jest.resetModules();
+    const db = freshDb();
+    const cookieStore = makeCookieStore();
+    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => makeFakeSupabase(db) }));
+    jest.doMock("next/headers", () => ({ cookies: async () => cookieStore }));
+    const { createEndUserSession, signOutAllDevices, getEndUserSession } = await import("@/lib/end-user/session");
+
+    await createEndUserSession(contact);
+    expect(db.sessions).toHaveLength(1);
+
+    await signOutAllDevices("contact-1");
+    expect(db.sessions).toHaveLength(0);
+    expect(await getEndUserSession()).toBeNull();
+  });
+
+  it("signOutDevice only removes the targeted session, scoped to the contact", async () => {
+    jest.resetModules();
+    const db = freshDb();
+    const cookieStore = makeCookieStore();
+    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => makeFakeSupabase(db) }));
+    jest.doMock("next/headers", () => ({ cookies: async () => cookieStore }));
+    const { createEndUserSession, signOutDevice, listTrustedDevices } = await import("@/lib/end-user/session");
+
+    await createEndUserSession(contact, "iPhone");
+    db.sessions.push({
+      id: "sessions-other",
+      contact_id: "contact-1",
+      contact_type: "adults",
+      session_token_hash: "some-other-hash",
+      device_label: "Old Android",
+      created_at: new Date().toISOString(),
+      last_seen_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    await signOutDevice("contact-1", "sessions-other");
+    const devices = await listTrustedDevices("contact-1");
+    expect(devices).toHaveLength(1);
+    expect(devices[0].deviceLabel).toBe("iPhone");
   });
 });
 

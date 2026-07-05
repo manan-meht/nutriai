@@ -63,6 +63,27 @@ export const BECS_ENABLED = flag("NEXT_PUBLIC_BECS_ENABLED", false);
  * "View my progress" CTA are both fully disabled. */
 export const END_USER_DASHBOARD_ENABLED = flag("NEXT_PUBLIC_END_USER_DASHBOARD_ENABLED", false);
 
+/** Self-tracking (a signed-up user tracks their own meals, relationship_type
+ * "self", via the /me onboarding flow). Off by default so it can be
+ * reviewed before the /me signup path is live for real users. */
+export const SELF_TRACKING_ENABLED = flag("NEXT_PUBLIC_SELF_TRACKING_ENABLED", false);
+
+/** Parent/older-adult self-access to their own dashboard via WhatsApp OTP
+ * — an extension of the End User Dashboard feature above, reusing the same
+ * OTP/session infrastructure with parent-specific framing (email option,
+ * trusted-devices settings, 90-day session). Off by default. */
+export const PARENT_DASHBOARD_ACCESS_ENABLED = flag("NEXT_PUBLIC_PARENT_DASHBOARD_ACCESS_ENABLED", false);
+
+/** How long a parent's trusted-device session lasts after WhatsApp OTP
+ * verification before re-verification is required. Configurable per spec
+ * (default 90 days) — distinct from the shorter 60-day default used by the
+ * general End User Dashboard session in src/lib/end-user/session.ts. */
+export function parentTrustedSessionDays(): number {
+  const raw = process.env.PARENT_TRUSTED_SESSION_DAYS;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 90;
+}
+
 /** Configurable activation date for the account-limit/trial-enforcement
  * migration story (see spec §19) — existing users get a fresh trial dated
  * from this instant, not from whenever the migration script happens to run. */

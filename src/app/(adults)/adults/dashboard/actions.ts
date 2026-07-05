@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   FAMILY_LIMIT_REACHED_MESSAGE,
   FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE,
+  FAMILY_MEMBER_LIMIT,
+  SELF_TRACKING_LIMIT,
   effectiveFamilyLimit,
   familyLimitReachedMessage,
   familyMonthlyQuotaReachedMessage,
@@ -19,6 +21,11 @@ export interface AdultsContact {
   fullName: string;
   whatsappNumber: string;
   relationship?: string;
+  /** System-level type driving dashboard copy — "self" for self-tracking,
+   * "family_caregiver" for the existing caregiver-adds-someone-else flow.
+   * Distinct from `relationship` above (the free-text son/daughter/etc
+   * label shown in the UI). */
+  relationshipType: "self" | "family_caregiver";
   age?: number;
   gender?: "male" | "female" | "other";
   weightKg?: number;
@@ -68,7 +75,7 @@ export interface AdultsContactDetails {
   meals: AdultsMealLog[];
 }
 
-export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number }> {
+export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number; plan: string }> {
   const { createClient: createServiceClient } = await import("@supabase/supabase-js");
   const admin = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -77,14 +84,14 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
 
   const { data: existing } = await admin
     .from("workspaces")
-    .select("id, name, extra_capacity")
+    .select("id, name, extra_capacity, plan")
     .eq("owner_id", userId)
     .eq("type", "adults")
     .order("created_at", { ascending: true })
     .limit(1)
     .single();
 
-  if (existing) return { id: existing.id, name: existing.name, extraCapacity: existing.extra_capacity ?? 0 };
+  if (existing) return { id: existing.id, name: existing.name, extraCapacity: existing.extra_capacity ?? 0, plan: existing.plan ?? "family" };
 
   const name = `${caregiverName ?? "My"}'s Family`;
   const slug = `adults-${userId.slice(0, 8)}-${Date.now()}`;
@@ -92,11 +99,11 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
   const { data: created, error } = await admin
     .from("workspaces")
     .insert({ type: "adults", name, slug, owner_id: userId })
-    .select("id, name, extra_capacity")
+    .select("id, name, extra_capacity, plan")
     .single();
 
   if (error || !created) throw new Error(`Failed to create workspace: ${error?.message}`);
-  return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0 };
+  return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0, plan: created.plan ?? "family" };
 }
 
 function mapContactRow(c: any, mealsByContact: Record<string, { count: number; lastAt?: string }>): AdultsContact {
@@ -106,6 +113,7 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
     fullName: c.full_name,
     whatsappNumber: c.whatsapp_number,
     relationship: c.relationship,
+    relationshipType: c.relationship_type ?? "family_caregiver",
     age: c.age,
     gender: c.gender,
     weightKg: c.weight_kg,
@@ -233,6 +241,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     fullName: c.full_name,
     whatsappNumber: c.whatsapp_number,
     relationship: c.relationship,
+    relationshipType: c.relationship_type ?? "family_caregiver",
     age: c.age,
     gender: c.gender,
     weightKg: c.weight_kg,
@@ -282,6 +291,7 @@ export async function addContact(formData: {
   fullName: string;
   whatsappNumber: string;
   relationship?: string;
+  relationshipType?: "self" | "family_caregiver";
   age?: number;
   gender?: string;
   weightKg?: number;
@@ -335,12 +345,18 @@ export async function addContact(formData: {
         .gte("created_at", monthStart),
       admin
         .from("workspaces")
-        .select("extra_capacity")
+        .select("extra_capacity, plan")
         .eq("id", formData.workspaceId)
         .single(),
     ]);
 
-    const limit = effectiveFamilyLimit(workspace?.extra_capacity ?? 0);
+    // Self-tracking workspaces (workspaces.plan = 'self', see migration
+    // 0010) include 1 person by default instead of the family plan's 2 —
+    // must match the base_limit branch in enforce_family_member_limit
+    // exactly, or the friendly pre-check message and the DB trigger's
+    // actual enforcement would disagree.
+    const basePeopleIncluded = workspace?.plan === "self" ? SELF_TRACKING_LIMIT : FAMILY_MEMBER_LIMIT;
+    const limit = effectiveFamilyLimit(workspace?.extra_capacity ?? 0, basePeopleIncluded);
     if ((activeCount ?? 0) >= limit) {
       return { error: familyLimitReachedMessage(limit) };
     }
@@ -367,6 +383,7 @@ export async function addContact(formData: {
       full_name: formData.fullName,
       whatsapp_number: formData.whatsappNumber,
       relationship: formData.relationship || null,
+      relationship_type: formData.relationshipType ?? "family_caregiver",
       age: formData.age || null,
       gender: formData.gender || null,
       weight_kg: formData.weightKg || null,
@@ -412,6 +429,28 @@ export async function addContact(formData: {
   }
 
   return { contactId: contact.id };
+}
+
+/** Self-tracking onboarding: creates the signed-up user's own tracked
+ * profile (relationship_type "self") on the workspace they already own —
+ * reuses the exact same insert/limit/trial/invite path as addContact
+ * rather than a parallel system, per the self-tracking design principle. */
+export async function addSelfContact(
+  workspaceId: string,
+  fullName: string,
+  whatsappNumber: string
+): Promise<{ contactId: string; error?: undefined } | { contactId?: undefined; error: string }> {
+  // Mark the workspace as self-plan BEFORE the add, so the pre-check and
+  // the DB trigger both see basePeopleIncluded=1 for this very insert (see
+  // migration 0010) rather than the default family base of 2.
+  const { createClient: createServiceClient } = await import("@supabase/supabase-js");
+  const admin = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  await admin.from("workspaces").update({ plan: "self" }).eq("id", workspaceId);
+
+  return addContact({ workspaceId, fullName, whatsappNumber, relationshipType: "self" });
 }
 
 // Meta requires the FIRST message to someone who hasn't messaged your
