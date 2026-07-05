@@ -4,7 +4,8 @@ export const runtime = "edge";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { faviconForProduct } from "@/lib/product/icons";
-import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+import { getSignupUrl } from "@/lib/landing/routes";
+import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
@@ -25,16 +26,10 @@ export default function TrackMyselfPage() {
   const signupUrl =
     getSignupUrl({ product: "adults", source: "landing", variant: "standard" }) +
     "&next=" + encodeURIComponent("/adults/dashboard?self=1");
-  const loginUrl = getLoginUrl({ product: "adults", source: "landing" });
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="font-bold text-gray-900">Tistra Health</Link>
-          <Link href={loginUrl} className="text-sm font-medium text-gray-600 hover:text-purple-700">Login</Link>
-        </div>
-      </header>
+      <MarketingHeader />
 
       <main className="max-w-3xl mx-auto px-6 py-20 text-center">
         <h1 className="text-3xl md:text-5xl font-bold text-gray-900 mb-6">
@@ -46,7 +41,7 @@ export default function TrackMyselfPage() {
         </p>
         <Link
           href={signupUrl}
-          className="inline-block bg-purple-600 hover:bg-purple-700 text-white px-10 py-4 rounded-full font-semibold transition-colors"
+          className="inline-block bg-[#6750A4] hover:bg-[#4F378A] text-white px-10 py-4 rounded-full font-semibold transition-colors"
         >
           Start tracking myself
         </Link>

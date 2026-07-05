@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { AdultsImmersiveLanding } from "@/components/landing/immersive/AdultsImmersiveLanding";
 import { EXPERIMENT_IDS } from "@/lib/experiments/landing-page-experiment";
 import { faviconForProduct } from "@/lib/product/icons";
+import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
@@ -21,5 +22,10 @@ export function generateMetadata(): Metadata {
 // ?product=adults keep working unchanged (see resolve-product.ts); this is
 // an additive route, not a replacement.
 export default function FamilyMarketingPage() {
-  return <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} />;
+  return (
+    <>
+      <MarketingHeader />
+      <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} />
+    </>
+  );
 }

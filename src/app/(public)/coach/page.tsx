@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { GymImmersiveLanding } from "@/components/landing/immersive/GymImmersiveLanding";
 import { EXPERIMENT_IDS } from "@/lib/experiments/landing-page-experiment";
 import { faviconForProduct } from "@/lib/product/icons";
+import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
@@ -21,5 +22,10 @@ export function generateMetadata(): Metadata {
 // ?product=gym keep working unchanged (see resolve-product.ts); this is an
 // additive route, not a replacement.
 export default function CoachMarketingPage() {
-  return <GymImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.gym} />;
+  return (
+    <>
+      <MarketingHeader />
+      <GymImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.gym} />
+    </>
+  );
 }

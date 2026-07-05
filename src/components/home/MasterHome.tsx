@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import { MarketingHeader } from "./MarketingHeader";
 
 interface UseCaseCard {
   href: string;
@@ -65,29 +65,7 @@ const WHY_WHATSAPP = [
 export function MasterHome() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-100">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
-              <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
-            </div>
-            <span className="font-bold text-gray-900">Tistra Health</span>
-          </Link>
-          <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-            <a href="#how-it-works" className="text-gray-600 hover:text-purple-700">How it works</a>
-            <Link href="/family" className="text-gray-600 hover:text-purple-700">Family</Link>
-            <Link href="/coach" className="text-gray-600 hover:text-purple-700">Coach</Link>
-            <Link href="/me" className="text-gray-600 hover:text-purple-700">Track Myself</Link>
-            <Link href="/login" className="text-gray-600 hover:text-purple-700">Login</Link>
-          </nav>
-          <Link
-            href="/me"
-            className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
-          >
-            Get Started
-          </Link>
-        </div>
-      </header>
+      <MarketingHeader />
 
       <main>
         {/* Hero */}
@@ -103,7 +81,7 @@ export function MasterHome() {
             <div className="flex flex-col sm:flex-row gap-4 mt-2">
               <Link
                 href="/me"
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-full font-semibold text-center transition-colors"
+                className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-8 py-4 rounded-full font-semibold text-center transition-colors"
               >
                 Start Tracking
               </Link>
@@ -119,8 +97,8 @@ export function MasterHome() {
             <div className="bg-white/70 backdrop-blur border border-white/50 shadow-2xl rounded-[2rem] p-6 w-full max-w-md">
               <div className="bg-gray-50 rounded-xl p-4 flex flex-col gap-3 border border-gray-100">
                 <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
-                  <span className="text-purple-600">💬</span>
-                  <span className="text-sm font-medium text-purple-700">Tistra Assistant</span>
+                  <span className="text-[#6750A4]">💬</span>
+                  <span className="text-sm font-medium text-[#4F378A]">Tistra Assistant</span>
                 </div>
                 <div className="self-end bg-green-100 rounded-2xl rounded-tr-none p-3 max-w-[85%]">
                   <p className="text-sm">Dal and roti for lunch!</p>
@@ -131,17 +109,17 @@ export function MasterHome() {
                   </p>
                 </div>
               </div>
-              <div className="mt-4 bg-white p-5 rounded-2xl shadow-lg border-t-4 border-purple-600">
+              <div className="mt-4 bg-white p-5 rounded-2xl shadow-lg border-t-4 border-[#6750A4]">
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-xs font-semibold text-gray-500">Weekly Progress</h4>
                   <span className="text-green-600 text-sm">📈</span>
                 </div>
                 <div className="flex justify-between text-xs mb-1">
                   <span>Protein Goal</span>
-                  <span className="text-purple-700 font-bold">85%</span>
+                  <span className="text-[#4F378A] font-bold">85%</span>
                 </div>
                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-2">
-                  <div className="bg-purple-600 h-full rounded-full" style={{ width: "85%" }} />
+                  <div className="bg-[#6750A4] h-full rounded-full" style={{ width: "85%" }} />
                 </div>
                 <p className="text-xs text-gray-500 leading-relaxed">
                   Your protein consistency improved 12% this week. Great job including dal in your lunches.
@@ -164,16 +142,16 @@ export function MasterHome() {
             {USE_CASES.map((useCase) => (
               <div
                 key={useCase.href}
-                className="group bg-white border border-gray-200 hover:border-purple-400 hover:shadow-xl transition-all rounded-3xl p-8 flex flex-col"
+                className="group bg-white border border-gray-200 hover:border-[#6750A4] hover:shadow-xl transition-all rounded-3xl p-8 flex flex-col"
               >
-                <div className="w-14 h-14 rounded-2xl bg-purple-50 flex items-center justify-center text-2xl mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-[#F3EEFB] flex items-center justify-center text-2xl mb-6">
                   {useCase.icon}
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 mb-3">{useCase.title}</h3>
                 <p className="text-gray-600 mb-8 flex-grow">{useCase.description}</p>
                 <Link
                   href={useCase.href}
-                  className="w-full text-center py-3.5 px-6 border-2 border-purple-600 text-purple-700 font-semibold rounded-full hover:bg-purple-600 hover:text-white transition-all"
+                  className="w-full text-center py-3.5 px-6 border-2 border-[#6750A4] text-[#4F378A] font-semibold rounded-full hover:bg-[#6750A4] hover:text-white transition-all"
                 >
                   {useCase.cta}
                 </Link>
@@ -190,7 +168,7 @@ export function MasterHome() {
               <div className="space-y-8">
                 {HOW_IT_WORKS.map((item) => (
                   <div key={item.step} className="flex gap-5">
-                    <div className="flex-shrink-0 w-11 h-11 bg-purple-600 text-white rounded-full flex items-center justify-center font-bold">
+                    <div className="flex-shrink-0 w-11 h-11 bg-[#6750A4] text-white rounded-full flex items-center justify-center font-bold">
                       {item.step}
                     </div>
                     <div>
@@ -206,7 +184,7 @@ export function MasterHome() {
               <ul className="space-y-3">
                 {WHY_WHATSAPP.map((reason) => (
                   <li key={reason} className="flex items-center gap-3 text-gray-700">
-                    <span className="text-purple-600">✓</span>
+                    <span className="text-[#6750A4]">✓</span>
                     {reason}
                   </li>
                 ))}
@@ -217,7 +195,7 @@ export function MasterHome() {
 
         {/* Dashboard preview */}
         <section className="max-w-6xl mx-auto px-6 py-20">
-          <div className="bg-purple-600 rounded-[2.5rem] p-10 md:p-16 text-white grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+          <div className="bg-[#6750A4] rounded-[2.5rem] p-10 md:p-16 text-white grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
             <div className="flex flex-col gap-5">
               <h2 className="text-2xl md:text-3xl font-bold">A simple dashboard that actually makes sense.</h2>
               <ul className="space-y-3">
@@ -235,22 +213,22 @@ export function MasterHome() {
             <div className="bg-white text-gray-900 rounded-3xl p-7 shadow-2xl">
               <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
                 <div>
-                  <h3 className="font-bold text-purple-700">Weekly Summary</h3>
+                  <h3 className="font-bold text-[#4F378A]">Weekly Summary</h3>
                   <p className="text-xs text-gray-500">This week</p>
                 </div>
-                <div className="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-xs font-bold">14 DAY STREAK</div>
+                <div className="bg-[#F3EEFB] text-[#4F378A] px-3 py-1 rounded-full text-xs font-bold">14 DAY STREAK</div>
               </div>
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-gray-50 p-4 rounded-2xl">
                   <span className="text-xs text-gray-500 block mb-1">Protein Consistency</span>
-                  <span className="text-xl font-bold text-purple-700">5/7 Days</span>
+                  <span className="text-xl font-bold text-[#4F378A]">5/7 Days</span>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-2xl">
                   <span className="text-xs text-gray-500 block mb-1">Meal Variety</span>
                   <span className="text-xl font-bold text-gray-900">High</span>
                 </div>
               </div>
-              <div className="p-5 bg-gray-50 rounded-2xl border-l-4 border-purple-600">
+              <div className="p-5 bg-gray-50 rounded-2xl border-l-4 border-[#6750A4]">
                 <p className="italic text-gray-600 text-sm leading-relaxed">
                   Protein target was likely met on 5 of 7 days. Consider adding more fiber to breakfast for a
                   stronger start.
@@ -293,19 +271,19 @@ export function MasterHome() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 href="/me"
-                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-full font-semibold transition-colors"
+                className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-8 py-4 rounded-full font-semibold transition-colors"
               >
                 Track myself
               </Link>
               <Link
                 href="/family"
-                className="border-2 border-purple-600 text-purple-700 hover:bg-purple-50 px-8 py-4 rounded-full font-semibold transition-colors"
+                className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-8 py-4 rounded-full font-semibold transition-colors"
               >
                 Support a parent
               </Link>
               <Link
                 href="/coach"
-                className="border-2 border-purple-600 text-purple-700 hover:bg-purple-50 px-8 py-4 rounded-full font-semibold transition-colors"
+                className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-8 py-4 rounded-full font-semibold transition-colors"
               >
                 Track clients
               </Link>
@@ -317,7 +295,7 @@ export function MasterHome() {
       <footer className="bg-white border-t border-gray-100">
         <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-4 gap-10">
           <div>
-            <div className="font-bold text-purple-700 mb-3">Tistra Health</div>
+            <div className="font-bold text-[#4F378A] mb-3">Tistra Health</div>
             <p className="text-sm text-gray-500">Simplifying nutrition through the apps people already use.</p>
           </div>
           <div>
