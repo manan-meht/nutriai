@@ -25,7 +25,7 @@ export default function CoachMarketingPage() {
   return (
     <>
       <MarketingHeader />
-      <GymImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.gym} />
+      <GymImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.gym} showNav={false} />
     </>
   );
 }

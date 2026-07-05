@@ -25,7 +25,7 @@ export default function FamilyMarketingPage() {
   return (
     <>
       <MarketingHeader />
-      <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} />
+      <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} showNav={false} />
     </>
   );
 }

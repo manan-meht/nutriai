@@ -23,6 +23,11 @@ const GymShaderBackground = dynamic(
 interface GymImmersiveLandingProps {
   variant: LandingVariant;
   experimentId?: string;
+  /** The /coach route renders its own shared MarketingHeader above this
+   * component instead — set false there to avoid stacking two navs.
+   * Defaults true so the coach.tistrahealth.com subdomain (which doesn't
+   * pass this) keeps its existing standalone nav unchanged. */
+  showNav?: boolean;
 }
 
 const STEPS = [
@@ -58,7 +63,7 @@ const MEALS = [
   { name: "Whey + Banana Smoothie", protein: "28–32g protein", src: "/landing/gym/immersive/meals/whey-smoothie.jpeg" },
 ];
 
-export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandingProps) {
+export function GymImmersiveLanding({ variant, experimentId, showNav = true }: GymImmersiveLandingProps) {
   const signupUrl = getSignupUrl({ product: "gym", source: "landing", variant, experimentId });
   const loginUrl = getLoginUrl({ product: "gym", source: "landing" });
 
@@ -72,7 +77,7 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
 
   return (
     <div className="bg-white text-gray-900">
-      <LandingNav product="gym" variant={variant} experimentId={experimentId} />
+      {showNav && <LandingNav product="gym" variant={variant} experimentId={experimentId} />}
 
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden min-h-[90vh] flex flex-col md:flex-row">
