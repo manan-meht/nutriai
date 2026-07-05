@@ -225,7 +225,7 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
         </div>
       </section>
 
-      <MarketingFooter />
+      <MarketingFooter variant="family" />
     </div>
   );
 }

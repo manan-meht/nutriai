@@ -261,7 +261,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      <MarketingFooter />
+      <MarketingFooter variant="coach" />
     </div>
   );
 }

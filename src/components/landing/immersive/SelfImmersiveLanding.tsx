@@ -189,7 +189,7 @@ export function SelfImmersiveLanding() {
         </div>
       </section>
 
-      <MarketingFooter />
+      <MarketingFooter variant="me" />
     </div>
   );
 }

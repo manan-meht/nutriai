@@ -327,7 +327,7 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
         </section>
       </main>
 
-      <MarketingFooter />
+      <MarketingFooter variant="home" />
     </div>
   );
 }

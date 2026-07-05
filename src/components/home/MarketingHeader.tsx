@@ -67,7 +67,7 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
         </nav>
         {variant === "home" ? (
           <Link
-            href="/me"
+            href="/#pick-product"
             className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
           >
             Get Started →

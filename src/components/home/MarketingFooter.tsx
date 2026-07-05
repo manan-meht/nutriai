@@ -1,16 +1,25 @@
 import Link from "next/link";
 
-// Fixed footer content shared by all 4 public marketing pages (/, /family,
-// /coach, /me) — same content everywhere, not product-specific, per
-// explicit product decision.
-export function MarketingFooter() {
+export type MarketingFooterVariant = "home" | "family" | "coach" | "me";
+
+const TAGLINE: Record<MarketingFooterVariant, string> = {
+  home: "Simple nutrition awareness for everyday people, families, and coaches.",
+  family: "Simple nutrition visibility for the people you care about.",
+  coach: "Effortless accountability for modern fitness coaching.",
+  me: "Healthy habits, simplified. Stress-free awareness for your daily routine.",
+};
+
+// Shared footer for all 4 public marketing pages (/, /family, /coach,
+// /me) — only the tagline below "Tistra Health" varies per page; the
+// switch-to-coaching prompt and copyright are identical everywhere.
+export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }) {
   return (
     <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
       <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
         <div>
           <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
           <p className="text-xs">
-            Bridging the distance with effortless nutrition awareness for global Indian families.
+            {TAGLINE[variant]}
           </p>
         </div>
 
