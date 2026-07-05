@@ -84,14 +84,14 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
         {/* Text — left */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 pt-24 pb-12 md:py-32">
           <Reveal>
-            <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-4">
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
               For Indian fitness coaches
             </p>
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
               Your clients eat.<br />
-              <span className="text-purple-600">You coach smarter.</span>
+              <span className="text-[#6750A4]">You coach smarter.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
@@ -103,7 +103,7 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
           <Reveal delay={300}>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
-                className="bg-purple-600 text-white font-bold rounded-full px-8 py-4 text-base hover:bg-purple-700 transition-colors shadow-lg shadow-purple-200 text-center">
+                className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
                 Start with your clients
               </Link>
               <Link href={loginUrl}
@@ -130,7 +130,7 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
       <section className="py-20 px-6 bg-gray-50">
         <div className="max-w-5xl mx-auto">
           <Reveal>
-            <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-3 text-center">How it works</p>
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">How it works</p>
           </Reveal>
           <Reveal delay={100}>
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Three steps. Zero friction.</h2>
@@ -149,7 +149,7 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
                   </div>
                   {/* Text */}
                   <div className="flex-1">
-                    <p className="text-5xl font-black text-purple-100 mb-3 leading-none">{step.number}</p>
+                    <p className="text-5xl font-black text-[#E9DDFF] mb-3 leading-none">{step.number}</p>
                     <h3 className="text-2xl md:text-3xl font-bold mb-4">{step.heading}</h3>
                     <p className="text-base md:text-lg text-gray-600 leading-relaxed">{step.body}</p>
                   </div>
@@ -255,7 +255,7 @@ export function GymImmersiveLanding({ variant, experimentId }: GymImmersiveLandi
           </Reveal>
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
-              className="bg-purple-600 text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-purple-700 transition-colors shadow-xl shadow-purple-200 inline-block">
+              className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
               Create your coach account →
             </Link>
           </Reveal>

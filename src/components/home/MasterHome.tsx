@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { MarketingHeader } from "./MarketingHeader";
 
@@ -94,37 +95,58 @@ export function MasterHome() {
             </div>
           </div>
           <div className="relative flex justify-center">
-            <div className="bg-white/70 backdrop-blur border border-white/50 shadow-2xl rounded-[2rem] p-6 w-full max-w-md">
-              <div className="bg-gray-50 rounded-xl p-4 flex flex-col gap-3 border border-gray-100">
-                <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
-                  <span className="text-[#6750A4]">💬</span>
-                  <span className="text-sm font-medium text-[#4F378A]">Tistra Assistant</span>
-                </div>
-                <div className="self-end bg-green-100 rounded-2xl rounded-tr-none p-3 max-w-[85%]">
-                  <p className="text-sm">Dal and roti for lunch!</p>
-                </div>
-                <div className="self-start bg-white shadow-sm rounded-2xl rounded-tl-none p-3 max-w-[85%]">
-                  <p className="text-sm">
-                    Looks great! That&apos;s a good protein source. Logging this to your weekly trend. 📈
-                  </p>
-                </div>
+            <div className="relative w-full max-w-md rounded-[2rem] overflow-hidden shadow-2xl">
+              <Image
+                src="/marketing/hero-people.png"
+                alt="A woman, an older man, and a fitness client each using Tistra Health on WhatsApp"
+                width={800}
+                height={900}
+                className="w-full h-[420px] object-cover"
+                priority
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+            </div>
+            <div className="absolute -bottom-8 -right-4 md:-right-8 bg-white/95 backdrop-blur p-5 rounded-2xl shadow-xl w-64 border-t-4 border-[#6750A4]">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-xs font-semibold text-gray-500">Weekly Progress</h4>
+                <span className="text-green-600 text-sm">📈</span>
               </div>
-              <div className="mt-4 bg-white p-5 rounded-2xl shadow-lg border-t-4 border-[#6750A4]">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-xs font-semibold text-gray-500">Weekly Progress</h4>
-                  <span className="text-green-600 text-sm">📈</span>
-                </div>
-                <div className="flex justify-between text-xs mb-1">
-                  <span>Protein Goal</span>
-                  <span className="text-[#4F378A] font-bold">85%</span>
-                </div>
-                <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-2">
-                  <div className="bg-[#6750A4] h-full rounded-full" style={{ width: "85%" }} />
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Your protein consistency improved 12% this week. Great job including dal in your lunches.
-                </p>
+              <div className="flex justify-between text-xs mb-1">
+                <span>Protein Goal</span>
+                <span className="text-[#4F378A] font-bold">85%</span>
               </div>
+              <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-2">
+                <div className="bg-[#6750A4] h-full rounded-full" style={{ width: "85%" }} />
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                Your protein consistency improved 12% this week. Great job including dal in your lunches.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* WhatsApp mock, moved below the hero so the floating progress
+            card above has room to breathe rather than stacking two cards
+            on top of the photo. */}
+        <section className="max-w-2xl mx-auto px-6 pb-16">
+          <div className="bg-gray-50 rounded-2xl p-5 flex flex-col gap-3 border border-gray-100">
+            <div className="flex items-center gap-2 border-b border-gray-200 pb-2">
+              <Image
+                src="/marketing/tistra-assistant-avatar.png"
+                alt=""
+                width={24}
+                height={24}
+                className="rounded-full"
+              />
+              <span className="text-sm font-medium text-[#4F378A]">Tistra Assistant</span>
+            </div>
+            <div className="self-end bg-green-100 rounded-2xl rounded-tr-none p-3 max-w-[85%]">
+              <p className="text-sm">Dal and roti for lunch!</p>
+            </div>
+            <div className="self-start bg-white shadow-sm rounded-2xl rounded-tl-none p-3 max-w-[85%]">
+              <p className="text-sm">
+                Looks great! That&apos;s a good protein source. Logging this to your weekly trend. 📈
+              </p>
             </div>
           </div>
         </section>
@@ -179,16 +201,27 @@ export function MasterHome() {
                 ))}
               </div>
             </div>
-            <div className="bg-white border border-gray-200 rounded-3xl p-8">
-              <h4 className="font-bold text-gray-900 mb-4">Why WhatsApp-first?</h4>
-              <ul className="space-y-3">
-                {WHY_WHATSAPP.map((reason) => (
-                  <li key={reason} className="flex items-center gap-3 text-gray-700">
-                    <span className="text-[#6750A4]">✓</span>
-                    {reason}
-                  </li>
-                ))}
-              </ul>
+            <div className="flex flex-col gap-6">
+              <div className="rounded-3xl overflow-hidden shadow-lg">
+                <Image
+                  src="/landing/steps/adults-step-01.jpeg"
+                  alt="A woman photographing her meal on her phone to send on WhatsApp"
+                  width={700}
+                  height={500}
+                  className="w-full h-64 object-cover"
+                />
+              </div>
+              <div className="bg-white border border-gray-200 rounded-3xl p-8">
+                <h4 className="font-bold text-gray-900 mb-4">Why WhatsApp-first?</h4>
+                <ul className="space-y-3">
+                  {WHY_WHATSAPP.map((reason) => (
+                    <li key={reason} className="flex items-center gap-3 text-gray-700">
+                      <span className="text-[#6750A4]">✓</span>
+                      {reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         </section>
