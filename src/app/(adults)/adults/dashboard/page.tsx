@@ -10,8 +10,13 @@ import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
+import { SELF_TRACKING_ENABLED } from "@/lib/billing/feature-flags";
 
-export default async function AdultsDashboardPage() {
+interface AdultsDashboardPageProps {
+  searchParams?: Promise<Record<string, string>>;
+}
+
+export default async function AdultsDashboardPage({ searchParams }: AdultsDashboardPageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/adults/login");
@@ -37,6 +42,12 @@ export default async function AdultsDashboardPage() {
   const monthly = getPrice(market, "adults", "monthly");
   const annual = getPrice(market, "adults", "annual");
 
+  const params = (await searchParams) ?? {};
+  const promptSelfSetup =
+    SELF_TRACKING_ENABLED &&
+    params.self === "1" &&
+    !contacts.some((c) => c.relationshipType === "self");
+
   return (
     <AdultsDashboardClient
       caregiverName={profile?.full_name ?? ""}
@@ -46,6 +57,7 @@ export default async function AdultsDashboardPage() {
       removedContacts={removedContacts}
       extraCapacity={workspace.extraCapacity}
       entitlement={entitlement}
+      promptSelfSetup={promptSelfSetup}
       pricing={{
         monthlyLabel: formatMinorUnits(monthly.amountMinorUnits, monthly.currency),
         annualLabel: formatMinorUnits(annual.amountMinorUnits, annual.currency),

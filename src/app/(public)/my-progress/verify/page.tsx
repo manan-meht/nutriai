@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "edge";
 
 import { redirect } from "next/navigation";
-import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
+import { END_USER_DASHBOARD_ENABLED, PARENT_DASHBOARD_ACCESS_ENABLED } from "@/lib/billing/feature-flags";
 import { getEndUserSession } from "@/lib/end-user/session";
 import { MyProgressVerifyForm } from "@/components/end-user/MyProgressVerifyForm";
 
@@ -11,7 +11,7 @@ interface VerifyPageProps {
 }
 
 export default async function MyProgressVerifyPage({ searchParams }: VerifyPageProps) {
-  if (!END_USER_DASHBOARD_ENABLED) redirect("/");
+  if (!END_USER_DASHBOARD_ENABLED && !PARENT_DASHBOARD_ACCESS_ENABLED) redirect("/");
 
   const session = await getEndUserSession();
   if (session) redirect("/my-progress/dashboard");

@@ -8,7 +8,7 @@ import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, annualSavingsFraction, INTL_USD_DISCLOSURE, formatMinorUnits } from "@/lib/billing/pricing";
-import { effectiveFamilyLimit, effectiveGymLimit } from "@/lib/limits";
+import { effectiveFamilyLimit, effectiveGymLimit, FAMILY_MEMBER_LIMIT, SELF_TRACKING_LIMIT } from "@/lib/limits";
 import { BillingPageClient } from "@/components/billing/BillingPageClient";
 
 interface BillingPageProps {
@@ -38,7 +38,13 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   const annual = getPrice(market, billingModule, "annual");
   const savingsPct = Math.round(annualSavingsFraction(market, billingModule) * 100);
 
-  const limit = billingModule === "adults" ? effectiveFamilyLimit(workspace.extraCapacity) : effectiveGymLimit(workspace.extraCapacity);
+  const basePeopleIncluded =
+    billingModule === "adults" && "plan" in workspace && workspace.plan === "self"
+      ? SELF_TRACKING_LIMIT
+      : FAMILY_MEMBER_LIMIT;
+  const limit = billingModule === "adults"
+    ? effectiveFamilyLimit(workspace.extraCapacity, basePeopleIncluded)
+    : effectiveGymLimit(workspace.extraCapacity);
 
   return (
     <BillingPageClient

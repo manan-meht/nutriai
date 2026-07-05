@@ -1,0 +1,461 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Tistra Health | Nutrition Tracking Through WhatsApp</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Atkinson+Hyperlegible+Next:wght@400;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#322f35",
+                    "on-background": "#1d1b20",
+                    "on-primary-fixed-variant": "#4f378a",
+                    "on-tertiary-container": "#503d00",
+                    "secondary-container": "#e1d4fd",
+                    "primary-fixed-dim": "#cfbcff",
+                    "on-primary": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "on-tertiary-fixed": "#241a00",
+                    "error": "#ba1a1a",
+                    "outline": "#7a7582",
+                    "on-tertiary-fixed-variant": "#594400",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-fixed-variant": "#4b4263",
+                    "inverse-primary": "#cfbcff",
+                    "surface": "#fdf7ff",
+                    "secondary": "#63597c",
+                    "surface-bright": "#fdf7ff",
+                    "inverse-on-surface": "#f5eff7",
+                    "surface-container": "#f2ecf4",
+                    "on-secondary-container": "#645a7d",
+                    "background": "#fdf7ff",
+                    "tertiary": "#765b00",
+                    "on-surface-variant": "#494551",
+                    "surface-dim": "#ded8e0",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-high": "#ece6ee",
+                    "secondary-fixed": "#e9ddff",
+                    "on-primary-container": "#e0d2ff",
+                    "surface-container-low": "#f8f2fa",
+                    "surface-variant": "#e6e0e9",
+                    "primary-container": "#6750a4",
+                    "surface-tint": "#6750a4",
+                    "tertiary-container": "#c9a74d",
+                    "primary-fixed": "#e9ddff",
+                    "on-primary-fixed": "#22005d",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-fixed-dim": "#e7c365",
+                    "surface-container-highest": "#e6e0e9",
+                    "primary": "#4f378a",
+                    "secondary-fixed-dim": "#cdc0e9",
+                    "on-error-container": "#93000a",
+                    "tertiary-fixed": "#ffdf93",
+                    "on-secondary-fixed": "#1f1635",
+                    "on-surface": "#1d1b20",
+                    "on-error": "#ffffff",
+                    "outline-variant": "#cbc4d2"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "stack-md": "24px",
+                    "gutter": "24px",
+                    "stack-sm": "12px",
+                    "base": "8px",
+                    "margin-mobile": "16px",
+                    "container-max": "1280px",
+                    "stack-lg": "40px",
+                    "margin-desktop": "48px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Manrope"],
+                    "body-md": ["Atkinson Hyperlegible Next"],
+                    "headline-xl": ["Manrope"],
+                    "headline-lg": ["Manrope"],
+                    "body-lg-mobile": ["Atkinson Hyperlegible Next"],
+                    "headline-xl-mobile": ["Manrope"],
+                    "body-lg": ["Atkinson Hyperlegible Next"],
+                    "label-md": ["Manrope"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "body-md": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-xl": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "body-lg-mobile": ["18px", {"lineHeight": "26px", "fontWeight": "400"}],
+                    "headline-xl-mobile": ["32px", {"lineHeight": "40px", "fontWeight": "700"}],
+                    "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        body { font-family: 'Atkinson Hyperlegible Next', sans-serif; }
+        h1, h2, h3, h4 { font-family: 'Manrope', sans-serif; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .whatsapp-bubble-left {
+            position: relative;
+            background: #ffffff;
+            border-radius: 0 16px 16px 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .whatsapp-bubble-right {
+            position: relative;
+            background: #D9FDD3;
+            border-radius: 16px 0 16px 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .tonal-layer {
+            background: linear-gradient(135deg, #fdf7ff 0%, #f2ecf4 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface">
+<!-- Top Navigation -->
+<header class="bg-surface/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+<div class="flex justify-between items-center px-gutter py-4 w-full max-w-container-max mx-auto">
+<div class="font-headline-md text-headline-md font-bold text-primary">Tistra Health</div>
+<nav class="hidden md:flex items-center gap-stack-md">
+<a class="font-label-md text-label-md text-primary border-b-2 border-primary pb-1" href="#">How it works</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Family</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Coaches</a>
+<a class="font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Login</a>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-full font-label-md text-label-md hover:scale-95 transition-transform duration-150">
+                    Get Started
+                </button>
+</nav>
+<button class="md:hidden text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</div>
+</header>
+<main>
+<!-- Hero Section -->
+<section class="relative py-stack-lg overflow-hidden">
+<div class="absolute inset-0 z-0 transition-all duration-700 opacity-100 translate-y-0">
+
+</div>
+<div class="relative z-10 max-w-container-max mx-auto px-gutter grid grid-cols-1 lg:grid-cols-2 gap-stack-lg items-center transition-all duration-700 opacity-100 translate-y-0">
+<div class="flex flex-col gap-stack-md">
+<h1 class="font-headline-xl text-headline-xl md:text-headline-xl text-on-background leading-tight">
+                        Nutrition tracking through WhatsApp — for yourself, your family, or your clients.
+                    </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-xl">
+                        Send meals through WhatsApp. Tistra turns everyday food updates into simple weekly insights, progress trends, and gentle nutrition suggestions. No calorie counting. No complicated app.
+                    </p>
+<div class="flex flex-col sm:flex-row gap-4 mt-base">
+<button class="bg-primary text-on-primary px-8 py-4 rounded-full font-headline-md text-headline-md hover:shadow-lg transition-all active:scale-95">
+                            Start Tracking
+                        </button>
+<button class="border-2 border-outline-variant text-on-surface px-8 py-4 rounded-full font-headline-md text-headline-md hover:bg-surface-container-low transition-all">
+                            See how it works
+                        </button>
+</div>
+</div>
+<!-- Visual Comparison Interaction -->
+<div class="relative flex justify-center">
+<div class="glass-card p-6 rounded-[2rem] w-full max-w-md shadow-2xl relative">
+<!-- Mock WhatsApp Interface -->
+<div class="bg-surface-container-low rounded-xl p-4 flex flex-col gap-stack-sm mb-6 border border-outline-variant/30">
+<div class="flex items-center gap-2 mb-2 border-b border-outline-variant pb-2">
+<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">account_circle</span>
+<span class="font-label-md text-primary">Tistra Assistant</span>
+</div>
+<div class="whatsapp-bubble-right self-end p-3 max-w-[85%] text-body-md text-on-surface">
+<img class="rounded-lg mb-2 w-full h-40 object-cover" data-alt="A bright, clear photo of a traditional Indian meal with Dal, Roti, and a small portion of Bhindi Masala, placed on a simple wooden table with warm natural sunlight casting soft shadows. Professional high-key photography style emphasizing fresh textures." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDn2TBb9g3zS00QrNu03DIL2iQkW8pzSUUjxWsDB9ghiIvXQfFF9pm5KIldFAK49PE7_yMh47DNFuh3ykFpGMER31Ig7orUihWt7zNkSyEFSDdIneDAIg2i66YwgS_rLNK1kbnzVzMMUJHShSxUY4ZLSt9Id0E4OhV2fDz-Rejvdq0Oj5Y-0RmJwfaYO-EZ6MN9VavxTfT4sFK9mB9LFuigXnPGXziKnZ6LHGA4Mlk56ptgHC4LvFV0">
+<p class="text-sm">Dal and Roti for lunch!</p>
+</div>
+<div class="whatsapp-bubble-left self-start p-3 max-w-[85%] text-body-md text-on-surface">
+<p class="text-sm">Looks great! That's a good protein source from the dal. Logging this to your weekly trend. 📈</p>
+</div>
+</div>
+<!-- Dashboard Insight Card Floating -->
+<div class="absolute -bottom-6 -right-6 md:-right-12 bg-white p-6 rounded-2xl shadow-xl w-64 border-t-4 border-primary">
+<div class="flex justify-between items-center mb-4">
+<h4 class="font-label-md text-on-surface-variant">Weekly Progress</h4>
+<span class="material-symbols-outlined text-tertiary">trending_up</span>
+</div>
+<div class="space-y-3">
+<div>
+<div class="flex justify-between text-xs mb-1">
+<span class="">Protein Goal</span>
+<span class="text-primary font-bold">85%</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 85%"></div>
+</div>
+</div>
+<p class="text-xs text-on-surface-variant leading-relaxed">
+                                    "Your protein consistency has improved by 12% this week. Great job including dal in your lunches."
+                                </p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Use Case Routing -->
+<section class="py-stack-lg px-gutter max-w-container-max mx-auto">
+<div class="text-center mb-stack-lg transition-all duration-700 opacity-100 translate-y-0">
+<h2 class="font-headline-lg text-headline-lg text-on-background mb-4">How will you use Tistra?</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-2xl mx-auto">Flexible enough for personal use, gentle enough for family, and powerful enough for professional coaching.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-stack-md transition-all duration-700 opacity-100 translate-y-0">
+<!-- Track Myself -->
+<div class="group bg-surface-container-lowest border border-outline-variant p-8 rounded-[2rem] hover:border-primary transition-all hover:shadow-xl flex flex-col h-full">
+<div class="w-16 h-16 bg-primary-container/20 rounded-2xl flex items-center justify-center mb-6 text-primary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[32px]">person</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-4 text-on-background">Track myself</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8 flex-grow">
+                        For people who want to understand their own food patterns without the stress of rigid calorie counting or bulky apps.
+                    </p>
+<button class="w-full py-4 px-6 border-2 border-primary text-primary font-label-md text-label-md rounded-full hover:bg-primary hover:text-on-primary transition-all">
+                        Start tracking myself
+                    </button>
+</div>
+<!-- Support a Parent -->
+<div class="group bg-surface-container-lowest border border-outline-variant p-8 rounded-[2rem] hover:border-primary transition-all hover:shadow-xl flex flex-col h-full">
+<div class="w-16 h-16 bg-secondary-container/30 rounded-2xl flex items-center justify-center mb-6 text-secondary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[32px]">family_restroom</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-4 text-on-background text-wrap">Support a parent or family member</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8 flex-grow">
+                        Help your loved ones maintain a healthy diet. They just send photos; you see the trends and provide support from anywhere.
+                    </p>
+<button class="w-full py-4 px-6 border-2 border-primary text-primary font-label-md text-label-md rounded-full hover:bg-primary hover:text-on-primary transition-all">
+                        Help a parent
+                    </button>
+</div>
+<!-- Track Clients -->
+<div class="group bg-surface-container-lowest border border-outline-variant p-8 rounded-[2rem] hover:border-primary transition-all hover:shadow-xl flex flex-col h-full">
+<div class="w-16 h-16 bg-tertiary-container/20 rounded-2xl flex items-center justify-center mb-6 text-tertiary group-hover:scale-110 transition-transform">
+<span class="material-symbols-outlined text-[32px]">sports_gymnastics</span>
+</div>
+<h3 class="font-headline-md text-headline-md mb-4 text-on-background">Track clients</h3>
+<p class="font-body-md text-body-md text-on-surface-variant mb-8 flex-grow">
+                        For coaches, trainers, and gyms who need a low-friction way to monitor client nutrition and improve results through high adherence.
+                    </p>
+<button class="w-full py-4 px-6 border-2 border-primary text-primary font-label-md text-label-md rounded-full hover:bg-primary hover:text-on-primary transition-all">
+                        Track my clients
+                    </button>
+</div>
+</div>
+</section>
+<!-- How It Works -->
+<section class="bg-surface-container py-24">
+<div class="max-w-container-max mx-auto px-gutter transition-all duration-700 opacity-100 translate-y-0">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-stack-lg items-center">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-background mb-stack-md">Three steps to better nutrition.</h2>
+<div class="space-y-12">
+<div class="flex gap-6">
+<div class="flex-shrink-0 w-12 h-12 bg-primary text-on-primary rounded-full flex items-center justify-center font-bold">1</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-background mb-2">Connect WhatsApp</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Scan a simple QR code to link your account to our intelligent nutrition assistant. No app store downloads required.</p>
+</div>
+</div>
+<div class="flex gap-6">
+<div class="flex-shrink-0 w-12 h-12 bg-primary text-on-primary rounded-full flex items-center justify-center font-bold">2</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-background mb-2">Send meal photos or updates</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Whenever you eat, snap a quick photo or type a short text like "Breakfast: Upma". Our AI handles the rest automatically.</p>
+</div>
+</div>
+<div class="flex gap-6">
+<div class="flex-shrink-0 w-12 h-12 bg-primary text-on-primary rounded-full flex items-center justify-center font-bold">3</div>
+<div>
+<h4 class="font-headline-md text-headline-md text-on-background mb-2">See weekly progress</h4>
+<p class="font-body-md text-body-md text-on-surface-variant">Receive a clean, text-based summary of your week. Monitor protein consistency, hydration, and variety without opening a dashboard.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="relative rounded-[3rem] overflow-hidden shadow-2xl aspect-square">
+<div class="relative w-full h-full">
+    <img src="https://lh3.googleusercontent.com/aida/AP1WRLuQW4j1_B8BVrotbs9N57VAqTqFtvYNnFPTJmNQ6GLPpl_W_anXnWyu4J2usb1nIHcSZvcJl_cC5-4PWfug-mh_8wi37BP2rwb_qgIFqhgwPi9_qeiCQnCspK83TWN5mrFkLMXC049GtzSFfuvTCLhC4Qkrl019Z3hIzlFSSG0S0f7gntLmwAPZ_-j4Uk46Y6p2sV5Pbd3J9PDnjJdFz28fgn7KV_jiGFvlwGnBrHHxRkNnK9iP1HXCfs8" class="w-full h-full object-cover" alt="Indian woman, older man, and fitness coach using Tistra Health">
+    <div class="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent pointer-events-none"></div>
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/40 to-transparent"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Dashboard Preview Section -->
+<section class="py-24 px-gutter max-w-container-max mx-auto">
+<div class="bg-primary rounded-[3rem] p-12 md:p-20 text-on-primary overflow-hidden relative transition-all duration-700 opacity-100 translate-y-0">
+<div class="absolute top-0 right-0 w-1/2 h-full opacity-10">
+
+</div>
+<div class="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-stack-lg items-center">
+<div class="flex flex-col gap-6">
+<h2 class="font-headline-lg text-headline-lg">A simple dashboard that actually makes sense.</h2>
+<ul class="space-y-4">
+<li class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary-fixed">check_circle</span>
+<span class="font-body-md">No complicated graphs or calorie maps</span>
+</li>
+<li class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary-fixed">check_circle</span>
+<span class="font-body-md">Clear "Logging Streak" to keep you motivated</span>
+</li>
+<li class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary-fixed">check_circle</span>
+<span class="font-body-md">Automated protein consistency tracking</span>
+</li>
+</ul>
+</div>
+<div class="bg-white rounded-3xl p-8 text-on-surface shadow-2xl">
+<div class="flex justify-between items-center mb-8 border-b border-surface-container pb-4">
+<div>
+<h3 class="font-headline-md text-headline-md text-primary">Weekly Summary</h3>
+<p class="text-sm text-on-surface-variant">May 12 - May 19</p>
+</div>
+<div class="bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-bold">14 DAY STREAK</div>
+</div>
+<div class="grid grid-cols-2 gap-4 mb-8">
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<span class="text-xs text-on-surface-variant block mb-1">Protein Consistency</span>
+<span class="text-2xl font-bold text-primary">5/7 Days</span>
+</div>
+<div class="bg-surface-container-low p-4 rounded-2xl">
+<span class="text-xs text-on-surface-variant block mb-1">Meal Variety</span>
+<span class="text-2xl font-bold text-tertiary">High</span>
+</div>
+</div>
+<div class="p-6 bg-surface-container-highest rounded-2xl border-l-4 border-primary">
+<p class="font-body-md italic text-on-surface-variant leading-relaxed">
+                                "Protein target was likely met on 5/7 days. Your vegetable intake was notably higher this week compared to last. Consider adding more fiber to your breakfast for a stronger start."
+                            </p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Privacy & Trust -->
+<section class="py-24 px-gutter max-w-container-max mx-auto border-t border-outline-variant">
+<div class="flex flex-col md:flex-row justify-between items-center gap-stack-md transition-all duration-700 opacity-100 translate-y-0">
+<div class="max-w-xl">
+<h2 class="font-headline-md text-headline-md text-on-background mb-4">Your food data stays private.</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">We believe nutrition is personal. You control who can see your dashboard, and your data is never sold or used for advertising. Built with privacy-first architecture.</p>
+</div>
+<div class="flex gap-8">
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[32px]">lock</span>
+</div>
+<span class="font-label-md text-label-md">Private by default</span>
+</div>
+<div class="flex flex-col items-center gap-2">
+<div class="w-16 h-16 rounded-full bg-surface-container-highest flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[32px]">share_off</span>
+</div>
+<span class="font-label-md text-label-md">Permissioned sharing</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Final CTA -->
+<section class="py-24 relative overflow-hidden bg-surface-container-highest">
+<div class="absolute inset-0 opacity-5 transition-all duration-700 opacity-100 translate-y-0">
+
+</div>
+<div class="relative z-10 text-center max-w-3xl mx-auto px-gutter transition-all duration-700 opacity-100 translate-y-0">
+<h2 class="font-headline-xl text-headline-xl text-on-background mb-stack-md">Ready to start tracking without the friction?</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-stack-lg">Join thousands of people using WhatsApp to improve their relationship with food.</p>
+<button class="bg-primary text-on-primary px-12 py-6 rounded-full font-headline-md text-headline-md hover:shadow-xl transition-all hover:scale-105 active:scale-95">
+                    Connect Your WhatsApp Now
+                </button>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-surface-container-lowest border-t border-outline-variant">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-stack-lg px-margin-desktop py-stack-lg max-w-container-max mx-auto">
+<div class="col-span-1 md:col-span-1">
+<div class="font-headline-sm text-headline-sm font-bold text-primary mb-4">Tistra Health</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Simplifying nutrition for families and coaches through the apps they already use.</p>
+</div>
+<div>
+<h4 class="font-label-md text-label-md font-bold mb-4">Product</h4>
+<ul class="flex flex-col gap-2">
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">How it works</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">For Families</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">For Coaches</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">WhatsApp Guide</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-label-md text-label-md font-bold mb-4">Support</h4>
+<ul class="flex flex-col gap-2">
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">Contact Support</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">Help Center</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">Privacy Policy</a></li>
+<li class=""><a class="font-label-md text-label-md text-on-surface-variant hover:underline transition-all" href="#">Terms of Service</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-label-md text-label-md font-bold mb-4">Connect</h4>
+<div class="flex gap-4">
+<a class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-all" href="#">
+<span class="material-symbols-outlined">chat</span>
+</a>
+<a class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-all" href="#">
+<span class="material-symbols-outlined">alternate_email</span>
+</a>
+</div>
+</div>
+</div>
+<div class="px-margin-desktop py-6 border-t border-outline-variant text-center">
+<p class="font-label-md text-label-md text-on-surface-variant">© 2024 Tistra Health. All rights reserved.</p>
+</div>
+</footer>
+<script>
+        // Micro-interactions for buttons
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('mousedown', () => {
+                button.classList.add('scale-95');
+            });
+            button.addEventListener('mouseup', () => {
+                button.classList.remove('scale-95');
+            });
+        });
+
+        // Simple Intersection Observer for scroll animations
+        const observerOptions = {
+            threshold: 0.1
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('opacity-100', 'translate-y-0');
+                    entry.target.classList.remove('opacity-0', 'translate-y-10');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('section > div').forEach(el => {
+            el.classList.add('transition-all', 'duration-700', 'opacity-0', 'translate-y-10');
+            observer.observe(el);
+        });
+    </script>
+
+
+</body></html>

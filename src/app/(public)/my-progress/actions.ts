@@ -1,14 +1,28 @@
 "use server";
 
-import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
+import { END_USER_DASHBOARD_ENABLED, PARENT_DASHBOARD_ACCESS_ENABLED } from "@/lib/billing/feature-flags";
 import { findContactByWhatsappNumber, issueOtp, verifyOtp } from "@/lib/end-user/otp";
-import { createEndUserSession, clearEndUserSession, getEndUserSession } from "@/lib/end-user/session";
+import {
+  createEndUserSession,
+  clearEndUserSession,
+  getEndUserSession,
+  listTrustedDevices,
+  signOutAllDevices,
+  signOutDevice,
+  type TrustedDevice,
+} from "@/lib/end-user/session";
 import { setSharingPaused, requestRemoval as requestRemovalService } from "@/lib/end-user/dashboard-service";
+
+// This flow now serves both the general end-user dashboard and the
+// parent-access flow (spec: WhatsApp-OTP dashboard access for a parent
+// invited by a family member) — either flag being on is enough, since
+// they share the exact same OTP/session/dashboard infrastructure.
+const FEATURE_ENABLED = END_USER_DASHBOARD_ENABLED || PARENT_DASHBOARD_ACCESS_ENABLED;
 
 export type RequestOtpResult = { ok: true } | { ok: false; error: string };
 
 export async function requestOtpAction(whatsappNumber: string): Promise<RequestOtpResult> {
-  if (!END_USER_DASHBOARD_ENABLED) return { ok: false, error: "This feature is not available yet." };
+  if (!FEATURE_ENABLED) return { ok: false, error: "This feature is not available yet." };
 
   const contact = await findContactByWhatsappNumber(whatsappNumber);
   if (!contact) {
@@ -26,7 +40,7 @@ export async function requestOtpAction(whatsappNumber: string): Promise<RequestO
 export type VerifyResult = { ok: true } | { ok: false; error: string };
 
 export async function verifyOtpAction(whatsappNumber: string, code: string): Promise<VerifyResult> {
-  if (!END_USER_DASHBOARD_ENABLED) return { ok: false, error: "This feature is not available yet." };
+  if (!FEATURE_ENABLED) return { ok: false, error: "This feature is not available yet." };
 
   const contact = await findContactByWhatsappNumber(whatsappNumber);
   if (!contact) return { ok: false, error: "We don't recognize this WhatsApp number yet." };
@@ -61,4 +75,25 @@ export async function requestRemovalAction(): Promise<void> {
 
 export async function signOutEndUserAction(): Promise<void> {
   await clearEndUserSession();
+}
+
+export async function listTrustedDevicesAction(): Promise<TrustedDevice[]> {
+  const session = await getEndUserSession();
+  if (!session) return [];
+  return listTrustedDevices(session.contactId);
+}
+
+export async function signOutDeviceAction(sessionId: string): Promise<void> {
+  const session = await getEndUserSession();
+  if (!session) return;
+  await signOutDevice(session.contactId, sessionId);
+}
+
+/** Re-verification (a fresh WhatsApp OTP) is required everywhere after
+ * this — matches the spec's "sign out of all devices" trusted-devices
+ * control. */
+export async function signOutAllDevicesAction(): Promise<void> {
+  const session = await getEndUserSession();
+  if (!session) return;
+  await signOutAllDevices(session.contactId);
 }
