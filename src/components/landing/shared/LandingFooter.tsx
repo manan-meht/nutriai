@@ -6,6 +6,11 @@ interface LandingFooterProps {
   product: ProductType;
 }
 
+const TAGLINE: Record<ProductType, string> = {
+  adults: "Bridging the distance with effortless nutrition awareness for global Indian families.",
+  gym: "Modern Indian fitness coaching. Effortless accountability, lasting habits.",
+};
+
 export function LandingFooter({ product }: LandingFooterProps) {
   const switchUrl = getCrossProductSwitchUrl(product);
   const switchLabel = product === "gym" ? "the family view" : "the coaching view";
@@ -20,7 +25,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
         <div>
           <p className="font-semibold text-gray-900 mb-1">Tistra Health</p>
           <p className="text-xs">
-            Helping Indian families and fitness communities eat better, together.
+            {TAGLINE[product]}
           </p>
         </div>
 
@@ -32,7 +37,7 @@ export function LandingFooter({ product }: LandingFooterProps) {
         </div>
 
         <div className="text-xs text-gray-400">
-          © {new Date().getFullYear()} Tistra Health. Made for India.
+          ©2026 Tistra Health. Made for global Indians.
         </div>
       </div>
     </footer>
