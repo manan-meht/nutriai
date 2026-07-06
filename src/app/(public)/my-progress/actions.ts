@@ -32,7 +32,12 @@ export async function requestOtpAction(whatsappNumber: string): Promise<RequestO
   try {
     await issueOtp(contact);
     return { ok: true };
-  } catch {
+  } catch (err) {
+    // This was previously a bare `catch {}` — silently swallowing the
+    // real cause (e.g. missing WHATSAPP_OTP_TEMPLATE_NAME, an
+    // unapproved template, or a Graph API error) made it impossible to
+    // diagnose from production logs. Log loudly so this can't hide again.
+    console.error("[requestOtpAction] issueOtp failed:", err instanceof Error ? err.message : err);
     return { ok: false, error: "Couldn't send a code right now. Please try again in a moment." };
   }
 }
