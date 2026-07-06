@@ -33,6 +33,7 @@ export function FoodKnowledgeTable({
       </div>
 
       <form method="get" className="flex gap-2">
+        <input type="hidden" name="tab" value="food-knowledge" />
         <input
           name="q"
           defaultValue={initialSearch}

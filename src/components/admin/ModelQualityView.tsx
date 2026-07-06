@@ -1,7 +1,9 @@
 "use client";
 
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import dynamic from "next/dynamic";
 import type { ModelQualityMetrics } from "@/lib/admin/model-quality";
+
+const AccuracyBarChart = dynamic(() => import("./AccuracyBarChart").then((m) => m.AccuracyBarChart), { ssr: false });
 
 function pct(v: number | null): string {
   return v == null ? "—" : `${Math.round(v * 100)}%`;
@@ -71,19 +73,7 @@ function ChartCard({ title, data }: { title: string; data: Array<{ name: string;
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-4">
       <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-3">{title}</p>
-      {data.length === 0 ? (
-        <p className="text-sm text-gray-400">No data yet.</p>
-      ) : (
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-            <Tooltip formatter={(v: unknown) => `${v}%`} />
-            <Bar dataKey="accuracy" fill="var(--color-dashboard-primary)" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      )}
+      {data.length === 0 ? <p className="text-sm text-gray-400">No data yet.</p> : <AccuracyBarChart data={data} />}
     </div>
   );
 }

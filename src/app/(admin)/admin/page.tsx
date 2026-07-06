@@ -1,13 +1,29 @@
 import Link from "next/link";
-import { getReviewQueue, type QueueFilters } from "../actions";
+import { notFound } from "next/navigation";
+import { getReviewQueue, getMealReviewDetail, listFoodKnowledge, getModelQualityMetrics, type QueueFilters } from "./actions";
+import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
 import { StatusBadge, priorityMood, reviewStatusMood } from "@/components/admin/StatusBadge";
+import { ReviewForm } from "@/components/admin/ReviewForm";
+import { FoodKnowledgeTable } from "@/components/admin/FoodKnowledgeTable";
+import { ModelQualityView } from "@/components/admin/ModelQualityView";
 
+// All four admin views (meal review queue, meal review detail, food
+// knowledge base, model quality) are combined into this single route.
+// Each is a genuinely small page, but on Cloudflare Pages every Next.js
+// route becomes its own edge function with ~1-2MB of duplicated framework
+// overhead — four separate admin routes pushed the total Pages Functions
+// bundle over Cloudflare's 25MiB platform limit. One route keeps the same
+// features/URLs-as-state (tab + id are just search params) at a fraction
+// of the bundle cost.
 export const runtime = "edge";
 
 const MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "unknown"];
 const SOURCES = ["whatsapp", "dashboard", "app", "unknown"];
 
-interface SearchParams {
+interface AdminSearchParams {
+  tab?: string;
+  id?: string;
+  q?: string;
   status?: string;
   priority?: string;
   mealType?: string;
@@ -18,8 +34,17 @@ interface SearchParams {
   sort?: string;
 }
 
-export default async function MealReviewQueuePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<AdminSearchParams> }) {
   const sp = await searchParams;
+  const tab = sp.tab ?? "meal-review";
+
+  if (tab === "food-knowledge") return <FoodKnowledgeTab q={sp.q} />;
+  if (tab === "model-quality") return <ModelQualityTab />;
+  if (sp.id) return <MealReviewDetailTab mealSubmissionId={sp.id} />;
+  return <MealReviewQueueTab sp={sp} />;
+}
+
+async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
   const filters: QueueFilters = {
     status: (sp.status as QueueFilters["status"]) ?? "pending",
     priority: (sp.priority as QueueFilters["priority"]) ?? "all",
@@ -113,7 +138,7 @@ export default async function MealReviewQueuePage({ searchParams }: { searchPara
                   </td>
                   <td className="p-3 text-gray-500 whitespace-nowrap">{item.anonymizedUserId}</td>
                   <td className="p-3">
-                    <Link href={`/admin/meal-review/${item.id}`} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
+                    <Link href={`/admin?id=${item.id}`} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
                       Review
                     </Link>
                   </td>
@@ -125,6 +150,47 @@ export default async function MealReviewQueuePage({ searchParams }: { searchPara
       )}
     </div>
   );
+}
+
+async function MealReviewDetailTab({ mealSubmissionId }: { mealSubmissionId: string }) {
+  const detail = await getMealReviewDetail(mealSubmissionId);
+  if ("error" in detail) notFound();
+  return (
+    <div className="space-y-4">
+      <Link href="/admin" className="text-sm text-[var(--color-dashboard-primary)] font-medium">← Back to queue</Link>
+      <ReviewForm detail={detail} />
+    </div>
+  );
+}
+
+async function FoodKnowledgeTab({ q }: { q?: string }) {
+  const session = await getAdminSession();
+  const result = await listFoodKnowledge(q);
+  if ("error" in result) {
+    return <p className="text-sm text-[var(--color-status-support-text)]">{result.error}</p>;
+  }
+  return (
+    <FoodKnowledgeTable
+      entries={result.entries}
+      canWrite={session ? canWriteFoodKnowledgeBase(session.role) : false}
+      initialSearch={q ?? ""}
+    />
+  );
+}
+
+async function ModelQualityTab() {
+  const metrics = await getModelQualityMetrics();
+  if ("error" in metrics) {
+    return <p className="text-sm text-[var(--color-status-support-text)]">{metrics.error}</p>;
+  }
+  if (metrics.totalReviewed === 0) {
+    return (
+      <div className="text-center py-16 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
+        Review meals to start tracking AI quality.
+      </div>
+    );
+  }
+  return <ModelQualityView metrics={metrics} />;
 }
 
 function FilterSelect({ name, label, defaultValue, options }: { name: string; label: string; defaultValue: string; options: string[] }) {

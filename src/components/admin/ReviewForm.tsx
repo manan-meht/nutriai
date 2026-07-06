@@ -80,10 +80,10 @@ export function ReviewForm({ detail }: { detail: Detail }) {
       const next = await getNextPendingMealId(submission.id);
       setSaving(false);
       if (!("error" in next) && next.id) {
-        router.push(`/admin/meal-review/${next.id}`);
+        router.push(`/admin?id=${next.id}`);
         return;
       }
-      router.push("/admin/meal-review");
+      router.push("/admin");
       return;
     }
     setSaving(false);
@@ -150,7 +150,7 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Same-day meals</p>
             <div className="flex gap-2 flex-wrap">
               {detail.sameDaySubmissions.map((m) => (
-                <a key={m.id} href={`/admin/meal-review/${m.id}`} className="block">
+                <a key={m.id} href={`/admin?id=${m.id}`} className="block">
                   {m.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
                     <img src={m.imageUrl} alt={m.mealType} className="w-14 h-14 rounded-lg object-cover" />

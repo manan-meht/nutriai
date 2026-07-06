@@ -14,9 +14,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="max-w-6xl mx-auto flex items-center gap-6">
           <span className="text-white font-bold text-sm">Tistra Meal Review Console</span>
           <nav className="flex gap-4 text-sm text-white/80">
-            <Link href="/admin/meal-review" className="hover:text-white">Review queue</Link>
-            <Link href="/admin/food-knowledge" className="hover:text-white">Food knowledge</Link>
-            <Link href="/admin/model-quality" className="hover:text-white">Model quality</Link>
+            <Link href="/admin" className="hover:text-white">Review queue</Link>
+            <Link href="/admin?tab=food-knowledge" className="hover:text-white">Food knowledge</Link>
+            <Link href="/admin?tab=model-quality" className="hover:text-white">Model quality</Link>
           </nav>
           <span className="ml-auto text-xs text-white/60 capitalize">{session.role.replace("_", " ")}</span>
         </div>
