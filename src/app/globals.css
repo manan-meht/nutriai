@@ -5,6 +5,24 @@
   --color-gym-surface: #FDF7FF;
   --color-family-primary: #B3261E;
   --color-family-surface: #F8F2FB;
+
+  /* Dashboard brand theme — matches the marketing site's purple */
+  --color-dashboard-primary: #6750A4;
+  --color-dashboard-primary-hover: #4F378A;
+  --color-dashboard-primary-light: #F3EEFB;
+  --color-dashboard-surface: #FAF8FC;
+
+  /* Soft, non-alarming status colors for habit/progress indicators.
+     Red here means "needs support", never "failure". */
+  --color-status-good-bg: #E6F4EA;
+  --color-status-good-text: #256B3A;
+  --color-status-good-dot: #6FCF97;
+  --color-status-steady-bg: #FEF6E0;
+  --color-status-steady-text: #8A6D1D;
+  --color-status-steady-dot: #F2C94C;
+  --color-status-support-bg: #FBEAEA;
+  --color-status-support-text: #9B4A44;
+  --color-status-support-dot: #E8A19C;
 }
 
 @media (prefers-reduced-motion: reduce) {

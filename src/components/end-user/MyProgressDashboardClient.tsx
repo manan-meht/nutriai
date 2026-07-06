@@ -12,10 +12,27 @@ import {
   signOutDeviceAction,
   signOutAllDevicesAction,
 } from "@/app/(public)/my-progress/actions";
+import { classifyMeal } from "@/lib/nutrition/food-classification";
+import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
+import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
+import {
+  TrendCardGrid,
+  MealTimelineSection,
+  WeeklyFocusCard,
+  HabitMomentumCard,
+  FoodPatternSpectrumCard,
+} from "@/components/shared/dashboard/HabitDashboardSections";
 
 export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDashboard }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
+  const classifiedMeals = dashboard.mealsForTrends.map((m) =>
+    applyHumanCorrection(
+      classifyMeal({ id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary }),
+      m.humanCorrection
+    )
+  );
+  const habitDashboard = buildHabitDashboard(classifiedMeals);
   const [removalRequested, setRemovalRequested] = useState(false);
   const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
   const [showDevices, setShowDevices] = useState(false);
@@ -54,7 +71,7 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
   }
 
   return (
-    <main className="min-h-screen bg-neutral-50 px-4 py-8">
+    <main className="min-h-screen bg-[var(--color-dashboard-surface)] px-4 py-8">
       <div className="max-w-md mx-auto space-y-6">
         <header className="flex items-center justify-between">
           <h1 className="text-lg font-semibold text-neutral-900">Hi {dashboard.contactName.split(" ")[0]} 👋</h1>
@@ -63,18 +80,18 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
           </button>
         </header>
 
-        <section className="bg-white rounded-xl p-5 shadow-sm">
-          <p className="text-sm text-neutral-500 mb-1">This week</p>
-          <p className="text-2xl font-semibold text-neutral-900">{dashboard.weeklyStats.mealsLoggedThisWeek} meals logged</p>
-          <p className="text-sm text-neutral-500 mt-2">
-            {dashboard.weeklyStats.daysWithProteinSource} day(s) with a protein source ·{" "}
-            {dashboard.weeklyStats.daysWithVegOrFruit} day(s) with veg or fruit
-          </p>
-        </section>
+        <TrendCardGrid
+          cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]}
+        />
 
-        <section className="bg-white rounded-xl p-5 shadow-sm">
-          <p className="text-sm text-neutral-700">{dashboard.suggestion}</p>
-        </section>
+        <MealTimelineSection meals={classifiedMeals} />
+
+        <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
+
+        <div className="grid grid-cols-1 gap-4">
+          <HabitMomentumCard momentum={habitDashboard.habitMomentum} />
+          <FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} />
+        </div>
 
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-3">Recent meals</p>
@@ -83,13 +100,23 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
           )}
           <ul className="space-y-3">
             {dashboard.recentMeals.map((meal) => (
-              <li key={meal.id} className="text-sm text-neutral-700 border-b border-neutral-100 pb-2 last:border-0">
-                <span className="font-medium capitalize">{meal.mealType ?? "Meal"}</span>{" "}
-                <span className="text-neutral-400">
-                  {new Date(meal.loggedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
-                </span>
-                <div className="text-neutral-500">
-                  {meal.foods.map((f) => f.name).join(", ") || "—"}
+              <li key={meal.id} className="flex items-start gap-3 text-sm text-neutral-700 border-b border-neutral-100 pb-2 last:border-0">
+                {meal.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
+                  <img
+                    src={meal.imageUrl}
+                    alt={`${meal.mealType ?? "Meal"} photo`}
+                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium capitalize">{meal.mealType ?? "Meal"}</span>{" "}
+                  <span className="text-neutral-400">
+                    {new Date(meal.loggedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
+                  </span>
+                  <div className="text-neutral-500">
+                    {meal.foods.map((f) => f.name).join(", ") || "—"}
+                  </div>
                 </div>
               </li>
             ))}

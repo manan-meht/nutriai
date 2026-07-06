@@ -44,6 +44,10 @@ export interface FoodAnalysisResult {
   total_fat_min: number;
   total_fat_max: number;
   summary: string;
+  /** Public URL of the uploaded meal photo, attached after analysis (not
+   * part of the Gemini response) so it survives in conversation state
+   * between the "awaiting confirmation" and "saved" steps. */
+  image_url?: string;
 }
 
 const SYSTEM_PROMPT = `You are Tistra Health, a nutrition assistant specialized in Indian food. Analyze the meal photo or description provided.

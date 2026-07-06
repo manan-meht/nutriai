@@ -14,6 +14,8 @@ import {
 import { getEntitlementSnapshot, startTrialIfNeeded } from "@/lib/entitlements/entitlements";
 import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
+import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 
 export interface AdultsContact {
   id: string;
@@ -68,6 +70,11 @@ export interface AdultsMealLog {
   totalFatMin: number;
   totalFatMax: number;
   aiSummary?: string;
+  imageUrl?: string;
+  /** Present when a Tistra reviewer has corrected this meal's classification
+   * via the Meal Review Console — dashboards should prefer this over the
+   * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
+  humanCorrection?: HumanCorrectionFields;
 }
 
 export interface AdultsContactDetails {
@@ -266,7 +273,10 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     })),
   };
 
-  const meals: AdultsMealLog[] = (mealsRes.data ?? []).map((m: any) => ({
+  const rawMeals = mealsRes.data ?? [];
+  const corrections = await fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id));
+
+  const meals: AdultsMealLog[] = rawMeals.map((m: any) => ({
     id: m.id,
     contactId: m.adults_contact_id,
     mealType: m.meal_type,
@@ -281,6 +291,8 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     totalFatMin: m.total_fat_min ?? 0,
     totalFatMax: m.total_fat_max ?? 0,
     aiSummary: m.ai_summary,
+    imageUrl: m.image_url ?? undefined,
+    humanCorrection: corrections[m.id],
   }));
 
   return { contact, meals };
@@ -496,6 +508,102 @@ async function sendContactInvite(
     console.error("[sendContactInvite] WhatsApp invite send failed:", err instanceof Error ? err.message : err);
     throw err;
   }
+}
+
+/** Edit an existing contact's name and profile details. These fields also
+ * drive the default protein recommendation (see
+ * src/lib/nutrition/protein-recommendation.ts) when no goal is manually set,
+ * so keeping them current directly improves that suggestion. */
+export async function updateContact(
+  contactId: string,
+  formData: {
+    fullName: string;
+    relationship?: string;
+    age?: number;
+    gender?: string;
+    weightKg?: number;
+    heightCm?: number;
+    healthNotes?: string;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("adults_contacts")
+    .update({
+      full_name: formData.fullName,
+      relationship: formData.relationship || null,
+      age: formData.age || null,
+      gender: formData.gender || null,
+      weight_kg: formData.weightKg || null,
+      height_cm: formData.heightCm || null,
+      health_notes: formData.healthNotes || null,
+    })
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id);
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+/** Create or update the contact's single active goal. There is at most one
+ * active goal per contact today (mirrors the create-time behavior in
+ * addContact), so this upserts by finding the existing active goal rather
+ * than allowing duplicates to accumulate. */
+export async function upsertContactGoal(
+  contactId: string,
+  formData: {
+    goalType: string;
+    title: string;
+    description?: string;
+    targetCaloriesMin?: number;
+    targetCaloriesMax?: number;
+    targetProteinG?: number;
+    targetMealsPerDay?: number;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("id")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (!contact) return { error: "Contact not found" };
+
+  const goalFields = {
+    goal_type: formData.goalType,
+    title: formData.title,
+    description: formData.description || null,
+    target_calories_min: formData.targetCaloriesMin || null,
+    target_calories_max: formData.targetCaloriesMax || null,
+    target_protein_g: formData.targetProteinG || null,
+    target_meals_per_day: formData.targetMealsPerDay || null,
+  };
+
+  const { data: existingGoal } = await supabase
+    .from("adults_contact_goals")
+    .select("id")
+    .eq("contact_id", contactId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  const { error } = existingGoal
+    ? await supabase.from("adults_contact_goals").update(goalFields).eq("id", existingGoal.id)
+    : await supabase.from("adults_contact_goals").insert({
+        contact_id: contactId,
+        caregiver_id: user.id,
+        status: "active",
+        ...goalFields,
+      });
+
+  if (error) return { error: error.message };
+  return {};
 }
 
 /** Manually resend the WhatsApp invite to an existing family member —

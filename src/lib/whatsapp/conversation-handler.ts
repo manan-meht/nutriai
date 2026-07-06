@@ -3,6 +3,7 @@ import { sendTextMessage, normalizePhone } from "./client";
 import { analyzeFood, buildConfirmationMessage, buildSuccessMessage, FoodAnalysisResult } from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
+import { classifyMeal } from "@/lib/nutrition/food-classification";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
@@ -11,6 +12,43 @@ function admin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+const MEAL_PHOTOS_BUCKET = "meal-photos";
+
+function extensionForMimeType(mimeType?: string): string {
+  if (!mimeType) return "jpg";
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  return "jpg";
+}
+
+/** Uploads the WhatsApp meal photo to Supabase Storage and returns its
+ * public URL, so it can be attached to the pending meal (and later the
+ * saved meal_logs row) for display in the caregiver/self dashboards.
+ * Best-effort: a failed upload should never block meal logging. */
+async function uploadMealPhoto(
+  db: ReturnType<typeof admin>,
+  entityId: string,
+  buffer: Uint8Array,
+  mimeType?: string
+): Promise<string | undefined> {
+  try {
+    const path = `${entityId}/${Date.now()}.${extensionForMimeType(mimeType)}`;
+    const { error } = await db.storage.from(MEAL_PHOTOS_BUCKET).upload(path, buffer, {
+      contentType: mimeType ?? "image/jpeg",
+      upsert: false,
+    });
+    if (error) {
+      console.error("[whatsapp] meal photo upload failed:", error.message);
+      return undefined;
+    }
+    const { data } = db.storage.from(MEAL_PHOTOS_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  } catch (err) {
+    console.error("[whatsapp] meal photo upload threw:", err instanceof Error ? err.message : err);
+    return undefined;
+  }
 }
 
 const WORKOUT_PHRASES = [
@@ -236,24 +274,108 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   async function saveMeal(analysis: FoodAnalysisResult) {
-    await db.from("meal_logs").insert({
-      ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
-      workspace_id: workspaceId,
-      trainer_id: trainerId,
-      meal_type: analysis.meal_type,
-      logged_at: new Date().toISOString(),
-      foods: analysis.foods,
-      total_calories_min: analysis.total_calories_min,
-      total_calories_max: analysis.total_calories_max,
-      total_protein_min: analysis.total_protein_min,
-      total_protein_max: analysis.total_protein_max,
-      total_carbs_min: analysis.total_carbs_min,
-      total_carbs_max: analysis.total_carbs_max,
-      total_fat_min: analysis.total_fat_min,
-      total_fat_max: analysis.total_fat_max,
-      ai_summary: analysis.summary,
-      source: "whatsapp",
-    });
+    const { data: mealRow, error: mealError } = await db
+      .from("meal_logs")
+      .insert({
+        ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+        workspace_id: workspaceId,
+        trainer_id: trainerId,
+        meal_type: analysis.meal_type,
+        logged_at: new Date().toISOString(),
+        foods: analysis.foods,
+        total_calories_min: analysis.total_calories_min,
+        total_calories_max: analysis.total_calories_max,
+        total_protein_min: analysis.total_protein_min,
+        total_protein_max: analysis.total_protein_max,
+        total_carbs_min: analysis.total_carbs_min,
+        total_carbs_max: analysis.total_carbs_max,
+        total_fat_min: analysis.total_fat_min,
+        total_fat_max: analysis.total_fat_max,
+        ai_summary: analysis.summary,
+        image_url: analysis.image_url ?? null,
+        source: "whatsapp",
+      })
+      .select("id")
+      .single();
+
+    if (mealError || !mealRow) {
+      console.error("[whatsapp] meal_logs insert failed:", mealError?.message);
+      return;
+    }
+
+    await recordMealSubmissionForReview(analysis, mealRow.id);
+  }
+
+  /** Feeds the Tistra Meal Review Console (src/app/(admin)/admin) so
+   * employees can QC AI classifications and build the food knowledge base.
+   * Best-effort and non-blocking — a failure here must never prevent the
+   * user-facing meal from being saved above. */
+  async function recordMealSubmissionForReview(analysis: FoodAnalysisResult, mealLogId: string) {
+    try {
+      const classified = classifyMeal({
+        id: mealLogId,
+        loggedAt: new Date().toISOString(),
+        mealType: analysis.meal_type,
+        foods: analysis.foods,
+        aiSummary: analysis.summary,
+      });
+
+      const { data: submission, error: submissionError } = await db
+        .from("meal_submissions")
+        .insert({
+          user_id: entityId,
+          user_type: isAdults ? "adults" : "gym",
+          meal_log_id: mealLogId,
+          image_url: analysis.image_url ?? null,
+          caption: msg.type === "text" ? msg.text ?? null : null,
+          meal_type: analysis.meal_type,
+          source: "whatsapp",
+          image_quality: analysis.image_url ? "clear" : "unknown",
+        })
+        .select("id")
+        .single();
+
+      if (submissionError || !submission) {
+        console.error("[whatsapp] meal_submissions insert failed:", submissionError?.message);
+        return;
+      }
+
+      const friedFoodPresent = analysis.foods.some((f) => /fried|pakora|tikki|cutlet|bhaji|vada/i.test(f.name));
+      const healthierDirectionSignal =
+        classified.mealBalanceStatus === "strong" && classified.homeCookedLikelihood === "high"
+          ? "positive"
+          : classified.mealBalanceStatus === "needs_support" && classified.ultraProcessedLikelihood === "high"
+            ? "negative"
+            : "neutral";
+
+      await db.from("ai_meal_classifications").insert({
+        meal_submission_id: submission.id,
+        model_name: "gemini-2.5-flash",
+        prompt_version: "v1",
+        taxonomy_version: "v1",
+        food_knowledge_base_version: "v1",
+        detected_items_json: analysis.foods,
+        structured_ai_output_json: analysis,
+        protein_anchor_status: classified.proteinAnchorStatus,
+        vegetable_fiber_status: classified.vegetableFiberStatus,
+        carb_status: classified.carbPresent ? "present" : "missing",
+        meal_balance_status: classified.mealBalanceStatus,
+        home_cooked_likelihood: classified.homeCookedLikelihood,
+        enjoyment_food_present: classified.enjoymentFoodPresent,
+        sugary_drink_present: classified.sugaryDrinkPresent,
+        fried_food_present: friedFoodPresent,
+        ultra_processed_likelihood: classified.ultraProcessedLikelihood,
+        healthier_direction_signal: healthierDirectionSignal,
+        suggested_next_step: classified.suggestedNextStep,
+        // No native confidence score from Gemini today — this heuristic
+        // (foods detected at all vs. not) is a placeholder the review
+        // console can refine once real confidence is available.
+        confidence_score: analysis.foods.length > 0 ? 0.85 : 0.4,
+        raw_ai_response_json: analysis,
+      });
+    } catch (err) {
+      console.error("[whatsapp] meal review console recording failed:", err instanceof Error ? err.message : err);
+    }
   }
 
   // "My Progress" — send the end-user dashboard link. Only offered when
@@ -341,11 +463,17 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
           correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
           text: msg.text,
         });
+        // Reuse the photo already attached to a prior correction round
+        // rather than re-uploading it on every correction message.
+        analysis.image_url = pendingMeal?.image_url ?? (await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType));
       } else if (msg.type === "text" && msg.text) {
         analysis = await analyzeFood({
           text: msg.text,
           correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
         });
+        // A text correction to a meal originally logged from a photo should
+        // keep showing that photo rather than losing it.
+        analysis.image_url = pendingMeal?.image_url;
       } else {
         const hint = isAdults
           ? "You can send me a photo of your plate or describe what you had 😊"

@@ -108,8 +108,32 @@ function makeFakeSupabase(contact: any) {
         return { select: () => ({ order: async () => ({ data: [] }) }) };
       }
       if (table === "whatsapp_conversations") return conversationsTable();
-      if (table === "meal_logs") return { insert: async () => ({ error: null }) };
+      if (table === "meal_logs") {
+        return {
+          insert: () => ({
+            select: () => ({
+              single: async () => ({ data: { id: "meal-log-1" }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "meal_submissions") {
+        return {
+          insert: () => ({
+            select: () => ({
+              single: async () => ({ data: { id: "submission-1" }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "ai_meal_classifications") return { insert: async () => ({ error: null }) };
       throw new Error(`unexpected table ${table}`);
+    },
+    storage: {
+      from: () => ({
+        upload: async () => ({ error: null }),
+        getPublicUrl: () => ({ data: { publicUrl: "https://example.supabase.co/storage/meal-photos/test.jpg" } }),
+      }),
     },
   };
 }

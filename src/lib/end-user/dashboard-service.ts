@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ContactType } from "@/lib/end-user/otp";
+import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 
 function admin() {
   return createClient(
@@ -15,6 +17,9 @@ export interface EndUserMealSummary {
   foods: Array<{ name: string; quantity?: string }>;
   proteinGrams: { min: number; max: number };
   caloriesKcal: { min: number; max: number };
+  aiSummary?: string | null;
+  imageUrl?: string | null;
+  humanCorrection?: HumanCorrectionFields;
 }
 
 export interface EndUserWeeklyStats {
@@ -32,6 +37,8 @@ export interface EndUserDashboard {
   contactName: string;
   contactType: ContactType;
   recentMeals: EndUserMealSummary[];
+  /** Meals from the last 14 days, oldest first — used for week-over-week habit trends. */
+  mealsForTrends: EndUserMealSummary[];
   weeklyStats: EndUserWeeklyStats;
   suggestion: string;
   accessList: EndUserAccessEntry[];
@@ -54,24 +61,33 @@ export async function getEndUserDashboard(contactId: string, contactType: Contac
     .single();
 
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
   const { data: meals } = await db
     .from("meal_logs")
     .select("*")
     .eq(mealColumn, contactId)
-    .gte("logged_at", weekAgo)
+    .gte("logged_at", twoWeeksAgo)
     .order("logged_at", { ascending: false })
-    .limit(30);
+    .limit(60);
 
-  const mealRows = meals ?? [];
+  const allRows = meals ?? [];
+  const mealRows = allRows.filter((m: any) => m.logged_at >= weekAgo);
+  const corrections = await fetchHumanCorrectionsByMealLogId(allRows.map((m: any) => m.id));
 
-  const recentMeals: EndUserMealSummary[] = mealRows.slice(0, 10).map((m: any) => ({
+  const mapSummary = (m: any): EndUserMealSummary => ({
     id: m.id,
     loggedAt: m.logged_at,
     mealType: m.meal_type,
     foods: m.foods ?? [],
     proteinGrams: { min: m.total_protein_min ?? 0, max: m.total_protein_max ?? 0 },
     caloriesKcal: { min: m.total_calories_min ?? 0, max: m.total_calories_max ?? 0 },
-  }));
+    aiSummary: m.ai_summary,
+    imageUrl: m.image_url,
+    humanCorrection: corrections[m.id],
+  });
+
+  const recentMeals: EndUserMealSummary[] = mealRows.slice(0, 10).map(mapSummary);
+  const mealsForTrends: EndUserMealSummary[] = allRows.map(mapSummary);
 
   const dayHasKeyword = (keywords: string[]) => {
     const days = new Set<string>();
@@ -111,6 +127,7 @@ export async function getEndUserDashboard(contactId: string, contactType: Contac
     contactName: contact?.full_name ?? "there",
     contactType,
     recentMeals,
+    mealsForTrends,
     weeklyStats,
     suggestion,
     accessList,
