@@ -10,6 +10,8 @@ import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
 import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
 import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
+import { InviteCard } from "@/components/shared/invites/InviteCard";
+import { getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -123,6 +125,20 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
       )}
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* WhatsApp-first invite — the caregiver shares this link
+            themselves; the bot never messages first. Not shown for a
+            caregiver's own self-tracked profile (handled by SelfSetupCard
+            on the main dashboard instead). */}
+        {contact.relationshipType !== "self" && (
+          <InviteCard
+            title={`Ask them to start Tistra on WhatsApp`}
+            description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
+            load={() => getOrCreateFamilyInvite(contact.id)}
+            regenerate={() => regenerateFamilyInvite(contact.id)}
+            revoke={() => revokeFamilyInvite(contact.id)}
+          />
+        )}
 
         {/* Habit-based insight cards */}
         <TrendCardGrid

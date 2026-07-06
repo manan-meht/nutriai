@@ -8,6 +8,8 @@ import { MealFeed } from "./MealFeed";
 import { BiomarkerSection } from "./BiomarkerSection";
 import { ProgressInsights } from "@/components/shared/ProgressInsights";
 import { computeInsights } from "@/lib/insights";
+import { InviteCard } from "@/components/shared/invites/InviteCard";
+import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachClientInvite } from "@/app/(gym)/gym/dashboard/actions";
 
 const ActivityHeatmap = dynamic(() => import("./ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const ProteinChart = dynamic(() => import("./MacroCharts").then((m) => m.ProteinChart), { ssr: false });
@@ -75,6 +77,16 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* WhatsApp-first invite — the coach shares this link themselves;
+            the bot never messages the client first. */}
+        <InviteCard
+          title="Invite client on WhatsApp"
+          description={`Send ${client.fullName.split(" ")[0]} this link — once they message the bot, they'll show up connected here.`}
+          load={() => getOrCreateCoachClientInvite(client.id)}
+          regenerate={() => regenerateCoachClientInvite(client.id)}
+          revoke={() => revokeCoachClientInvite(client.id)}
+        />
 
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

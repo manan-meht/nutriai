@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import {
   FAMILY_LIMIT_REACHED_MESSAGE,
   FAMILY_MONTHLY_QUOTA_REACHED_MESSAGE,
@@ -16,6 +16,9 @@ import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary } from "@/lib/invites/service";
+import { trackInviteEvent } from "@/lib/invites/analytics";
+import type { InviteSummary } from "@/lib/invites/types";
 
 export interface AdultsContact {
   id: string;
@@ -625,4 +628,117 @@ export async function resendContactInvite(contactId: string): Promise<void> {
 
   await sendContactInvite(supabase, user.id, contact.full_name, contact.whatsapp_number);
   await supabase.from("adults_contacts").update({ invite_sent_at: now().toISOString() }).eq("id", contactId);
+}
+
+// -----------------------------------------------------------------------
+// WhatsApp-first invites (see src/lib/invites) — the caregiver shares a
+// wa.me link themselves rather than the bot sending the first message,
+// which needs neither an approved template nor business verification.
+// sendContactInvite above remains as a best-effort supplementary channel
+// (harmless if it fails) but is no longer the primary onboarding path.
+// -----------------------------------------------------------------------
+
+/** Gets the family member's existing pending/claimed invite, or creates a
+ * fresh one if none exists (or the last one expired/was revoked). */
+export async function getOrCreateFamilyInvite(contactId: string): Promise<InviteSummary | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("id, workspace_id")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (!contact) return { error: "Contact not found" };
+
+  const admin = createServiceClient();
+  const existing = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+  const invite = await getOrCreateInvite(
+    admin,
+    { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId },
+    { inviteType: "family", createdByUserId: user.id, workspaceId: contact.workspace_id, targetProfileId: contactId }
+  );
+  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "family", contactId });
+  return toInviteSummary(invite);
+}
+
+export async function regenerateFamilyInvite(contactId: string): Promise<InviteSummary | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("id, workspace_id")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (!contact) return { error: "Contact not found" };
+
+  const admin = createServiceClient();
+  const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+  if (!current) return { error: "No invite to regenerate" };
+
+  const fresh = await regenerateInvite(admin, current);
+  trackInviteEvent("invite_regenerated", { inviteType: "family", contactId });
+  return toInviteSummary(fresh);
+}
+
+export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("id, workspace_id")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (!contact) return { error: "Contact not found" };
+
+  const admin = createServiceClient();
+  const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+  if (!current) return { error: "No invite to revoke" };
+
+  await revokeInvite(admin, current.id);
+  trackInviteEvent("invite_revoked", { inviteType: "family", contactId });
+  return { ok: true };
+}
+
+/** Self-tracking invite: unlike family/coach_client, there's no existing
+ * adults_contacts row to attach this to — that row is only created once
+ * the invite is claimed (see handleInviteClaim in conversation-handler.ts),
+ * since asking someone to type their own WhatsApp number into a form
+ * before messaging from that very number is redundant. */
+export async function getOrCreateSelfInvite(workspaceId: string, displayName?: string): Promise<InviteSummary | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const admin = createServiceClient();
+  const existing = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+  const invite = await getOrCreateInvite(
+    admin,
+    { workspaceId, inviteType: "self", createdByUserId: user.id },
+    { inviteType: "self", createdByUserId: user.id, workspaceId, metadata: displayName ? { displayName } : {} }
+  );
+  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "self" });
+  return toInviteSummary(invite);
+}
+
+export async function regenerateSelfInvite(workspaceId: string): Promise<InviteSummary | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const admin = createServiceClient();
+  const current = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+  if (!current) return { error: "No invite to regenerate" };
+
+  const fresh = await regenerateInvite(admin, current);
+  trackInviteEvent("invite_regenerated", { inviteType: "self" });
+  return toInviteSummary(fresh);
 }

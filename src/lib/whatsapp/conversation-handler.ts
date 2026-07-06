@@ -4,6 +4,10 @@ import { analyzeFood, buildConfirmationMessage, buildSuccessMessage, FoodAnalysi
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
 import { classifyMeal } from "@/lib/nutrition/food-classification";
+import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
+import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
+import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
+import { trackInviteEvent } from "@/lib/invites/analytics";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
@@ -120,9 +124,101 @@ function buildAdultsSuccess(analysis: FoodAnalysisResult, targetProteinG?: numbe
 // message, so a new message isn't locked out forever.
 const LOCK_STALE_MS = 60_000;
 
+/** Handles a "JOIN FAMILY/SELF/COACHCLIENT <token>" message — the human-
+ * initiated first message of a WhatsApp-first onboarding flow (see
+ * src/lib/invites). Validates the invite, links the claiming WhatsApp
+ * number to the right profile (creating it now for the 'self' flow, since
+ * that profile doesn't exist until claim time), marks the invite claimed,
+ * and replies with a welcome message. Never sends anything unprompted —
+ * this only ever runs in response to a message the human sent first. */
+async function handleInviteClaim(
+  db: ReturnType<typeof admin>,
+  from: string,
+  normalizedFrom: string,
+  command: ParsedJoinCommand
+) {
+  const invite = await getInviteByToken(db, command.token);
+  const validation = validateInviteForClaim(invite);
+
+  if (!validation.ok) {
+    // Logged for abuse detection (e.g. repeated guesses against random
+    // tokens) and ordinary debugging (expired/already-claimed links).
+    console.warn("[whatsapp] invite claim failed:", { token: command.token, type: command.type, reason: validation.reason, from: normalizedFrom });
+    await sendTextMessage(from, INVITE_ERROR_MESSAGES[validation.reason]);
+    return;
+  }
+
+  // A token is only ever valid for the type it was created for — treat a
+  // mismatched "JOIN SELF <token>" against a family invite the same as an
+  // invalid token, rather than silently reinterpreting it.
+  if (invite!.inviteType !== command.type) {
+    console.warn("[whatsapp] invite type mismatch:", { token: command.token, expected: invite!.inviteType, got: command.type, from: normalizedFrom });
+    await sendTextMessage(from, INVITE_ERROR_MESSAGES.invalid);
+    return;
+  }
+
+  let targetProfileId = invite!.targetProfileId ?? undefined;
+
+  if (command.type === "family" || command.type === "coach_client") {
+    const table = command.type === "family" ? "adults_contacts" : "gym_clients";
+    if (!targetProfileId) {
+      console.error(`[whatsapp] ${command.type} invite has no target_profile_id:`, invite!.id);
+      await sendTextMessage(from, INVITE_ERROR_MESSAGES.invalid);
+      return;
+    }
+    await db.from(table).update({ whatsapp_number: normalizedFrom }).eq("id", targetProfileId);
+  } else {
+    // Self flow: the profile doesn't exist yet — create it now, claimed by
+    // whoever just messaged in. Mirrors addSelfContact's plan="self" setup
+    // (src/app/(adults)/adults/dashboard/actions.ts) without going through
+    // the dashboard-only entitlement pre-checks; the DB-level
+    // enforce_family_member_limit trigger (migration 0002/0003) still
+    // applies unconditionally regardless of this insert's caller.
+    const displayName = typeof invite!.metadata.displayName === "string" ? invite!.metadata.displayName : "You";
+    await db.from("workspaces").update({ plan: "self" }).eq("id", invite!.workspaceId);
+    const { data: contact, error } = await db
+      .from("adults_contacts")
+      .insert({
+        workspace_id: invite!.workspaceId,
+        caregiver_id: invite!.createdByUserId,
+        full_name: displayName,
+        whatsapp_number: normalizedFrom,
+        relationship_type: "self",
+        invite_sent_at: new Date().toISOString(),
+        invite_accepted_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (error || !contact) {
+      console.error("[whatsapp] failed to create self-tracking profile on claim:", error?.message);
+      await sendTextMessage(from, INVITE_ERROR_MESSAGES.invalid);
+      return;
+    }
+    targetProfileId = contact.id;
+  }
+
+  await markInviteClaimed(db, invite!.id, { claimedByWhatsappNumber: normalizedFrom, targetProfileId });
+  trackInviteEvent("invite_claimed", { inviteType: command.type, inviteId: invite!.id });
+  await sendTextMessage(from, buildWelcomeMessage(command.type));
+}
+
 export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: Uint8Array) {
   const db = admin();
   const normalizedFrom = normalizePhone(msg.from);
+
+  // WhatsApp-first onboarding: "JOIN FAMILY/SELF/COACHCLIENT <token>" is
+  // handled before the normal contact lookup below, since by definition the
+  // sender isn't linked to a contact/client yet. See src/lib/invites — the
+  // bot never sends the first message of a conversation; the human always
+  // initiates by sending this prefilled command from a wa.me link.
+  if (msg.type === "text" && msg.text) {
+    const joinCommand = parseJoinCommand(msg.text);
+    if (joinCommand) {
+      await handleInviteClaim(db, msg.from, normalizedFrom, joinCommand);
+      return;
+    }
+  }
 
   // Look up in gym_clients first
   const { data: gymClients } = await db

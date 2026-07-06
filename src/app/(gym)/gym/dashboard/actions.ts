@@ -1,6 +1,9 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary } from "@/lib/invites/service";
+import { trackInviteEvent } from "@/lib/invites/analytics";
+import type { InviteSummary } from "@/lib/invites/types";
 import {
   GYM_LIMIT_REACHED_MESSAGE,
   GYM_MONTHLY_QUOTA_REACHED_MESSAGE,
@@ -561,4 +564,66 @@ export async function addClient(formData: {
   }
 
   return { clientId: client.id };
+}
+
+// -----------------------------------------------------------------------
+// WhatsApp-first invites (see src/lib/invites) — the coach shares a wa.me
+// link themselves; the bot never sends the first message, so this doesn't
+// depend on an approved WhatsApp template or business verification.
+// -----------------------------------------------------------------------
+
+async function requireOwnedClient(clientId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: client } = await supabase
+    .from("gym_clients")
+    .select("id, workspace_id")
+    .eq("id", clientId)
+    .eq("trainer_id", user.id)
+    .single();
+
+  return { user, client };
+}
+
+export async function getOrCreateCoachClientInvite(clientId: string): Promise<InviteSummary | { error: string }> {
+  const { user, client } = await requireOwnedClient(clientId);
+  if (!client) return { error: "Client not found" };
+
+  const admin = createServiceClient();
+  const existing = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+  const invite = await getOrCreateInvite(
+    admin,
+    { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId },
+    { inviteType: "coach_client", createdByUserId: user.id, workspaceId: client.workspace_id, targetProfileId: clientId }
+  );
+  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "coach_client", clientId });
+  return toInviteSummary(invite);
+}
+
+export async function regenerateCoachClientInvite(clientId: string): Promise<InviteSummary | { error: string }> {
+  const { client } = await requireOwnedClient(clientId);
+  if (!client) return { error: "Client not found" };
+
+  const admin = createServiceClient();
+  const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+  if (!current) return { error: "No invite to regenerate" };
+
+  const fresh = await regenerateInvite(admin, current);
+  trackInviteEvent("invite_regenerated", { inviteType: "coach_client", clientId });
+  return toInviteSummary(fresh);
+}
+
+export async function revokeCoachClientInvite(clientId: string): Promise<{ ok: true } | { error: string }> {
+  const { client } = await requireOwnedClient(clientId);
+  if (!client) return { error: "Client not found" };
+
+  const admin = createServiceClient();
+  const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+  if (!current) return { error: "No invite to revoke" };
+
+  await revokeInvite(admin, current.id);
+  trackInviteEvent("invite_revoked", { inviteType: "coach_client", clientId });
+  return { ok: true };
 }
