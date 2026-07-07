@@ -6,7 +6,7 @@ import Link from "next/link";
 import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
 import { Reveal } from "@/components/motion/Reveal";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { AddUserExplainer } from "../shared/AddUserExplainer";
+import { AddUserTeaser } from "../shared/AddUserTeaser";
 
 const STEPS = [
   {
@@ -119,8 +119,8 @@ export function SelfImmersiveLanding() {
         </div>
       </section>
 
-      {/* ── Set up your own tracking (setup/invite, separate from meal-tracking steps above) ── */}
-      <AddUserExplainer variant="self" ctaHref={signupUrl} ctaLabel="Start tracking myself" />
+      {/* ── Set up your own tracking (setup/invite) — short teaser, full explainer lives on its own page ── */}
+      <AddUserTeaser variant="self" href="/me/add-users" />
 
       {/* ── Features ─────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">

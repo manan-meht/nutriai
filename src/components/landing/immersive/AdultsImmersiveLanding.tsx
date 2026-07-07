@@ -11,7 +11,7 @@ import {
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { AddUserExplainer } from "../shared/AddUserExplainer";
+import { AddUserTeaser } from "../shared/AddUserTeaser";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -55,7 +55,7 @@ const STEPS = [
 ] as const;
 
 export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }: AdultsImmersiveLandingProps) {
-  const signupUrl = getSignupUrl({ product: "adults", source: "landing", variant, experimentId });
+  const signupUrl = getSignupUrl({ product: "adults", source: "family_landing", variant, experimentId, productParam: "family" });
 
   function handleCta() {
     storeLandingAttribution({ product: "adults", variant, experimentId, clickedAt: Date.now() });
@@ -91,8 +91,8 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Your parents simply snap a photo of their meal. You get daily awareness and a weekly
-              nutrition summary, giving you the exact insights to take timely action for their health.
+              Your parents simply snap a photo of their meal. You get simple weekly patterns that help you
+              support them gently — without turning meals into monitoring.
             </p>
           </Reveal>
           <Reveal delay={300}>
@@ -151,8 +151,51 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
         </div>
       </section>
 
-      {/* ── Add a family member (setup/invite, separate from meal-tracking steps above) ── */}
-      <AddUserExplainer variant="family" ctaHref={signupUrl} ctaLabel="Add a family member" />
+      {/* ── Add a family member (setup/invite) — short teaser, full explainer lives on its own page ── */}
+      <AddUserTeaser variant="family" href="/family/add-users" />
+
+      {/* ── Consent, not surveillance ────────────────────────────────────── */}
+      <section className="py-20 px-6 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for support, not surveillance</h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
+              Your parent or family member stays in control, every step of the way.
+            </p>
+          </Reveal>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                step: "1",
+                heading: "Invite them on WhatsApp",
+                body: "Your parent or family member receives a simple invite.",
+              },
+              {
+                step: "2",
+                heading: "They choose what to share",
+                body: "They approve meal sharing and control what Tistra shows.",
+              },
+              {
+                step: "3",
+                heading: "You see gentle weekly patterns",
+                body: "You get trends and helpful nudges, not private monitoring.",
+              },
+            ].map((item) => (
+              <Reveal key={item.step}>
+                <div className="bg-[#F3EEFB] rounded-2xl p-7 border border-[#E9DDFF] text-center">
+                  <div className="w-10 h-10 rounded-full bg-[#6750A4] text-white font-bold flex items-center justify-center mx-auto mb-4">
+                    {item.step}
+                  </div>
+                  <p className="font-bold text-gray-900 text-lg mb-2">{item.heading}</p>
+                  <p className="text-sm text-gray-600 leading-relaxed">{item.body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── Privacy ──────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">

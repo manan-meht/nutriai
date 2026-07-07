@@ -11,7 +11,7 @@ import {
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { AddUserExplainer } from "../shared/AddUserExplainer";
+import { AddUserTeaser } from "../shared/AddUserTeaser";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -41,7 +41,7 @@ const STEPS = [
   {
     number: "02",
     heading: "AI identifies the food",
-    body: "The system recognises Indian dishes and cross-references the national nutrition database. Nutrients, calories, food groups — as honest ranges, not false precision.",
+    body: "Built to understand common Indian meals and keep getting better as Tistra reviews real-world meal data. Nutrients, calories, food groups — as honest ranges, not false precision.",
     photo: "/landing/steps/gym-step-02.jpeg",
     photoAlt: "Overhead flat-lay of a home-cooked Indian meal",
   },
@@ -64,7 +64,7 @@ const MEALS = [
 ];
 
 export function GymImmersiveLanding({ variant, experimentId, showNav = true }: GymImmersiveLandingProps) {
-  const signupUrl = getSignupUrl({ product: "gym", source: "landing", variant, experimentId });
+  const signupUrl = getSignupUrl({ product: "gym", source: "coach_landing", variant, experimentId, productParam: "coach" });
 
   function handleCta() {
     storeLandingAttribution({ product: "gym", variant, experimentId, clickedAt: Date.now() });
@@ -94,14 +94,14 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              Your clients eat.<br />
-              <span className="text-[#6750A4]">You coach smarter.</span>
+              Your clients log meals on WhatsApp.<br />
+              <span className="text-[#6750A4]">You see who needs coaching today.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Indian meals, AI identification, WhatsApp logging. A dashboard
-              that shows you who needs attention — before they ask.
+              Tistra turns low-effort meal updates into weekly nutrition patterns, client flags, and
+              simple check-in prompts — so your attention goes exactly where it&apos;s needed.
             </p>
           </Reveal>
           <Reveal delay={300}>
@@ -160,8 +160,8 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      {/* ── Invite a client (setup/invite, separate from meal-tracking steps above) ── */}
-      <AddUserExplainer variant="coach" ctaHref={signupUrl} ctaLabel="Invite a client" />
+      {/* ── Invite a client (setup/invite) — short teaser, full explainer lives on its own page ── */}
+      <AddUserTeaser variant="coach" href="/coach/add-users" />
 
       {/* ── Features ─────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">
@@ -179,12 +179,12 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
               {
                 icon: "📸",
                 title: "WhatsApp logging",
-                desc: "Clients log by sending a photo or a message. No new app to learn. Compliance is 3× higher than form-based logging.",
+                desc: "Clients log by sending a photo or a message. No new app to learn — WhatsApp logging reduces friction compared with form-based tracking.",
               },
               {
                 icon: "🧠",
                 title: "Indian food AI",
-                desc: "Recognises regional dishes, home-cooked thalis, street food, and Indian brand products. Cross-referenced with ICMR-NIN nutrition data.",
+                desc: "Designed to recognize common Indian meals — home-cooked thalis, regional dishes, and everyday snacks — and improve over time through human-reviewed classification.",
               },
               {
                 icon: "📊",
@@ -204,11 +204,42 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
+      {/* ── Workflow benefits ────────────────────────────────────────────── */}
+      <section className="py-20 px-6 bg-[#F3EEFB]">
+        <div className="max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Know who needs attention before they churn</h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <p className="text-gray-500 text-center text-lg mb-14 max-w-2xl mx-auto">
+              Less time chasing food logs. More time coaching the clients who actually need it.
+            </p>
+          </Reveal>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            {[
+              "Less manual food-log chasing",
+              "Faster review of client patterns",
+              "See who has stopped sharing meals",
+              "See who is low on protein/fiber consistency",
+              "See who needs encouragement",
+              "Send more relevant check-ins",
+            ].map((benefit) => (
+              <Reveal key={benefit}>
+                <div className="flex items-center gap-3 bg-white rounded-xl px-5 py-4 border border-[#E9DDFF]">
+                  <span className="text-[#6750A4] font-bold flex-shrink-0">✓</span>
+                  <span className="text-gray-800 text-sm font-medium">{benefit}</span>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Meal grid ─────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-gray-950 text-white">
         <div className="max-w-5xl mx-auto">
           <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-3">Knows every meal your clients actually eat</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-3">Built to recognize the meals your clients actually eat</h2>
           </Reveal>
           <Reveal delay={100}>
             <p className="text-gray-400 text-center text-lg mb-12">Not Western meal plans. Real Indian food.</p>
