@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { getSignupUrl } from "@/lib/landing/routes";
 
@@ -46,7 +47,7 @@ export function GetStartedModal({ onClose }: GetStartedModalProps) {
     return () => document.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
@@ -74,6 +75,7 @@ export function GetStartedModal({ onClose }: GetStartedModalProps) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
