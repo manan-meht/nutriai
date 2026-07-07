@@ -6,6 +6,6 @@
 -- embedding might be gold-standard-eligible even if a later corrected
 -- review of the same meal changes review_quality on the review row itself.
 alter table meal_embeddings
-  add column dataset_split text not null default 'unset' check (dataset_split in ('train', 'validation', 'test', 'holdout', 'unset')),
-  add column is_gold_standard boolean not null default false,
-  add column eligible_for_model_improvement boolean not null default false;
+  add column if not exists dataset_split text not null default 'unset' check (dataset_split in ('train', 'validation', 'test', 'holdout', 'unset')),
+  add column if not exists is_gold_standard boolean not null default false,
+  add column if not exists eligible_for_model_improvement boolean not null default false;

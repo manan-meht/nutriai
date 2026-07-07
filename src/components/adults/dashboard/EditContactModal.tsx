@@ -59,40 +59,43 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
     setSaving(true);
     setError(null);
 
-    const contactRes = await updateContact(contact.id, {
-      fullName,
-      relationship: relationship || undefined,
-      age: age ? Number(age) : undefined,
-      gender: gender || undefined,
-      weightKg: weightKg ? Number(weightKg) : undefined,
-      heightCm: heightCm ? Number(heightCm) : undefined,
-      healthNotes: healthNotes || undefined,
-      timezone,
-      remindersEnabled,
-      reminderTimes,
-    });
-    if (contactRes.error) {
-      setError(contactRes.error);
-      setSaving(false);
-      return;
-    }
+    try {
+      const contactRes = await updateContact(contact.id, {
+        fullName,
+        relationship: relationship || undefined,
+        age: age ? Number(age) : undefined,
+        gender: gender || undefined,
+        weightKg: weightKg ? Number(weightKg) : undefined,
+        heightCm: heightCm ? Number(heightCm) : undefined,
+        healthNotes: healthNotes || undefined,
+        timezone,
+        remindersEnabled,
+        reminderTimes,
+      });
+      if (contactRes.error) {
+        setError(contactRes.error);
+        return;
+      }
 
-    const goalRes = await upsertContactGoal(contact.id, {
-      goalType,
-      title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
-      targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
-      targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
-      targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
-      targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
-    });
-    if (goalRes.error) {
-      setError(goalRes.error);
-      setSaving(false);
-      return;
-    }
+      const goalRes = await upsertContactGoal(contact.id, {
+        goalType,
+        title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
+        targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
+        targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
+        targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
+        targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
+      });
+      if (goalRes.error) {
+        setError(goalRes.error);
+        return;
+      }
 
-    setSaving(false);
-    onSaved();
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
