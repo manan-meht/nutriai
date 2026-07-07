@@ -60,7 +60,10 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
           <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
             <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
           </div>
-          <span className="font-bold text-gray-900">Tistra Health</span>
+          <span className="font-bold text-gray-900 flex items-center gap-1.5">
+            Tistra Health
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[#4F378A] bg-[#4F378A]/10 rounded-full px-1.5 py-0.5">Beta</span>
+          </span>
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           <Link href="/family" className="text-gray-600 hover:text-[#4F378A]">Family</Link>

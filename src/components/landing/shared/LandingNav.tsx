@@ -33,8 +33,9 @@ export function LandingNav({ product, variant, experimentId }: LandingNavProps) 
         <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center overflow-hidden">
           <Image src={copy.logoSrc} alt="" width={28} height={28} className="w-full h-full object-contain" />
         </div>
-        <span className="text-base font-semibold tracking-tight">
+        <span className="text-base font-semibold tracking-tight flex items-center gap-1.5">
           {copy.logoLabel}
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-500/10 rounded-full px-1.5 py-0.5">Beta</span>
         </span>
       </div>
 
