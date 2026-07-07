@@ -237,6 +237,7 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
                 const avgCal = Math.round((meal.totalCaloriesMin + meal.totalCaloriesMax) / 2);
                 const time = new Date(meal.loggedAt).toLocaleString("en-IN", {
                   month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+                  timeZone: contact.timezone,
                 });
                 const emoji = MEAL_EMOJIS[meal.mealType] ?? "🍽️";
                 return (
