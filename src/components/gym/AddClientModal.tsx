@@ -45,7 +45,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
   const [heightCm, setHeightCm] = useState("");
 
   // Goal
-  const [goalType, setGoalType] = useState("");
+  const [goalTypes, setGoalTypes] = useState<string[]>([]);
   const [goalDescription, setGoalDescription] = useState("");
   const [targetWeightKg, setTargetWeightKg] = useState("");
   const [targetProteinG, setTargetProteinG] = useState("");
@@ -58,6 +58,10 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
     weightKg && heightCm
       ? (parseFloat(weightKg) / Math.pow(parseFloat(heightCm) / 100, 2)).toFixed(1)
       : null;
+
+  function toggleGoalType(value: string) {
+    setGoalTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,8 +76,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         gender: gender || undefined,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
-        goalType: goalType || undefined,
-        goalTitle: goalType ? GOAL_TITLES[goalType] : undefined,
+        goals: goalTypes.map((type) => ({ type, title: GOAL_TITLES[type] })),
         goalDescription: goalDescription || undefined,
         targetWeightKg: targetWeightKg ? parseFloat(targetWeightKg) : undefined,
         targetProteinG: targetProteinG ? parseInt(targetProteinG) : undefined,
@@ -214,13 +217,16 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
 
         {/* ── Goal ───────────────────────────────────────────── */}
         <section>
-          <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-4">Goal <span className="text-gray-400 normal-case font-normal">— optional</span></h3>
+          <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-4">
+            Goals <span className="text-gray-400 normal-case font-normal">— optional, select any that apply</span>
+          </h3>
           <div className="flex flex-wrap gap-2 mb-4">
             {GOAL_TYPES.map(g => (
               <button key={g.value} type="button"
-                onClick={() => setGoalType(goalType === g.value ? "" : g.value)}
+                onClick={() => toggleGoalType(g.value)}
+                aria-pressed={goalTypes.includes(g.value)}
                 className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
-                  goalType === g.value
+                  goalTypes.includes(g.value)
                     ? "bg-purple-600 text-white border-purple-600"
                     : "bg-white text-gray-700 border-gray-200 hover:border-purple-300"
                 }`}>
@@ -229,7 +235,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
             ))}
           </div>
 
-          {goalType && (
+          {goalTypes.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <Field label="Goal description">
@@ -238,7 +244,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
                     rows={2} className={`${input} resize-none`} />
                 </Field>
               </div>
-              {(goalType === "weight_loss" || goalType === "fat_loss" || goalType === "muscle_gain") && (
+              {(goalTypes.includes("weight_loss") || goalTypes.includes("fat_loss") || goalTypes.includes("muscle_gain")) && (
                 <Field label="Target weight (kg)">
                   <input value={targetWeightKg} onChange={e => setTargetWeightKg(e.target.value)}
                     placeholder="68" type="number" step="0.1" className={input} />

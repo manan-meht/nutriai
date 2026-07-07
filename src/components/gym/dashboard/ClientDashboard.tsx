@@ -22,7 +22,11 @@ const GOAL_LABELS: Record<string, string> = {
 };
 
 export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientDetails) {
-  const activeGoal = client.goals.find((g) => g.status === "active");
+  // Multiple goals can be selected when adding a client — numeric targets
+  // are shared and read off the first, but the header badge and goal card
+  // below list every selected goal's title.
+  const activeGoals = client.goals.filter((g) => g.status === "active");
+  const activeGoal = activeGoals[0];
   const initials = client.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
   // 7-day stats
@@ -68,9 +72,9 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
               <p className="text-xs text-gray-400">{client.whatsappNumber}</p>
             </div>
           </div>
-          {activeGoal && (
+          {activeGoals.length > 0 && (
             <span className="hidden sm:block text-xs font-medium bg-purple-50 text-purple-700 px-3 py-1.5 rounded-full">
-              {GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType}
+              {activeGoals.map((g) => GOAL_LABELS[g.goalType] ?? g.goalType).join(" · ")}
             </span>
           )}
         </div>
@@ -108,8 +112,10 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
         {activeGoal && (
           <div className="bg-purple-50 rounded-2xl p-4 flex flex-wrap gap-4 items-start">
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1">Active goal</p>
-              <p className="font-semibold text-gray-900">{activeGoal.title}</p>
+              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1">
+                {activeGoals.length > 1 ? "Active goals" : "Active goal"}
+              </p>
+              <p className="font-semibold text-gray-900">{activeGoals.map((g) => g.title).join(" · ")}</p>
               {activeGoal.description && <p className="text-sm text-gray-500 mt-0.5">{activeGoal.description}</p>}
             </div>
             <div className="flex flex-wrap gap-3 text-sm">

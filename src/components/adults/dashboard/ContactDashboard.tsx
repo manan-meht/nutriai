@@ -36,7 +36,12 @@ const MEAL_EMOJIS: Record<string, string> = { breakfast: "🌅", lunch: "☀️"
 export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
-  const activeGoal = contact.goals.find((g) => g.status === "active");
+  // Multiple goals can be selected when adding a contact (each becomes its
+  // own row) — numeric targets (protein/calories/meals) are shared across
+  // all of them and only ever read off the first, but the display below
+  // lists every selected goal's title so nothing picked looks dropped.
+  const activeGoals = contact.goals.filter((g) => g.status === "active");
+  const activeGoal = activeGoals[0];
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
   const since7 = new Date(); since7.setDate(since7.getDate() - 7);
@@ -169,9 +174,13 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
 
         {/* Goal */}
         <div className="bg-[var(--color-dashboard-primary-light)] rounded-2xl p-4">
-          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Goal</p>
+          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">
+            {activeGoals.length > 1 ? "Goals" : "Goal"}
+          </p>
           <p className="font-semibold text-gray-900 mb-0.5">
-            {activeGoal ? GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType : "No goal set yet"}
+            {activeGoals.length > 0
+              ? activeGoals.map((g) => GOAL_LABELS[g.goalType] ?? g.goalType).join(" · ")
+              : "No goal set yet"}
           </p>
           {activeGoal?.description && <p className="text-sm text-gray-500 mb-2">{activeGoal.description}</p>}
           <div className="flex flex-wrap gap-3 text-sm">

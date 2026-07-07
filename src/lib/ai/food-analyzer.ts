@@ -97,7 +97,7 @@ export async function analyzeFood(input: {
   imageMimeType?: string;
   correctionContext?: string;
 }): Promise<FoodAnalysisResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
   let textPrompt = SYSTEM_PROMPT;
   if (input.correctionContext) {

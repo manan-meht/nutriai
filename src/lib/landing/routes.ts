@@ -24,7 +24,7 @@ export function getSignupUrl(params: GetSignupUrlParams): string {
   const qs = new URLSearchParams({
     source: params.source,
     variant: params.variant,
-    ...(params.product !== "gym" ? { product: params.product } : {}),
+    ...(params.product !== "gym" ? { product: params.productParam ?? params.product } : {}),
     ...(params.experimentId ? { exp: params.experimentId } : {}),
   });
   return `${base}?${qs.toString()}`;

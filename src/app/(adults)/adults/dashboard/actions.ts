@@ -44,6 +44,9 @@ export interface AdultsContact {
   goals: AdultsGoal[];
   mealCount: number;
   lastMealAt?: string;
+  timezone: string;
+  remindersEnabled: boolean;
+  reminderTimes: string[];
 }
 
 export interface AdultsGoal {
@@ -136,6 +139,9 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsByContact[c.id]?.count ?? 0,
     lastMealAt: mealsByContact[c.id]?.lastAt,
+    timezone: c.timezone ?? "Asia/Kolkata",
+    remindersEnabled: c.reminders_enabled ?? false,
+    reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,
@@ -263,6 +269,9 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsRes.data?.length ?? 0,
     lastMealAt: mealsRes.data?.[0]?.logged_at,
+    timezone: c.timezone ?? "Asia/Kolkata",
+    remindersEnabled: c.reminders_enabled ?? false,
+    reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,
@@ -312,8 +321,14 @@ export async function addContact(formData: {
   weightKg?: number;
   heightCm?: number;
   healthNotes?: string;
-  goalType?: string;
-  goalTitle?: string;
+  timezone?: string;
+  remindersEnabled?: boolean;
+  reminderTimes?: string[];
+  /** Multiple goals may be selected at once — each becomes its own
+   * adults_contact_goals row, sharing the same numeric targets below
+   * (those represent the person's overall daily targets, not
+   * goal-type-specific numbers). */
+  goals?: Array<{ type: string; title: string }>;
   goalDescription?: string;
   targetCaloriesMin?: number;
   targetCaloriesMax?: number;
@@ -405,6 +420,9 @@ export async function addContact(formData: {
       height_cm: formData.heightCm || null,
       health_notes: formData.healthNotes || null,
       invite_sent_at: new Date().toISOString(),
+      ...(formData.timezone ? { timezone: formData.timezone } : {}),
+      reminders_enabled: formData.remindersEnabled ?? false,
+      ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
     })
     .select("id")
     .single();
@@ -421,18 +439,20 @@ export async function addContact(formData: {
   // subsequent contact (see startTrialIfNeeded — idempotent per workspace).
   await startTrialIfNeeded(formData.workspaceId, user.id, "adults");
 
-  if (formData.goalType && formData.goalTitle) {
-    await supabase.from("adults_contact_goals").insert({
-      contact_id: contact.id,
-      caregiver_id: user.id,
-      goal_type: formData.goalType,
-      title: formData.goalTitle,
-      description: formData.goalDescription || null,
-      target_calories_min: formData.targetCaloriesMin || null,
-      target_calories_max: formData.targetCaloriesMax || null,
-      target_protein_g: formData.targetProteinG || null,
-      target_meals_per_day: formData.targetMealsPerDay || null,
-    });
+  if (formData.goals && formData.goals.length > 0) {
+    await supabase.from("adults_contact_goals").insert(
+      formData.goals.map((goal) => ({
+        contact_id: contact.id,
+        caregiver_id: user.id,
+        goal_type: goal.type,
+        title: goal.title,
+        description: formData.goalDescription || null,
+        target_calories_min: formData.targetCaloriesMin || null,
+        target_calories_max: formData.targetCaloriesMax || null,
+        target_protein_g: formData.targetProteinG || null,
+        target_meals_per_day: formData.targetMealsPerDay || null,
+      }))
+    );
   }
 
   try {
@@ -527,6 +547,9 @@ export async function updateContact(
     weightKg?: number;
     heightCm?: number;
     healthNotes?: string;
+    timezone?: string;
+    remindersEnabled?: boolean;
+    reminderTimes?: string[];
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -543,6 +566,9 @@ export async function updateContact(
       weight_kg: formData.weightKg || null,
       height_cm: formData.heightCm || null,
       health_notes: formData.healthNotes || null,
+      ...(formData.timezone ? { timezone: formData.timezone } : {}),
+      ...(formData.remindersEnabled !== undefined ? { reminders_enabled: formData.remindersEnabled } : {}),
+      ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
     })
     .eq("id", contactId)
     .eq("caregiver_id", user.id);

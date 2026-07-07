@@ -40,10 +40,15 @@ export function resolveProductFromHostname(
   const byHostname = resolveProductFromHostnameOnly(hostname);
   if (byHostname) return byHostname;
 
-  // ?product= override — works in all environments when no subdomain is configured
+  // ?product= override — works in all environments when no subdomain is configured.
+  // "family"/"me" and "coach" are user-facing labels used in CTA links (see
+  // getSignupUrl's productParam) for clarity/attribution — they alias to the
+  // same adults/gym products rather than being separate product types.
   if (searchParams) {
     const qp = searchParams.get("product");
     if (qp === "gym" || qp === "adults") return qp;
+    if (qp === "family" || qp === "me") return "adults";
+    if (qp === "coach") return "gym";
   }
 
   // Env-var override

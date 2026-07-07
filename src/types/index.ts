@@ -517,9 +517,15 @@ export type LandingAnalyticsEvent =
 
 export interface GetSignupUrlParams {
   product: ProductType;
-  source: "landing" | "cta" | "nav";
+  source: string;
   variant: LandingVariant;
   experimentId?: string;
+  /** Overrides the "product" query-string value while `product` above still
+   * decides the base route (/signup vs /gym/signup) — lets a CTA say
+   * "family"/"me"/"coach" for clarity/attribution even though those all
+   * resolve to the same underlying adults/gym product. See
+   * resolveProductFromHostname's alias handling in resolve-product.ts. */
+  productParam?: string;
 }
 
 export interface GetLoginUrlParams {

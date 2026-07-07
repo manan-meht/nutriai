@@ -445,8 +445,9 @@ export async function addClient(formData: {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
-  goalType?: string;
-  goalTitle?: string;
+  /** Multiple goals may be selected at once — each becomes its own
+   * gym_client_goals row, sharing the same numeric targets below. */
+  goals?: Array<{ type: string; title: string }>;
   goalDescription?: string;
   targetWeightKg?: number;
   targetProteinG?: number;
@@ -547,20 +548,22 @@ export async function addClient(formData: {
   // subsequent client (see startTrialIfNeeded — idempotent per workspace).
   await startTrialIfNeeded(formData.workspaceId, user.id, "gym");
 
-  if (formData.goalType && formData.goalTitle) {
-    await supabase.from("gym_client_goals").insert({
-      client_id: client.id,
-      trainer_id: user.id,
-      goal_type: formData.goalType,
-      title: formData.goalTitle,
-      description: formData.goalDescription || null,
-      target_weight_kg: formData.targetWeightKg || null,
-      target_protein_g: formData.targetProteinG || null,
-      target_calories_min: formData.targetCaloriesMin || null,
-      target_calories_max: formData.targetCaloriesMax || null,
-      target_meals_per_day: formData.targetMealsPerDay || null,
-      deadline: formData.deadline || null,
-    });
+  if (formData.goals && formData.goals.length > 0) {
+    await supabase.from("gym_client_goals").insert(
+      formData.goals.map((goal) => ({
+        client_id: client.id,
+        trainer_id: user.id,
+        goal_type: goal.type,
+        title: goal.title,
+        description: formData.goalDescription || null,
+        target_weight_kg: formData.targetWeightKg || null,
+        target_protein_g: formData.targetProteinG || null,
+        target_calories_min: formData.targetCaloriesMin || null,
+        target_calories_max: formData.targetCaloriesMax || null,
+        target_meals_per_day: formData.targetMealsPerDay || null,
+        deadline: formData.deadline || null,
+      }))
+    );
   }
 
   return { clientId: client.id };

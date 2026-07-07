@@ -63,7 +63,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const isSubscriber = entitlement.status === "active" || entitlement.status === "past_due" || entitlement.status === "cancel_at_period_end";
 
   return (
-    <div className="min-h-screen bg-rose-50/40">
+    <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
       {/* Nav */}
       <header className="bg-white border-b border-gray-100 px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
@@ -98,7 +98,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           {canAdd && (
             <button
               onClick={() => setShowModal(true)}
-              className="bg-rose-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-2"
+              className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2"
             >
               <span className="text-lg leading-none">+</span> Add person
             </button>
@@ -122,14 +122,14 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         )}
 
         {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-          <div className="mb-8 rounded-xl bg-rose-50 border border-rose-100 px-4 py-3 text-sm text-rose-800">
+          <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
             Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
             <Link href="/billing?module=adults" className="underline font-medium">Subscribe</Link>
           </div>
         )}
 
         {!entitlement.isReadOnly && countLimitReached && (
-          <div className="mb-8 rounded-xl bg-rose-50 border border-rose-100 px-4 py-3 text-sm text-rose-800">
+          <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
             {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
           </div>
         )}
@@ -137,7 +137,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         {isSubscriber ? (
           <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
             <span>Your plan includes up to {familyLimit} family members.</span>
-            <Link href="/billing?module=adults" className="font-medium text-rose-700 underline">
+            <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
               Need more than {familyLimit}? Add capacity →
             </Link>
           </div>
@@ -146,7 +146,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             Your first {familyLimit} family members are free for your first month. After that, Family is{" "}
             <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
             <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-            <Link href="/billing?module=adults" className="underline font-medium text-rose-700">See plans</Link>
+            <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
           </div>
         )}
 
@@ -159,7 +159,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
         {activeCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="w-24 h-24 rounded-3xl bg-rose-50 flex items-center justify-center mb-6 text-5xl">👵</div>
+            <div className="w-24 h-24 rounded-3xl bg-[var(--color-dashboard-primary-light)] flex items-center justify-center mb-6 text-5xl">👵</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">No one added yet</h2>
             <p className="text-gray-500 text-sm max-w-xs mb-8">
               Add a parent, grandparent, or anyone you want to help stay healthy. They&apos;ll send meal photos on WhatsApp and you&apos;ll track their nutrition here.
@@ -167,7 +167,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             {canAdd && (
               <button
                 onClick={() => setShowModal(true)}
-                className="bg-rose-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-rose-700 transition-colors shadow-lg shadow-rose-100"
+                className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)]"
               >
                 Add your first contact
               </button>
@@ -244,7 +244,7 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-rose-200 hover:shadow-md transition-all cursor-pointer text-left"
+      className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-[var(--color-dashboard-primary)] hover:shadow-md transition-all cursor-pointer text-left"
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen}
@@ -253,8 +253,8 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="w-11 h-11 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-bold text-rose-700">{initials}</span>
+            <div className="w-11 h-11 rounded-full bg-[var(--color-dashboard-primary-light)] flex items-center justify-center flex-shrink-0">
+              <span className="text-sm font-bold text-[var(--color-dashboard-primary)]">{initials}</span>
             </div>
             {isActive ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full" /> : invitePending ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 border-2 border-white rounded-full" /> : null}
           </div>
@@ -318,10 +318,10 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
       )}
 
       {activeGoal ? (
-        <div className="rounded-xl bg-rose-50 px-3 py-2">
-          <p className="text-xs font-semibold text-rose-700 mb-0.5">{GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType}</p>
-          {activeGoal.description && <p className="text-xs text-rose-500 line-clamp-1">{activeGoal.description}</p>}
-          <div className="flex gap-3 mt-1.5 flex-wrap text-xs text-rose-500">
+        <div className="rounded-xl bg-[var(--color-dashboard-primary-light)] px-3 py-2">
+          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] mb-0.5">{GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType}</p>
+          {activeGoal.description && <p className="text-xs text-[var(--color-dashboard-primary)]/70 line-clamp-1">{activeGoal.description}</p>}
+          <div className="flex gap-3 mt-1.5 flex-wrap text-xs text-[var(--color-dashboard-primary)]/70">
             {activeGoal.targetProteinG && <span>{activeGoal.targetProteinG}g protein/day</span>}
             {activeGoal.targetCaloriesMin && <span>min {activeGoal.targetCaloriesMin} kcal</span>}
             {activeGoal.targetMealsPerDay && <span>{activeGoal.targetMealsPerDay} meals/day</span>}

@@ -457,7 +457,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
       await db.from("ai_meal_classifications").insert({
         meal_submission_id: submission.id,
-        model_name: "gemini-2.5-flash",
+        model_name: "gemini-3.5-flash",
         prompt_version: "v1",
         taxonomy_version: "v1",
         food_knowledge_base_version: "v1",

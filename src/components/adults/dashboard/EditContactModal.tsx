@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
 import { updateContact, upsertContactGoal } from "@/app/(adults)/adults/dashboard/actions";
 import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
+import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 
 const GOAL_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "eat_enough", label: "Eat enough food" },
@@ -35,6 +36,12 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
   const [heightCm, setHeightCm] = useState(contact.heightCm?.toString() ?? "");
   const [healthNotes, setHealthNotes] = useState(contact.healthNotes ?? "");
 
+  const [timezone, setTimezone] = useState(contact.timezone);
+  const [remindersEnabled, setRemindersEnabled] = useState(contact.remindersEnabled);
+  const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(
+    [contact.reminderTimes[0] ?? "08:00", contact.reminderTimes[1] ?? "12:00", contact.reminderTimes[2] ?? "19:00"]
+  );
+
   const [goalType, setGoalType] = useState(activeGoal?.goalType ?? "balanced_meals");
   const [targetProteinG, setTargetProteinG] = useState(activeGoal?.targetProteinG?.toString() ?? "");
   const [targetCaloriesMin, setTargetCaloriesMin] = useState(activeGoal?.targetCaloriesMin?.toString() ?? "");
@@ -60,6 +67,9 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
       weightKg: weightKg ? Number(weightKg) : undefined,
       heightCm: heightCm ? Number(heightCm) : undefined,
       healthNotes: healthNotes || undefined,
+      timezone,
+      remindersEnabled,
+      reminderTimes,
     });
     if (contactRes.error) {
       setError(contactRes.error);
@@ -126,6 +136,42 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           <Field label="Health notes">
             <textarea value={healthNotes} onChange={(e) => setHealthNotes(e.target.value)} rows={2} className={inputClass} />
           </Field>
+
+          <div className="pt-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2 mt-2">WhatsApp reminders</p>
+            <Field label="Timezone">
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className={inputClass}>
+                {COMMON_TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </Field>
+            <label className="flex items-center gap-2 text-sm text-gray-700 my-2">
+              <input
+                type="checkbox"
+                checked={remindersEnabled}
+                onChange={(e) => setRemindersEnabled(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 accent-[var(--color-dashboard-primary)]"
+              />
+              Send meal reminders on WhatsApp
+            </label>
+            {remindersEnabled && (
+              <div className="grid grid-cols-3 gap-3">
+                {(["Morning", "Midday", "Evening"] as const).map((label, i) => (
+                  <Field key={label} label={label}>
+                    <input
+                      type="time"
+                      value={reminderTimes[i]}
+                      onChange={(e) => {
+                        const next = [...reminderTimes] as [string, string, string];
+                        next[i] = e.target.value;
+                        setReminderTimes(next);
+                      }}
+                      className={inputClass}
+                    />
+                  </Field>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="pt-2 border-t border-gray-100">
             <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2 mt-2">Goal</p>

@@ -34,7 +34,7 @@ const STEPS = [
 
 export function SelfImmersiveLanding() {
   const signupUrl =
-    getSignupUrl({ product: "adults", source: "landing", variant: "immersive" }) +
+    getSignupUrl({ product: "adults", source: "me_landing", variant: "immersive", productParam: "me" }) +
     "&next=" + encodeURIComponent("/adults/dashboard?self=1");
 
   function handleCta() {

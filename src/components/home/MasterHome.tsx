@@ -16,23 +16,25 @@ const USE_CASES: UseCaseCard[] = [
   {
     href: "/me",
     icon: "🙋",
-    title: "Self-tracker Path",
-    description: "Mindful nutrition awareness without rigid calorie scoreboards.",
+    title: "For Me",
+    description:
+      "Build awareness without calorie counting. Share meals on WhatsApp and see simple patterns around protein, fiber, meal consistency, and healthier habits.",
     cta: "Get Started →",
   },
   {
     href: "/family",
     icon: "👨‍👩‍👧",
-    title: "Global Family Care",
+    title: "For Family",
     description:
-      "Keep an eye on aging parents from anywhere. They send photos via WhatsApp. You see the trends.",
+      "Support aging parents through simple WhatsApp meal updates. Stay connected to food and habit patterns without making your parent feel watched or judged.",
     cta: "Support a family member →",
   },
   {
     href: "/coach",
     icon: "🏋️",
-    title: "Coach Path",
-    description: "Low-friction infrastructure to track client meals, drive accountability, and fix churn.",
+    title: "For Coaches",
+    description:
+      "See which clients need a nutrition check-in this week. Turn low-effort meal updates into client flags, weekly patterns, and simple coaching prompts.",
     cta: "Grow your roster →",
   },
 ];
@@ -123,18 +125,18 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
               </div>
               <div className="absolute -bottom-8 -right-4 md:-right-8 bg-white/95 backdrop-blur p-5 rounded-2xl shadow-xl w-64 border-t-4 border-[#6750A4]">
                 <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-xs font-semibold text-gray-500">Weekly Progress</h4>
+                  <h4 className="text-xs font-semibold text-gray-500">Habit Momentum</h4>
                   <span className="text-green-600 text-sm">📈</span>
                 </div>
                 <div className="flex justify-between text-xs mb-1">
-                  <span>Nutrition Goal</span>
-                  <span className="text-[#4F378A] font-bold">85%</span>
+                  <span>This week</span>
+                  <span className="text-[#4F378A] font-bold">Improving</span>
                 </div>
                 <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden mb-2">
-                  <div className="bg-[#6750A4] h-full rounded-full" style={{ width: "85%" }} />
+                  <div className="bg-[#6750A4] h-full rounded-full" style={{ width: "70%" }} />
                 </div>
                 <p className="text-xs text-gray-500 leading-relaxed">
-                  Your nutrition consistency improved 12% this week. Great job keeping your meals balanced.
+                  Protein appeared more often this week. Next focus: add protein to breakfast.
                 </p>
               </div>
             </div>
@@ -172,6 +174,22 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
               </Reveal>
             ))}
           </div>
+        </section>
+
+        {/* Food philosophy */}
+        <section className="max-w-4xl mx-auto px-6 py-16 text-center">
+          <Reveal>
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-5">
+              No good food. No bad food. Just patterns.
+            </h2>
+          </Reveal>
+          <Reveal delay={100}>
+            <p className="text-gray-600 text-lg leading-relaxed max-w-2xl mx-auto">
+              Tistra does not label meals as good or bad. A sweet, samosa, biryani, or paratha can all fit into
+              real life. We look at the overall pattern: protein, fiber, regular meals, and whether your week is
+              moving in a healthier direction.
+            </p>
+          </Reveal>
         </section>
 
         {/* How it works */}
@@ -250,20 +268,60 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                 </div>
                 <div className="grid grid-cols-2 gap-4 mb-6">
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <span className="text-xs text-gray-500 block mb-1">Nutrition Consistency</span>
-                    <span className="text-xl font-bold text-[#4F378A]">5/7 Days</span>
+                    <span className="text-xs text-gray-500 block mb-1">Meal sharing</span>
+                    <span className="text-xl font-bold text-[#4F378A]">5 of 7 days</span>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-2xl">
-                    <span className="text-xs text-gray-500 block mb-1">Meal Variety</span>
-                    <span className="text-xl font-bold text-gray-900">High</span>
+                    <span className="text-xs text-gray-500 block mb-1">Protein anchors</span>
+                    <span className="text-xl font-bold text-gray-900">Improving</span>
                   </div>
                 </div>
                 <div className="p-5 bg-gray-50 rounded-2xl border-l-4 border-[#6750A4]">
                   <p className="italic text-gray-600 text-sm leading-relaxed">
-                    Nutritional balance was solid on 5 of 7 days. Consider adding more variety to breakfast for a
-                    stronger start.
+                    Protein appeared more often this week, and meals are moving in a healthier direction. Next
+                    focus: add protein to breakfast.
                   </p>
                 </div>
+              </div>
+            </div>
+          </Reveal>
+        </section>
+
+        {/* Sample weekly report */}
+        <section className="max-w-5xl mx-auto px-6 py-20">
+          <Reveal>
+            <div className="text-center mb-12">
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+                Simple weekly patterns, not calorie reports
+              </h2>
+              <p className="text-gray-600 max-w-xl mx-auto">
+                Tistra turns meal updates into small, practical next steps. No calorie counting. No food guilt.
+              </p>
+            </div>
+          </Reveal>
+          <Reveal delay={100}>
+            <div className="bg-white border border-gray-200 rounded-3xl p-8 md:p-10 shadow-sm max-w-2xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {[
+                  { label: "Protein anchors", value: "9 of 14 meals", mood: "good" },
+                  { label: "Balanced plates", value: "6 of 14 meals", mood: "steady" },
+                  { label: "Meal sharing", value: "5 of 7 days", mood: "good" },
+                  { label: "Moving in a healthier direction", value: "Yes", mood: "good" },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className={`rounded-2xl p-4 ${item.mood === "good" ? "bg-green-50" : "bg-amber-50"}`}
+                  >
+                    <span className="text-xs text-gray-500 block mb-1">{item.label}</span>
+                    <span className={`text-lg font-bold ${item.mood === "good" ? "text-green-700" : "text-amber-700"}`}>
+                      {item.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-5 bg-[#F3EEFB] rounded-2xl border-l-4 border-[#6750A4]">
+                <p className="text-xs font-semibold text-[#4F378A] uppercase tracking-widest mb-1">Next step</p>
+                <p className="text-gray-700 text-sm leading-relaxed">Add protein to breakfast twice this week.</p>
               </div>
             </div>
           </Reveal>

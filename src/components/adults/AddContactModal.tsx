@@ -2,6 +2,9 @@
 
 import React, { useState } from "react";
 import { addContact } from "@/app/(adults)/adults/dashboard/actions";
+import { guessTimezoneFromCountryCode, COMMON_TIMEZONES } from "@/lib/reminders/timezone";
+
+const DEFAULT_REMINDER_TIMES: [string, string, string] = ["08:00", "12:00", "19:00"];
 
 interface Props {
   workspaceId: string;
@@ -38,7 +41,16 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
   const [heightCm, setHeightCm] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
 
-  const [goalType, setGoalType] = useState("");
+  // Country code is only ever the best-effort starting point for timezone
+  // (many countries span multiple zones) — re-derived on every render as
+  // the code is typed, until the person explicitly overrides it via the
+  // dropdown (see src/lib/reminders/timezone.ts).
+  const [manualTimezone, setManualTimezone] = useState<string | null>(null);
+  const timezone = manualTimezone ?? guessTimezoneFromCountryCode(countryCode);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+  const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(DEFAULT_REMINDER_TIMES);
+
+  const [goalTypes, setGoalTypes] = useState<string[]>([]);
   const [goalDescription, setGoalDescription] = useState("");
   const [targetCalMin, setTargetCalMin] = useState("");
   const [targetCalMax, setTargetCalMax] = useState("");
@@ -46,6 +58,10 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
   const [targetMeals, setTargetMeals] = useState("3");
 
   const GOAL_TITLES: Record<string, string> = Object.fromEntries(GOAL_TYPES.map((g) => [g.value, g.label]));
+
+  function toggleGoalType(value: string) {
+    setGoalTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,9 +77,11 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
         gender: gender || undefined,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
+        timezone,
+        remindersEnabled,
+        reminderTimes: remindersEnabled ? reminderTimes : undefined,
         healthNotes: healthNotes || undefined,
-        goalType: goalType || undefined,
-        goalTitle: goalType ? GOAL_TITLES[goalType] : undefined,
+        goals: goalTypes.map((type) => ({ type, title: GOAL_TITLES[type] })),
         goalDescription: goalDescription || undefined,
         targetCaloriesMin: targetCalMin ? parseInt(targetCalMin) : undefined,
         targetCaloriesMax: targetCalMax ? parseInt(targetCalMax) : undefined,
@@ -103,7 +121,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
           <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-700 mb-8 max-w-xs mx-auto">
             ⏳ Waiting for {success.name} to accept
           </div>
-          <button onClick={onClose} className="bg-rose-600 text-white font-semibold rounded-full px-8 py-3 text-sm hover:bg-rose-700 transition-colors">
+          <button onClick={onClose} className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-3 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors">
             Done
           </button>
         </div>
@@ -116,7 +134,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
       <form onSubmit={handleSubmit} className="flex flex-col gap-7">
 
         <section>
-          <h3 className="text-xs font-semibold text-rose-600 uppercase tracking-widest mb-4">About them</h3>
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">About them</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <Field label="Full name" required>
@@ -159,7 +177,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
         </section>
 
         <section>
-          <h3 className="text-xs font-semibold text-rose-600 uppercase tracking-widest mb-4">Health info <span className="text-gray-400 normal-case font-normal">— optional</span></h3>
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">Health info <span className="text-gray-400 normal-case font-normal">— optional</span></h3>
           <div className="grid grid-cols-2 gap-4">
             <Field label="Weight (kg)">
               <input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="58" type="number" step="0.1" className={inp} />
@@ -178,28 +196,88 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
         </section>
 
         <section>
-          <h3 className="text-xs font-semibold text-rose-600 uppercase tracking-widest mb-4">Goal <span className="text-gray-400 normal-case font-normal">— optional</span></h3>
-          <div className="space-y-2 mb-4">
-            {GOAL_TYPES.map((g) => (
-              <button key={g.value} type="button"
-                onClick={() => setGoalType(goalType === g.value ? "" : g.value)}
-                className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
-                  goalType === g.value ? "border-rose-400 bg-rose-50" : "border-gray-200 hover:border-rose-200"
-                }`}>
-                <span className={`mt-0.5 w-4 h-4 rounded-full border flex-shrink-0 flex items-center justify-center ${
-                  goalType === g.value ? "border-rose-500 bg-rose-500" : "border-gray-300"
-                }`}>
-                  {goalType === g.value && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{g.label}</p>
-                  <p className="text-xs text-gray-400">{g.description}</p>
-                </div>
-              </button>
-            ))}
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">
+            WhatsApp reminders <span className="text-gray-400 normal-case font-normal">— optional</span>
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+            <Field label="Timezone">
+              <select
+                value={timezone}
+                onChange={(e) => setManualTimezone(e.target.value)}
+                className={inp}
+              >
+                {COMMON_TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </Field>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm text-gray-700 mb-3">
+                <input
+                  type="checkbox"
+                  checked={remindersEnabled}
+                  onChange={(e) => setRemindersEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 accent-[var(--color-dashboard-primary)]"
+                />
+                Send meal reminders on WhatsApp
+              </label>
+            </div>
           </div>
 
-          {goalType && (
+          {remindersEnabled && (
+            <div className="grid grid-cols-3 gap-3">
+              {(["Morning", "Midday", "Evening"] as const).map((label, i) => (
+                <Field key={label} label={label}>
+                  <input
+                    type="time"
+                    value={reminderTimes[i]}
+                    onChange={(e) => {
+                      const next = [...reminderTimes] as [string, string, string];
+                      next[i] = e.target.value;
+                      setReminderTimes(next);
+                    }}
+                    className={inp}
+                  />
+                </Field>
+              ))}
+              <p className="col-span-3 text-xs text-gray-400 -mt-1">
+                Times are in their local timezone ({timezone}), not yours. Defaults to 8am, 12pm, and 7pm.
+              </p>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">
+            Goals <span className="text-gray-400 normal-case font-normal">— optional, select any that apply</span>
+          </h3>
+          <div className="space-y-2 mb-4">
+            {GOAL_TYPES.map((g) => {
+              const selected = goalTypes.includes(g.value);
+              return (
+                <button key={g.value} type="button"
+                  onClick={() => toggleGoalType(g.value)}
+                  aria-pressed={selected}
+                  className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
+                    selected ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]" : "border-gray-200 hover:border-[var(--color-dashboard-primary)]"
+                  }`}>
+                  <span className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
+                    selected ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary)]" : "border-gray-300"
+                  }`}>
+                    {selected && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{g.label}</p>
+                    <p className="text-xs text-gray-400">{g.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {goalTypes.length > 0 && (
             <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
               <div className="col-span-2">
                 <Field label="Notes on this goal">
@@ -236,7 +314,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
             Cancel
           </button>
           <button type="submit" disabled={loading}
-            className="flex-1 bg-rose-600 text-white font-semibold rounded-xl py-3 text-sm hover:bg-rose-700 transition-colors disabled:opacity-50">
+            className="flex-1 bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-xl py-3 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors disabled:opacity-50">
             {loading ? "Adding…" : "Add contact"}
           </button>
         </div>
@@ -271,7 +349,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition";
+const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
 
 function WhatsAppIcon() {
   return (

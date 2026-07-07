@@ -41,7 +41,7 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
   }
 
   return (
-    <div className="mb-8 rounded-2xl border border-rose-100 bg-rose-50/60 p-6">
+    <div className="mb-8 rounded-2xl border border-[var(--color-dashboard-primary)]/20 bg-[var(--color-dashboard-primary-light)] p-6">
       <h2 className="text-lg font-bold text-gray-900 mb-1">Start tracking yourself</h2>
       <p className="text-sm text-gray-600 mb-4">
         Message Tistra Health on WhatsApp yourself to start logging meals — this creates your personal tracked profile
@@ -54,7 +54,7 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
             setStarted(true);
             startPolling();
           }}
-          className="bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg px-5 py-2.5 text-sm"
+          className="bg-[var(--color-dashboard-primary)] hover:bg-[var(--color-dashboard-primary-hover)] text-white font-semibold rounded-lg px-5 py-2.5 text-sm"
         >
           Start tracking on WhatsApp
         </button>

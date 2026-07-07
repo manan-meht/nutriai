@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ProductType } from "@/types";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+import { GetStartedModal } from "./GetStartedModal";
 
 export type MarketingHeaderVariant = "home" | "family" | "coach" | "me";
 
@@ -32,6 +33,7 @@ const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductTy
 // its own hero/content below it.
 export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: MarketingHeaderProps) {
   const [homeHref, setHomeHref] = useState(initialHomeHref);
+  const [showGetStarted, setShowGetStarted] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,12 +68,12 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
           <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">For Me</Link>
         </nav>
         {variant === "home" ? (
-          <Link
-            href="/#pick-product"
+          <button
+            onClick={() => setShowGetStarted(true)}
             className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
           >
             Get Started →
-          </Link>
+          </button>
         ) : (
           <div className="flex items-center gap-3">
             <Link
@@ -89,6 +91,7 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
           </div>
         )}
       </div>
+      {showGetStarted && <GetStartedModal onClose={() => setShowGetStarted(false)} />}
     </header>
   );
 }

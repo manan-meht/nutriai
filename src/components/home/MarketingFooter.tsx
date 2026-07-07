@@ -41,6 +41,10 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
               Terms &amp; Conditions
             </Link>
             <span aria-hidden="true">·</span>
+            <Link href="/privacy" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Privacy Policy
+            </Link>
+            <span aria-hidden="true">·</span>
             <span>
               Support:{" "}
               <a
