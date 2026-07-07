@@ -27,6 +27,17 @@ export function buildShareMessage(type: Exclude<InviteType, "self">, link: strin
   return `Hi, I'm using Tistra Health to help with nutrition tracking and coaching. Please tap this link and send the prefilled message to start sharing your meal updates with me on WhatsApp:\n\n${link}`;
 }
 
+/** wa.me with no recipient number opens WhatsApp's contact picker with this
+ * text prefilled — this is what the inviting user (caregiver/coach) should
+ * click, NOT buildWhatsAppInviteLink's bot link (that one is only for the
+ * invitee themselves to send). Using the bot link here would have the
+ * inviter open their own chat with the bot and, if sent, incorrectly link
+ * their own number instead of the invitee's. */
+export function buildShareLink(type: Exclude<InviteType, "self">, inviteLink: string): string {
+  const text = encodeURIComponent(buildShareMessage(type, inviteLink));
+  return `https://wa.me/?text=${text}`;
+}
+
 export function buildWelcomeMessage(type: InviteType): string {
   switch (type) {
     case "family":

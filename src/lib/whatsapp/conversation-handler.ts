@@ -166,7 +166,18 @@ async function handleInviteClaim(
       await sendTextMessage(from, INVITE_ERROR_MESSAGES.invalid);
       return;
     }
-    await db.from(table).update({ whatsapp_number: normalizedFrom }).eq("id", targetProfileId);
+    await db
+      .from(table)
+      .update({
+        whatsapp_number: normalizedFrom,
+        // adults_contacts' invite_accepted_at drives the dashboard's
+        // "Accepted" badge (see AdultsDashboardClient.tsx) — without this,
+        // that badge stayed stuck on "pending" forever for anyone onboarded
+        // through this WhatsApp-first flow, since it was previously only
+        // ever set by the old bot-initiated invite's "first message" check.
+        ...(command.type === "family" ? { invite_accepted_at: new Date().toISOString() } : {}),
+      })
+      .eq("id", targetProfileId);
   } else {
     // Self flow: the profile doesn't exist yet — create it now, claimed by
     // whoever just messaged in. Mirrors addSelfContact's plan="self" setup

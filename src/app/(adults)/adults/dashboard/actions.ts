@@ -16,7 +16,7 @@ import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
-import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary } from "@/lib/invites/service";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import type { InviteSummary } from "@/lib/invites/types";
 
@@ -653,15 +653,17 @@ export async function getOrCreateFamilyInvite(contactId: string): Promise<Invite
     .single();
   if (!contact) return { error: "Contact not found" };
 
-  const admin = createServiceClient();
-  const existing = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
-  const invite = await getOrCreateInvite(
-    admin,
-    { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId },
-    { inviteType: "family", createdByUserId: user.id, workspaceId: contact.workspace_id, targetProfileId: contactId }
-  );
-  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "family", contactId });
-  return toInviteSummary(invite);
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const existing = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+    const invite = await getOrCreateInvite(
+      admin,
+      { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId },
+      { inviteType: "family", createdByUserId: user.id, workspaceId: contact.workspace_id, targetProfileId: contactId }
+    );
+    if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "family", contactId });
+    return toInviteSummary(invite);
+  });
 }
 
 export async function regenerateFamilyInvite(contactId: string): Promise<InviteSummary | { error: string }> {
@@ -677,13 +679,15 @@ export async function regenerateFamilyInvite(contactId: string): Promise<InviteS
     .single();
   if (!contact) return { error: "Contact not found" };
 
-  const admin = createServiceClient();
-  const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
-  if (!current) return { error: "No invite to regenerate" };
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+    if (!current) return { error: "No invite to regenerate" };
 
-  const fresh = await regenerateInvite(admin, current);
-  trackInviteEvent("invite_regenerated", { inviteType: "family", contactId });
-  return toInviteSummary(fresh);
+    const fresh = await regenerateInvite(admin, current);
+    trackInviteEvent("invite_regenerated", { inviteType: "family", contactId });
+    return toInviteSummary(fresh);
+  });
 }
 
 export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true } | { error: string }> {
@@ -699,13 +703,15 @@ export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true 
     .single();
   if (!contact) return { error: "Contact not found" };
 
-  const admin = createServiceClient();
-  const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
-  if (!current) return { error: "No invite to revoke" };
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+    if (!current) return { error: "No invite to revoke" };
 
-  await revokeInvite(admin, current.id);
-  trackInviteEvent("invite_revoked", { inviteType: "family", contactId });
-  return { ok: true };
+    await revokeInvite(admin, current.id);
+    trackInviteEvent("invite_revoked", { inviteType: "family", contactId });
+    return { ok: true } as const;
+  });
 }
 
 /** Self-tracking invite: unlike family/coach_client, there's no existing
@@ -718,15 +724,17 @@ export async function getOrCreateSelfInvite(workspaceId: string, displayName?: s
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const admin = createServiceClient();
-  const existing = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
-  const invite = await getOrCreateInvite(
-    admin,
-    { workspaceId, inviteType: "self", createdByUserId: user.id },
-    { inviteType: "self", createdByUserId: user.id, workspaceId, metadata: displayName ? { displayName } : {} }
-  );
-  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "self" });
-  return toInviteSummary(invite);
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const existing = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+    const invite = await getOrCreateInvite(
+      admin,
+      { workspaceId, inviteType: "self", createdByUserId: user.id },
+      { inviteType: "self", createdByUserId: user.id, workspaceId, metadata: displayName ? { displayName } : {} }
+    );
+    if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "self" });
+    return toInviteSummary(invite);
+  });
 }
 
 export async function regenerateSelfInvite(workspaceId: string): Promise<InviteSummary | { error: string }> {
@@ -734,11 +742,13 @@ export async function regenerateSelfInvite(workspaceId: string): Promise<InviteS
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
-  const admin = createServiceClient();
-  const current = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
-  if (!current) return { error: "No invite to regenerate" };
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+    if (!current) return { error: "No invite to regenerate" };
 
-  const fresh = await regenerateInvite(admin, current);
-  trackInviteEvent("invite_regenerated", { inviteType: "self" });
-  return toInviteSummary(fresh);
+    const fresh = await regenerateInvite(admin, current);
+    trackInviteEvent("invite_regenerated", { inviteType: "self" });
+    return toInviteSummary(fresh);
+  });
 }

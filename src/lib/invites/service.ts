@@ -1,5 +1,5 @@
 import { generateInviteToken } from "./token";
-import { buildWhatsAppInviteLink } from "./messages";
+import { buildWhatsAppInviteLink, buildShareLink } from "./messages";
 import type { InviteSummary, InviteType, WhatsappInvite } from "./types";
 
 const DEFAULT_EXPIRY_DAYS = 14;
@@ -180,14 +180,32 @@ export async function getOrCreateInvite(db: any, findInput: FindInviteInput, cre
 }
 
 export function toInviteSummary(invite: WhatsappInvite): InviteSummary {
+  const link = buildWhatsAppInviteLink(invite.inviteType, invite.token);
   return {
     token: invite.token,
-    link: buildWhatsAppInviteLink(invite.inviteType, invite.token),
+    link,
+    shareLink: invite.inviteType === "self" ? undefined : buildShareLink(invite.inviteType, link),
     status: invite.status,
     expiresAt: invite.expiresAt,
     claimedByWhatsappNumberMasked: maskWhatsAppNumber(invite.claimedByWhatsappNumber),
     claimedAt: invite.claimedAt,
   };
+}
+
+/** Runs an invite action and turns any thrown error (e.g. a missing
+ * TISTRA_WHATSAPP_NUMBER env var, a DB error) into a returned `{ error }`
+ * instead of an unhandled rejection. Server actions that throw raw errors
+ * get their message redacted by Next.js on the client ("An error occurred
+ * in the Server Components render") and — worse — a caller with no
+ * `.catch()` (like a naive `useEffect().then()`) just hangs forever with
+ * no feedback. Every invite action should be wrapped in this. */
+export async function withInviteErrorHandling<T>(fn: () => Promise<T>): Promise<T | { error: string }> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("[invites] action failed:", err instanceof Error ? err.message : err);
+    return { error: err instanceof Error ? err.message : "Something went wrong. Please try again." };
+  }
 }
 
 export function maskWhatsAppNumber(number: string | null): string | null {

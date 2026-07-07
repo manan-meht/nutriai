@@ -27,15 +27,24 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
 
   useEffect(() => {
     let cancelled = false;
-    load().then((result) => {
-      if (cancelled) return;
-      setLoading(false);
-      if ("error" in result) setError(result.error);
-      else {
-        setInvite(result);
-        onChange?.(result);
-      }
-    });
+    load()
+      .then((result) => {
+        if (cancelled) return;
+        setLoading(false);
+        if ("error" in result) setError(result.error);
+        else {
+          setInvite(result);
+          onChange?.(result);
+        }
+      })
+      .catch((err) => {
+        // Without this, a rejected server action (e.g. a missing env var,
+        // a transient DB error) left this card stuck on "Loading invite…"
+        // forever with no feedback — .then() alone doesn't catch rejections.
+        if (cancelled) return;
+        setLoading(false);
+        setError(err instanceof Error ? err.message : "Couldn't load invite.");
+      });
     return () => {
       cancelled = true;
     };
@@ -44,32 +53,44 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
 
   async function handleRegenerate() {
     setBusy(true);
-    const result = await regenerate();
-    setBusy(false);
-    if ("error" in result) {
-      setError(result.error);
-      return;
+    try {
+      const result = await regenerate();
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      setInvite(result);
+      setError(null);
+      onChange?.(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't regenerate invite.");
+    } finally {
+      setBusy(false);
     }
-    setInvite(result);
-    setError(null);
-    onChange?.(result);
   }
 
   async function handleRevoke() {
     if (!revoke) return;
     if (!confirm("Revoke this invite? The link will stop working.")) return;
     setBusy(true);
-    const result = await revoke();
-    setBusy(false);
-    if ("error" in result) {
-      setError(result.error);
-      return;
+    try {
+      const result = await revoke();
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      if (invite) setInvite({ ...invite, status: "revoked" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't revoke invite.");
+    } finally {
+      setBusy(false);
     }
-    if (invite) setInvite({ ...invite, status: "revoked" });
   }
 
   function handleCopy() {
     if (!invite) return;
+    // The invitee needs the bot link (invite.link), not the share link —
+    // whoever pastes this should be the one sending it to the bot.
     navigator.clipboard.writeText(invite.link);
     trackInviteEvent("invite_copied", { link: invite.link });
     setCopied(true);
@@ -78,7 +99,7 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
 
   function handleOpenWhatsApp() {
     if (!invite) return;
-    trackInviteEvent("invite_link_opened", { link: invite.link });
+    trackInviteEvent("invite_link_opened", { link: invite.shareLink ?? invite.link });
   }
 
   if (loading) {
@@ -123,13 +144,13 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
           {new Date(invite.expiresAt) >= new Date() && (
             <div className="flex flex-wrap gap-2">
               <a
-                href={invite.link}
+                href={invite.shareLink ?? invite.link}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={handleOpenWhatsApp}
                 className="bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-2"
               >
-                Send invite on WhatsApp
+                {invite.shareLink ? "Send invite on WhatsApp" : "Message the bot on WhatsApp"}
               </a>
               <button onClick={handleCopy} className="border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2">
                 {copied ? "Copied!" : "Copy invite link"}

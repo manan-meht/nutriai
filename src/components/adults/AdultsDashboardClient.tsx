@@ -5,9 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { removeContact, resendContactInvite } from "@/app/(adults)/adults/dashboard/actions";
+import { removeContact, getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
 import { SelfSetupCard } from "./SelfSetupCard";
+import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
@@ -39,8 +40,6 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const [resendingId, setResendingId] = useState<string | null>(null);
-  const [resendError, setResendError] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleRemove(contact: AdultsContact) {
@@ -53,19 +52,6 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       router.refresh();
     } finally {
       setRemovingId(null);
-    }
-  }
-
-  async function handleResendInvite(contact: AdultsContact) {
-    setResendError(null);
-    setResendingId(contact.id);
-    try {
-      await resendContactInvite(contact.id);
-      router.refresh();
-    } catch (err) {
-      setResendError(err instanceof Error ? err.message : "Failed to resend invite.");
-    } finally {
-      setResendingId(null);
     }
   }
 
@@ -189,9 +175,6 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           </div>
         ) : (
           <>
-            {resendError && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3 mb-4">{resendError}</p>
-            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {contacts.map((contact) => (
                 <ContactCard
@@ -199,8 +182,6 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                   contact={contact}
                   onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
                   onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
-                  onResendInvite={contact.inviteAcceptedAt ? undefined : () => handleResendInvite(contact)}
-                  resending={resendingId === contact.id}
                 />
               ))}
             </div>
@@ -247,11 +228,9 @@ interface ContactCardProps {
   contact: AdultsContact;
   onOpen?: () => void;
   onRemove?: () => void;
-  onResendInvite?: () => void;
-  resending?: boolean;
 }
 
-function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: ContactCardProps) {
+function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   const activeGoal = contact.goals.find((g) => g.status === "active");
   const isActive = contact.mealCount > 0;
@@ -294,7 +273,7 @@ function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: C
             : invitePending ? "bg-amber-50 text-amber-700"
             : "bg-gray-100 text-gray-500"
           }`}>
-            {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Invite sent" : "Not invited"}
+            {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Not connected yet" : "Not invited"}
           </span>
           {onRemove && (
             <button
@@ -323,23 +302,18 @@ function ContactCard({ contact, onOpen, onRemove, onResendInvite, resending }: C
         </div>
       )}
 
-      {invitePending && !isActive && (
-        <div className="flex items-center justify-between gap-2 mb-4 bg-amber-50 rounded-xl px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span>⏳</span>
-            <p className="text-xs text-amber-700">Invite sent — waiting for their first message</p>
-          </div>
-          {onResendInvite && (
-            <button
-              type="button"
-              disabled={resending}
-              onClick={(e) => { e.stopPropagation(); onResendInvite(); }}
-              className="text-xs font-medium text-amber-800 underline hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded flex-shrink-0 disabled:opacity-50 disabled:no-underline"
-              aria-label={`Resend invite to ${contact.fullName}`}
-            >
-              {resending ? "Sending…" : "Resend"}
-            </button>
-          )}
+      {!isActive && !isSelf && (
+        // Real WhatsApp-first invite, shown right in the list — not just a
+        // "we sent something" claim (see src/lib/invites). Stops click
+        // propagation so its buttons don't trigger the card's onOpen navigation.
+        <div className="mb-4" onClick={(e) => e.stopPropagation()}>
+          <InviteCard
+            title="Ask them to start Tistra on WhatsApp"
+            description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
+            load={() => getOrCreateFamilyInvite(contact.id)}
+            regenerate={() => regenerateFamilyInvite(contact.id)}
+            revoke={() => revokeFamilyInvite(contact.id)}
+          />
         </div>
       )}
 

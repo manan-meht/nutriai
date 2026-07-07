@@ -118,6 +118,10 @@ describe("handleIncomingMessage — JOIN command claiming", () => {
     await handleIncomingMessage({ from: "911234567890", type: "text", text: "JOIN FAMILY 8F42K3" });
 
     expect(tables.adults_contacts[0].whatsapp_number).toBe("911234567890");
+    // Drives the dashboard's "Accepted" badge (AdultsDashboardClient.tsx) —
+    // without this, contacts onboarded via the WhatsApp-first flow stayed
+    // stuck showing "pending" forever.
+    expect(tables.adults_contacts[0].invite_accepted_at).toBeTruthy();
     expect(tables.whatsapp_invites[0].status).toBe("claimed");
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("You're now connected"));
   });

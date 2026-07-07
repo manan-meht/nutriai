@@ -3,7 +3,7 @@ process.env.INVITE_EXPIRY_DAYS = "14";
 
 import { generateInviteToken } from "@/lib/invites/token";
 import { parseJoinCommand } from "@/lib/invites/parse-command";
-import { buildJoinCommandText, buildWhatsAppInviteLink } from "@/lib/invites/messages";
+import { buildJoinCommandText, buildWhatsAppInviteLink, buildShareLink, buildShareMessage } from "@/lib/invites/messages";
 import {
   createInvite,
   getInviteByToken,
@@ -14,6 +14,8 @@ import {
   findLatestInvite,
   getOrCreateInvite,
   maskWhatsAppNumber,
+  toInviteSummary,
+  withInviteErrorHandling,
 } from "@/lib/invites/service";
 
 // Minimal fake mirroring the query shapes service.ts actually issues:
@@ -172,6 +174,54 @@ describe("maskWhatsAppNumber", () => {
   });
   it("handles null", () => {
     expect(maskWhatsAppNumber(null)).toBeNull();
+  });
+});
+
+describe("buildShareLink", () => {
+  it("has no recipient number baked in — opens WhatsApp's contact picker, not a chat with the bot", () => {
+    const botLink = buildWhatsAppInviteLink("family", "8F42K3");
+    const shareLink = buildShareLink("family", botLink);
+    // No digits between "wa.me/" and "?text=" — contrast with
+    // buildWhatsAppInviteLink, which puts the bot's number right there.
+    expect(shareLink.startsWith("https://wa.me/?text=")).toBe(true);
+  });
+
+  it("embeds the bot link inside the share message text", () => {
+    const botLink = buildWhatsAppInviteLink("coach_client", "A7K2Q9");
+    const shareLink = buildShareLink("coach_client", botLink);
+    expect(decodeURIComponent(shareLink)).toContain(botLink);
+    expect(decodeURIComponent(shareLink)).toBe(buildShareMessage("coach_client", botLink) && decodeURIComponent(shareLink));
+  });
+});
+
+describe("toInviteSummary", () => {
+  it("includes a shareLink for family/coach_client invites", async () => {
+    const db = makeFakeDb();
+    const invite = await createInvite(db, { inviteType: "family", createdByUserId: "u1", workspaceId: "ws1", targetProfileId: "c1" });
+    const summary = toInviteSummary(invite);
+    expect(summary.shareLink).toBeDefined();
+    expect(summary.shareLink).not.toBe(summary.link);
+  });
+
+  it("omits shareLink for self invites — the inviter and invitee are the same person", async () => {
+    const db = makeFakeDb();
+    const invite = await createInvite(db, { inviteType: "self", createdByUserId: "u1", workspaceId: "ws1" });
+    const summary = toInviteSummary(invite);
+    expect(summary.shareLink).toBeUndefined();
+  });
+});
+
+describe("withInviteErrorHandling", () => {
+  it("passes through a successful result unchanged", async () => {
+    const result = await withInviteErrorHandling(async () => ({ ok: true as const }));
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("turns a thrown error into a returned { error } instead of an unhandled rejection", async () => {
+    const result = await withInviteErrorHandling(async () => {
+      throw new Error("TISTRA_WHATSAPP_NUMBER is not configured");
+    });
+    expect(result).toEqual({ error: "TISTRA_WHATSAPP_NUMBER is not configured" });
   });
 });
 

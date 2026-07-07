@@ -29,7 +29,13 @@ export const INVITE_COMMAND_LABEL: Record<InviteType, string> = {
  * WhatsApp number. */
 export interface InviteSummary {
   token: string;
+  /** The bot link (wa.me/<bot>?text=JOIN...) — only the invitee should ever
+   * open this themselves (used directly for the self-tracking flow). */
   link: string;
+  /** wa.me/?text=... (no recipient) — what the inviter (caregiver/coach)
+   * should click to share the invite via their own WhatsApp. Undefined for
+   * "self" invites, which have no separate inviter/invitee to share between. */
+  shareLink?: string;
   status: InviteStatus;
   expiresAt: string;
   claimedByWhatsappNumberMasked: string | null;

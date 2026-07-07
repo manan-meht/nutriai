@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary } from "@/lib/invites/service";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import type { InviteSummary } from "@/lib/invites/types";
 import {
@@ -591,39 +591,45 @@ export async function getOrCreateCoachClientInvite(clientId: string): Promise<In
   const { user, client } = await requireOwnedClient(clientId);
   if (!client) return { error: "Client not found" };
 
-  const admin = createServiceClient();
-  const existing = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
-  const invite = await getOrCreateInvite(
-    admin,
-    { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId },
-    { inviteType: "coach_client", createdByUserId: user.id, workspaceId: client.workspace_id, targetProfileId: clientId }
-  );
-  if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "coach_client", clientId });
-  return toInviteSummary(invite);
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const existing = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+    const invite = await getOrCreateInvite(
+      admin,
+      { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId },
+      { inviteType: "coach_client", createdByUserId: user.id, workspaceId: client.workspace_id, targetProfileId: clientId }
+    );
+    if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "coach_client", clientId });
+    return toInviteSummary(invite);
+  });
 }
 
 export async function regenerateCoachClientInvite(clientId: string): Promise<InviteSummary | { error: string }> {
   const { client } = await requireOwnedClient(clientId);
   if (!client) return { error: "Client not found" };
 
-  const admin = createServiceClient();
-  const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
-  if (!current) return { error: "No invite to regenerate" };
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+    if (!current) return { error: "No invite to regenerate" };
 
-  const fresh = await regenerateInvite(admin, current);
-  trackInviteEvent("invite_regenerated", { inviteType: "coach_client", clientId });
-  return toInviteSummary(fresh);
+    const fresh = await regenerateInvite(admin, current);
+    trackInviteEvent("invite_regenerated", { inviteType: "coach_client", clientId });
+    return toInviteSummary(fresh);
+  });
 }
 
 export async function revokeCoachClientInvite(clientId: string): Promise<{ ok: true } | { error: string }> {
   const { client } = await requireOwnedClient(clientId);
   if (!client) return { error: "Client not found" };
 
-  const admin = createServiceClient();
-  const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
-  if (!current) return { error: "No invite to revoke" };
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+    if (!current) return { error: "No invite to revoke" };
 
-  await revokeInvite(admin, current.id);
-  trackInviteEvent("invite_revoked", { inviteType: "coach_client", clientId });
-  return { ok: true };
+    await revokeInvite(admin, current.id);
+    trackInviteEvent("invite_revoked", { inviteType: "coach_client", clientId });
+    return { ok: true } as const;
+  });
 }
