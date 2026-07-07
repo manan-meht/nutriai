@@ -1,7 +1,7 @@
 export const runtime = "edge";
 
 import { NextRequest, NextResponse } from "next/server";
-import { downloadMedia } from "@/lib/whatsapp/client";
+import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
 import { handleIncomingMessage } from "@/lib/whatsapp/conversation-handler";
 
 
@@ -68,7 +68,13 @@ async function processWebhook(body: any) {
             await handleIncomingMessage({ from, type: "other" });
           }
         } catch (err) {
-          console.error(`[webhook] error processing message from ${from}:`, err);
+          console.error(`[webhook] error processing message from ${from}, type ${type}:`, err);
+          await sendTextMessage(
+            from,
+            "Sorry, I had trouble processing that. Please try sending it again."
+          ).catch((sendErr) =>
+            console.error(`[webhook] failed to send fallback message to ${from}:`, sendErr)
+          );
         }
       }
     }

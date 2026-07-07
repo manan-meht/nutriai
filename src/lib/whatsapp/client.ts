@@ -76,13 +76,13 @@ export async function downloadMedia(mediaId: string): Promise<{ buffer: Uint8Arr
   const metaRes = await fetch(`${GRAPH_URL}/${mediaId}`, {
     headers: { Authorization: `Bearer ${token()}` },
   });
-  if (!metaRes.ok) throw new Error(`Failed to fetch media metadata: ${metaRes.status}`);
+  if (!metaRes.ok) throw new Error(`Failed to fetch media metadata: ${metaRes.status} ${await metaRes.text()}`);
   const { url, mime_type } = await metaRes.json();
 
   const mediaRes = await fetch(url, {
     headers: { Authorization: `Bearer ${token()}` },
   });
-  if (!mediaRes.ok) throw new Error(`Failed to download media: ${mediaRes.status}`);
+  if (!mediaRes.ok) throw new Error(`Failed to download media: ${mediaRes.status} ${await mediaRes.text()}`);
 
   const buffer = new Uint8Array(await mediaRes.arrayBuffer());
   return { buffer, mimeType: mime_type };
