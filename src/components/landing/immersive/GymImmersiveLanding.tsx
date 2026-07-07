@@ -11,6 +11,7 @@ import {
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
+import { AddUserExplainer } from "../shared/AddUserExplainer";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -158,6 +159,9 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           </div>
         </div>
       </section>
+
+      {/* ── Invite a client (setup/invite, separate from meal-tracking steps above) ── */}
+      <AddUserExplainer variant="coach" ctaHref={signupUrl} ctaLabel="Invite a client" />
 
       {/* ── Features ─────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">

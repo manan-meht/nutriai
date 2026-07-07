@@ -11,6 +11,7 @@ import {
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
+import { AddUserExplainer } from "../shared/AddUserExplainer";
 import { Reveal } from "@/components/motion/Reveal";
 import dynamic from "next/dynamic";
 
@@ -149,6 +150,9 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
           </div>
         </div>
       </section>
+
+      {/* ── Add a family member (setup/invite, separate from meal-tracking steps above) ── */}
+      <AddUserExplainer variant="family" ctaHref={signupUrl} ctaLabel="Add a family member" />
 
       {/* ── Privacy ──────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">
