@@ -19,12 +19,16 @@ export function buildWhatsAppInviteLink(type: InviteType, token: string): string
 }
 
 /** The message the inviting user (caregiver/coach) shares with the invitee
- * — via their own WhatsApp share sheet, not sent by the bot. */
-export function buildShareMessage(type: Exclude<InviteType, "self">, link: string): string {
+ * — via their own WhatsApp share sheet, not sent by the bot. Greets the
+ * invitee by name when it's known (family/coach_client invites are always
+ * tied to an existing contact/client row), falling back to a generic
+ * greeting otherwise. */
+export function buildShareMessage(type: Exclude<InviteType, "self">, link: string, recipientName?: string): string {
+  const greeting = recipientName ? `Hi ${recipientName}` : "Hi";
   if (type === "family") {
-    return `Hi, I'm using Tistra Health to help track food and health updates more easily. Please tap this link and send the prefilled message to start with Tistra:\n\n${link}`;
+    return `${greeting}, I'm using Tistra Health to help track food and health updates more easily. Please tap this link and send the prefilled message to start with Tistra:\n\n${link}`;
   }
-  return `Hi, I'm using Tistra Health to help with nutrition tracking and coaching. Please tap this link and send the prefilled message to start sharing your meal updates with me on WhatsApp:\n\n${link}`;
+  return `${greeting}, I'm using Tistra Health to help with nutrition tracking and coaching. Please tap this link and send the prefilled message to start sharing your meal updates with me on WhatsApp:\n\n${link}`;
 }
 
 /** wa.me with no recipient number opens WhatsApp's contact picker with this
@@ -33,8 +37,8 @@ export function buildShareMessage(type: Exclude<InviteType, "self">, link: strin
  * invitee themselves to send). Using the bot link here would have the
  * inviter open their own chat with the bot and, if sent, incorrectly link
  * their own number instead of the invitee's. */
-export function buildShareLink(type: Exclude<InviteType, "self">, inviteLink: string): string {
-  const text = encodeURIComponent(buildShareMessage(type, inviteLink));
+export function buildShareLink(type: Exclude<InviteType, "self">, inviteLink: string, recipientName?: string): string {
+  const text = encodeURIComponent(buildShareMessage(type, inviteLink, recipientName));
   return `https://wa.me/?text=${text}`;
 }
 

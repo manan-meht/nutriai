@@ -36,6 +36,11 @@ export interface InviteSummary {
    * should click to share the invite via their own WhatsApp. Undefined for
    * "self" invites, which have no separate inviter/invitee to share between. */
   shareLink?: string;
+  /** Plain-text version of what shareLink pre-fills — what "Copy invite
+   * link" should put on the clipboard so a pasted message explains what
+   * Tistra Health is, not just a bare wa.me URL. Undefined for "self"
+   * invites (no separate inviter/invitee to share between). */
+  shareMessage?: string;
   status: InviteStatus;
   expiresAt: string;
   claimedByWhatsappNumberMasked: string | null;

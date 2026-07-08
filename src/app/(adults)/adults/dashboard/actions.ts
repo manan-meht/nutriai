@@ -688,7 +688,7 @@ export async function getOrCreateFamilyInvite(contactId: string): Promise<Invite
 
   const { data: contact } = await supabase
     .from("adults_contacts")
-    .select("id, workspace_id")
+    .select("id, workspace_id, full_name")
     .eq("id", contactId)
     .eq("caregiver_id", user.id)
     .single();
@@ -703,7 +703,7 @@ export async function getOrCreateFamilyInvite(contactId: string): Promise<Invite
       { inviteType: "family", createdByUserId: user.id, workspaceId: contact.workspace_id, targetProfileId: contactId }
     );
     if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "family", contactId });
-    return toInviteSummary(invite);
+    return toInviteSummary(invite, contact.full_name.split(" ")[0]);
   });
 }
 
@@ -714,7 +714,7 @@ export async function regenerateFamilyInvite(contactId: string): Promise<InviteS
 
   const { data: contact } = await supabase
     .from("adults_contacts")
-    .select("id, workspace_id")
+    .select("id, workspace_id, full_name")
     .eq("id", contactId)
     .eq("caregiver_id", user.id)
     .single();
@@ -727,7 +727,7 @@ export async function regenerateFamilyInvite(contactId: string): Promise<InviteS
 
     const fresh = await regenerateInvite(admin, current);
     trackInviteEvent("invite_regenerated", { inviteType: "family", contactId });
-    return toInviteSummary(fresh);
+    return toInviteSummary(fresh, contact.full_name.split(" ")[0]);
   });
 }
 

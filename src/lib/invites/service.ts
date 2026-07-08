@@ -1,5 +1,5 @@
 import { generateInviteToken } from "./token";
-import { buildWhatsAppInviteLink, buildShareLink } from "./messages";
+import { buildWhatsAppInviteLink, buildShareLink, buildShareMessage } from "./messages";
 import type { InviteSummary, InviteType, WhatsappInvite } from "./types";
 
 const DEFAULT_EXPIRY_DAYS = 14;
@@ -179,12 +179,13 @@ export async function getOrCreateInvite(db: any, findInput: FindInviteInput, cre
   return createInvite(db, createInput);
 }
 
-export function toInviteSummary(invite: WhatsappInvite): InviteSummary {
+export function toInviteSummary(invite: WhatsappInvite, recipientName?: string): InviteSummary {
   const link = buildWhatsAppInviteLink(invite.inviteType, invite.token);
   return {
     token: invite.token,
     link,
-    shareLink: invite.inviteType === "self" ? undefined : buildShareLink(invite.inviteType, link),
+    shareLink: invite.inviteType === "self" ? undefined : buildShareLink(invite.inviteType, link, recipientName),
+    shareMessage: invite.inviteType === "self" ? undefined : buildShareMessage(invite.inviteType, link, recipientName),
     status: invite.status,
     expiresAt: invite.expiresAt,
     claimedByWhatsappNumberMasked: maskWhatsAppNumber(invite.claimedByWhatsappNumber),

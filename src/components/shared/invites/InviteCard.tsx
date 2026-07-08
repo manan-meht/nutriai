@@ -89,9 +89,13 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
 
   function handleCopy() {
     if (!invite) return;
-    // The invitee needs the bot link (invite.link), not the share link —
-    // whoever pastes this should be the one sending it to the bot.
-    navigator.clipboard.writeText(invite.link);
+    // Copy the full explainer message (what shareLink pre-fills), not just
+    // the bare link — whoever pastes this should get the same "here's what
+    // Tistra Health is" context as the WhatsApp share button gives. Falls
+    // back to the bot link itself for "self" invites, which have no
+    // separate shareMessage since there's no inviter/invitee split.
+    const toCopy = invite.shareMessage ?? invite.link;
+    navigator.clipboard.writeText(toCopy);
     trackInviteEvent("invite_copied", { link: invite.link });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);

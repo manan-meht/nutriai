@@ -597,7 +597,7 @@ async function requireOwnedClient(clientId: string) {
 
   const { data: client } = await supabase
     .from("gym_clients")
-    .select("id, workspace_id")
+    .select("id, workspace_id, full_name")
     .eq("id", clientId)
     .eq("trainer_id", user.id)
     .single();
@@ -619,7 +619,7 @@ export async function getOrCreateCoachClientInvite(clientId: string): Promise<In
       { inviteType: "coach_client", createdByUserId: user.id, workspaceId: client.workspace_id, targetProfileId: clientId }
     );
     if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "coach_client", clientId });
-    return toInviteSummary(invite);
+    return toInviteSummary(invite, client.full_name.split(" ")[0]);
   });
 }
 
@@ -635,7 +635,7 @@ export async function regenerateCoachClientInvite(clientId: string): Promise<Inv
 
     const fresh = await regenerateInvite(admin, current);
     trackInviteEvent("invite_regenerated", { inviteType: "coach_client", clientId });
-    return toInviteSummary(fresh);
+    return toInviteSummary(fresh, client.full_name.split(" ")[0]);
   });
 }
 
