@@ -154,7 +154,7 @@ export function buildConfirmationMessage(analysis: FoodAnalysisResult): string {
 }
 
 export function buildSuccessMessage(analysis: FoodAnalysisResult, targetProteinG?: number): string {
-  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
   const mealType = analysis.meal_type.charAt(0).toUpperCase() + analysis.meal_type.slice(1);
   const avgProtein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
   const avgCal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);

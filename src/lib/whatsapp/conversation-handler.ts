@@ -104,8 +104,8 @@ function buildAdultsConfirmation(analysis: FoodAnalysisResult): string {
   return `What a lovely meal! 😊 I can see:\n${foodLines}\n\nThat's roughly *${avgProtein}g protein and ${avgCal} kcal*.\n\nDoes that look right? Reply *Yes* to save it, or tell me what to correct 🙏`;
 }
 
-function buildAdultsSuccess(analysis: FoodAnalysisResult, targetProteinG?: number): string {
-  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+function buildAdultsSuccess(analysis: FoodAnalysisResult, targetProteinG?: number, timezone?: string): string {
+  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: timezone || "Asia/Kolkata" });
   const mealType = analysis.meal_type.charAt(0).toUpperCase() + analysis.meal_type.slice(1);
   const avgProtein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
   const avgCal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);
@@ -617,7 +617,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       if (pendingMeal) {
         await saveMeal(pendingMeal);
         const successMsg = isAdults
-          ? buildAdultsSuccess(pendingMeal, targetProtein)
+          ? buildAdultsSuccess(pendingMeal, targetProtein, adultsContact?.timezone)
           : buildSuccessMessage(pendingMeal, targetProtein);
         await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
       }
