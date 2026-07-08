@@ -197,7 +197,7 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
         </div>
 
         {/* Today's meal timeline */}
-        <MealTimelineSection meals={classifiedMeals} />
+        <MealTimelineSection meals={classifiedMeals} timeZone={contact.timezone} />
 
         {/* Weekly focus habit */}
         <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />

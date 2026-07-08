@@ -64,9 +64,16 @@ export function TrendCardGrid({ cards }: { cards: TrendCard[] }) {
 }
 
 /** Today's meal timeline: breakfast -> lunch -> snack -> dinner. */
-export function MealTimelineSection({ meals }: { meals: ClassifiedMeal[] }) {
-  const today = new Date().toDateString();
-  const todaysMeals = meals.filter((m) => new Date(m.loggedAt).toDateString() === today);
+export function MealTimelineSection({ meals, timeZone = "UTC" }: { meals: ClassifiedMeal[]; timeZone?: string }) {
+  // Pinned to an explicit IANA zone rather than toDateString()'s ambient
+  // runtime-local zone — the server (edge, UTC) and the browser (the
+  // contact's local zone) disagree on "today" near day boundaries
+  // otherwise, producing different meal lists on SSR vs. hydration and
+  // crashing React hydration for this whole section (error #418).
+  const dateKey = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-CA", { timeZone });
+  const today = dateKey(new Date().toISOString());
+  const todaysMeals = meals.filter((m) => dateKey(m.loggedAt) === today);
   const order = ["breakfast", "lunch", "snack", "dinner"];
   const sorted = [...todaysMeals].sort(
     (a, b) => order.indexOf(a.mealType ?? "") - order.indexOf(b.mealType ?? "")
