@@ -593,7 +593,7 @@ export async function addClient(formData: {
 async function requireOwnedClient(clientId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { user: null, client: null };
 
   const { data: client } = await supabase
     .from("gym_clients")
@@ -607,6 +607,7 @@ async function requireOwnedClient(clientId: string) {
 
 export async function getOrCreateCoachClientInvite(clientId: string): Promise<InviteSummary | { error: string }> {
   const { user, client } = await requireOwnedClient(clientId);
+  if (!user) return { error: "Your session has expired. Please sign in again." };
   if (!client) return { error: "Client not found" };
 
   return withInviteErrorHandling(async () => {
@@ -623,7 +624,8 @@ export async function getOrCreateCoachClientInvite(clientId: string): Promise<In
 }
 
 export async function regenerateCoachClientInvite(clientId: string): Promise<InviteSummary | { error: string }> {
-  const { client } = await requireOwnedClient(clientId);
+  const { user, client } = await requireOwnedClient(clientId);
+  if (!user) return { error: "Your session has expired. Please sign in again." };
   if (!client) return { error: "Client not found" };
 
   return withInviteErrorHandling(async () => {
@@ -638,7 +640,8 @@ export async function regenerateCoachClientInvite(clientId: string): Promise<Inv
 }
 
 export async function revokeCoachClientInvite(clientId: string): Promise<{ ok: true } | { error: string }> {
-  const { client } = await requireOwnedClient(clientId);
+  const { user, client } = await requireOwnedClient(clientId);
+  if (!user) return { error: "Your session has expired. Please sign in again." };
   if (!client) return { error: "Client not found" };
 
   return withInviteErrorHandling(async () => {

@@ -684,7 +684,7 @@ export async function resendContactInvite(contactId: string): Promise<void> {
 export async function getOrCreateFamilyInvite(contactId: string): Promise<InviteSummary | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { error: "Your session has expired. Please sign in again." };
 
   const { data: contact } = await supabase
     .from("adults_contacts")
@@ -710,7 +710,7 @@ export async function getOrCreateFamilyInvite(contactId: string): Promise<Invite
 export async function regenerateFamilyInvite(contactId: string): Promise<InviteSummary | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { error: "Your session has expired. Please sign in again." };
 
   const { data: contact } = await supabase
     .from("adults_contacts")
@@ -734,7 +734,7 @@ export async function regenerateFamilyInvite(contactId: string): Promise<InviteS
 export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true } | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { error: "Your session has expired. Please sign in again." };
 
   const { data: contact } = await supabase
     .from("adults_contacts")
@@ -763,7 +763,7 @@ export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true 
 export async function getOrCreateSelfInvite(workspaceId: string, displayName?: string): Promise<InviteSummary | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { error: "Your session has expired. Please sign in again." };
 
   return withInviteErrorHandling(async () => {
     const admin = createServiceClient();
@@ -781,7 +781,7 @@ export async function getOrCreateSelfInvite(workspaceId: string, displayName?: s
 export async function regenerateSelfInvite(workspaceId: string): Promise<InviteSummary | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
+  if (!user) return { error: "Your session has expired. Please sign in again." };
 
   return withInviteErrorHandling(async () => {
     const admin = createServiceClient();
