@@ -119,7 +119,17 @@ export async function analyzeFood(input: {
 
   parts.push({ text: textPrompt });
 
-  const result = await model.generateContent(parts);
+  // Without a timeout, a hung Gemini call can run past the platform's
+  // execution limit and get killed mid-flight — bypassing the caller's
+  // try/catch entirely and leaving the WhatsApp conversation lock stuck in
+  // "processing" forever. Failing fast here guarantees the caller's catch
+  // always runs and releases the lock.
+  const result = await Promise.race([
+    model.generateContent(parts),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Gemini request timed out")), 25_000)
+    ),
+  ]);
   const raw = result.response.text().trim();
 
   // Strip markdown code blocks if present
