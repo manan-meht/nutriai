@@ -18,6 +18,7 @@ import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
+import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
 import type { InviteSummary } from "@/lib/invites/types";
 
 export interface AdultsContact {
@@ -403,6 +404,20 @@ export async function addContact(formData: {
   const entitlement = await getEntitlementSnapshot(formData.workspaceId, "adults");
   if (entitlement.isReadOnly) {
     return { error: "Your Family trial has ended. Subscribe to add more family members." };
+  }
+
+  // A number already registered as a gym client (or another adults contact)
+  // can't be added again — the WhatsApp bot resolves a number to exactly one
+  // entity, and a shared number previously caused the conversation lock to
+  // get stuck permanently (see src/lib/whatsapp/conversation-handler.ts).
+  const existingContact = await findContactByWhatsappNumber(formData.whatsappNumber);
+  if (existingContact) {
+    return {
+      error:
+        existingContact.contactType === "gym"
+          ? "This WhatsApp number is already registered as a coaching client."
+          : "This WhatsApp number is already registered as a family member.",
+    };
   }
 
   const { data: contact, error } = await supabase
