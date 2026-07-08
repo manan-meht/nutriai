@@ -286,11 +286,17 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   const peekState = conv?.state ?? "idle";
 
   // whatsapp_conversations has separate client_id (FK -> gym_clients) and
-  // adults_contact_id (FK -> adults_contacts) columns — exactly one must be
-  // set per row (see migration 0006). Writing the wrong one (or a
-  // non-existent column, per an earlier version of this fix) fails the
-  // insert/update outright.
-  const entityColumn = isAdults ? { adults_contact_id: entityId } : { client_id: entityId };
+  // adults_contact_id (FK -> adults_contacts) columns — a CHECK constraint
+  // (migration 0006) requires exactly one to be non-null per row. The same
+  // phone number can end up registered as both a gym client and an adults
+  // contact (e.g. reused test data); gymClient always wins the lookup above,
+  // so a row previously linked to the adults contact must have that column
+  // explicitly cleared here, or the upsert violates the constraint, fails,
+  // and (since the error was only logged, not surfaced) silently leaves the
+  // conversation lock stuck in "processing" forever.
+  const entityColumn = isAdults
+    ? { adults_contact_id: entityId, client_id: null }
+    : { client_id: entityId, adults_contact_id: null };
 
   async function setConvState(newState: string, newPendingMeal?: FoodAnalysisResult | null) {
     const { error } = await db.from("whatsapp_conversations").upsert({
