@@ -11,7 +11,6 @@ import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
 import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
-import { getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -32,6 +31,23 @@ const GOAL_LABELS: Record<string, string> = {
 };
 
 const MEAL_EMOJIS: Record<string, string> = { breakfast: "🌅", lunch: "☀️", dinner: "🌙", snack: "🍎" };
+
+/** Plain fetch instead of a Server Action — Server Actions on this
+ * deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
+ * fail with "Server Action ... was not found on the server" because
+ * different edge instances serving the same deployment can disagree on the
+ * action's encryption key/manifest. A regular HTTP route sidesteps that
+ * mechanism entirely. */
+async function fetchInviteJson(url: string, init?: RequestInit): Promise<any> {
+  try {
+    const res = await fetch(url, init);
+    const json = await res.json().catch(() => null);
+    if (!json) return { error: "Couldn't reach the server. Please try again." };
+    return json;
+  } catch {
+    return { error: "Couldn't reach the server. Please try again." };
+  }
+}
 
 export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const router = useRouter();
@@ -139,9 +155,9 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           <InviteCard
             title={`Ask them to start Tistra on WhatsApp`}
             description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
-            load={() => getOrCreateFamilyInvite(contact.id)}
-            regenerate={() => regenerateFamilyInvite(contact.id)}
-            revoke={() => revokeFamilyInvite(contact.id)}
+            load={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}`)}
+            regenerate={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}/regenerate`, { method: "POST" })}
+            revoke={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}`, { method: "DELETE" })}
           />
         )}
 

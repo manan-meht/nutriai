@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { updateContact, upsertContactGoal } from "@/app/(adults)/adults/dashboard/actions";
 import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
 import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 
@@ -21,6 +20,19 @@ interface Props {
   contact: AdultsContact;
   onClose: () => void;
   onSaved: () => void;
+}
+
+/** Plain fetch instead of a Server Action — Server Actions on this
+ * deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
+ * fail with "Server Action ... was not found on the server" because
+ * different edge instances serving the same deployment can disagree on the
+ * action's encryption key/manifest. A regular HTTP route sidesteps that
+ * mechanism entirely. */
+async function fetchJson(url: string, init?: RequestInit): Promise<{ error?: string }> {
+  const res = await fetch(url, init);
+  const json = await res.json().catch(() => null);
+  if (!json) return { error: "Couldn't reach the server. Please try again." };
+  return json;
 }
 
 export function EditContactModal({ contact, onClose, onSaved }: Props) {
@@ -60,30 +72,38 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
     setError(null);
 
     try {
-      const contactRes = await updateContact(contact.id, {
-        fullName,
-        relationship: relationship || undefined,
-        age: age ? Number(age) : undefined,
-        gender: gender || undefined,
-        weightKg: weightKg ? Number(weightKg) : undefined,
-        heightCm: heightCm ? Number(heightCm) : undefined,
-        healthNotes: healthNotes || undefined,
-        timezone,
-        remindersEnabled,
-        reminderTimes,
+      const contactRes = await fetchJson(`/api/adults/contacts/${contact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName,
+          relationship: relationship || undefined,
+          age: age ? Number(age) : undefined,
+          gender: gender || undefined,
+          weightKg: weightKg ? Number(weightKg) : undefined,
+          heightCm: heightCm ? Number(heightCm) : undefined,
+          healthNotes: healthNotes || undefined,
+          timezone,
+          remindersEnabled,
+          reminderTimes,
+        }),
       });
       if (contactRes.error) {
         setError(contactRes.error);
         return;
       }
 
-      const goalRes = await upsertContactGoal(contact.id, {
-        goalType,
-        title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
-        targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
-        targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
-        targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
-        targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
+      const goalRes = await fetchJson(`/api/adults/contacts/${contact.id}/goal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          goalType,
+          title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
+          targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
+          targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
+          targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
+          targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
+        }),
       });
       if (goalRes.error) {
         setError(goalRes.error);
