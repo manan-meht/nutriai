@@ -16,7 +16,7 @@ import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
-import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, updateInviteMetadata, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
 import type { InviteSummary } from "@/lib/invites/types";
@@ -532,7 +532,12 @@ async function sendContactInvite(
   whatsappNumber: string
 ): Promise<void> {
   const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", userId).single();
-  const caregiverName = profile?.full_name ?? "Your family member";
+  // profiles.full_name sometimes ends up populated from the raw auth email
+  // (which for the adults product is "+nutriai-adults"-scoped, see
+  // scopedEmail in src/lib/auth.ts) rather than a real name — never let
+  // that leak into an outbound WhatsApp message.
+  const rawName = profile?.full_name ?? "";
+  const caregiverName = rawName && !/[@+]/.test(rawName) ? rawName : "Your family member";
   const firstName = contactFullName.split(" ")[0];
   const templateName = process.env.WHATSAPP_INVITE_TEMPLATE_NAME;
 
@@ -773,6 +778,55 @@ export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true 
  * the invite is claimed (see handleInviteClaim in conversation-handler.ts),
  * since asking someone to type their own WhatsApp number into a form
  * before messaging from that very number is redundant. */
+export interface SelfDetails {
+  fullName: string;
+  age?: number;
+  gender?: string;
+  weightKg?: number;
+  heightCm?: number;
+  healthNotes?: string;
+  goals?: Array<{ type: string; title: string }>;
+  goalDescription?: string;
+  targetCaloriesMin?: number;
+  targetCaloriesMax?: number;
+  targetProteinG?: number;
+  targetMealsPerDay?: number;
+}
+
+/** Self-tracking's equivalent of addContact — but since there's no
+ * adults_contacts row until the WhatsApp invite is actually claimed (no
+ * phone number to key it on yet), these details are stashed in the
+ * invite's metadata instead and only materialized into a real contact +
+ * goal row at claim time (see handleInviteClaim in conversation-handler.ts).
+ * The WhatsApp invite link is deliberately not generated until this has
+ * been called at least once, so the bot always has real details to work
+ * with rather than creating a bare, unconfigured self profile. */
+export async function saveSelfDetailsAndCreateInvite(workspaceId: string, details: SelfDetails): Promise<InviteSummary | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Your session has expired. Please sign in again." };
+
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const metadata = { ...details };
+    const existing = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+
+    if (existing && existing.status === "pending") {
+      await updateInviteMetadata(admin, existing.id, metadata);
+      const refreshed = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+      return toInviteSummary(refreshed!);
+    }
+
+    const invite = await getOrCreateInvite(
+      admin,
+      { workspaceId, inviteType: "self", createdByUserId: user.id },
+      { inviteType: "self", createdByUserId: user.id, workspaceId, metadata }
+    );
+    trackInviteEvent("invite_created", { inviteType: "self" });
+    return toInviteSummary(invite);
+  });
+}
+
 export async function getOrCreateSelfInvite(workspaceId: string, displayName?: string): Promise<InviteSummary | { error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -784,7 +838,7 @@ export async function getOrCreateSelfInvite(workspaceId: string, displayName?: s
     const invite = await getOrCreateInvite(
       admin,
       { workspaceId, inviteType: "self", createdByUserId: user.id },
-      { inviteType: "self", createdByUserId: user.id, workspaceId, metadata: displayName ? { displayName } : {} }
+      { inviteType: "self", createdByUserId: user.id, workspaceId, metadata: displayName ? { fullName: displayName } : {} }
     );
     if (!existing || existing.id !== invite.id) trackInviteEvent("invite_created", { inviteType: "self" });
     return toInviteSummary(invite);

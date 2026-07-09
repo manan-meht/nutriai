@@ -114,6 +114,21 @@ export async function markInviteClaimed(
   if (error) throw new Error(`Failed to mark invite claimed: ${error.message}`);
 }
 
+/** Overwrites a pending invite's metadata — used by the self-tracking flow
+ * to attach the person's details (age, weight, goals, etc.) collected via
+ * a form *before* the WhatsApp invite is generated, so the profile created
+ * on claim (see handleInviteClaim in conversation-handler.ts) isn't just a
+ * bare name. Only ever called on a still-pending invite (claimed/expired
+ * ones are replaced via regenerateInvite instead). */
+export async function updateInviteMetadata(db: any, inviteId: string, metadata: Record<string, unknown>): Promise<void> {
+  const { error } = await db
+    .from("whatsapp_invites")
+    .update({ metadata, updated_at: new Date().toISOString() })
+    .eq("id", inviteId)
+    .eq("status", "pending");
+  if (error) throw new Error(`Failed to update invite metadata: ${error.message}`);
+}
+
 export async function revokeInvite(db: any, inviteId: string): Promise<void> {
   const { error } = await db
     .from("whatsapp_invites")

@@ -135,7 +135,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         {(promptSelfSetup || showSelfSetup) && !dismissedSelfSetup && (
           <SelfSetupCard
             workspaceId={workspaceId}
-            defaultFullName={caregiverName}
+            defaultFullName={displayName}
             onDone={() => { setDismissedSelfSetup(true); router.refresh(); }}
             onSkip={() => setDismissedSelfSetup(true)}
           />
@@ -266,7 +266,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       {showModal && (
         <AddContactModal
           workspaceId={workspaceId}
-          caregiverName={caregiverName || caregiverEmail}
+          caregiverName={displayName || caregiverEmail}
           onClose={() => setShowModal(false)}
           onAdded={() => router.refresh()}
         />

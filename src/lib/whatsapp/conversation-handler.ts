@@ -227,21 +227,29 @@ async function handleInviteClaim(
       .eq("id", targetProfileId);
   } else {
     // Self flow: the profile doesn't exist yet — create it now, claimed by
-    // whoever just messaged in. Mirrors addSelfContact's plan="self" setup
-    // (src/app/(adults)/adults/dashboard/actions.ts) without going through
+    // whoever just messaged in, using the details collected via the
+    // "Add your details" form before the invite link was ever generated
+    // (see saveSelfDetailsAndCreateInvite) rather than a bare name. Mirrors
+    // addContact's field mapping / goal-row creation without going through
     // the dashboard-only entitlement pre-checks; the DB-level
     // enforce_family_member_limit trigger (migration 0002/0003) still
     // applies unconditionally regardless of this insert's caller.
-    const displayName = typeof invite!.metadata.displayName === "string" ? invite!.metadata.displayName : "You";
+    const meta = invite!.metadata as Record<string, unknown>;
+    const fullName = typeof meta.fullName === "string" && meta.fullName ? meta.fullName : "You";
     await db.from("workspaces").update({ plan: "self" }).eq("id", invite!.workspaceId);
     const { data: contact, error } = await db
       .from("adults_contacts")
       .insert({
         workspace_id: invite!.workspaceId,
         caregiver_id: invite!.createdByUserId,
-        full_name: displayName,
+        full_name: fullName,
         whatsapp_number: normalizedFrom,
         relationship_type: "self",
+        age: typeof meta.age === "number" ? meta.age : null,
+        gender: typeof meta.gender === "string" ? meta.gender : null,
+        weight_kg: typeof meta.weightKg === "number" ? meta.weightKg : null,
+        height_cm: typeof meta.heightCm === "number" ? meta.heightCm : null,
+        health_notes: typeof meta.healthNotes === "string" ? meta.healthNotes : null,
         invite_sent_at: new Date().toISOString(),
         invite_accepted_at: new Date().toISOString(),
       })
@@ -254,6 +262,23 @@ async function handleInviteClaim(
       return;
     }
     targetProfileId = contact.id;
+
+    const goals = Array.isArray(meta.goals) ? meta.goals as Array<{ type: string; title: string }> : [];
+    if (goals.length > 0) {
+      await db.from("adults_contact_goals").insert(
+        goals.map((goal) => ({
+          contact_id: contact.id,
+          caregiver_id: invite!.createdByUserId,
+          goal_type: goal.type,
+          title: goal.title,
+          description: typeof meta.goalDescription === "string" ? meta.goalDescription : null,
+          target_calories_min: typeof meta.targetCaloriesMin === "number" ? meta.targetCaloriesMin : null,
+          target_calories_max: typeof meta.targetCaloriesMax === "number" ? meta.targetCaloriesMax : null,
+          target_protein_g: typeof meta.targetProteinG === "number" ? meta.targetProteinG : null,
+          target_meals_per_day: typeof meta.targetMealsPerDay === "number" ? meta.targetMealsPerDay : null,
+        }))
+      );
+    }
   }
 
   await markInviteClaimed(db, invite!.id, { claimedByWhatsappNumber: normalizedFrom, targetProfileId });
