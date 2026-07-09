@@ -22,7 +22,9 @@ interface Props {
   extraCapacity: number;
   entitlement: EntitlementSnapshot;
   promptSelfSetup?: boolean;
+  isSelfPlan?: boolean;
   pricing: { monthlyLabel: string; annualLabel: string };
+  selfPricing: { monthlyLabel: string; annualLabel: string };
 }
 
 const GOAL_LABELS: Record<string, string> = {
@@ -35,9 +37,10 @@ const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, pricing }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
+  const [showSelfSetup, setShowSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const router = useRouter();
@@ -61,6 +64,14 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const countLimitReached = FAMILY_LIMIT_ENFORCEMENT_ENABLED && activeCount >= familyLimit;
   const canAdd = !countLimitReached && !entitlement.isReadOnly;
   const isSubscriber = entitlement.status === "active" || entitlement.status === "past_due" || entitlement.status === "cancel_at_period_end";
+
+  // profiles.full_name sometimes ends up populated from the raw email local
+  // part (e.g. a "+tag" test address like "mandarth.manan+nutriai-adults")
+  // rather than a real display name — never greet with something that looks
+  // like it was derived from an email address.
+  const looksLikeEmailFragment = /[@+]/.test(caregiverName);
+  const selfContactName = contacts.find((c) => c.relationshipType === "self")?.fullName;
+  const displayName = selfContactName || (!looksLikeEmailFragment ? caregiverName : "");
 
   return (
     <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
@@ -89,10 +100,16 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
-              {caregiverName ? `Hi, ${caregiverName.split(" ")[0]} 👋` : "Your family"}
+              {displayName ? `Hi, ${displayName.split(" ")[0]} 👋` : isSelfPlan ? "Your health" : "Your family"}
             </h1>
             <p className="text-gray-500 text-sm">
-              {activeCount === 0 ? "Add someone to get started." : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
+              {activeCount === 0
+                ? isSelfPlan
+                  ? "Add your details to get started."
+                  : "Add someone to get started."
+                : isSelfPlan
+                  ? "Keeping an eye on your nutrition"
+                  : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
             </p>
           </div>
           {canAdd && (
@@ -105,7 +122,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           )}
         </div>
 
-        {promptSelfSetup && !dismissedSelfSetup && (
+        {(promptSelfSetup || showSelfSetup) && !dismissedSelfSetup && (
           <SelfSetupCard
             workspaceId={workspaceId}
             defaultFullName={caregiverName}
@@ -136,10 +153,17 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
         {isSubscriber ? (
           <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
-            <span>Your plan includes up to {familyLimit} family members.</span>
+            <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
             <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
-              Need more than {familyLimit}? Add capacity →
+              {isSelfPlan ? "Want to add family too? →" : `Need more than ${familyLimit}? Add capacity →`}
             </Link>
+          </div>
+        ) : isSelfPlan ? (
+          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+            Your first month is free. After that, tracking is{" "}
+            <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
+            <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span>.{" "}
+            <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
           </div>
         ) : (
           <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
@@ -160,11 +184,22 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         {activeCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-center">
             <div className="w-24 h-24 rounded-3xl bg-[var(--color-dashboard-primary-light)] flex items-center justify-center mb-6 text-5xl">👵</div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">No one added yet</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">
+              {isSelfPlan ? "Add your details to get started" : "No one added yet"}
+            </h2>
             <p className="text-gray-500 text-sm max-w-xs mb-8">
-              Add a parent, grandparent, or anyone you want to help stay healthy. They&apos;ll send meal photos on WhatsApp and you&apos;ll track their nutrition here.
+              {isSelfPlan
+                ? "Send a photo of your meal or describe what you ate on WhatsApp, and we'll track your nutrition here."
+                : "Add a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp and you'll track their nutrition here."}
             </p>
-            {canAdd && (
+            {isSelfPlan ? (
+              <button
+                onClick={() => setShowSelfSetup(true)}
+                className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)]"
+              >
+                Add your details
+              </button>
+            ) : canAdd && (
               <button
                 onClick={() => setShowModal(true)}
                 className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)]"

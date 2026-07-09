@@ -3,13 +3,13 @@ export const runtime = "edge";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts } from "./actions";
+import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorkspaceSelfPlan } from "./actions";
 import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient";
 import { displayEmail } from "@/lib/auth";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
-import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
+import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing";
 import { SELF_TRACKING_ENABLED } from "@/lib/billing/feature-flags";
 
 interface AdultsDashboardPageProps {
@@ -41,12 +41,21 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   });
   const monthly = getPrice(market, "adults", "monthly");
   const annual = getPrice(market, "adults", "annual");
+  const selfMonthly = getSelfPrice(market, "monthly");
+  const selfAnnual = getSelfPrice(market, "annual");
 
   const params = (await searchParams) ?? {};
-  const promptSelfSetup =
-    SELF_TRACKING_ENABLED &&
-    params.self === "1" &&
-    !contacts.some((c) => c.relationshipType === "self");
+  const hasSelfContact = contacts.some((c) => c.relationshipType === "self");
+
+  // Persist self-tracking intent as soon as it's known, rather than only
+  // relying on the one-time ?self=1 redirect param — see markWorkspaceSelfPlan.
+  let isSelfPlan = workspace.plan === "self";
+  if (SELF_TRACKING_ENABLED && params.self === "1" && !isSelfPlan) {
+    await markWorkspaceSelfPlan(workspace.id);
+    isSelfPlan = true;
+  }
+
+  const promptSelfSetup = SELF_TRACKING_ENABLED && isSelfPlan && !hasSelfContact;
 
   return (
     <AdultsDashboardClient
@@ -58,9 +67,14 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
       extraCapacity={workspace.extraCapacity}
       entitlement={entitlement}
       promptSelfSetup={promptSelfSetup}
+      isSelfPlan={isSelfPlan}
       pricing={{
         monthlyLabel: formatMinorUnits(monthly.amountMinorUnits, monthly.currency),
         annualLabel: formatMinorUnits(annual.amountMinorUnits, annual.currency),
+      }}
+      selfPricing={{
+        monthlyLabel: formatMinorUnits(selfMonthly.amountMinorUnits, selfMonthly.currency),
+        annualLabel: formatMinorUnits(selfAnnual.amountMinorUnits, selfAnnual.currency),
       }}
     />
   );

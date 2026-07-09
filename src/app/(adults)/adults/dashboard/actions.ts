@@ -120,6 +120,19 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
   return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0, plan: created.plan ?? "family" };
 }
 
+/** Persists self-tracking intent on the workspace as soon as it's known
+ * (the ?self=1 redirect from /me/add-users), rather than waiting for
+ * addSelfContact to flip it once the WhatsApp invite is actually claimed.
+ * Without this, a user who lands on the dashboard again before finishing
+ * self-setup (e.g. after a refresh, or skipping and coming back later) has
+ * no persisted signal that they're on the self plan — the dashboard falls
+ * back to family_caregiver copy ("Add someone to get started", family
+ * pricing) even though they never intended to track anyone but themselves. */
+export async function markWorkspaceSelfPlan(workspaceId: string): Promise<void> {
+  const admin = createServiceClient();
+  await admin.from("workspaces").update({ plan: "self" }).eq("id", workspaceId).eq("plan", "family");
+}
+
 function mapContactRow(c: any, mealsByContact: Record<string, { count: number; lastAt?: string }>): AdultsContact {
   return {
     id: c.id,
