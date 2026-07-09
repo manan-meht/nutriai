@@ -72,7 +72,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
     setError(null);
 
     try {
-      const contactRes = await fetchJson(`/api/adults/contacts/${contact.id}`, {
+      const res = await fetchJson(`/api/adults/contacts/${contact.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -86,27 +86,18 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           timezone,
           remindersEnabled,
           reminderTimes,
+          goal: {
+            goalType,
+            title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
+            targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
+            targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
+            targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
+            targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
+          },
         }),
       });
-      if (contactRes.error) {
-        setError(contactRes.error);
-        return;
-      }
-
-      const goalRes = await fetchJson(`/api/adults/contacts/${contact.id}/goal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          goalType,
-          title: GOAL_TYPE_OPTIONS.find((g) => g.value === goalType)?.label ?? goalType,
-          targetProteinG: targetProteinG ? Number(targetProteinG) : recommendedProtein,
-          targetCaloriesMin: targetCaloriesMin ? Number(targetCaloriesMin) : undefined,
-          targetCaloriesMax: targetCaloriesMax ? Number(targetCaloriesMax) : undefined,
-          targetMealsPerDay: targetMealsPerDay ? Number(targetMealsPerDay) : undefined,
-        }),
-      });
-      if (goalRes.error) {
-        setError(goalRes.error);
+      if (res.error) {
+        setError(res.error);
         return;
       }
 

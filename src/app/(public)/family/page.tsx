@@ -5,9 +5,9 @@ import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
-    title: "Tistra Health — Stay gently connected to how your family eats",
+    title: "Tistra Family | Support a Loved One’s Nutrition From Anywhere",
     description:
-      "Your parent shares a photo or a few words on WhatsApp. You see a calm weekly summary. Their privacy, always in their hands.",
+      "Help a parent, partner, or family member log meals through WhatsApp and see simple nutrition summaries with permission.",
     alternates: { canonical: "/family" },
     icons: { icon: "/logos/logo-purple.png" },
   };

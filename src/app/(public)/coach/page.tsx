@@ -5,9 +5,9 @@ import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
-    title: "Tistra Health — Nutrition coaching built for Indian trainers",
+    title: "Tistra Coach | AI Food Logging for Coaches",
     description:
-      "Your clients log meals from WhatsApp. AI identifies dal, roti, sabzi and more. You see who needs attention — all in one coach dashboard.",
+      "Clients send meal photos on WhatsApp. Tistra estimates nutrition and helps coaches see who needs attention.",
     alternates: { canonical: "/coach" },
     icons: { icon: "/logos/logo-purple.png" },
   };

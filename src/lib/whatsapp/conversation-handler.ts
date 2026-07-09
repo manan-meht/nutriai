@@ -1,6 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { sendTextMessage, normalizePhone } from "./client";
-import { analyzeFood, buildConfirmationMessage, buildSuccessMessage, FoodAnalysisResult } from "@/lib/ai/food-analyzer";
+import {
+  analyzeFood,
+  answerNutritionQuestion,
+  buildEstimateMessage,
+  buildClarificationMessage,
+  buildContradictionCheckMessage,
+  buildSavedMessage,
+  resolveMealLabel,
+  formatMealLabel,
+  FoodAnalysisResult,
+  MealType,
+} from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
 import { classifyMeal } from "@/lib/nutrition/food-classification";
@@ -71,6 +82,8 @@ function isWorkoutMessage(text: string) {
 const GREETINGS = ["hi", "hello", "hey", "hii", "hlo", "namaste", "namaskar", "gm", "sup", "good morning", "good afternoon", "good evening"];
 const AFFIRMATIVES = ["yes", "y", "ok", "okay", "haan", "han", "ha", "correct", "right", "looks good", "perfect", "sure", "yep", "yup", "log it", "save it", "confirmed", "👍", "✅"];
 const NEGATIVES = ["no", "nope", "nahi", "wrong", "change", "edit", "update", "not right", "incorrect", "different"];
+const CANCEL_PHRASES = ["cancel", "don't save", "dont save", "discard", "never mind", "nevermind", "forget it"];
+const SHOW_TODAY_PHRASES = ["show today", "today's summary", "todays summary", "daily summary", "show my day", "show summary"];
 
 function isGreeting(text: string) {
   const t = text.toLowerCase().trim();
@@ -84,6 +97,54 @@ function isNegative(text: string) {
   const t = text.toLowerCase().trim();
   return NEGATIVES.some((n) => t === n || t.startsWith(n + " ") || t.startsWith(n + ","));
 }
+function isCancel(text: string) {
+  const t = text.toLowerCase().trim();
+  return CANCEL_PHRASES.some((p) => t === p || t.includes(p));
+}
+function isShowToday(text: string) {
+  const t = text.toLowerCase().trim();
+  return SHOW_TODAY_PHRASES.some((p) => t === p || t.includes(p)) || t === "today";
+}
+function isHypotheticalQuestion(text: string) {
+  const t = text.toLowerCase().trim();
+  if (!t.endsWith("?")) return false;
+  return /^if (this|it|that) (was|were|had been)|^what if/.test(t);
+}
+function isNutritionQuestion(text: string) {
+  const t = text.toLowerCase().trim();
+  if (!t.endsWith("?")) return false;
+  return /how many (calories|kcal|protein|carbs|grams)|what should i eat|what.?s (healthier|better)|is .* healthy|calories in|protein in/.test(t);
+}
+
+const MEAL_TYPE_WORDS: Record<string, MealType> = {
+  breakfast: "breakfast", lunch: "lunch", dinner: "dinner", snack: "snack",
+  tea: "tea", coffee: "coffee", wine: "wine", juice: "juice", drink: "drink",
+};
+function detectMealTypeChange(text: string): MealType | null {
+  const t = text.toLowerCase();
+  const m = t.match(/(?:change|make|save)(?: it| this)?(?: to| as)?\s+(breakfast|lunch|dinner|snack|tea|coffee|wine|juice|drink)\b/);
+  if (m) return MEAL_TYPE_WORDS[m[1]];
+  return null;
+}
+
+const HOT_DRINK_WORDS = ["tea", "coffee", "chai"];
+const ALCOHOL_WORDS = ["wine", "beer", "whisky", "whiskey", "vodka", "rum", "alcohol", "cocktail"];
+/** True when a correction's wording falls in a clearly different drink
+ * category than what the previous guess was (e.g. photo looked like tea,
+ * correction says "wine") — the one case where we ask a single clarifying
+ * question before accepting the override outright. */
+function isConflictingDrinkCorrection(previousMealType: MealType, correctionText: string): MealType | null {
+  const t = correctionText.toLowerCase();
+  const previousIsHot = previousMealType === "tea" || previousMealType === "coffee";
+  const previousIsAlcohol = previousMealType === "wine";
+  if (previousIsHot && ALCOHOL_WORDS.some((w) => t.includes(w))) return previousMealType;
+  if (previousIsAlcohol && HOT_DRINK_WORDS.some((w) => t.includes(w))) return previousMealType;
+  return null;
+}
+
+function isZeroMacro(a: FoodAnalysisResult) {
+  return a.total_calories_min === 0 && a.total_calories_max === 0 && a.total_protein_min === 0 && a.total_protein_max === 0;
+}
 
 interface IncomingMessage {
   from: string;
@@ -93,36 +154,22 @@ interface IncomingMessage {
   mediaMimeType?: string;
 }
 
-// Adults-specific warmer messages
-function buildAdultsConfirmation(analysis: FoodAnalysisResult): string {
-  const foodLines = analysis.foods
-    .map((f) => `• ${f.name} – ${f.quantity}`)
-    .join("\n");
-  const avgProtein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
-  const avgCal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);
-
-  return `What a lovely meal! 😊 I can see:\n${foodLines}\n\nThat's roughly *${avgProtein}g protein and ${avgCal} kcal*.\n\nDoes that look right? Reply *Yes* to save it, or tell me what to correct 🙏`;
+/** Shape persisted in whatsapp_conversations.pending_meal — a FoodAnalysisResult
+ * plus the bookkeeping needed to confirm/correct/save/detect duplicates. */
+interface PendingMeal extends FoodAnalysisResult {
+  status: "pending_confirmation" | "saved" | "awaiting_clarification" | "awaiting_correction_confirmation";
+  savedMealId?: string;
+  updatedAt: string;
 }
 
-function buildAdultsSuccess(analysis: FoodAnalysisResult, targetProteinG?: number, timezone?: string): string {
-  const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: timezone || "Asia/Kolkata" });
-  const mealType = analysis.meal_type.charAt(0).toUpperCase() + analysis.meal_type.slice(1);
-  const avgProtein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
-  const avgCal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);
-
-  let note = "Keep eating well! 🌟";
-  if (targetProteinG) {
-    const pct = Math.round((avgProtein / targetProteinG) * 100);
-    if (pct >= 25) note = `That's about ${pct}% of your daily protein — protein helps keep you strong! 💪`;
-  }
-
-  return `✅ *${mealType} saved!*\n\n_${time}_\n${avgProtein}g protein · ${avgCal} kcal\n\n${note}`;
-}
+const RECENT_SAVE_WINDOW_MS = 60 * 60 * 1000; // a correction after this long is treated as a new meal, not an edit
 
 // A lock this old is treated as abandoned (e.g. the function that claimed it
 // crashed or timed out mid-analysis) rather than a genuinely in-flight
 // message, so a new message isn't locked out forever.
 const LOCK_STALE_MS = 60_000;
+
+const GREETING_REPEAT_GAP_MS = 6 * 60 * 60 * 1000; // don't repeat the full greeting within 6h
 
 /** Handles a "JOIN FAMILY/SELF/COACHCLIENT <token>" message — the human-
  * initiated first message of a WhatsApp-first onboarding flow (see
@@ -298,7 +345,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     ? { adults_contact_id: entityId, client_id: null }
     : { client_id: entityId, adults_contact_id: null };
 
-  async function setConvState(newState: string, newPendingMeal?: FoodAnalysisResult | null) {
+  async function setConvState(newState: string, newPendingMeal?: PendingMeal | null, extra?: Record<string, unknown>) {
     const { error } = await db.from("whatsapp_conversations").upsert({
       ...entityColumn,
       workspace_id: workspaceId,
@@ -307,6 +354,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       pending_meal: newPendingMeal ?? null,
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      ...extra,
     }, { onConflict: "whatsapp_number" });
     // A write here failing silently is exactly what caused conversation
     // state to never persist for adults contacts previously (wrong/missing
@@ -326,7 +374,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   async function claimConversationLock(): Promise<{
     acquired: boolean;
     state: string;
-    pendingMeal: FoodAnalysisResult | null;
+    pendingMeal: PendingMeal | null;
   }> {
     const { data: existing } = await db
       .from("whatsapp_conversations")
@@ -386,14 +434,47 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return { acquired: true, state: existing.state, pendingMeal: existing.pending_meal ?? null };
   }
 
-  async function saveMeal(analysis: FoodAnalysisResult) {
+  function toPendingMeal(
+    analysis: FoodAnalysisResult,
+    status: PendingMeal["status"]
+  ): PendingMeal {
+    return { ...analysis, status, updatedAt: new Date().toISOString() };
+  }
+
+  /** Best-effort daily protein/calorie totals for the "Today so far" line.
+   * Uses the midpoint of each meal's min/max range. Never throws — a
+   * failure here should degrade to "no totals line", not break saving. */
+  async function getDailyTotals(): Promise<{ protein: number; calories: number } | null> {
+    try {
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { data: todaysMeals, error } = await db
+        .from("meal_logs")
+        .select("total_protein_min, total_protein_max, total_calories_min, total_calories_max")
+        .eq(isAdults ? "adults_contact_id" : "client_id", entityId)
+        .gte("logged_at", startOfDay.toISOString());
+      if (error || !todaysMeals) return null;
+      let protein = 0;
+      let calories = 0;
+      for (const m of todaysMeals as any[]) {
+        protein += Math.round(((m.total_protein_min ?? 0) + (m.total_protein_max ?? 0)) / 2);
+        calories += Math.round(((m.total_calories_min ?? 0) + (m.total_calories_max ?? 0)) / 2);
+      }
+      return { protein, calories };
+    } catch (err) {
+      console.error("[whatsapp] getDailyTotals failed:", err instanceof Error ? err.message : err);
+      return null;
+    }
+  }
+
+  async function saveMeal(analysis: FoodAnalysisResult, resolvedLabel: MealType): Promise<string | undefined> {
     const { data: mealRow, error: mealError } = await db
       .from("meal_logs")
       .insert({
         ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
         workspace_id: workspaceId,
         trainer_id: trainerId,
-        meal_type: analysis.meal_type,
+        meal_type: resolvedLabel,
         logged_at: new Date().toISOString(),
         foods: analysis.foods,
         total_calories_min: analysis.total_calories_min,
@@ -413,10 +494,34 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     if (mealError || !mealRow) {
       console.error("[whatsapp] meal_logs insert failed:", mealError?.message);
-      return;
+      return undefined;
     }
 
     await recordMealSubmissionForReview(analysis, mealRow.id);
+    return mealRow.id;
+  }
+
+  /** Updates an already-saved meal_logs row in place (used when a
+   * correction arrives shortly after a save — see item 12/duplicate-save
+   * prevention: this must never create a second row for the same meal). */
+  async function updateSavedMeal(mealLogId: string, analysis: FoodAnalysisResult, resolvedLabel: MealType) {
+    const { error } = await db
+      .from("meal_logs")
+      .update({
+        meal_type: resolvedLabel,
+        foods: analysis.foods,
+        total_calories_min: analysis.total_calories_min,
+        total_calories_max: analysis.total_calories_max,
+        total_protein_min: analysis.total_protein_min,
+        total_protein_max: analysis.total_protein_max,
+        total_carbs_min: analysis.total_carbs_min,
+        total_carbs_max: analysis.total_carbs_max,
+        total_fat_min: analysis.total_fat_min,
+        total_fat_max: analysis.total_fat_max,
+        ai_summary: analysis.summary,
+      })
+      .eq("id", mealLogId);
+    if (error) console.error("[whatsapp] meal_logs update failed:", error.message);
   }
 
   /** Feeds the Tistra Meal Review Console (src/app/(admin)/admin) so
@@ -463,8 +568,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
       await db.from("ai_meal_classifications").insert({
         meal_submission_id: submission.id,
-        model_name: "gemini-3.5-flash",
-        prompt_version: "v1",
+        model_name: "gemini-2.5-flash",
+        prompt_version: "v2",
         taxonomy_version: "v1",
         food_knowledge_base_version: "v1",
         detected_items_json: analysis.foods,
@@ -480,14 +585,63 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         ultra_processed_likelihood: classified.ultraProcessedLikelihood,
         healthier_direction_signal: healthierDirectionSignal,
         suggested_next_step: classified.suggestedNextStep,
-        // No native confidence score from Gemini today — this heuristic
-        // (foods detected at all vs. not) is a placeholder the review
-        // console can refine once real confidence is available.
-        confidence_score: analysis.foods.length > 0 ? 0.85 : 0.4,
+        confidence_score: analysis.confidence === "high" ? 0.9 : analysis.confidence === "low" ? 0.4 : 0.7,
         raw_ai_response_json: analysis,
       });
     } catch (err) {
       console.error("[whatsapp] meal review console recording failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  /** Best-effort capture of a user correction that meaningfully changed the
+   * AI's portion/protein/food/meal-type estimate, into
+   * meal_portion_corrections (see 0018_meal_portion_corrections.sql). This
+   * is the raw material for tightening the portion-estimation prompt over
+   * time — a failure here must never block the correction flow itself. */
+  async function recordPortionCorrectionFeedback(
+    previous: FoodAnalysisResult,
+    corrected: FoodAnalysisResult,
+    correctionText: string,
+    mealLogId?: string
+  ) {
+    try {
+      const prevProtein = (previous.total_protein_min + previous.total_protein_max) / 2;
+      const newProtein = (corrected.total_protein_min + corrected.total_protein_max) / 2;
+      const proteinDelta = newProtein - prevProtein;
+      const proteinChangedMeaningfully = Math.abs(proteinDelta) >= Math.max(5, prevProtein * 0.2);
+      const foodChanged = previous.foods.map((f) => f.name.toLowerCase()).join(",") !== corrected.foods.map((f) => f.name.toLowerCase()).join(",");
+      const mealTypeChanged = previous.meal_type !== corrected.meal_type;
+
+      // Nothing worth recording — the correction didn't move the estimate
+      // in any way we'd want to learn from.
+      if (!proteinChangedMeaningfully && !foodChanged && !mealTypeChanged) return;
+
+      let issueType: string;
+      if (foodChanged && !proteinChangedMeaningfully) issueType = "wrong_food";
+      else if (mealTypeChanged && !proteinChangedMeaningfully && !foodChanged) issueType = "wrong_meal_type";
+      else if (proteinDelta < 0) issueType = "portion_overestimate";
+      else if (proteinDelta > 0) issueType = "portion_underestimate";
+      else issueType = "wrong_calories";
+
+      const primaryFood = corrected.foods[0]?.name ?? previous.foods[0]?.name ?? null;
+
+      await db.from("meal_portion_corrections").insert({
+        user_id: entityId,
+        user_type: isAdults ? "adults" : "gym",
+        meal_log_id: mealLogId ?? null,
+        image_url: corrected.image_url ?? previous.image_url ?? null,
+        original_model_output: previous,
+        user_correction_text: correctionText,
+        final_logged_meal: corrected,
+        issue_type: issueType,
+        food_type: primaryFood,
+        original_estimated_weight: previous.foods.map((f) => f.estimated_cooked_weight_grams).filter(Boolean).join(", ") || null,
+        corrected_estimated_weight: corrected.foods.map((f) => f.estimated_cooked_weight_grams).filter(Boolean).join(", ") || null,
+        original_protein_estimate: Math.round(prevProtein),
+        corrected_protein_estimate: Math.round(newProtein),
+      });
+    } catch (err) {
+      console.error("[whatsapp] meal_portion_corrections recording failed:", err instanceof Error ? err.message : err);
     }
   }
 
@@ -501,12 +655,30 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
-  // Handle greeting
+  // "show today" — a plain daily summary, doesn't touch conversation state
+  // or the AI, safe to answer immediately.
+  if (msg.type === "text" && msg.text && isShowToday(msg.text)) {
+    const totals = await getDailyTotals();
+    if (!totals || (totals.protein === 0 && totals.calories === 0)) {
+      await sendTextMessage(msg.from, "No meals logged yet today.");
+    } else {
+      await sendTextMessage(msg.from, `Today so far: ${totals.protein}g protein · ${totals.calories.toLocaleString("en-IN")} kcal.`);
+    }
+    return;
+  }
+
+  // Handle greeting — only send the full onboarding greeting once per day
+  // (or after a 6h+ gap); otherwise a short, non-repetitive nudge.
   if (msg.type === "text" && msg.text && isGreeting(msg.text)) {
-    const greetMsg = isAdults
-      ? `Hello ${firstName}! 😊\n\nWhenever you eat something, just send me a photo or describe it — I'll keep track for you. Your family will be so happy! 🌟`
-      : `Hi ${firstName}! 👋\n\nJust send me a photo of your meal or describe what you ate, and I'll log it for you! 🥗`;
+    const lastGreetedAt = conv?.last_greeted_at ? new Date(conv.last_greeted_at).getTime() : 0;
+    const recentlyGreeted = Date.now() - lastGreetedAt < GREETING_REPEAT_GAP_MS;
+    const greetMsg = recentlyGreeted
+      ? "Hey! Send a photo whenever you're ready 🙂"
+      : isAdults
+        ? `Hello ${firstName}! 😊\n\nWhenever you eat something, just send me a photo or describe it — I'll keep track for you.`
+        : `Hi ${firstName}! 👋\n\nJust send me a photo of your meal or describe what you ate, and I'll log it for you!`;
     await sendTextMessage(msg.from, greetMsg);
+    await setConvState(peekState, conv?.pending_meal ?? null, { last_greeted_at: new Date().toISOString() });
     return;
   }
 
@@ -522,7 +694,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     });
     await sendTextMessage(
       msg.from,
-      `💪 Workout logged!\n\n_${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}_\n\nKeep it up! Now send me a photo of your next meal 🥗`
+      `💪 Workout logged.\n\n_${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}_\n\nSend me a photo of your next meal whenever you're ready.`
     );
     return;
   }
@@ -534,10 +706,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   const targetProtein = activeGoal?.target_protein_g;
 
   // Block new AI meal analysis (the costly path) once the owner's trial or
-  // subscription has lapsed. Greetings and workout logging above are
-  // unaffected — they don't call the AI analyzer.
+  // subscription has lapsed. Greetings, workout logging, and "show today"
+  // above are unaffected — they don't call the AI analyzer.
   const entitlement = await getEntitlementSnapshot(workspaceId, isAdults ? "adults" : "gym");
-  if (entitlement.isReadOnly && (peekState === "idle" || peekState === "awaiting_correction" || peekState === "awaiting_confirmation")) {
+  if (entitlement.isReadOnly && peekState !== "processing") {
     await sendTextMessage(
       msg.from,
       "This account's free trial has ended, so I can't analyze new meals right now. Please ask the person who set this up to subscribe — your past meals are still safe and visible in the dashboard."
@@ -563,6 +735,88 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
   const state = claim.state;
   const pendingMeal = claim.pendingMeal;
+  const text = msg.text ?? "";
+  const seed = `${entityId}:${new Date().toDateString()}:${text.length}`;
+
+  // Free-standing questions never mutate the pending/saved meal — answer
+  // and release the lock unchanged, regardless of current state.
+  if (msg.type === "text" && text) {
+    if (isHypotheticalQuestion(text)) {
+      try {
+        const context = pendingMeal ? `${pendingMeal.summary} (${pendingMeal.foods.map((f) => `${f.name} ${f.quantity}`).join(", ")})` : undefined;
+        const answer = await answerNutritionQuestion(text, context);
+        await sendTextMessage(msg.from, `${answer}\n\nDo you want me to update the saved meal, or was this just a question?`);
+      } catch {
+        await sendTextMessage(msg.from, "I couldn't work that out right now — could you ask again in a moment?");
+      }
+      await setConvState(state, pendingMeal);
+      return;
+    }
+    if (isNutritionQuestion(text) && !isNegative(text)) {
+      try {
+        const answer = await answerNutritionQuestion(text);
+        await sendTextMessage(msg.from, answer);
+      } catch {
+        await sendTextMessage(msg.from, "I couldn't work that out right now — could you ask again in a moment?");
+      }
+      await setConvState(state, pendingMeal);
+      return;
+    }
+  }
+
+  // "cancel" / "don't save" — discard whatever's pending, from any
+  // confirm/correct/clarify state.
+  if (msg.type === "text" && text && isCancel(text) &&
+    (state === "awaiting_confirmation" || state === "awaiting_correction" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation")) {
+    await sendTextMessage(msg.from, "Okay, discarded — nothing saved.");
+    await setConvState("idle", null);
+    return;
+  }
+
+  // A meal-type-only correction ("change to lunch", "make this dinner") on
+  // a pending or just-saved meal doesn't need another AI call — just
+  // relabel it directly.
+  if (msg.type === "text" && text && pendingMeal) {
+    const requestedType = detectMealTypeChange(text);
+    if (requestedType) {
+      const updated: PendingMeal = { ...pendingMeal, meal_type: requestedType, updatedAt: new Date().toISOString() };
+      const resolvedLabel = resolveMealLabel(requestedType);
+      if (pendingMeal.status === "saved" && pendingMeal.savedMealId &&
+        Date.now() - new Date(pendingMeal.updatedAt).getTime() < RECENT_SAVE_WINDOW_MS) {
+        await updateSavedMeal(pendingMeal.savedMealId, updated, resolvedLabel);
+        await sendTextMessage(msg.from, `Got it — updated the saved ${formatMealLabel(resolvedLabel).toLowerCase()}.`);
+        await setConvState("idle", { ...updated, status: "saved" });
+      } else {
+        await sendTextMessage(msg.from, `Got it — updated to ${formatMealLabel(resolvedLabel).toLowerCase()}.\n\nReply *Yes* to save, or tell me what else to change.`);
+        await setConvState("awaiting_confirmation", { ...updated, status: "pending_confirmation" });
+      }
+      return;
+    }
+  }
+
+  // Correction / portion-change / add / remove / replace item text arriving
+  // shortly after a save updates that saved meal in place, instead of
+  // logging an unrelated second meal (item 12).
+  const recentlySaved = pendingMeal?.status === "saved" && pendingMeal.savedMealId &&
+    Date.now() - new Date(pendingMeal.updatedAt).getTime() < RECENT_SAVE_WINDOW_MS;
+
+  if (state === "idle" && recentlySaved && msg.type === "text" && text && !isGreeting(text)) {
+    try {
+      const analysis = await analyzeFood({ text, correctionContext: JSON.stringify(pendingMeal!.foods) });
+      const resolvedLabel = resolveMealLabel(analysis.meal_type);
+      await updateSavedMeal(pendingMeal!.savedMealId!, analysis, resolvedLabel);
+      await recordPortionCorrectionFeedback(pendingMeal!, analysis, text, pendingMeal!.savedMealId);
+      const updated: PendingMeal = { ...analysis, status: "saved", savedMealId: pendingMeal!.savedMealId, updatedAt: new Date().toISOString() };
+      const protein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
+      const cal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);
+      await sendTextMessage(msg.from, `Got it — updated the saved ${formatMealLabel(resolvedLabel).toLowerCase()}.\nNew estimate: ${protein}g protein · ${cal} kcal.`);
+      await setConvState("idle", updated);
+    } catch {
+      await sendTextMessage(msg.from, isAdults ? "I couldn't update that — could you rephrase?" : "Couldn't update that — could you rephrase?");
+      await setConvState("idle", pendingMeal);
+    }
+    return;
+  }
 
   if (state === "idle" || state === "awaiting_correction") {
     const isCorrecting = state === "awaiting_correction";
@@ -596,9 +850,33 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         return;
       }
 
-      const confirmMsg = isAdults ? buildAdultsConfirmation(analysis) : buildConfirmationMessage(analysis);
+      // Contradiction check: a correction that flips to a clearly different
+      // drink category than the previous guess gets one clarifying question
+      // instead of being silently accepted.
+      if (isCorrecting && pendingMeal && msg.type === "text" && msg.text) {
+        const conflictBase = isConflictingDrinkCorrection(pendingMeal.meal_type, msg.text);
+        if (conflictBase) {
+          await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
+          await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
+          return;
+        }
+      }
+
+      // Never let a photo/description that came back uncertain and 0/0 go
+      // straight to "reply Yes to save" — ask a clarifying question instead.
+      if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
+        await sendTextMessage(msg.from, buildClarificationMessage(seed));
+        await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+        return;
+      }
+
+      if (isCorrecting && pendingMeal && msg.type === "text" && msg.text) {
+        await recordPortionCorrectionFeedback(pendingMeal, analysis, msg.text);
+      }
+
+      const confirmMsg = buildEstimateMessage(analysis, { isCorrection: isCorrecting, seed });
       await sendTextMessage(msg.from, confirmMsg);
-      await setConvState("awaiting_confirmation", analysis);
+      await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
     } catch (err) {
       console.error("[whatsapp] food analysis error:", err instanceof Error ? err.message : err);
       const hint = isAdults
@@ -610,18 +888,84 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
-  if (state === "awaiting_confirmation") {
-    const text = msg.text ?? "";
+  if (state === "awaiting_clarification") {
+    // Any reply here is treated as clarifying text describing the food.
+    if (msg.type === "text" && msg.text) {
+      try {
+        const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
+        analysis.image_url = pendingMeal?.image_url;
 
+        if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
+          await sendTextMessage(msg.from, buildClarificationMessage(seed));
+          await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+          return;
+        }
+
+        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
+        await sendTextMessage(msg.from, confirmMsg);
+        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      } catch {
+        await sendTextMessage(msg.from, buildClarificationMessage(seed));
+        await setConvState("awaiting_clarification", pendingMeal);
+      }
+      return;
+    }
+    await sendTextMessage(msg.from, buildClarificationMessage(seed));
+    await setConvState("awaiting_clarification", pendingMeal);
+    return;
+  }
+
+  if (state === "awaiting_correction_confirmation") {
+    if (isAffirmative(text) && pendingMeal) {
+      const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+      const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+      const dailyTotals = await getDailyTotals();
+      const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
+        seed,
+        dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
+      });
+      await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+      await setConvState("idle", savedMealId ? toPendingMeal({ ...pendingMeal, savedMealId } as any, "saved") : null);
+      return;
+    }
+    if (msg.type === "text" && msg.text) {
+      // User gave the real answer instead of confirming — treat as a fresh correction.
+      try {
+        const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
+        analysis.image_url = pendingMeal?.image_url;
+        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
+        await sendTextMessage(msg.from, confirmMsg);
+        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      } catch {
+        await sendTextMessage(msg.from, "What should I log this as?");
+        await setConvState("awaiting_correction_confirmation", pendingMeal);
+      }
+      return;
+    }
+    await sendTextMessage(msg.from, "Reply *Yes* to save, or tell me the correct item.");
+    await setConvState("awaiting_correction_confirmation", pendingMeal);
+    return;
+  }
+
+  if (state === "awaiting_confirmation") {
     if (isAffirmative(text)) {
       if (pendingMeal) {
-        await saveMeal(pendingMeal);
-        const successMsg = isAdults
-          ? buildAdultsSuccess(pendingMeal, targetProtein, adultsContact?.timezone)
-          : buildSuccessMessage(pendingMeal, targetProtein);
+        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+        const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+        const dailyTotals = await getDailyTotals();
+        const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
+          seed,
+          dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
+        });
         await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+        await setConvState("idle", savedMealId ? { ...toPendingMeal(pendingMeal, "saved"), savedMealId } : null);
+      } else {
+        // "Yes" with nothing pending — this session's saved meal (if any and
+        // recent) already reflects a prior confirmation; don't create a
+        // duplicate. Ask what they want to do instead of guessing.
+        await sendTextMessage(msg.from, "There's nothing pending to save right now. Send a photo, or tell me what you'd like to log.");
+        await setConvState("idle", null);
       }
-      await setConvState("idle", null);
       return;
     }
 
@@ -634,10 +978,34 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     if (msg.text && msg.text.length > 5 && !isAffirmative(text)) {
       try {
+        // Same conflicting-drink contradiction check applies when the
+        // correction arrives directly in the confirmation state.
+        if (pendingMeal) {
+          const conflictBase = isConflictingDrinkCorrection(pendingMeal.meal_type, msg.text);
+          if (conflictBase) {
+            const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal.foods) });
+            analysis.image_url = pendingMeal.image_url;
+            await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
+            await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
+            return;
+          }
+        }
         const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
-        const confirmMsg = isAdults ? buildAdultsConfirmation(analysis) : buildConfirmationMessage(analysis);
+        analysis.image_url = pendingMeal?.image_url;
+
+        if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
+          await sendTextMessage(msg.from, buildClarificationMessage(seed));
+          await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+          return;
+        }
+
+        if (pendingMeal) {
+          await recordPortionCorrectionFeedback(pendingMeal, analysis, msg.text);
+        }
+
+        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
         await sendTextMessage(msg.from, confirmMsg);
-        await setConvState("awaiting_confirmation", analysis);
+        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
       } catch {
         const ask = isAdults ? "What should I change? 😊" : "What should I change? Just tell me what was different 😊";
         await sendTextMessage(msg.from, ask);

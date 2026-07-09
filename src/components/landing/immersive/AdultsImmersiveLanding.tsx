@@ -13,10 +13,12 @@ import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { AddUserTeaser } from "../shared/AddUserTeaser";
 import { Reveal } from "@/components/motion/Reveal";
+import { WhatsAppDemoBlock } from "../shared/WhatsAppDemoBlock";
+import { DashboardPreviewBlock } from "../shared/DashboardPreviewBlock";
 import dynamic from "next/dynamic";
 
-const AdultsShaderBackground = dynamic(
-  () => import("@/components/motion/AdultsShaderBackground").then((m) => ({ default: m.AdultsShaderBackground })),
+const GymShaderBackground = dynamic(
+  () => import("@/components/motion/GymShaderBackground").then((m) => ({ default: m.GymShaderBackground })),
   { ssr: false }
 );
 
@@ -33,24 +35,24 @@ interface AdultsImmersiveLandingProps {
 const STEPS = [
   {
     number: "01",
-    heading: "A parent shares a photo of their meal",
-    body: "They photograph their thali — dal, roti, sabzi, dahi. One WhatsApp message. No app to open, no sign-in required.",
+    heading: "Your loved one sends a meal photo on WhatsApp",
+    body: "One photo of their plate, sent as a normal WhatsApp message. No app to open, no sign-in required.",
     photo: "/landing/steps/adults-step-01.jpeg",
-    photoAlt: "Older Indian woman photographing her steel thali at home",
+    photoAlt: "A person photographing their home-cooked meal at home",
   },
   {
     number: "02",
-    heading: "AI highlights the essentials",
+    heading: "Tistra estimates food, protein, and calories",
     body: "The system identifies the foods — without demanding gram-level precision. It notes what's there: protein sources, vegetables, grains. No calorie scoreboard.",
     photo: "/landing/steps/adults-step-02.jpeg",
-    photoAlt: "A home-cooked steel thali with dal, roti and sabzi",
+    photoAlt: "A home-cooked meal on a plate",
   },
   {
     number: "03",
-    heading: "Big picture, actionable data",
+    heading: "They confirm or correct the meal, and you see simple summaries",
     body: "Meals shared on 5 of 7 days. Get a clear overview of their weekly trends to stay proactive — whether sharing a nutrition tip or suggesting a professional check up.",
     photo: "/landing/steps/adults-step-03.jpeg",
-    photoAlt: "A daughter checking on her mother's wellbeing remotely",
+    photoAlt: "A family member checking on a loved one's wellbeing remotely",
   },
 ] as const;
 
@@ -73,26 +75,26 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
       <section className="relative overflow-hidden min-h-[90vh] flex flex-col md:flex-row">
         {/* Background shader fills left panel */}
         <div className="absolute inset-0 md:w-1/2" aria-hidden="true">
-          <AdultsShaderBackground className="w-full h-full" />
+          <GymShaderBackground className="w-full h-full" />
         </div>
 
         {/* Text — left */}
         <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 pt-24 pb-12 md:py-32">
           <Reveal>
             <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
-              For families across India
+              For families, anywhere
             </p>
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              Know they&apos;re eating well.<br />
-              <span className="text-[#6750A4]">Without the worry.</span>
+              Support a loved one&apos;s<br />
+              <span className="text-[#6750A4]">nutrition from anywhere.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Your parents simply snap a photo of their meal. You get simple weekly patterns that help you
-              support them gently — without turning meals into monitoring.
+              Whether your parent, partner, or family member lives across town or across the world, Tistra helps
+              them log meals through WhatsApp and gives you simple nutrition summaries with their permission.
             </p>
           </Reveal>
           <Reveal delay={300}>
@@ -109,7 +111,7 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
         <div className="relative w-full md:w-[52%] h-72 md:h-auto flex-shrink-0">
           <Image
             src="/landing/adults/immersive/hero/adults-hero.jpeg"
-            alt="An older Indian woman at home, photographing her meal"
+            alt="An older adult at home, photographing their meal"
             fill priority
             sizes="(max-width: 768px) 100vw, 52vw"
             className="object-cover object-center"
@@ -147,6 +149,60 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
                 </div>
               </Reveal>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Demo: WhatsApp side + family dashboard side ─────────────────────── */}
+      <section className="py-20 px-6 bg-white">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
+          <WhatsAppDemoBlock
+            senderLine="Sends a lunch photo"
+            reply="Looks like rice, chicken, vegetables, and yogurt. Estimated: 28g protein · 620 kcal. Reply Yes to save."
+          />
+          <DashboardPreviewBlock
+            heading="This week"
+            lines={[
+              "15 meals logged",
+              "Protein low on 3 days",
+              "Good vegetable variety",
+              "2 missed dinner logs",
+            ]}
+          />
+        </div>
+      </section>
+
+      {/* ── Who this is for / what this is not ──────────────────────────────── */}
+      <section className="py-20 px-6 bg-[#F3EEFB]">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Who this is for</h3>
+            <ul className="space-y-2 text-sm text-gray-700">
+              {[
+                "Families living in different cities or countries",
+                "Adult children supporting aging parents",
+                "Partners helping each other stay consistent",
+                "Families who want nutrition awareness without constant checking",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="text-[#6750A4] flex-shrink-0">✓</span>{item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">What this is not</h3>
+            <ul className="space-y-2 text-sm text-gray-700">
+              {[
+                "Not an emergency monitoring system",
+                "Not a medical device",
+                "Not a replacement for a doctor or dietitian",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="text-gray-400 flex-shrink-0">–</span>{item}
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
@@ -242,16 +298,16 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
       <section className="py-20 px-6 text-center max-w-2xl mx-auto">
         <Reveal>
           <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 leading-relaxed mb-4">
-            &ldquo;My mother lives alone in Hyderabad. This gives me peace of mind without making her feel watched.&rdquo;
+            &ldquo;My mother lives alone. This gives me peace of mind without making her feel watched.&rdquo;
           </blockquote>
-          <p className="text-sm text-gray-500">— Sanjana R., daughter, Dubai</p>
+          <p className="text-sm text-gray-500">— Sanjana R., daughter</p>
         </Reveal>
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-24 px-6 text-center relative overflow-hidden">
         <div className="absolute inset-0" aria-hidden="true">
-          <AdultsShaderBackground className="w-full h-full opacity-60" />
+          <GymShaderBackground className="w-full h-full opacity-60" />
         </div>
         <div className="relative z-10 max-w-2xl mx-auto">
           <Reveal>

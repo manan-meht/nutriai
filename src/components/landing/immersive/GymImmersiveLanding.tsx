@@ -13,6 +13,7 @@ import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { AddUserTeaser } from "../shared/AddUserTeaser";
 import { Reveal } from "@/components/motion/Reveal";
+import { DashboardPreviewBlock } from "../shared/DashboardPreviewBlock";
 import dynamic from "next/dynamic";
 
 const GymShaderBackground = dynamic(
@@ -33,35 +34,26 @@ interface GymImmersiveLandingProps {
 const STEPS = [
   {
     number: "01",
-    heading: "Client logs via WhatsApp",
-    body: "They send a photo of their meal — chicken curry, dosa, sandwich, etc. No app to download. No forms to fill.",
+    heading: "Client sends a meal photo on WhatsApp",
+    body: "They send a photo of their meal — a home-cooked plate, a curry, a sandwich, a smoothie. No app to download. No forms to fill.",
     photo: "/landing/steps/gym-step-01.jpeg",
-    photoAlt: "Indian fitness client photographing his meal",
+    photoAlt: "Fitness client photographing his meal",
   },
   {
     number: "02",
-    heading: "AI identifies the food",
-    body: "Built to understand common Indian meals and keep getting better as Tistra reviews real-world meal data. Nutrients, calories, food groups — as honest ranges, not false precision.",
+    heading: "Tistra estimates food, portions, protein, and calories",
+    body: "Built to understand a wide range of everyday meals and keep getting better as Tistra reviews real-world meal data. Nutrients, calories, food groups — as honest ranges, not false precision.",
     photo: "/landing/steps/gym-step-02.jpeg",
-    photoAlt: "Overhead flat-lay of a home-cooked Indian meal",
+    photoAlt: "Overhead flat-lay of a home-cooked meal",
   },
   {
     number: "03",
-    heading: "You see who needs attention",
-    body: "Your dashboard shows every client's week at a glance. Rohan hasn't logged in 3 days. Priya's nutrition balance looks off this week. Your attention goes exactly where it should.",
+    heading: "Client confirms, coach sees who needs attention",
+    body: "Your dashboard shows every client's week at a glance — missed logs, off-target nutrition, and consistency streaks. Your attention goes exactly where it should.",
     photo: "/landing/steps/gym-step-03.jpeg",
     photoAlt: "Fitness coach reviewing client progress on a tablet",
   },
 ] as const;
-
-const MEALS = [
-  { name: "Dal, Rice & Sabzi", tag: "Grains, greens & dal", src: "/landing/gym/immersive/meals/dal-rice-sabzi.jpeg" },
-  { name: "Paneer Roti", tag: "Wholegrain & dairy", src: "/landing/gym/immersive/meals/paneer-roti.jpeg" },
-  { name: "Idli Sambar", tag: "Light, balanced breakfast", src: "/landing/gym/immersive/meals/idli-sambar.jpeg" },
-  { name: "Poha & Eggs", tag: "Balanced breakfast plate", src: "/landing/gym/immersive/meals/poha-eggs.jpeg" },
-  { name: "Chicken Curry Rice", tag: "Hearty, balanced meal", src: "/landing/gym/immersive/meals/chicken-curry-rice.jpeg" },
-  { name: "Whey + Banana Smoothie", tag: "Quick balanced snack", src: "/landing/gym/immersive/meals/whey-smoothie.jpeg" },
-];
 
 export function GymImmersiveLanding({ variant, experimentId, showNav = true }: GymImmersiveLandingProps) {
   const signupUrl = getSignupUrl({ product: "gym", source: "coach_landing", variant, experimentId, productParam: "coach" });
@@ -89,19 +81,19 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 pt-24 pb-12 md:py-32">
           <Reveal>
             <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
-              For Indian fitness coaches
+              For coaches, anywhere
             </p>
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              Your clients log meals on WhatsApp.<br />
-              <span className="text-[#6750A4]">You see who needs coaching today.</span>
+              AI food logging for coaches,<br />
+              <span className="text-[#6750A4]">without chasing clients.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Tistra turns low-effort meal updates into weekly nutrition patterns, client flags, and
-              simple check-in prompts — so your attention goes exactly where it&apos;s needed.
+              Clients send meal photos on WhatsApp. Tistra estimates calories, protein, and meal
+              consistency, then shows you who needs attention in your coach dashboard.
             </p>
           </Reveal>
           <Reveal delay={300}>
@@ -118,7 +110,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         <div className="relative w-full md:w-[52%] h-72 md:h-auto flex-shrink-0">
           <Image
             src="/landing/gym/immersive/hero/gym-hero.jpeg"
-            alt="Indian fitness client photographing his meal at the gym"
+            alt="Fitness client photographing his meal at the gym"
             fill priority
             sizes="(max-width: 768px) 100vw, 52vw"
             className="object-cover object-center"
@@ -163,15 +155,33 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
       {/* ── Invite a client (setup/invite) — short teaser, full explainer lives on its own page ── */}
       <AddUserTeaser variant="coach" href="/coach/add-users" />
 
-      {/* ── Features ─────────────────────────────────────────────────────── */}
+      {/* ── Dashboard demo ───────────────────────────────────────────────── */}
       <section className="py-20 px-6 bg-white">
+        <div className="max-w-md mx-auto">
+          <Reveal>
+            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">Coach dashboard</p>
+          </Reveal>
+          <DashboardPreviewBlock
+            heading="Today"
+            lines={[
+              "Rohan: missed 3 logs",
+              "Priya: protein below target",
+              "Alex: consistent this week",
+              "Sara: needs check-in",
+            ]}
+          />
+        </div>
+      </section>
+
+      {/* ── Features ─────────────────────────────────────────────────────── */}
+      <section className="py-20 px-6 bg-gray-50">
         <div className="max-w-5xl mx-auto">
           <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for how India eats</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for how coaches actually work</h2>
           </Reveal>
           <Reveal delay={100}>
             <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              Not adapted from Western apps. Designed from the ground-up for Indian fitness coaching.
+              Not adapted from Western calorie apps. Built for real client meals, wherever they are.
             </p>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -183,8 +193,8 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
               },
               {
                 icon: "🧠",
-                title: "Indian food AI",
-                desc: "Designed to recognize common Indian meals — home-cooked thalis, regional dishes, and everyday snacks — and improve over time through human-reviewed classification.",
+                title: "Food AI",
+                desc: "Designed to recognize everyday meals across cuisines — home-cooked plates, regional dishes, and snacks — and improve over time through human-reviewed classification.",
               },
               {
                 icon: "📊",
@@ -235,33 +245,6 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      {/* ── Meal grid ─────────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-gray-950 text-white">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-3">Built to recognize the meals your clients actually eat</h2>
-          </Reveal>
-          <Reveal delay={100}>
-            <p className="text-gray-400 text-center text-lg mb-12">Not Western meal plans. Real Indian food.</p>
-          </Reveal>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {MEALS.map((meal, i) => (
-              <Reveal key={meal.name} delay={i * 60}>
-                <div className="bg-gray-800 rounded-2xl overflow-hidden">
-                  <div className="relative w-full h-36">
-                    <Image src={meal.src} alt={meal.name} fill
-                      className="object-cover" sizes="(max-width: 768px) 50vw, 33vw" />
-                  </div>
-                  <div className="p-4">
-                    <p className="font-semibold text-white text-sm mb-1">{meal.name}</p>
-                    <p className="text-gray-400 text-xs">{meal.tag}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* ── Quote ─────────────────────────────────────────────────────────── */}
       <section className="py-20 px-6 text-center max-w-2xl mx-auto">
@@ -269,7 +252,7 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 leading-relaxed mb-4">
             &ldquo;I used to guess what my clients were eating. Now I know — and they barely have to do anything extra.&rdquo;
           </blockquote>
-          <p className="text-sm text-gray-500">— Vikram S., fitness coach, Pune</p>
+          <p className="text-sm text-gray-500">— Vikram S., fitness coach</p>
         </Reveal>
       </section>
 

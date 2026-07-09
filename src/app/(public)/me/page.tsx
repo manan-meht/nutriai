@@ -4,9 +4,9 @@ import { MarketingHeader } from "@/components/home/MarketingHeader";
 
 export function generateMetadata(): Metadata {
   return {
-    title: "Tistra Health — Track your own meals through WhatsApp",
+    title: "Tistra Me | Personal Meal Tracking Through WhatsApp",
     description:
-      "Track your own meals through WhatsApp. No calorie counting. No complicated app. See your own weekly progress dashboard.",
+      "Send meal photos on WhatsApp and understand your protein, calories, and eating consistency over time.",
     alternates: { canonical: "/me" },
     icons: { icon: "/logos/logo-purple.png" },
   };

@@ -2,8 +2,8 @@
 
 /**
  * Family/Adults WebGL background shader — extracted from Stitch ANIMATION_18.
- * Palette: surface-container-low #F8F2FB → white.
- * Soft wave animation — used on the Older Adults immersive landing hero.
+ * Palette: Primary #6750A4 (purple) → surface-container-low #F8F2FB.
+ * Soft wave animation — used on the Family/Me immersive landing heroes.
  */
 
 import { useEffect, useRef } from "react";
@@ -26,9 +26,9 @@ void main() {
   vec2 uv = v_texCoord;
   float dist = distance(uv, vec2(0.5));
   float wave = sin(dist * 5.0 - u_time * 0.5) * 0.05;
-  vec3 color1 = vec3(0.973, 0.949, 0.98);
-  vec3 color2 = vec3(1.0, 1.0, 1.0);
-  vec3 finalColor = mix(color1, color2, uv.y + wave);
+  vec3 color1 = vec3(0.404, 0.314, 0.643);
+  vec3 color2 = vec3(0.973, 0.949, 0.98);
+  vec3 finalColor = mix(color1, color2, (uv.y + wave) * 0.6 + 0.3);
   gl_FragColor = vec4(finalColor, 1.0);
 }`;
 

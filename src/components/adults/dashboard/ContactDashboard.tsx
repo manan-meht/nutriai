@@ -156,7 +156,7 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
             title={`Ask them to start Tistra on WhatsApp`}
             description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
             load={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}`)}
-            regenerate={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}/regenerate`, { method: "POST" })}
+            regenerate={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}`, { method: "PATCH" })}
             revoke={() => fetchInviteJson(`/api/adults/invites/family/${contact.id}`, { method: "DELETE" })}
           />
         )}

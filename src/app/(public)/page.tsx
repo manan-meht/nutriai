@@ -60,9 +60,9 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
 
   if (!byHostname && !explicitProduct && NEW_MASTER_HOME_ENABLED) {
     return {
-      title: "Tistra Health — Nutrition tracking through WhatsApp",
+      title: "Tistra Health | WhatsApp Meal Tracking and Nutrition Insights",
       description:
-        "Send meals through WhatsApp. Tistra turns everyday food updates into simple weekly insights, progress trends, and gentle nutrition suggestions — for yourself, your family, or your clients.",
+        "Turn WhatsApp meal photos into simple nutrition insights for families, coaches, and individuals.",
       alternates: { canonical: "/" },
       icons: { icon: "/logos/logo-purple.png" },
     };

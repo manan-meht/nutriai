@@ -7,6 +7,14 @@ import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/
 import { Reveal } from "@/components/motion/Reveal";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { AddUserTeaser } from "../shared/AddUserTeaser";
+import { WhatsAppDemoBlock } from "../shared/WhatsAppDemoBlock";
+import { DashboardPreviewBlock } from "../shared/DashboardPreviewBlock";
+import dynamic from "next/dynamic";
+
+const GymShaderBackground = dynamic(
+  () => import("@/components/motion/GymShaderBackground").then((m) => ({ default: m.GymShaderBackground })),
+  { ssr: false }
+);
 
 const STEPS = [
   {
@@ -49,6 +57,11 @@ export function SelfImmersiveLanding() {
     <div className="bg-white text-gray-900">
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden min-h-[80vh] flex flex-col md:flex-row">
+        {/* Background shader fills left panel */}
+        <div className="absolute inset-0 md:w-1/2" aria-hidden="true">
+          <GymShaderBackground className="w-full h-full" />
+        </div>
+
         <div className="relative z-10 flex-1 flex flex-col justify-center px-6 md:px-14 py-16 md:py-24">
           <Reveal>
             <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-4">
@@ -57,13 +70,14 @@ export function SelfImmersiveLanding() {
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              Mindful tracking.<br />
-              <span className="text-[#6750A4]">Zero food guilt.</span>
+              Track your meals<br />
+              <span className="text-[#6750A4]">without a food diary.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
             <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              The simplest way to stay accountable to yourself, right inside WhatsApp.
+              Send meal photos on WhatsApp. Tistra estimates protein, calories, and consistency so you can
+              understand how you eat over time.
             </p>
           </Reveal>
           <Reveal delay={300}>
@@ -116,6 +130,20 @@ export function SelfImmersiveLanding() {
               </Reveal>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── Demo: WhatsApp side + daily summary side ────────────────────────── */}
+      <section className="py-20 px-6 bg-white">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
+          <WhatsAppDemoBlock
+            senderLine="Sends a breakfast photo"
+            reply="Looks like eggs, toast, and fruit. Estimated: 22g protein · 430 kcal. Reply Yes to save."
+          />
+          <DashboardPreviewBlock
+            heading="Today so far"
+            lines={["74g protein", "1,780 kcal", "3 meals logged"]}
+          />
         </div>
       </section>
 

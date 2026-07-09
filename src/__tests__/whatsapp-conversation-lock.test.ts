@@ -12,8 +12,14 @@ jest.mock("@/lib/whatsapp/client", () => ({
 
 jest.mock("@/lib/ai/food-analyzer", () => ({
   analyzeFood: jest.fn(),
-  buildConfirmationMessage: jest.fn().mockReturnValue("confirm"),
-  buildSuccessMessage: jest.fn().mockReturnValue("success"),
+  answerNutritionQuestion: jest.fn().mockResolvedValue("answer"),
+  buildEstimateMessage: jest.fn().mockReturnValue("confirm"),
+  buildClarificationMessage: jest.fn().mockReturnValue("clarify"),
+  buildContradictionCheckMessage: jest.fn().mockReturnValue("contradiction"),
+  buildSavedMessage: jest.fn().mockReturnValue("success"),
+  resolveMealLabel: (mealType: string) => mealType,
+  isDrinkMealType: () => false,
+  formatMealLabel: (mealType: string) => mealType,
 }));
 
 jest.mock("@/lib/entitlements/entitlements", () => ({
