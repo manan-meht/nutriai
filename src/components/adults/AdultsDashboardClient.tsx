@@ -183,7 +183,9 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
         {activeCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="w-24 h-24 rounded-3xl bg-[var(--color-dashboard-primary-light)] flex items-center justify-center mb-6 text-5xl">👵</div>
+            <div className="w-24 h-24 rounded-3xl bg-[var(--color-dashboard-primary-light)] flex items-center justify-center mb-6 text-5xl">
+              {isSelfPlan ? "🥗" : "👵"}
+            </div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">
               {isSelfPlan ? "Add your details to get started" : "No one added yet"}
             </h2>
