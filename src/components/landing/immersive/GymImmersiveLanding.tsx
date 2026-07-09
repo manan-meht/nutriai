@@ -11,7 +11,6 @@ import {
 } from "@/lib/landing/routes";
 import { LandingNav } from "../shared/LandingNav";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { AddUserTeaser } from "../shared/AddUserTeaser";
 import { Reveal } from "@/components/motion/Reveal";
 import { DashboardPreviewBlock } from "../shared/DashboardPreviewBlock";
 import dynamic from "next/dynamic";
@@ -35,23 +34,35 @@ const STEPS = [
   {
     number: "01",
     heading: "Client sends a meal photo on WhatsApp",
-    body: "They send a photo of their meal — a home-cooked plate, a curry, a sandwich, a smoothie. No app to download. No forms to fill.",
-    photo: "/landing/steps/gym-step-01.jpeg",
-    photoAlt: "Fitness client photographing his meal",
+    body: "No app to download, no forms to fill.",
   },
   {
     number: "02",
-    heading: "Tistra estimates food, portions, protein, and calories",
-    body: "Built to understand a wide range of everyday meals and keep getting better as Tistra reviews real-world meal data. Nutrients, calories, food groups — as honest ranges, not false precision.",
-    photo: "/landing/steps/gym-step-02.jpeg",
-    photoAlt: "Overhead flat-lay of a home-cooked meal",
+    heading: "Tistra estimates food, portions, calories, protein, and meal patterns",
+    body: "Honest ranges, not false precision.",
   },
   {
     number: "03",
-    heading: "Client confirms, coach sees who needs attention",
-    body: "Your dashboard shows every client's week at a glance — missed logs, off-target nutrition, and consistency streaks. Your attention goes exactly where it should.",
-    photo: "/landing/steps/gym-step-03.jpeg",
-    photoAlt: "Fitness coach reviewing client progress on a tablet",
+    heading: "Client confirms, and you see who needs attention",
+    body: "Your dashboard shows exactly where to focus.",
+  },
+] as const;
+
+const WORKFLOW_CARDS = [
+  {
+    icon: "📸",
+    title: "WhatsApp-first logging",
+    desc: "Clients send photos or messages. No new app, no long food diary.",
+  },
+  {
+    icon: "📊",
+    title: "Coach dashboard",
+    desc: "See missed logs, meal balance, consistency, and nutrition gaps across your roster.",
+  },
+  {
+    icon: "✅",
+    title: "Better check-ins",
+    desc: "Spend less time chasing updates and more time coaching the clients who need support.",
   },
 ] as const;
 
@@ -86,21 +97,31 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
           </Reveal>
           <Reveal delay={100}>
             <h1 className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] mb-5">
-              AI food logging for coaches,<br />
-              <span className="text-[#6750A4]">without chasing clients.</span>
+              AI food logging that<br />
+              <span className="text-[#6750A4]">gives coaches an edge.</span>
             </h1>
           </Reveal>
           <Reveal delay={200}>
-            <p className="text-base md:text-xl text-gray-700 mb-8 leading-relaxed max-w-md">
-              Clients send meal photos on WhatsApp. Tistra estimates calories, protein, and meal
-              consistency, then shows you who needs attention in your coach dashboard.
+            <p className="text-base md:text-xl text-gray-700 mb-4 leading-relaxed max-w-md">
+              Clients send meal photos on WhatsApp. Tistra turns them into nutrition insights, so
+              you can give specific, data-backed guidance instead of guessing what they ate.
+            </p>
+          </Reveal>
+          <Reveal delay={250}>
+            <p className="text-sm md:text-base text-gray-500 mb-8 leading-relaxed max-w-md">
+              See meal balance, calories, protein, consistency, and who needs a timely check-in —
+              all from one coach dashboard.
             </p>
           </Reveal>
           <Reveal delay={300}>
             <div className="flex flex-col sm:flex-row gap-3">
               <Link href={signupUrl} onClick={handleCta}
                 className="bg-[#6750A4] text-white font-bold rounded-full px-8 py-4 text-base hover:bg-[#4F378A] transition-colors shadow-lg shadow-[#E9DDFF] text-center">
-                Grow your roster →
+                Start coaching smarter →
+              </Link>
+              <Link href="#how-it-works"
+                className="text-[#6750A4] font-bold rounded-full px-8 py-4 text-base border border-[#E9DDFF] hover:bg-[#F3EEFB] transition-colors text-center">
+                See how it works
               </Link>
             </div>
           </Reveal>
@@ -119,32 +140,22 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-gray-50">
-        <div className="max-w-5xl mx-auto">
+      <section id="how-it-works" className="py-14 px-6 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
           <Reveal>
             <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">How it works</p>
           </Reveal>
           <Reveal delay={100}>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-16">Three steps. Zero friction.</h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-10">Three steps. Zero friction.</h2>
           </Reveal>
 
-          <div className="flex flex-col gap-16">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {STEPS.map((step, i) => (
               <Reveal key={step.number} delay={i * 100}>
-                <div className={`flex flex-col ${i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"} gap-8 md:gap-14 items-center`}>
-                  {/* Photo */}
-                  <div className="w-full md:w-1/2 rounded-3xl overflow-hidden shadow-xl flex-shrink-0">
-                    <div className="relative w-full h-60 md:h-80">
-                      <Image src={step.photo} alt={step.photoAlt} fill
-                        sizes="(max-width: 768px) 100vw, 50vw" className="object-cover" />
-                    </div>
-                  </div>
-                  {/* Text */}
-                  <div className="flex-1">
-                    <p className="text-5xl font-black text-[#E9DDFF] mb-3 leading-none">{step.number}</p>
-                    <h3 className="text-2xl md:text-3xl font-bold mb-4">{step.heading}</h3>
-                    <p className="text-base md:text-lg text-gray-600 leading-relaxed">{step.body}</p>
-                  </div>
+                <div>
+                  <p className="text-4xl font-black text-[#E9DDFF] mb-2 leading-none">{step.number}</p>
+                  <h3 className="text-lg font-bold mb-1">{step.heading}</h3>
+                  <p className="text-sm text-gray-600 leading-relaxed">{step.body}</p>
                 </div>
               </Reveal>
             ))}
@@ -152,20 +163,36 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      {/* ── Invite a client (setup/invite) — short teaser, full explainer lives on its own page ── */}
-      <AddUserTeaser variant="coach" href="/coach/add-users" />
-
-      {/* ── Dashboard demo ───────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-white">
-        <div className="max-w-md mx-auto">
+      {/* ── Built for real coaching workflows (merged features + benefits + dashboard demo) ── */}
+      <section className="py-16 px-6 bg-white">
+        <div className="max-w-5xl mx-auto">
           <Reveal>
-            <p className="text-xs font-semibold text-[#6750A4] uppercase tracking-widest mb-3 text-center">Coach dashboard</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for real coaching workflows</h2>
           </Reveal>
+          <Reveal delay={100}>
+            <p className="text-gray-500 text-center text-lg mb-10 max-w-2xl mx-auto">
+              Tistra helps you see which clients are consistent, which meals need attention, and who
+              needs a timely check-in — without chasing manual food logs.
+            </p>
+          </Reveal>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            {WORKFLOW_CARDS.map((f) => (
+              <Reveal key={f.title}>
+                <div className="bg-gray-50 rounded-2xl p-6">
+                  <p className="text-3xl mb-3">{f.icon}</p>
+                  <h3 className="text-lg font-bold mb-2">{f.title}</h3>
+                  <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
           <DashboardPreviewBlock
-            heading="Today"
+            heading="Today's roster"
             lines={[
               "Rohan: missed 3 logs",
-              "Priya: protein below target",
+              "Priya: meals low on protein and variety",
               "Alex: consistent this week",
               "Sara: needs check-in",
             ]}
@@ -173,83 +200,10 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
         </div>
       </section>
 
-      {/* ── Features ─────────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-gray-50">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for how coaches actually work</h2>
-          </Reveal>
-          <Reveal delay={100}>
-            <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              Not adapted from Western calorie apps. Built for real client meals, wherever they are.
-            </p>
-          </Reveal>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: "📸",
-                title: "WhatsApp logging",
-                desc: "Clients log by sending a photo or a message. No new app to learn — WhatsApp logging reduces friction compared with form-based tracking.",
-              },
-              {
-                icon: "🧠",
-                title: "Food AI",
-                desc: "Designed to recognize everyday meals across cuisines — home-cooked plates, regional dishes, and snacks — and improve over time through human-reviewed classification.",
-              },
-              {
-                icon: "📊",
-                title: "Coach dashboard",
-                desc: "See every client's week in one view. Flagged if nutrition imbalance, when logging drops, or when a client needs a check-in.",
-              },
-            ].map((f) => (
-              <Reveal key={f.title}>
-                <div className="bg-gray-50 rounded-2xl p-7">
-                  <p className="text-3xl mb-4">{f.icon}</p>
-                  <h3 className="text-lg font-bold mb-2">{f.title}</h3>
-                  <p className="text-gray-600 text-sm leading-relaxed">{f.desc}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Workflow benefits ────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-[#F3EEFB]">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Know who needs attention before they churn</h2>
-          </Reveal>
-          <Reveal delay={100}>
-            <p className="text-gray-500 text-center text-lg mb-14 max-w-2xl mx-auto">
-              Less time chasing food logs. More time coaching the clients who actually need it.
-            </p>
-          </Reveal>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
-            {[
-              "Less manual food-log chasing",
-              "Faster review of client patterns",
-              "See who has stopped sharing meals",
-              "See who is low on protein/fiber consistency",
-              "See who needs encouragement",
-              "Send more relevant check-ins",
-            ].map((benefit) => (
-              <Reveal key={benefit}>
-                <div className="flex items-center gap-3 bg-white rounded-xl px-5 py-4 border border-[#E9DDFF]">
-                  <span className="text-[#6750A4] font-bold flex-shrink-0">✓</span>
-                  <span className="text-gray-800 text-sm font-medium">{benefit}</span>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-
       {/* ── Quote ─────────────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 text-center max-w-2xl mx-auto">
+      <section className="py-12 px-6 text-center max-w-xl mx-auto">
         <Reveal>
-          <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 leading-relaxed mb-4">
+          <blockquote className="text-xl md:text-2xl font-medium text-gray-800 leading-relaxed mb-3">
             &ldquo;I used to guess what my clients were eating. Now I know — and they barely have to do anything extra.&rdquo;
           </blockquote>
           <p className="text-sm text-gray-500">— Vikram S., fitness coach</p>
@@ -257,23 +211,23 @@ export function GymImmersiveLanding({ variant, experimentId, showNav = true }: G
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6 text-center relative overflow-hidden">
+      <section className="py-20 px-6 text-center relative overflow-hidden">
         <div className="absolute inset-0" aria-hidden="true">
           <GymShaderBackground className="w-full h-full opacity-40" />
         </div>
         <div className="relative z-10 max-w-2xl mx-auto">
           <Reveal>
-            <h2 className="text-3xl md:text-5xl font-bold mb-5 leading-tight">
-              Ready to coach your entire roster?<br />Elevate every single client.
+            <h2 className="text-3xl md:text-5xl font-bold mb-4 leading-tight">
+              Ready to coach your roster with less chasing?
             </h2>
           </Reveal>
           <Reveal delay={150}>
-            <p className="text-gray-600 text-lg mb-10">Free to start. No credit card. Invite your first client in minutes.</p>
+            <p className="text-gray-600 text-lg mb-8">Start with your first client. No credit card required.</p>
           </Reveal>
           <Reveal delay={300}>
             <Link href={signupUrl} onClick={handleCta}
               className="bg-[#6750A4] text-white font-bold rounded-full px-10 py-5 text-lg hover:bg-[#4F378A] transition-colors shadow-xl shadow-[#E9DDFF] inline-block">
-              Grow your roster →
+              Start free →
             </Link>
           </Reveal>
         </div>

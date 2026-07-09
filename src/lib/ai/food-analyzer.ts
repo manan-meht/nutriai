@@ -19,6 +19,18 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+/** Food categories with an established protein/calorie density table (see
+ * CATEGORY_DENSITY below) — for these, code recomputes calories/protein
+ * from the model's own visible-portion estimate rather than trusting
+ * whatever number the model attached, so the LLM's job is to see the food,
+ * not to invent a final protein figure. Foods outside this set (rice,
+ * roti, mixed curries, etc.) still use the model's own calorie/protein
+ * numbers — they aren't the source of the protein-overestimation problem
+ * this guards against. */
+export type FoodCategory =
+  | "chicken" | "fish" | "red_meat" | "egg" | "paneer_tofu"
+  | "avocado" | "seeds_nuts" | "legume_dal" | "other";
+
 export interface FoodItem {
   name: string;
   quantity: string;
@@ -39,6 +51,20 @@ export interface FoodItem {
    * besides the final grams. */
   portion_size?: "tiny" | "small" | "medium" | "large" | "very_large";
   estimated_cooked_weight_grams?: string;
+  /** Which density table (if any) to compute this item's macros from —
+   * see recalculateNutritionFromPortions(). Left unset for foods where the
+   * model's own calorie/protein numbers are used as-is. */
+  food_category?: FoodCategory;
+  /** Edible cooked weight range in grams — bones, marinade, char, and air
+   * gaps excluded. This, not calories_min/max, is what should actually
+   * drive a protein-dense item's macro numbers. */
+  estimated_edible_weight_grams_min?: number;
+  estimated_edible_weight_grams_max?: number;
+  count_visible_pieces?: number;
+  /** Only meaningful when food_category is "egg" (an omelette/fried egg
+   * item) — how many eggs the visible size implies. */
+  egg_count_min?: number;
+  egg_count_max?: number;
 }
 
 export type MealType =
@@ -99,20 +125,29 @@ PORTION ESTIMATION — go from what is visible to a weight, never from the food'
 - Do not assume a standard restaurant portion just because you recognize the dish. A photo of 3 chicken pieces is 3 pieces, not "a typical tikka plate."
 - If the visible portion looks small, describe it and size it as small.
 - When portion size is genuinely uncertain, use a wider range and lower confidence rather than picking a confident midpoint.
-- For each food item, fill visible_quantity (what you actually counted/saw, e.g. "3-4 small pieces"), portion_size (tiny/small/medium/large/very_large), and estimated_cooked_weight_grams — these should visibly justify the calorie/protein numbers, not the other way around.
+- You must estimate EDIBLE cooked weight conservatively from visible food only — exclude bone, char, marinade coating, and air gaps between pieces. Do not use default restaurant serving sizes.
+- Your protein estimate must be consistent with your own portion description. If you describe the portion as small, do not output a high-protein estimate unless the image clearly shows enough food to justify it.
+- For each food item, fill visible_quantity (what you actually counted/saw, e.g. "3-4 small pieces"), portion_size (tiny/small/medium/large/very_large), estimated_cooked_weight_grams (display string), and — for chicken/fish/red_meat/egg/paneer_tofu/avocado/seeds_nuts/legume_dal items — the structured fields below (food_category, estimated_edible_weight_grams_min/max, egg_count_min/max) so the app can calculate protein/calories from the portion instead of you inventing a final number.
 
-Cooked-weight guardrails (use these instead of a flat "typical serving"):
-- Chicken/meat/fish: tiny 20-40g, small 40-80g, medium 90-130g, large 150-220g, very_large 220g+. Only use large/very_large if the image clearly shows that much food or the user says so. For pieces specifically: 1 small piece ~15-30g, 3-4 small pieces ~60-90g, 5-6 medium pieces ~120-180g — never assume 5-6 pieces when only 3-4 are visible.
-- Eggs/omelette: a small omelette is likely 1 egg, medium is likely 2 eggs, large/thick is likely 3 eggs. If unsure, say "likely 1-2 eggs" rather than defaulting to the higher count.
-- Avocado: 1/4 ~40-60g, 1/2 ~75-100g, 3/4 ~120-150g, whole ~150-200g. Avocado is low-protein — never assign it meaningful protein grams.
-- Seeds/garnish: 1 tsp ~2-4g, 1 tbsp ~8-12g, a light sprinkle is near-negligible calories/protein — do not scale a few visible seeds into a real serving.
+Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use these instead of a flat "typical serving"):
+- Chicken/meat/fish: tiny 20-40g, small 40-80g, medium 90-130g, large 150-220g, very_large 220g+. Only use large/very_large if the image clearly shows that much food or the user says so.
+- Chicken piece sizing specifically: 1 small visible piece ~10-20g edible cooked chicken, 1 medium visible piece ~20-35g, 1 large visible piece ~40-60g. 3-4 small pieces is ~45-75g edible cooked chicken — never assume 5-6 pieces when only 3-4 are visible, and do not estimate 120g+ unless the pieces are clearly medium/large, or 180g+ unless the plate clearly shows a large serving.
+- Eggs/omelette: a small omelette is likely 1 egg, medium is likely 2 eggs, large/thick is likely 3 eggs. If unsure, say "likely 1-2 eggs" (egg_count_min: 1, egg_count_max: 2) rather than defaulting to the higher count. Only use 3 eggs if the omelette is clearly large/thick or the user says so.
+- Avocado: 1/4 ~40-60g, 1/2 ~75-100g, 3/4 ~120-150g, whole ~150-200g. Avocado is low-protein (~2g/100g) — never assign it meaningful protein grams; half an avocado is usually only 1-2g protein.
+- Seeds/garnish: 1 tsp ~2-4g, 1 tbsp ~8-12g, a light sprinkle is near-negligible calories/protein (0-1g protein) — do not scale a few visible seeds into a real serving.
 - Paneer/tofu: small 40-70g, medium 80-120g, large 150-200g — do not assume large unless clearly visible.
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
 
-HIGH-PROTEIN SANITY CHECK — before finalizing your response:
-- If total_protein_max would be above 50g for this single meal, stop and re-check: does the image clearly show that much protein-dense food (a large piece of meat/fish, a big pile of paneer, several eggs, etc.)? If not, revise the portions down to what's actually visible and lower confidence rather than keeping the high number.
-- Only report 50g+ protein when the image (or the user's own words) clearly supports a large protein serving.
+PORTION-WORDING CONSISTENCY — before finalizing your response, check that your numbers match your own words:
+- If a chicken/meat/fish item is labeled "small" or "tiny" portion, its protein contribution should usually be capped around 25g.
+- If you say "likely 1-2 eggs," that item's protein should usually be capped around 14g — do not report a 2-egg omelette as more than ~14g protein.
+- If the total meal is small/moderate, total protein should usually not exceed about 40g unless eggs/paneer/meat quantities clearly support more.
+- If total protein would be above 45g, that requires a clear visible reason — 150g+ cooked chicken, 3+ eggs, a large paneer/tofu portion, or a large fish/meat portion. If the image doesn't clearly show one of those, lower the estimate rather than keeping the high number, or set portion_uncertain to true and lower confidence instead of guessing high.
+
+Worked example — a plate showing 3-4 small pieces of grilled/tikka chicken, half an avocado, and a small folded omelette:
+  Correct: chicken ~45-75g edible cooked weight -> ~12-23g protein; omelette likely 1-2 eggs -> ~6-14g protein; avocado -> ~1-2g protein. Total roughly 22-36g protein.
+  Wrong: "5-6 medium chicken pieces", "180-250g chicken", or 49g+ total protein — that overstates what 3-4 small pieces actually are.
 
 Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks):
 {
@@ -122,7 +157,13 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
       "quantity": "string (e.g. 1 katori, 2 rotis, 1 bowl, 1 cup) — should match visible_quantity's scale",
       "visible_quantity": "string — what you actually counted/saw, e.g. '3-4 small pieces'",
       "portion_size": "tiny|small|medium|large|very_large",
-      "estimated_cooked_weight_grams": "string, e.g. '60-90g'",
+      "estimated_cooked_weight_grams": "string, e.g. '45-75g'",
+      "food_category": "chicken|fish|red_meat|egg|paneer_tofu|avocado|seeds_nuts|legume_dal|other (set this for any protein-relevant item so the app can compute its macros from the portion; use \\"other\\" for rice/roti/vegetables/mixed curries)",
+      "estimated_edible_weight_grams_min": "number — edible cooked weight, excluding bone/char/marinade (omit for egg/other items)",
+      "estimated_edible_weight_grams_max": "number",
+      "count_visible_pieces": "number, optional",
+      "egg_count_min": "number — only for food_category: egg items",
+      "egg_count_max": "number — only for food_category: egg items",
       "calories_min": number,
       "calories_max": number,
       "protein_min": number,
@@ -147,7 +188,8 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
   "is_zero_calorie_item": boolean,
   "portion_uncertain": boolean
 }
-Set portion_uncertain to true whenever the visible portion size was genuinely hard to judge (partly hidden food, unclear scale, ambiguous container size) — this drives whether the user gets asked to confirm portion size.`;
+Set portion_uncertain to true whenever the visible portion size was genuinely hard to judge (partly hidden food, unclear scale, ambiguous container size) — this drives whether the user gets asked to confirm portion size.
+Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
 
 export async function analyzeFood(input: {
   text?: string;
@@ -201,10 +243,154 @@ export async function analyzeFood(input: {
     if (!parsed.confidence) parsed.confidence = "medium";
     if (typeof parsed.is_zero_calorie_item !== "boolean") parsed.is_zero_calorie_item = false;
     if (typeof parsed.portion_uncertain !== "boolean") parsed.portion_uncertain = false;
-    return applyHighProteinSanityCheck(parsed);
+    const recalculated = recalculateNutritionFromPortions(parsed);
+    const capped = applyPortionConsistencyCaps(recalculated);
+    return applyHighProteinSanityCheck(capped);
   } catch {
     throw new Error(`Gemini returned invalid JSON: ${cleaned.slice(0, 200)}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Portion -> nutrition calculation. The model's job is to see the food and
+// estimate what's visible (piece count, size, edible weight); code — not
+// the model — turns that into final protein/calorie numbers wherever a
+// density table exists, since that's the step that was silently inflating
+// protein estimates before.
+// ---------------------------------------------------------------------------
+
+interface CategoryDensity {
+  proteinPerGramMin: number;
+  proteinPerGramMax: number;
+  caloriesPerGramMin: number;
+  caloriesPerGramMax: number;
+}
+
+/** Approximate protein/calorie density per gram of edible cooked weight.
+ * Deliberately conservative (lower bound of published ranges) since these
+ * exist specifically to stop protein overestimation, not to be lab-grade
+ * nutrition data. "egg" and "other" are handled separately (see
+ * computeItemNutrition) and aren't in this table. */
+const CATEGORY_DENSITY: Record<Exclude<FoodCategory, "egg" | "other">, CategoryDensity> = {
+  chicken: { proteinPerGramMin: 0.27, proteinPerGramMax: 0.31, caloriesPerGramMin: 1.7, caloriesPerGramMax: 2.3 },
+  fish: { proteinPerGramMin: 0.22, proteinPerGramMax: 0.30, caloriesPerGramMin: 1.5, caloriesPerGramMax: 2.0 },
+  red_meat: { proteinPerGramMin: 0.22, proteinPerGramMax: 0.30, caloriesPerGramMin: 2.0, caloriesPerGramMax: 2.8 },
+  paneer_tofu: { proteinPerGramMin: 0.15, proteinPerGramMax: 0.20, caloriesPerGramMin: 1.5, caloriesPerGramMax: 3.0 },
+  avocado: { proteinPerGramMin: 0.018, proteinPerGramMax: 0.022, caloriesPerGramMin: 1.5, caloriesPerGramMax: 1.7 },
+  seeds_nuts: { proteinPerGramMin: 0.15, proteinPerGramMax: 0.25, caloriesPerGramMin: 5.0, caloriesPerGramMax: 6.5 },
+  legume_dal: { proteinPerGramMin: 0.07, proteinPerGramMax: 0.09, caloriesPerGramMin: 1.0, caloriesPerGramMax: 1.3 },
+};
+
+const EGG_PROTEIN_PER_EGG = { min: 6, max: 7 };
+const EGG_CALORIES_PER_EGG = { min: 70, max: 100 }; // upper end accounts for omelette oil
+
+/** Recomputes one item's calories/protein from its portion estimate
+ * (edible weight or egg count), using the density tables above. Returns
+ * null when the item doesn't have a category/portion data to compute from
+ * — those items keep whatever calories/protein the model itself returned. */
+export function computeItemNutrition(item: FoodItem): { calories_min: number; calories_max: number; protein_min: number; protein_max: number } | null {
+  if (item.food_category === "egg") {
+    if (item.egg_count_min == null || item.egg_count_max == null) return null;
+    return {
+      protein_min: Math.round(item.egg_count_min * EGG_PROTEIN_PER_EGG.min),
+      protein_max: Math.round(item.egg_count_max * EGG_PROTEIN_PER_EGG.max),
+      calories_min: Math.round(item.egg_count_min * EGG_CALORIES_PER_EGG.min),
+      calories_max: Math.round(item.egg_count_max * EGG_CALORIES_PER_EGG.max),
+    };
+  }
+  if (!item.food_category || item.food_category === "other") return null;
+  const density = CATEGORY_DENSITY[item.food_category];
+  if (!density) return null;
+  if (item.estimated_edible_weight_grams_min == null || item.estimated_edible_weight_grams_max == null) return null;
+
+  const weightMin = item.estimated_edible_weight_grams_min;
+  const weightMax = item.estimated_edible_weight_grams_max;
+  return {
+    protein_min: Math.round(weightMin * density.proteinPerGramMin),
+    protein_max: Math.round(weightMax * density.proteinPerGramMax),
+    calories_min: Math.round(weightMin * density.caloriesPerGramMin),
+    calories_max: Math.round(weightMax * density.caloriesPerGramMax),
+  };
+}
+
+/** Replaces each categorized item's calories/protein with the code-computed
+ * value from its portion estimate, and re-sums the meal totals from the
+ * (possibly now-corrected) items — so an inflated protein number the model
+ * attached to a small visible portion never survives into the final
+ * estimate. Items without a usable category/portion (rice, roti, mixed
+ * curries, ...) are left exactly as the model reported them. */
+export function recalculateNutritionFromPortions(analysis: FoodAnalysisResult): FoodAnalysisResult {
+  const foods = analysis.foods.map((item) => {
+    const computed = computeItemNutrition(item);
+    return computed ? { ...item, ...computed } : item;
+  });
+
+  const sum = (key: "calories_min" | "calories_max" | "protein_min" | "protein_max") =>
+    foods.reduce((total, f) => total + (f[key] ?? 0), 0);
+
+  return {
+    ...analysis,
+    foods,
+    total_calories_min: Math.round(sum("calories_min")),
+    total_calories_max: Math.round(sum("calories_max")),
+    total_protein_min: Math.round(sum("protein_min")),
+    total_protein_max: Math.round(sum("protein_max")),
+  };
+}
+
+const SMALL_PORTIONS: Array<FoodItem["portion_size"]> = ["tiny", "small"];
+const MEAT_CATEGORIES: FoodCategory[] = ["chicken", "fish", "red_meat"];
+
+/** Item- and meal-level "does the wording match the numbers?" check. A
+ * small/tiny meat portion, a 1-2 egg omelette, or avocado shouldn't be
+ * quietly carrying a large protein number even after the density-based
+ * recalculation above (e.g. if the model's own edible-weight estimate was
+ * itself too generous for the size bucket it chose) — and the meal total
+ * shouldn't exceed ~45g protein without a clearly large item to justify it. */
+export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodAnalysisResult {
+  const foods = analysis.foods.map((item) => {
+    let proteinMax = item.protein_max;
+
+    if (MEAT_CATEGORIES.includes(item.food_category as FoodCategory) && SMALL_PORTIONS.includes(item.portion_size) && proteinMax > 25) {
+      proteinMax = 25;
+    }
+    if (item.food_category === "egg" && (item.egg_count_max ?? 2) <= 2 && proteinMax > 14) {
+      proteinMax = 14;
+    }
+    if (item.food_category === "avocado" && proteinMax > 3) {
+      proteinMax = 3;
+    }
+    if (item.food_category === "seeds_nuts" && proteinMax > 4) {
+      proteinMax = 4;
+    }
+
+    if (proteinMax === item.protein_max) return item;
+    return { ...item, protein_max: proteinMax, protein_min: Math.min(item.protein_min, proteinMax) };
+  });
+
+  let totalProteinMin = Math.round(foods.reduce((t, f) => t + f.protein_min, 0));
+  let totalProteinMax = Math.round(foods.reduce((t, f) => t + f.protein_max, 0));
+  let portionUncertain = analysis.portion_uncertain ?? false;
+
+  // Meal-level cap: >45g total protein needs a clearly large protein item
+  // to back it up (150g+ meat/fish, a large paneer/tofu portion, or 3+
+  // eggs) — otherwise the estimate is scaled down rather than trusted.
+  const hasLargeProteinSupport = foods.some((f) => {
+    if (MEAT_CATEGORIES.includes(f.food_category as FoodCategory) || f.food_category === "paneer_tofu") {
+      return f.portion_size === "large" || f.portion_size === "very_large" || (f.estimated_edible_weight_grams_min ?? 0) >= 150;
+    }
+    if (f.food_category === "egg") return (f.egg_count_min ?? 0) >= 3;
+    return false;
+  });
+
+  if (totalProteinMax > 45 && !hasLargeProteinSupport) {
+    const scale = 45 / totalProteinMax;
+    totalProteinMax = 45;
+    totalProteinMin = Math.round(Math.min(totalProteinMin, 40) * (totalProteinMin > 40 ? scale : 1));
+    portionUncertain = true;
+  }
+
+  return { ...analysis, foods, total_protein_min: totalProteinMin, total_protein_max: totalProteinMax, portion_uncertain: portionUncertain };
 }
 
 /** Defense-in-depth beyond the prompt's own "check yourself" instruction:
