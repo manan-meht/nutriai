@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertContactGoal } from "@/app/(adults)/adults/dashboard/actions";
 
+export const runtime = "edge";
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
   const body = await request.json().catch(() => null);

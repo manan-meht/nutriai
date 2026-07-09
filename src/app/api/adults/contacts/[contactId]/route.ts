@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateContact } from "@/app/(adults)/adults/dashboard/actions";
 
+export const runtime = "edge";
+
 // Plain HTTP route instead of a Server Action — Server Actions on this
 // deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
 // fail with "Server Action ... was not found on the server" because

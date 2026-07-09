@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOrCreateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
 
+export const runtime = "edge";
+
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
   const result = await getOrCreateFamilyInvite(contactId);
