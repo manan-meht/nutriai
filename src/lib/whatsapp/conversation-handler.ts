@@ -773,6 +773,40 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
+  // A fresh photo always takes priority over whatever the conversation was
+  // waiting on — previously an image arriving while state was
+  // awaiting_confirmation/awaiting_clarification/awaiting_correction_confirmation
+  // (e.g. a leftover unconfirmed meal from earlier) fell through every
+  // branch below untouched, since none of them checked msg.type === "image",
+  // and the bot silently re-sent the old "Reply Yes" prompt without ever
+  // looking at the new photo. A new image is never a correction of the old
+  // guess — it's treated as an entirely new estimate.
+  if (msg.type === "image" && mediaBuffer &&
+    (state === "awaiting_confirmation" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation")) {
+    try {
+      const analysis = await analyzeFood({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text });
+      analysis.image_url = await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType);
+
+      if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
+        await sendTextMessage(msg.from, buildClarificationMessage(seed));
+        await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+        return;
+      }
+
+      const confirmMsg = buildEstimateMessage(analysis, { seed });
+      await sendTextMessage(msg.from, confirmMsg);
+      await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+    } catch (err) {
+      console.error("[whatsapp] food analysis error (new photo mid-flow):", err instanceof Error ? err.message : err);
+      const hint = isAdults
+        ? "I couldn't quite make that out. Could you describe what you had? (e.g. \"idli, sambar and tea\")"
+        : "Hmm, I couldn't quite identify that meal. Could you describe what you ate? (e.g. \"2 rotis, 1 katori dal, 1 bowl rice\")";
+      await sendTextMessage(msg.from, hint);
+      await setConvState(state, pendingMeal); // release lock, unchanged
+    }
+    return;
+  }
+
   // A meal-type-only correction ("change to lunch", "make this dinner") on
   // a pending or just-saved meal doesn't need another AI call — just
   // relabel it directly.

@@ -261,6 +261,37 @@ describe("handleIncomingMessage — pending meal confirm/correct/save flow", () 
     );
   });
 
+  it("a new photo arriving while a previous estimate is still awaiting Yes is analyzed fresh, not silently ignored", async () => {
+    jest.resetModules();
+    const fakeDb = makeFakeSupabase(contact);
+    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+
+    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "first meal" }));
+    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
+    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
+    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
+
+    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
+
+    // First photo -> awaiting_confirmation with a pending (unconfirmed) estimate.
+    await handleIncomingMessage(
+      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
+      new Uint8Array([1, 2, 3])
+    );
+
+    // A second, different photo arrives before the user ever replies Yes to the first.
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "second meal", meal_type: "dinner" }));
+    await handleIncomingMessage(
+      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
+      new Uint8Array([4, 5, 6])
+    );
+
+    // The new photo must have been analyzed (not silently dropped/ignored).
+    expect(foodAnalyzer.analyzeFood).toHaveBeenCalledTimes(2);
+    expect(fakeDb._mealLogs.length).toBe(0); // still nothing saved — second estimate awaits its own Yes
+  });
+
   it("'cancel' discards a pending meal without saving anything", async () => {
     jest.resetModules();
     const fakeDb = makeFakeSupabase(contact);

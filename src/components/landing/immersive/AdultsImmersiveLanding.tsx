@@ -210,98 +210,54 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
       {/* ── Add a family member (setup/invite) — short teaser, full explainer lives on its own page ── */}
       <AddUserTeaser variant="family" href="/family/add-users" />
 
-      {/* ── Consent, not surveillance ────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-white">
+      {/* ── Support, not surveillance (combined trust/privacy section) ──────
+          Merges what were two adjacent, overlapping sections ("Built for
+          support, not surveillance" + "Their privacy. Their choice.
+          Always.") into one compact block — both said the same thing:
+          the loved one controls sharing, the supporter sees patterns
+          instead of private monitoring. */}
+      <section className="py-16 px-6 bg-white">
         <div className="max-w-5xl mx-auto">
           <Reveal>
             <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Built for support, not surveillance</h2>
           </Reveal>
           <Reveal delay={100}>
-            <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              Your parent or family member stays in control, every step of the way.
+            <p className="text-gray-500 text-center text-lg mb-10 max-w-xl mx-auto">
+              Your loved one stays in control of what they share. You get gentle nutrition patterns, not
+              private monitoring.
             </p>
           </Reveal>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-14">
             {[
               {
-                step: "1",
-                heading: "Invite them on WhatsApp",
-                body: "Your parent or family member receives a simple invite.",
-              },
-              {
-                step: "2",
                 heading: "They choose what to share",
-                body: "They approve meal sharing and control what Tistra shows.",
+                body: "Meal photos, descriptions, weekly summaries, and goals are permission-based.",
               },
               {
-                step: "3",
-                heading: "You see gentle weekly patterns",
-                body: "You get trends and helpful nudges, not private monitoring.",
+                heading: "You see useful patterns",
+                body: "Meals logged, meal balance, missed meals, and gentle nudges — not constant surveillance.",
+              },
+              {
+                heading: "They can change permissions anytime",
+                body: "Sharing preferences stay with them and can be updated whenever they want.",
               },
             ].map((item) => (
-              <Reveal key={item.step}>
-                <div className="bg-[#F3EEFB] rounded-2xl p-7 border border-[#E9DDFF] text-center">
-                  <div className="w-10 h-10 rounded-full bg-[#6750A4] text-white font-bold flex items-center justify-center mx-auto mb-4">
-                    {item.step}
-                  </div>
-                  <p className="font-bold text-gray-900 text-lg mb-2">{item.heading}</p>
+              <Reveal key={item.heading}>
+                <div className="bg-[#F3EEFB] rounded-2xl p-6 border border-[#E9DDFF] text-center">
+                  <p className="font-bold text-gray-900 mb-2">{item.heading}</p>
                   <p className="text-sm text-gray-600 leading-relaxed">{item.body}</p>
                 </div>
               </Reveal>
             ))}
           </div>
-        </div>
-      </section>
 
-      {/* ── Privacy ──────────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 bg-white">
-        <div className="max-w-5xl mx-auto">
-          <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">Their privacy. Their choice. Always.</h2>
+          <Reveal delay={150}>
+            <blockquote className="text-xl md:text-2xl font-medium text-gray-800 leading-relaxed text-center max-w-xl mx-auto">
+              &ldquo;My mother lives alone. This gives me peace of mind without making her feel watched.&rdquo;
+            </blockquote>
+            <p className="text-sm text-gray-500 text-center mt-3">— Sanjana R., daughter</p>
           </Reveal>
-          <Reveal delay={100}>
-            <p className="text-gray-500 text-center text-lg mb-14 max-w-xl mx-auto">
-              The older adult controls exactly what gets shared. Family supporters see only what they&apos;re allowed to see.
-            </p>
-          </Reveal>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                what: "Meal photos",
-                who: "Off by default",
-                detail: "They choose to share photos — or just descriptions. Changeable any time.",
-              },
-              {
-                what: "Weekly summaries",
-                who: "Only if they agree",
-                detail: "They control what the summary includes, and who can see it.",
-              },
-              {
-                what: "Goals",
-                who: "They accept or decline",
-                detail: "A family member may suggest a goal. Only the parent can activate it.",
-              },
-            ].map((item) => (
-              <Reveal key={item.what}>
-                <div className="bg-[#F3EEFB] rounded-2xl p-7 border border-[#E9DDFF]">
-                  <p className="font-bold text-gray-900 text-lg mb-1">{item.what}</p>
-                  <p className="text-sm font-semibold text-[#4F378A] mb-3">{item.who}</p>
-                  <p className="text-sm text-gray-600 leading-relaxed">{item.detail}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
         </div>
-      </section>
-
-      {/* ── Quote ─────────────────────────────────────────────────────────── */}
-      <section className="py-20 px-6 text-center max-w-2xl mx-auto">
-        <Reveal>
-          <blockquote className="text-2xl md:text-3xl font-medium text-gray-800 leading-relaxed mb-4">
-            &ldquo;My mother lives alone. This gives me peace of mind without making her feel watched.&rdquo;
-          </blockquote>
-          <p className="text-sm text-gray-500">— Sanjana R., daughter</p>
-        </Reveal>
       </section>
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
