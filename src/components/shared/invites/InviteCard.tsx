@@ -16,9 +16,13 @@ export interface InviteCardProps {
    * there's no profile to disconnect until claimed. */
   revoke?: () => Promise<{ ok: true } | { error: string }>;
   onChange?: (invite: InviteSummary) => void;
+  /** Overrides the default "waiting for them to message on WhatsApp" —
+   * wrong pronoun for the self-tracking flow, where the invite is for the
+   * caregiver's own account, not a third party. */
+  pendingLabel?: string;
 }
 
-export function InviteCard({ title, description, load, regenerate, revoke, onChange }: InviteCardProps) {
+export function InviteCard({ title, description, load, regenerate, revoke, onChange, pendingLabel }: InviteCardProps) {
   const [invite, setInvite] = useState<InviteSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +144,7 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
         <>
           <div className={`rounded-xl p-3 ${new Date(invite.expiresAt) < new Date() ? "bg-[var(--color-status-support-bg)]" : "bg-[var(--color-status-steady-bg)]"}`}>
             <p className="text-sm font-medium text-gray-700">
-              {new Date(invite.expiresAt) < new Date() ? "This invite has expired." : "Pending — waiting for them to message on WhatsApp."}
+              {new Date(invite.expiresAt) < new Date() ? "This invite has expired." : (pendingLabel ?? "Pending — waiting for them to message on WhatsApp.")}
             </p>
             <p className="text-xs text-gray-500 mt-0.5">Expires {new Date(invite.expiresAt).toLocaleDateString()}</p>
           </div>

@@ -70,6 +70,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   // rather than a real display name — never greet with something that looks
   // like it was derived from an email address.
   const looksLikeEmailFragment = /[@+]/.test(caregiverName);
+  const hasSelfContact = contacts.some((c) => c.relationshipType === "self");
   const selfContactName = contacts.find((c) => c.relationshipType === "self")?.fullName;
   const displayName = selfContactName || (!looksLikeEmailFragment ? caregiverName : "");
 
@@ -112,14 +113,23 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                   : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
             </p>
           </div>
-          {canAdd && (
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2"
-            >
-              <span className="text-lg leading-none">+</span> Add person
-            </button>
-          )}
+          {isSelfPlan
+            ? !hasSelfContact && (
+                <button
+                  onClick={() => setShowSelfSetup(true)}
+                  className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2"
+                >
+                  <span className="text-lg leading-none">+</span> Add your details
+                </button>
+              )
+            : canAdd && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2"
+                >
+                  <span className="text-lg leading-none">+</span> Add person
+                </button>
+              )}
         </div>
 
         {(promptSelfSetup || showSelfSetup) && !dismissedSelfSetup && (
@@ -133,8 +143,12 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
         {entitlement.isReadOnly && (
           <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
-            Your free trial has ended. Your existing family members and their data are preserved and visible, but you
-            can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.
+            {isSelfPlan ? (
+              <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+            ) : (
+              <>Your free trial has ended. Your existing family members and their data are preserved and visible, but you
+              can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+            )}
           </div>
         )}
 
@@ -191,7 +205,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             </h2>
             <p className="text-gray-500 text-sm max-w-xs mb-8">
               {isSelfPlan
-                ? "Send a photo of your meal or describe what you ate on WhatsApp, and we'll track your nutrition here."
+                ? "Connect on WhatsApp and share a few details — your age, weight, and goals — so we can give you accurate protein and calorie targets instead of generic ones. Then just send meal photos and we'll track everything here."
                 : "Add a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp and you'll track their nutrition here."}
             </p>
             {isSelfPlan ? (
@@ -231,7 +245,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
               onClick={() => setShowPrevious((v) => !v)}
               className="text-sm font-medium text-gray-500 hover:text-gray-800 mb-4"
             >
-              {showPrevious ? "Hide" : "Show"} previous family members ({removedContacts.length})
+              {showPrevious ? "Hide" : "Show"} {isSelfPlan ? "previous profile" : "previous family members"} ({removedContacts.length})
             </button>
             {showPrevious && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-70">

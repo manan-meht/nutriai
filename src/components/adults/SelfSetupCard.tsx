@@ -64,6 +64,7 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
           description="Tap the button below, then hit send in WhatsApp — you'll be connected the moment we receive it."
           load={() => getOrCreateSelfInvite(workspaceId, defaultFullName)}
           regenerate={() => regenerateSelfInvite(workspaceId)}
+          pendingLabel="Pending — waiting for your message on WhatsApp."
         />
       )}
 
