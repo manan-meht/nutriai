@@ -60,12 +60,22 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
     try {
       const authEmail = scopedEmail(email, product);
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password,
           options: { emailRedirectTo: redirectTo },
         });
         if (error) throw error;
+        // Supabase doesn't return an error for an email that's already
+        // registered (avoids leaking which emails have accounts) — it
+        // silently "succeeds" without sending anything. The documented tell
+        // is an empty identities array on the returned user, since no new
+        // identity was actually created. Without this check we'd show
+        // "check your email" even though no email was ever sent.
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+          setError("An account with this email already exists. Please sign in instead.");
+          return;
+        }
         setEmailSent(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
