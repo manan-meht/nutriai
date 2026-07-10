@@ -3,6 +3,7 @@ export const runtime = "edge";
 import { NextRequest, NextResponse } from "next/server";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
 import { handleIncomingMessage } from "@/lib/whatsapp/conversation-handler";
+import { claimMessageId } from "@/lib/whatsapp/dedup";
 
 
 // Meta webhook verification
@@ -43,8 +44,18 @@ async function processWebhook(body: any) {
       for (const message of value?.messages ?? []) {
         const from: string = message.from;
         const type: string = message.type;
+        const messageId: string | undefined = message.id;
 
         console.log(`[webhook] message from ${from}, type: ${type}`);
+
+        // Meta redelivers a webhook whenever we don't ack fast enough —
+        // expected any time photo analysis (the LLM call below) runs long.
+        // Skip anything we've already claimed so a redelivery never
+        // triggers a second AI analysis or a second reply to the user.
+        if (messageId && !(await claimMessageId(messageId))) {
+          console.log(`[webhook] skipping already-processed message ${messageId} from ${from}`);
+          continue;
+        }
 
         try {
           if (type === "text") {
