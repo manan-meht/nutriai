@@ -9,6 +9,13 @@ import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPrev
 
 const USE_CASES: UseCaseCard[] = [
   {
+    href: "/me",
+    icon: "🙋",
+    title: "Me",
+    description: "Understand your own meal balance, calories, protein, and consistency.",
+    cta: "Explore Me",
+  },
+  {
     href: "/family",
     icon: "👨‍👩‍👧",
     title: "Family",
@@ -21,13 +28,6 @@ const USE_CASES: UseCaseCard[] = [
     title: "Coach",
     description: "Track client meals without chasing food logs.",
     cta: "Explore Coach",
-  },
-  {
-    href: "/me",
-    icon: "🙋",
-    title: "Me",
-    description: "Understand your own meal balance, calories, protein, and consistency.",
-    cta: "Explore Me",
   },
 ];
 
@@ -259,6 +259,12 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
               </h2>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Link
+                  href="/me"
+                  className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-6 py-3 rounded-full font-semibold transition-colors"
+                >
+                  Me →
+                </Link>
+                <Link
                   href="/family"
                   className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
                 >
@@ -269,12 +275,6 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                   className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
                 >
                   Coach →
-                </Link>
-                <Link
-                  href="/me"
-                  className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-6 py-3 rounded-full font-semibold transition-colors"
-                >
-                  Me →
                 </Link>
               </div>
             </div>

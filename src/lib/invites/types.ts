@@ -16,6 +16,10 @@ export interface WhatsappInvite {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  /** Set the first time the caregiver/coach actually clicks "Send invite
+   * on WhatsApp" or "Copy invite link" — distinct from the invite merely
+   * existing (auto-created the moment a contact is added). */
+  linkOpenedAt: string | null;
 }
 
 export const INVITE_COMMAND_LABEL: Record<InviteType, string> = {
@@ -45,4 +49,6 @@ export interface InviteSummary {
   expiresAt: string;
   claimedByWhatsappNumberMasked: string | null;
   claimedAt: string | null;
+  /** See WhatsappInvite.linkOpenedAt. */
+  linkOpenedAt: string | null;
 }

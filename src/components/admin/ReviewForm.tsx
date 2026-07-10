@@ -17,7 +17,7 @@ type Detail = Exclude<MealReviewDetail, { error: string }>;
 
 export function ReviewForm({ detail }: { detail: Detail }) {
   const router = useRouter();
-  const { submission, classification, latestReview } = detail;
+  const { submission, classification, latestReview, mealLog } = detail;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -176,7 +176,35 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             <Row label="Model">{classification.modelName} {classification.modelVersion ?? ""} / prompt {classification.promptVersion ?? "—"}</Row>
             <Row label="Confidence">{classification.confidenceScore != null ? `${Math.round(classification.confidenceScore * 100)}%` : "—"}</Row>
             <Row label="Detected items">{classification.detectedItems.map((f: any) => (typeof f === "string" ? f : f.name)).join(", ") || "—"}</Row>
+            {mealLog ? (
+              <>
+                <Row label="Calories">{formatRange(mealLog.totalCaloriesMin, mealLog.totalCaloriesMax)}</Row>
+                <Row label="Protein">{formatRange(mealLog.totalProteinMin, mealLog.totalProteinMax, "g")}</Row>
+                <Row label="Carbs">{formatRange(mealLog.totalCarbsMin, mealLog.totalCarbsMax, "g")}</Row>
+                <Row label="Fat">{formatRange(mealLog.totalFatMin, mealLog.totalFatMax, "g")}</Row>
+              </>
+            ) : (
+              <Row label="Macros">Not available — this submission isn&apos;t linked to a confirmed meal log yet.</Row>
+            )}
             <Row label="Suggested next step">{classification.suggestedNextStep ?? "—"}</Row>
+          </div>
+        )}
+
+        {mealLog && mealLog.foods.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm">
+            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Per-item macros</p>
+            <div className="space-y-2">
+              {mealLog.foods.map((f: any, i: number) => (
+                <div key={i} className="border-b border-gray-50 last:border-0 pb-2 last:pb-0">
+                  <p className="font-medium text-gray-800">{f.name ?? "Unknown item"}{f.portion_size ? ` · ${f.portion_size}` : ""}</p>
+                  <p className="text-xs text-gray-500">
+                    {formatRange(f.calories_min, f.calories_max)} cal · {formatRange(f.protein_min, f.protein_max, "g")} protein ·{" "}
+                    {formatRange(f.carbs_min, f.carbs_max, "g")} carbs · {formatRange(f.fat_min, f.fat_max, "g")} fat
+                  </p>
+                  {f.visible_quantity && <p className="text-xs text-gray-400">Visible quantity: {f.visible_quantity}</p>}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -263,6 +291,13 @@ export function ReviewForm({ detail }: { detail: Detail }) {
 }
 
 const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm";
+
+function formatRange(min: number | null | undefined, max: number | null | undefined, unit = ""): string {
+  if (min == null && max == null) return "—";
+  const lo = Math.round(min ?? 0);
+  const hi = Math.round(max ?? min ?? 0);
+  return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
+}
 
 function Row({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return (

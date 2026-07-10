@@ -9,7 +9,7 @@ import { BiomarkerSection } from "./BiomarkerSection";
 import { ProgressInsights } from "@/components/shared/ProgressInsights";
 import { computeInsights } from "@/lib/insights";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
-import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachClientInvite } from "@/app/(gym)/gym/dashboard/actions";
+import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachClientInvite, markCoachClientInviteLinkOpened } from "@/app/(gym)/gym/dashboard/actions";
 
 const ActivityHeatmap = dynamic(() => import("./ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const ProteinChart = dynamic(() => import("./MacroCharts").then((m) => m.ProteinChart), { ssr: false });
@@ -90,6 +90,7 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
           load={() => getOrCreateCoachClientInvite(client.id)}
           regenerate={() => regenerateCoachClientInvite(client.id)}
           revoke={() => revokeCoachClientInvite(client.id)}
+          onLinkOpened={() => markCoachClientInviteLinkOpened(client.id)}
         />
 
         {/* Stats row */}

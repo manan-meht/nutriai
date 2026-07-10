@@ -10,7 +10,10 @@ import { AddClientModal } from "./AddClientModal";
 import { useRouter } from "next/navigation";
 import { effectiveGymLimit, gymLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
-import { GYM_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
+import { GYM_LIMIT_ENFORCEMENT_ENABLED, BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
+import { FeedbackModal } from "@/components/feedback/FeedbackModal";
+import { FeedbackIcon } from "@/components/feedback/FeedbackIcon";
+import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
 
 interface GymDashboardClientProps {
   coachName: string;
@@ -27,6 +30,8 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
   const [showModal, setShowModal] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
   function handleAdded() {
@@ -60,17 +65,26 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
       {/* Nav */}
       <header className="bg-white border-b border-gray-100 px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
               <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
             </div>
             <span className="font-bold text-gray-900">Tistra Health</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{coachEmail}</span>
             <Link href="/billing?module=gym" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
               Billing
             </Link>
+            <button
+              ref={feedbackLinkRef}
+              type="button"
+              onClick={() => setShowFeedback(true)}
+              className="text-sm text-gray-500 hover:text-gray-800 font-medium flex items-center gap-1.5"
+            >
+              <FeedbackIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Send Feedback</span>
+            </button>
             <form action="/auth/signout" method="post">
               <button type="submit" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
                 Sign out
@@ -104,40 +118,53 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
           )}
         </div>
 
-        {entitlement.isReadOnly && (
-          <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
-            Your free trial has ended. Your existing clients and data are preserved and visible, but you can&apos;t invite
-            new clients or generate new AI analyses until you <Link href="/billing?module=gym" className="underline font-medium">subscribe</Link>.
-          </div>
-        )}
-
-        {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-          <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
-            Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
-            <Link href="/billing?module=gym" className="underline font-medium">Subscribe</Link>
-          </div>
-        )}
-
-        {!entitlement.isReadOnly && countLimitReached && (
-          <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
-            {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
-          </div>
-        )}
-
-        {isSubscriber ? (
-          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
-            <span>Your plan includes up to {clientLimit} clients.</span>
-            <Link href="/billing?module=gym" className="font-medium text-purple-700 underline">
-              Need more than {clientLimit} clients? Add capacity →
-            </Link>
-          </div>
+        {!BILLING_AVAILABLE ? (
+          <>
+            <BetaBillingBanner sourcePage="gym_dashboard" className="mb-8" />
+            {countLimitReached && (
+              <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
+                {gymLimitReachedMessage(clientLimit)} <Link href="/pricing" className="underline font-medium">View plans</Link> to add more.
+              </div>
+            )}
+          </>
         ) : (
-          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-            Your first {clientLimit} clients are free for your first month. After that, Coaching is{" "}
-            <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
-            <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-            <Link href="/billing?module=gym" className="underline font-medium text-purple-700">See plans</Link>
-          </div>
+          <>
+            {entitlement.isReadOnly && (
+              <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
+                Your free trial has ended. Your existing clients and data are preserved and visible, but you can&apos;t invite
+                new clients or generate new AI analyses until you <Link href="/billing?module=gym" className="underline font-medium">subscribe</Link>.
+              </div>
+            )}
+
+            {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
+              <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
+                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
+                <Link href="/billing?module=gym" className="underline font-medium">Subscribe</Link>
+              </div>
+            )}
+
+            {!entitlement.isReadOnly && countLimitReached && (
+              <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
+                {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
+              </div>
+            )}
+
+            {isSubscriber ? (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+                <span>Your plan includes up to {clientLimit} clients.</span>
+                <Link href="/billing?module=gym" className="font-medium text-purple-700 underline">
+                  Need more than {clientLimit} clients? Add capacity →
+                </Link>
+              </div>
+            ) : (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                Your first {clientLimit} clients are free for your first month. After that, Coaching is{" "}
+                <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+                <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
+                <Link href="/billing?module=gym" className="underline font-medium text-purple-700">See plans</Link>
+              </div>
+            )}
+          </>
         )}
 
         {/* Stats */}
@@ -211,6 +238,15 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
           coachName={coachName || coachEmail}
           onClose={() => setShowModal(false)}
           onAdded={handleAdded}
+        />
+      )}
+
+      {showFeedback && (
+        <FeedbackModal
+          product="gym"
+          prefillEmail={coachEmail}
+          onClose={() => setShowFeedback(false)}
+          returnFocusRef={feedbackLinkRef}
         />
       )}
 

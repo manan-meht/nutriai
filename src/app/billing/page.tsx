@@ -3,6 +3,8 @@ export const runtime = "edge";
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
+import { foundingMemberCopy } from "@/lib/pricing/founding-member";
 
 interface BillingPageProps {
   searchParams?: Promise<Record<string, string>>;
@@ -17,12 +19,10 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   if (!user) redirect(billingModule === "gym" ? "/gym/login?next=/billing?module=gym" : "/adults/login?next=/billing?module=adults");
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 text-center">
-      <div className="max-w-md">
-        <h1 className="text-2xl font-bold text-gray-900 mb-3">Payments &amp; subscriptions launching soon</h1>
-        <p className="text-gray-600">
-          We&apos;re still putting the finishing touches on billing. You can keep using Tistra Health for free in the meantime — check back soon.
-        </p>
+    <div className="min-h-screen flex items-center justify-center px-6 py-16">
+      <div className="max-w-md w-full">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4 text-center">{foundingMemberCopy.dashboardBannerTitle}</h1>
+        <BetaBillingBanner sourcePage="billing_page" linkLabel={foundingMemberCopy.viewPlansLabel} />
       </div>
     </div>
   );

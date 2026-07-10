@@ -20,14 +20,22 @@ export interface InviteCardProps {
    * wrong pronoun for the self-tracking flow, where the invite is for the
    * caregiver's own account, not a third party. */
   pendingLabel?: string;
+  /** Persists that the caregiver/coach actually clicked "Send invite on
+   * WhatsApp" or "Copy invite link" (see markInviteLinkOpened) — without
+   * this, a pending invite that was already sent looks identical to one
+   * that was just auto-generated and never sent, on every later visit. */
+  onLinkOpened?: () => Promise<unknown>;
 }
 
-export function InviteCard({ title, description, load, regenerate, revoke, onChange, pendingLabel }: InviteCardProps) {
+export function InviteCard({ title, description, load, regenerate, revoke, onChange, pendingLabel, onLinkOpened }: InviteCardProps) {
   const [invite, setInvite] = useState<InviteSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Once an already-sent invite is shown, "Resend" is tucked behind this
+  // toggle rather than shown by default — see the render logic below.
+  const [showResend, setShowResend] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,12 +73,23 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
       }
       setInvite(result);
       setError(null);
+      setShowResend(false);
       onChange?.(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Couldn't regenerate invite.");
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Optimistic — the actual persistence happens server-side via
+   * onLinkOpened, but the UI shouldn't wait on that round trip to reflect
+   * "sent" (nor block/hide the WhatsApp navigation or clipboard write on
+   * it succeeding). */
+  function markOpenedLocally() {
+    if (!invite || invite.linkOpenedAt) return;
+    setInvite({ ...invite, linkOpenedAt: new Date().toISOString() });
+    onLinkOpened?.().catch(() => {});
   }
 
   async function handleRevoke() {
@@ -103,11 +122,13 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
     trackInviteEvent("invite_copied", { link: invite.link });
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+    markOpenedLocally();
   }
 
   function handleOpenWhatsApp() {
     if (!invite) return;
     trackInviteEvent("invite_link_opened", { link: invite.shareLink ?? invite.link });
+    markOpenedLocally();
   }
 
   if (loading) {
@@ -142,14 +163,35 @@ export function InviteCard({ title, description, load, regenerate, revoke, onCha
         </div>
       ) : (
         <>
-          <div className={`rounded-xl p-3 ${new Date(invite.expiresAt) < new Date() ? "bg-[var(--color-status-support-bg)]" : "bg-[var(--color-status-steady-bg)]"}`}>
-            <p className="text-sm font-medium text-gray-700">
-              {new Date(invite.expiresAt) < new Date() ? "This invite has expired." : (pendingLabel ?? "Pending — waiting for them to message on WhatsApp.")}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">Expires {new Date(invite.expiresAt).toLocaleDateString()}</p>
-          </div>
+          {(() => {
+            const expired = new Date(invite.expiresAt) < new Date();
+            const alreadySent = !!invite.linkOpenedAt && !expired;
+            return (
+              <div className={`rounded-xl p-3 ${expired ? "bg-[var(--color-status-support-bg)]" : alreadySent ? "bg-[var(--color-status-good-bg)]" : "bg-[var(--color-status-steady-bg)]"}`}>
+                <p className={`text-sm font-medium ${alreadySent ? "text-[var(--color-status-good-text)]" : "text-gray-700"}`}>
+                  {expired
+                    ? "This invite has expired."
+                    : alreadySent
+                      ? "✓ Invite sent — no action needed unless they didn't receive it."
+                      : (pendingLabel ?? "Pending — waiting for them to message on WhatsApp.")}
+                </p>
+                <p className={`text-xs mt-0.5 ${alreadySent ? "text-[var(--color-status-good-text)] opacity-80" : "text-gray-500"}`}>
+                  Expires {new Date(invite.expiresAt).toLocaleDateString()}
+                </p>
+              </div>
+            );
+          })()}
 
-          {new Date(invite.expiresAt) >= new Date() && (
+          {new Date(invite.expiresAt) >= new Date() && invite.linkOpenedAt && !showResend && (
+            <button
+              onClick={() => setShowResend(true)}
+              className="text-xs font-medium text-gray-500 hover:text-gray-700 underline"
+            >
+              Didn&apos;t receive it? Resend
+            </button>
+          )}
+
+          {new Date(invite.expiresAt) >= new Date() && (!invite.linkOpenedAt || showResend) && (
             <div className="flex flex-wrap gap-2">
               <a
                 href={invite.shareLink ?? invite.link}

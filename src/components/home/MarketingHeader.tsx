@@ -34,13 +34,18 @@ const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductTy
 export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: MarketingHeaderProps) {
   const [homeHref, setHomeHref] = useState(initialHomeHref);
   const [showGetStarted, setShowGetStarted] = useState(false);
+  const [dashboardHref, setDashboardHref] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/dashboard-href")
       .then((res) => res.json())
       .then((data: { href: string | null }) => {
-        if (!cancelled && data.href) setHomeHref(data.href);
+        if (cancelled) return;
+        if (data.href) {
+          setHomeHref(data.href);
+          setDashboardHref(data.href);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -66,17 +71,37 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
           </span>
         </Link>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
+          <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">For Me</Link>
           <Link href="/family" className="text-gray-600 hover:text-[#4F378A]">Family</Link>
           <Link href="/coach" className="text-gray-600 hover:text-[#4F378A]">Coach</Link>
-          <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">For Me</Link>
+          <Link href="/pricing" className="text-gray-600 hover:text-[#4F378A]">Pricing</Link>
         </nav>
         {variant === "home" ? (
-          <button
-            onClick={() => setShowGetStarted(true)}
-            className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
-          >
-            Get Started →
-          </button>
+          <div className="flex items-center gap-3">
+            {dashboardHref ? (
+              <Link
+                href={dashboardHref}
+                className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+              >
+                My Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3 py-2"
+                >
+                  Sign in
+                </Link>
+                <button
+                  onClick={() => setShowGetStarted(true)}
+                  className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
+                >
+                  Get Started →
+                </button>
+              </>
+            )}
+          </div>
         ) : (
           <div className="flex items-center gap-3">
             <Link

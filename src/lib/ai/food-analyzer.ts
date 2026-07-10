@@ -65,6 +65,11 @@ export interface FoodItem {
    * item) — how many eggs the visible size implies. */
   egg_count_min?: number;
   egg_count_max?: number;
+  /** True when THIS item is the one driving has_high_impact_ambiguity on
+   * the overall result (e.g. the cubed item that could be tofu, paneer, or
+   * chicken) — lets the clarification message list every OTHER item by
+   * name while asking specifically about this one. */
+  is_ambiguous?: boolean;
 }
 
 export type MealType =
@@ -95,11 +100,43 @@ export interface FoodAnalysisResult {
    * with no sugar, plain soda water) — the one case where a 0/0 estimate is
    * allowed to be confirmed and saved as-is. */
   is_zero_calorie_item: boolean;
-  /** True when the model itself flagged the visible portion as hard to
-   * judge (partly hidden food, unclear container size, etc.) — drives the
-   * "portion is a little hard to judge" uncertainty language and whether
-   * we ask the user to confirm portion size before saving. */
-  portion_uncertain?: boolean;
+  /** Structured uncertainty signals — replace the old blanket
+   * `portion_uncertain` flag, which the model set liberally enough that a
+   * generic "please correct me if there was more" caveat ended up in
+   * nearly every response, even ones with a clearly visible small
+   * portion. needsPortionConfirmation() below derives whether to show a
+   * caveat from these specific signals (all optional; an absent/unset
+   * field never contributes to showing a caveat — the default is "don't
+   * add uncertainty language unless something actually warrants it"). */
+  portion_confidence?: "high" | "medium" | "low";
+  image_quality?: "good" | "okay" | "poor";
+  food_visibility?: "clear" | "partial" | "hidden" | "uncertain";
+  /** True when a protein-dense item (meat/fish/egg/paneer/tofu) is partly
+   * covered or stacked such that more could be hidden underneath —
+   * distinct from the item just being small, which doesn't need a caveat
+   * on its own. */
+  has_hidden_protein_food?: boolean;
+  /** How sure the model is about WHAT the food items are (as opposed to
+   * `confidence`, which also covers portion sizing) — separated out
+   * because food-identity ambiguity is what drives whether we pause for a
+   * targeted clarification instead of auto-saving. */
+  food_identity_confidence?: "high" | "medium" | "low";
+  /** True when a food's identity is ambiguous between options that would
+   * materially change the calorie/protein estimate (tofu vs paneer vs
+   * chicken, potato vs chicken, 1 egg vs 3 eggs, fish vs chicken, etc.) —
+   * this always pauses for clarification before saving, regardless of
+   * overall confidence, since guessing wrong here isn't a minor rounding
+   * error. See computeSaveDecision(). */
+  has_high_impact_ambiguity?: boolean;
+  /** Short human-readable reason the ambiguity matters nutritionally, e.g.
+   * "tofu vs paneer vs chicken changes protein significantly" — not shown
+   * to the user directly, just useful for logging/debugging. */
+  high_impact_ambiguity_reason?: string;
+  /** The specific question to ask the user when has_high_impact_ambiguity
+   * (or food_identity_confidence is low) — e.g. "Is the top-left cubed
+   * item tofu, paneer, or chicken?" Must be concrete, never a generic
+   * "What should I change?". */
+  clarification_question?: string;
   /** Public URL of the uploaded meal photo, attached after analysis (not
    * part of the Gemini response) so it survives in conversation state
    * between the "awaiting confirmation" and "saved" steps. */
@@ -112,11 +149,13 @@ export interface FoodAnalysisResult {
 
 const SYSTEM_PROMPT = `You are Tistra Health, a WhatsApp-based nutrition assistant specialized in Indian food.
 
-Your job is to help users log meals accurately and simply. Follow these rules:
+Your job is to help users log meals accurately with LOW friction. Follow these rules:
 - Never claim more certainty than you have. If the photo or description is ambiguous, say so via a low/medium confidence rating rather than guessing confidently.
 - Identify all food items and estimate macros using honest ranges — never single values.
 - If both calories and protein would round to 0, that is only correct for genuinely zero-calorie items (plain water, black tea/coffee with no sugar or milk, plain soda water). Set is_zero_calorie_item to true ONLY in that case. For anything else you can't confidently identify, do not return an all-zero estimate — instead lower your confidence and make your best-effort non-zero estimate, or if you truly cannot tell what the food is, set confidence to "low" and keep the foods list to your single best guess.
 - Treat any correction context provided below as more reliable than the image — the user knows their own food better than a photo does.
+- Most meals should be logged with minimal friction: if the meal is clear and confidence is high or medium, the app will log it automatically and let the user correct or undo it. Do not manufacture uncertainty just to be cautious — if the photo genuinely supports a confident estimate, be confident.
+- Only a food-identity ambiguity that would materially change the nutrition (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below) should hold up logging — ordinary portion fuzziness should not.
 - Be warm, calm, concise, and useful. Never flowery or repetitive praise.
 
 PORTION ESTIMATION — go from what is visible to a weight, never from the food's name to a default serving:
@@ -143,11 +182,29 @@ PORTION-WORDING CONSISTENCY — before finalizing your response, check that your
 - If a chicken/meat/fish item is labeled "small" or "tiny" portion, its protein contribution should usually be capped around 25g.
 - If you say "likely 1-2 eggs," that item's protein should usually be capped around 14g — do not report a 2-egg omelette as more than ~14g protein.
 - If the total meal is small/moderate, total protein should usually not exceed about 40g unless eggs/paneer/meat quantities clearly support more.
-- If total protein would be above 45g, that requires a clear visible reason — 150g+ cooked chicken, 3+ eggs, a large paneer/tofu portion, or a large fish/meat portion. If the image doesn't clearly show one of those, lower the estimate rather than keeping the high number, or set portion_uncertain to true and lower confidence instead of guessing high.
+- If total protein would be above 45g, that requires a clear visible reason — 150g+ cooked chicken, 3+ eggs, a large paneer/tofu portion, or a large fish/meat portion. If the image doesn't clearly show one of those, lower the estimate rather than keeping the high number, or set portion_confidence to "low" instead of guessing high.
+
+UNCERTAINTY LANGUAGE — do not add generic caveats like "please correct me if there was more" to every response. Only mention uncertainty when the image is genuinely unclear, food is hidden, portion confidence is low, or the estimate could materially change. If the visible portion is clear, give the estimate and ask the user to save, correct, or skip — nothing more.
+- If you describe the portion as small but are confident based on the visible image, do NOT add an uncertainty caveat. Simply state the small-portion estimate. A clearly visible small portion is not the same as an uncertain portion.
+- Set portion_confidence to "low" only when the portion size genuinely could be materially different from what you estimated (not just because the food happens to be small).
+- Set image_quality to "poor" only when blur, crop, darkness, or obstruction actually limits what you can judge — not by default.
+- Set food_visibility to "partial" or "hidden" only when part of the plate is genuinely out of frame, stacked, or covered such that food could be hidden — not for an ordinary photo of a normal plate.
+- Set has_hidden_protein_food to true only when a protein-dense item (meat/fish/egg/paneer/tofu) specifically looks partly covered or stacked such that more could be underneath.
+- For a normal, clearly-visible plate, portion_confidence should be "high" or "medium", image_quality "good" or "okay", food_visibility "clear", and has_hidden_protein_food false — these are the expected defaults, not the exception.
 
 Worked example — a plate showing 3-4 small pieces of grilled/tikka chicken, half an avocado, and a small folded omelette:
   Correct: chicken ~45-75g edible cooked weight -> ~12-23g protein; omelette likely 1-2 eggs -> ~6-14g protein; avocado -> ~1-2g protein. Total roughly 22-36g protein.
   Wrong: "5-6 medium chicken pieces", "180-250g chicken", or 49g+ total protein — that overstates what 3-4 small pieces actually are.
+
+AUTO-SAVE AND HIGH-IMPACT AMBIGUITY — your job is to help log meals with LOW friction. Most meals should be logged automatically, not held up waiting for confirmation. But a small set of ambiguities change the nutrition enough that guessing would actively mislead the user, so those must pause for one specific question instead of being guessed.
+- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, fried vs grilled preparation, 1 egg vs 3 eggs, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
+- When has_high_impact_ambiguity is true, set food_identity_confidence to "low", write a short high_impact_ambiguity_reason (e.g. "tofu vs paneer vs chicken changes protein significantly"), and write a SPECIFIC clarification_question naming exactly what's ambiguous and the plausible options — e.g. "Is the top-left cubed item tofu, paneer, or chicken?" or "Was the omelette 1 egg or 2 eggs?". Never ask a vague question like "What should I change?". Mark the specific food item this concerns with is_ambiguous: true so the app can list the other items separately.
+- Still fill in your best-guess foods/macros even when has_high_impact_ambiguity is true — the app won't use them to save until the user answers, but they're a useful fallback.
+- When there is no high-impact ambiguity, do not invent one — leave has_high_impact_ambiguity false and clarification_question unset, and let the meal be logged normally.
+
+Example — a plate shows rice, mixed vegetable curry, an orange curry/stir-fry, and a top-left cubed item that could be tofu, paneer, or chicken:
+  Bad: guessing "tofu or paneer and chicken curry" and reporting a confident combined estimate (e.g. 37g protein · 900 kcal) as if it were certain.
+  Good: has_high_impact_ambiguity: true, clarification_question: "Is the top-left cubed item tofu, paneer, or chicken?", the cubed item marked is_ambiguous: true, other items (rice, mixed vegetable curry, orange curry/stir-fry) reported normally.
 
 Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks):
 {
@@ -164,6 +221,7 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
       "count_visible_pieces": "number, optional",
       "egg_count_min": "number — only for food_category: egg items",
       "egg_count_max": "number — only for food_category: egg items",
+      "is_ambiguous": "boolean, optional — true only for the one item driving has_high_impact_ambiguity below",
       "calories_min": number,
       "calories_max": number,
       "protein_min": number,
@@ -186,9 +244,15 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
   "summary": "brief one-line summary, e.g. Dal rice with sabzi and roti",
   "confidence": "high|medium|low",
   "is_zero_calorie_item": boolean,
-  "portion_uncertain": boolean
+  "portion_confidence": "high|medium|low",
+  "image_quality": "good|okay|poor",
+  "food_visibility": "clear|partial|hidden|uncertain",
+  "has_hidden_protein_food": boolean,
+  "food_identity_confidence": "high|medium|low",
+  "has_high_impact_ambiguity": boolean,
+  "high_impact_ambiguity_reason": "string, optional — only when has_high_impact_ambiguity is true",
+  "clarification_question": "string, optional — only when has_high_impact_ambiguity is true (or food_identity_confidence is low); must be specific, e.g. 'Is the top-left cubed item tofu, paneer, or chicken?'"
 }
-Set portion_uncertain to true whenever the visible portion size was genuinely hard to judge (partly hidden food, unclear scale, ambiguous container size) — this drives whether the user gets asked to confirm portion size.
 Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
 
 export async function analyzeFood(input: {
@@ -201,7 +265,7 @@ export async function analyzeFood(input: {
 
   let textPrompt = SYSTEM_PROMPT;
   if (input.correctionContext) {
-    textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}`;
+    textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}\nIf this correction resolves a previous food-identity ambiguity (e.g. the user named the item), set has_high_impact_ambiguity to false and food_identity_confidence to "high" for the resolved item.`;
   } else if (input.text) {
     textPrompt += `\n\nMeal description: ${input.text}`;
   }
@@ -242,7 +306,11 @@ export async function analyzeFood(input: {
     // them being present.
     if (!parsed.confidence) parsed.confidence = "medium";
     if (typeof parsed.is_zero_calorie_item !== "boolean") parsed.is_zero_calorie_item = false;
-    if (typeof parsed.portion_uncertain !== "boolean") parsed.portion_uncertain = false;
+    if (typeof parsed.has_high_impact_ambiguity !== "boolean") parsed.has_high_impact_ambiguity = false;
+    // No defaults forced for portion_confidence/image_quality/food_visibility/
+    // has_hidden_protein_food/food_identity_confidence — left absent is the
+    // correct default (no uncertainty caveat, no clarification pause), see
+    // needsPortionConfirmation() and computeSaveDecision().
     const recalculated = recalculateNutritionFromPortions(parsed);
     const capped = applyPortionConsistencyCaps(recalculated);
     return applyHighProteinSanityCheck(capped);
@@ -370,7 +438,7 @@ export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodA
 
   let totalProteinMin = Math.round(foods.reduce((t, f) => t + f.protein_min, 0));
   let totalProteinMax = Math.round(foods.reduce((t, f) => t + f.protein_max, 0));
-  let portionUncertain = analysis.portion_uncertain ?? false;
+  let portionConfidence = analysis.portion_confidence;
 
   // Meal-level cap: >45g total protein needs a clearly large protein item
   // to back it up (150g+ meat/fish, a large paneer/tofu portion, or 3+
@@ -387,32 +455,116 @@ export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodA
     const scale = 45 / totalProteinMax;
     totalProteinMax = 45;
     totalProteinMin = Math.round(Math.min(totalProteinMin, 40) * (totalProteinMin > 40 ? scale : 1));
-    portionUncertain = true;
+    // The estimate had to be scaled down from what was reported — that's a
+    // genuine reason for the resulting number to be uncertain, expressed
+    // through the same portion_confidence field the caveat logic reads,
+    // rather than a separate one-off flag.
+    portionConfidence = "low";
   }
 
-  return { ...analysis, foods, total_protein_min: totalProteinMin, total_protein_max: totalProteinMax, portion_uncertain: portionUncertain };
+  return { ...analysis, foods, total_protein_min: totalProteinMin, total_protein_max: totalProteinMax, portion_confidence: portionConfidence };
 }
 
 /** Defense-in-depth beyond the prompt's own "check yourself" instruction:
  * the model can still return an inflated protein estimate. Rather than
- * silently trusting a 50g+ protein number, this flags it as
- * portion_uncertain (unless the model was already highly confident) so the
- * caller asks the user to confirm the protein portion instead of jumping
- * straight to "Reply Yes to save". It never rewrites the numbers itself —
- * only a human correction or the model's own re-estimate should do that. */
+ * silently trusting a 50g+ protein number, this marks portion_confidence
+ * "low" (unless the model was already highly confident) so the caller
+ * asks the user to confirm the protein portion instead of jumping straight
+ * to "Reply Yes to save". It never rewrites the numbers itself — only a
+ * human correction or the model's own re-estimate should do that. */
 function applyHighProteinSanityCheck(analysis: FoodAnalysisResult): FoodAnalysisResult {
-  if (analysis.total_protein_max > 50 && analysis.confidence !== "high") {
-    return { ...analysis, portion_uncertain: true };
+  if (analysis.total_protein_max > 50 && analysis.confidence !== "high" && analysis.portion_confidence !== "low") {
+    return { ...analysis, portion_confidence: "low" };
   }
   return analysis;
 }
 
-/** True when the estimate should prompt "was the portion larger than
- * what's visible?" instead of a plain confirmation — either the model
- * flagged the portion itself, or the protein total is high enough to
- * warrant one extra check per the high-protein sanity rule. */
+/** True when the estimated protein/calorie range is wide enough that the
+ * actual amount eaten could be meaningfully different depending on where
+ * in the range it falls — computed from the numbers themselves rather
+ * than trusting the model's own subjective sense of its range, since that
+ * was exactly the kind of self-assessed uncertainty that got over-applied. */
+export function estimateRangeIsWide(analysis: FoodAnalysisResult): boolean {
+  const proteinSpread = analysis.total_protein_max - analysis.total_protein_min;
+  const calorieSpread = analysis.total_calories_max - analysis.total_calories_min;
+  return proteinSpread >= 15 || calorieSpread >= 250;
+}
+
+/** Whether to show portion-uncertainty language at all — gated on
+ * specific, structured signals (see the fields on FoodAnalysisResult)
+ * rather than a single blanket flag the model could set too liberally. A
+ * clear photo of a clearly small portion should NOT trip this just
+ * because the portion happens to be small. */
 export function needsPortionConfirmation(analysis: FoodAnalysisResult): boolean {
-  return !!analysis.portion_uncertain || (analysis.total_protein_max > 50 && analysis.confidence !== "high");
+  return (
+    analysis.portion_confidence === "low" ||
+    analysis.image_quality === "poor" ||
+    analysis.food_visibility === "partial" ||
+    analysis.food_visibility === "hidden" ||
+    analysis.has_hidden_protein_food === true ||
+    estimateRangeIsWide(analysis) ||
+    analysis.confidence === "low"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Confidence-based auto-save decision. Turns the model's raw confidence/
+// ambiguity signals into a single action: auto-save (high or medium
+// confidence) or pause for a targeted clarification (low confidence, or
+// any high-impact food-identity ambiguity regardless of overall
+// confidence — guessing wrong between tofu/paneer/chicken isn't a minor
+// rounding error the way an imprecise gram weight is).
+// ---------------------------------------------------------------------------
+
+export type ConfidenceLevel = "high" | "medium" | "low";
+
+export interface SaveDecision {
+  confidenceLevel: ConfidenceLevel;
+  hasHighImpactAmbiguity: boolean;
+  highImpactAmbiguityReason?: string;
+  clarificationQuestion?: string;
+  shouldAutoSave: boolean;
+  shouldAskClarification: boolean;
+}
+
+export function computeSaveDecision(analysis: FoodAnalysisResult): SaveDecision {
+  if (analysis.has_high_impact_ambiguity) {
+    return {
+      confidenceLevel: "low",
+      hasHighImpactAmbiguity: true,
+      highImpactAmbiguityReason: analysis.high_impact_ambiguity_reason,
+      clarificationQuestion: analysis.clarification_question,
+      shouldAutoSave: false,
+      shouldAskClarification: true,
+    };
+  }
+
+  const identityUnclear = analysis.confidence === "low" || analysis.food_identity_confidence === "low";
+  if (identityUnclear) {
+    return {
+      confidenceLevel: "low",
+      hasHighImpactAmbiguity: false,
+      clarificationQuestion: analysis.clarification_question,
+      shouldAutoSave: false,
+      shouldAskClarification: true,
+    };
+  }
+
+  // No blocking ambiguity — always safe to auto-save. "medium" only means
+  // the reply should flag some portion uncertainty (needsPortionConfirmation)
+  // or the model wasn't fully confident about identity/portion — not that
+  // saving should be withheld.
+  const isHighConfidence =
+    analysis.confidence === "high" &&
+    analysis.food_identity_confidence !== "medium" &&
+    !needsPortionConfirmation(analysis);
+
+  return {
+    confidenceLevel: isHighConfidence ? "high" : "medium",
+    hasHighImpactAmbiguity: false,
+    shouldAutoSave: true,
+    shouldAskClarification: false,
+  };
 }
 
 /** Answers a free-standing nutrition/hypothetical question (e.g. "if this
@@ -494,11 +646,41 @@ const UNCERTAINTY_LEADS = [
   "I may need your help with this one — I think it's:",
 ];
 
-const PORTION_UNCERTAIN_LINES = [
-  "Portion size is a little hard to judge from the photo.",
-  "This looks like a small portion, but please correct me if there was more.",
+// Reason-specific caveat lines, picked by pickPortionCaveatLine() based on
+// WHICH signal actually tripped needsPortionConfirmation() — a generic
+// "small portion, correct me if there was more" line no longer exists,
+// since it conflated "small" (fine on its own) with "uncertain" (the
+// actual reason a caveat is warranted).
+const HIDDEN_FOOD_CAVEAT_LINES = [
+  "Portion size is hard to judge because some of the food is partly hidden.",
+  "Some of this looks partly covered, so the estimate may change if there was more underneath.",
+  "The protein-heavy item looks partly hidden, so the estimate could be higher if there's more underneath.",
+];
+const IMAGE_QUALITY_CAVEAT_LINES = [
+  "The photo makes this a little hard to judge clearly.",
+  "I'm estimating only what's visible — the photo makes it hard to be precise.",
+];
+const WIDE_RANGE_CAVEAT_LINES = [
+  "Portion size is hard to estimate precisely from this angle.",
+  "I'm estimating only what's visible — the amount could be a bit more or less.",
+];
+const GENERIC_CAVEAT_LINES = [
   "I'm estimating only what's visible.",
   "I may need your help with the portion size.",
+];
+
+const DISCARD_ACKS = [
+  "Got it — nothing saved.",
+  "No problem — I won't record this.",
+  "Okay, I've skipped this meal.",
+];
+
+// Distinct from DISCARD_ACKS: this is for removing a meal that was ALREADY
+// auto-saved (Undo), not for discarding one that was never saved.
+const UNDO_ACKS = [
+  "Got it — I removed that log.",
+  "Done — that log has been removed.",
+  "Removed.",
 ];
 
 function seededPick(phrases: string[], seed: string): string {
@@ -516,8 +698,27 @@ export function pickSaveAck(seed: string): string {
 export function pickUncertaintyLead(seed: string): string {
   return seededPick(UNCERTAINTY_LEADS, seed);
 }
-export function pickPortionUncertainLine(seed: string): string {
-  return seededPick(PORTION_UNCERTAIN_LINES, seed);
+/** Picks a caveat line specific to whichever signal actually justified
+ * showing one — checked in the same rough order as needsPortionConfirmation
+ * so the wording matches the real reason (hidden food, image quality, or a
+ * genuinely wide range), rather than a one-size-fits-all sentence. */
+export function pickPortionCaveatLine(analysis: FoodAnalysisResult, seed: string): string {
+  if (analysis.has_hidden_protein_food || analysis.food_visibility === "partial" || analysis.food_visibility === "hidden") {
+    return seededPick(HIDDEN_FOOD_CAVEAT_LINES, seed);
+  }
+  if (analysis.image_quality === "poor") {
+    return seededPick(IMAGE_QUALITY_CAVEAT_LINES, seed);
+  }
+  if (estimateRangeIsWide(analysis)) {
+    return seededPick(WIDE_RANGE_CAVEAT_LINES, seed);
+  }
+  return seededPick(GENERIC_CAVEAT_LINES, seed);
+}
+export function pickDiscardAck(seed: string): string {
+  return seededPick(DISCARD_ACKS, seed);
+}
+export function pickUndoAck(seed: string): string {
+  return seededPick(UNDO_ACKS, seed);
 }
 
 // ---------------------------------------------------------------------------
@@ -547,27 +748,28 @@ export function buildEstimateMessage(
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
   const estimate = `Estimated: ${protein}g protein · ${cal} kcal.`;
+  // Only shown when a specific, structured signal actually warrants it
+  // (hidden food, poor image quality, a genuinely wide range, or low
+  // model/portion confidence) — not by default, and not just because the
+  // portion happens to be small. See needsPortionConfirmation().
   const portionFlag = needsPortionConfirmation(analysis);
-  // A high-protein estimate that isn't clearly supported by the image gets
-  // one extra check line before the usual Yes/correct prompt, instead of
-  // being presented as if it were certain.
   const portionCheck = portionFlag
-    ? `\n\n${pickPortionUncertainLine(opts.seed)}${
+    ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}${
         protein > 50 ? " Was the protein portion larger than what's visible here?" : ""
       }`
     : "";
 
   if (opts.isCorrection) {
     const ack = pickCorrectionAck(opts.seed);
-    return `${ack}\n\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\nReply *Yes* to save, or tell me what else to change.`;
+    return `${ack}\n\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\nReply *Yes* to save, tell me what else to change, or reply *Skip* to discard.`;
   }
 
   if (analysis.confidence === "low" || portionFlag) {
     const lead = pickUncertaintyLead(opts.seed);
-    return `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\nReply *Yes* to save, or correct the food/portion.`;
+    return `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\nReply *Yes* to save, type a correction, or reply *Skip* to discard.`;
   }
 
-  return `I think this is:\n${foodLines(analysis)}\n\n${estimate}\n\nReply *Yes* to save, or tell me what to change.`;
+  return `I think this is:\n${foodLines(analysis)}\n\n${estimate}\n\nReply *Yes* to save, type a correction, or reply *Skip* to discard.`;
 }
 
 export function buildClarificationMessage(seed: string): string {
@@ -600,4 +802,80 @@ export function buildSavedMessage(
   }
 
   return msg;
+}
+
+/** The primary message for the new default flow: the meal was already
+ * auto-saved (high or medium confidence, no blocking ambiguity) — this
+ * reports what was logged rather than asking for a "Yes" that's no longer
+ * required. Wording differs slightly by confidence level per the product
+ * spec: "Logged X ✅ / I found:" for high confidence vs "Logged this
+ * estimate as X ✅ / I'm estimating:" for medium, since medium confidence
+ * is exactly the case where a portion caveat is more likely to apply too. */
+export function buildAutoSaveMessage(
+  analysis: FoodAnalysisResult,
+  resolvedLabel: MealType,
+  decision: SaveDecision,
+  opts: { seed: string; dailyTotals?: { protein: number; calories: number; targetProteinG?: number } | null; isClarificationResolution?: boolean }
+): string {
+  const protein = avgProtein(analysis);
+  const cal = avgCal(analysis);
+  const label = formatMealLabel(resolvedLabel).toLowerCase();
+  const estimate = `Estimated: ${protein}g protein · ${cal} kcal.`;
+  const portionCheck = needsPortionConfirmation(analysis) ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}` : "";
+
+  // A meal that just had its ambiguity resolved by the user reads slightly
+  // differently ("Thanks — I've logged...") than a fresh, unprompted
+  // auto-save ("Logged...").
+  const lead = opts.isClarificationResolution
+    ? (decision.confidenceLevel === "high"
+        ? `Thanks — I've logged this as ${label} ✅\n\nI found:`
+        : `Thanks — I've logged this estimate as ${label} ✅\n\nI'm estimating:`)
+    : (decision.confidenceLevel === "high"
+        ? `Logged ${label} ✅\n\nI found:`
+        : `Logged this estimate as ${label} ✅\n\nI'm estimating:`);
+  const closing = decision.confidenceLevel === "high"
+    ? "Need to fix anything? Just reply with a correction, or say Undo to remove this log."
+    : "If anything is off, reply with a correction, or say Undo to remove this log.";
+
+  let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\n${closing}`;
+
+  if (opts.dailyTotals) {
+    const { protein: totalProtein, calories: totalCalories, targetProteinG } = opts.dailyTotals;
+    const proteinPart = targetProteinG ? `${totalProtein}g / ${targetProteinG}g protein` : `${totalProtein}g protein`;
+    msg += `\n\nToday so far: ${proteinPart} · ${totalCalories.toLocaleString("en-IN")} kcal.`;
+  }
+
+  return msg;
+}
+
+/** Used when computeSaveDecision found a specific, high-impact food-
+ * identity ambiguity (tofu vs paneer vs chicken, 1 egg vs 3, etc.) — asks
+ * exactly that question and nothing else, without showing a confident
+ * nutrition estimate that would misrepresent an unresolved guess. */
+export function buildHighImpactClarificationMessage(analysis: FoodAnalysisResult, decision: SaveDecision): string {
+  const question = decision.clarificationQuestion || "Could you tell me what this item is?";
+  const lowered = question.charAt(0).toLowerCase() + question.slice(1);
+  const otherFoods = analysis.foods.filter((f) => !f.is_ambiguous).map((f) => f.name);
+  const otherLine = otherFoods.length > 0 ? `\n\nI also see ${otherFoods.join(", ")}.` : "";
+  return `I can estimate this, but one item changes the nutrition a lot: ${lowered}${otherLine}\n\nReply with the item name and I'll log it.`;
+}
+
+/** Used when overall/food-identity confidence is low without a specific
+ * named ambiguity (e.g. a blurry or very unclear photo) — asks for more
+ * detail rather than guessing, but stays generic since there's no single
+ * targeted question to ask. */
+export function buildLowConfidenceClarificationMessage(decision: SaveDecision): string {
+  if (decision.clarificationQuestion) {
+    return `${decision.clarificationQuestion}\n\nReply with more detail and I'll log it, or say Skip if you don't want to record this.`;
+  }
+  return "I'm not fully sure what this is — could you describe it? (e.g. \"rice, dal, and sabzi\") Or say Skip if you don't want to record this.";
+}
+
+/** Used when a correction arrives for an already-auto-saved meal — updates
+ * happen silently in place (no "Reply Yes" needed, since the user already
+ * gave a definitive correction), so this just reports the new numbers. */
+export function buildCorrectionUpdateMessage(resolvedLabel: MealType, analysis: FoodAnalysisResult): string {
+  const protein = avgProtein(analysis);
+  const cal = avgCal(analysis);
+  return `Thanks for the correction — I've updated ${formatMealLabel(resolvedLabel).toLowerCase()}.\n\nNew estimate: ${protein}g protein · ${cal} kcal.`;
 }

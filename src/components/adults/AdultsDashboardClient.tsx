@@ -5,13 +5,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { removeContact, getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
+import { removeContact, getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite, markFamilyInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
 import { SelfSetupCard } from "./SelfSetupCard";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
-import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
+import { FAMILY_LIMIT_ENFORCEMENT_ENABLED, BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
+import { FeedbackModal } from "@/components/feedback/FeedbackModal";
+import { FeedbackIcon } from "@/components/feedback/FeedbackIcon";
+import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
 
 interface Props {
   caregiverName: string;
@@ -43,6 +46,8 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showSelfSetup, setShowSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [showFeedback, setShowFeedback] = useState(false);
+  const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
   async function handleRemove(contact: AdultsContact) {
@@ -79,17 +84,26 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       {/* Nav */}
       <header className="bg-white border-b border-gray-100 px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
-              <Image src="/logos/logo-red.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
+              <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
             </div>
             <span className="font-bold text-gray-900">Tistra Health</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{caregiverEmail}</span>
             <Link href="/billing?module=adults" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
               Billing
             </Link>
+            <button
+              ref={feedbackLinkRef}
+              type="button"
+              onClick={() => setShowFeedback(true)}
+              className="text-sm text-gray-500 hover:text-gray-800 font-medium flex items-center gap-1.5"
+            >
+              <FeedbackIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Send Feedback</span>
+            </button>
             <form action="/auth/signout" method="post">
               <button type="submit" className="text-sm text-gray-500 hover:text-gray-800 font-medium">Sign out</button>
             </form>
@@ -141,51 +155,64 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           />
         )}
 
-        {entitlement.isReadOnly && (
-          <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
-            {isSelfPlan ? (
-              <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
-            ) : (
-              <>Your free trial has ended. Your existing family members and their data are preserved and visible, but you
-              can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+        {!BILLING_AVAILABLE ? (
+          <>
+            <BetaBillingBanner sourcePage="adults_dashboard" className="mb-8" />
+            {countLimitReached && (
+              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
+                {familyLimitReachedMessage(familyLimit)} <Link href="/pricing" className="underline font-medium">View plans</Link> to add more.
+              </div>
             )}
-          </div>
-        )}
-
-        {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-          <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-            Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
-            <Link href="/billing?module=adults" className="underline font-medium">Subscribe</Link>
-          </div>
-        )}
-
-        {!entitlement.isReadOnly && countLimitReached && (
-          <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-            {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
-          </div>
-        )}
-
-        {isSubscriber ? (
-          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
-            <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
-            <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
-              {isSelfPlan ? "Want to add family too? →" : `Need more than ${familyLimit}? Add capacity →`}
-            </Link>
-          </div>
-        ) : isSelfPlan ? (
-          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-            Your first month is free. After that, tracking is{" "}
-            <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
-            <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span>.{" "}
-            <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
-          </div>
+          </>
         ) : (
-          <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-            Your first {familyLimit} family members are free for your first month. After that, Family is{" "}
-            <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
-            <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-            <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
-          </div>
+          <>
+            {entitlement.isReadOnly && (
+              <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
+                {isSelfPlan ? (
+                  <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+                ) : (
+                  <>Your free trial has ended. Your existing family members and their data are preserved and visible, but you
+                  can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+                )}
+              </div>
+            )}
+
+            {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
+              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
+                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
+                <Link href="/billing?module=adults" className="underline font-medium">Subscribe</Link>
+              </div>
+            )}
+
+            {!entitlement.isReadOnly && countLimitReached && (
+              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
+                {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
+              </div>
+            )}
+
+            {isSubscriber ? (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
+                <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
+                <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
+                  {isSelfPlan ? "Want to add family too? →" : `Need more than ${familyLimit}? Add capacity →`}
+                </Link>
+              </div>
+            ) : isSelfPlan ? (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                Your first month is free. After that, tracking is{" "}
+                <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
+                <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span>.{" "}
+                <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
+              </div>
+            ) : (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                Your first {familyLimit} family members are free for your first month. After that, Family is{" "}
+                <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+                <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
+                <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
+              </div>
+            )}
+          </>
         )}
 
         {activeCount > 0 && (
@@ -271,6 +298,15 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           onAdded={() => router.refresh()}
         />
       )}
+
+      {showFeedback && (
+        <FeedbackModal
+          product="adults"
+          prefillEmail={caregiverEmail}
+          onClose={() => setShowFeedback(false)}
+          returnFocusRef={feedbackLinkRef}
+        />
+      )}
     </div>
   );
 }
@@ -353,7 +389,7 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
         </div>
       )}
 
-      {!isActive && !isSelf && (
+      {!isActive && !inviteAccepted && !isSelf && (
         // Real WhatsApp-first invite, shown right in the list — not just a
         // "we sent something" claim (see src/lib/invites). Stops click
         // propagation so its buttons don't trigger the card's onOpen navigation.
@@ -364,6 +400,7 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
             load={() => getOrCreateFamilyInvite(contact.id)}
             regenerate={() => regenerateFamilyInvite(contact.id)}
             revoke={() => revokeFamilyInvite(contact.id)}
+            onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
           />
         </div>
       )}

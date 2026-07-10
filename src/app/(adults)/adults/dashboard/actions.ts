@@ -16,7 +16,7 @@ import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
-import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, updateInviteMetadata, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, updateInviteMetadata, markInviteLinkOpened, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
 import type { InviteSummary } from "@/lib/invites/types";
@@ -773,6 +773,31 @@ export async function revokeFamilyInvite(contactId: string): Promise<{ ok: true 
   });
 }
 
+/** Marks that the caregiver actually clicked "Send invite on WhatsApp" or
+ * "Copy invite link" for this contact — see markInviteLinkOpened. Lets the
+ * dashboard tell "just generated, nothing sent yet" apart from "already
+ * sent, no action needed" on a later visit. */
+export async function markFamilyInviteLinkOpened(contactId: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Your session has expired. Please sign in again." };
+
+  const { data: contact } = await supabase
+    .from("adults_contacts")
+    .select("id, workspace_id")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (!contact) return { error: "Contact not found" };
+
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: contact.workspace_id, inviteType: "family", targetProfileId: contactId });
+    if (current) await markInviteLinkOpened(admin, current.id);
+    return { ok: true } as const;
+  });
+}
+
 /** Self-tracking invite: unlike family/coach_client, there's no existing
  * adults_contacts row to attach this to — that row is only created once
  * the invite is claimed (see handleInviteClaim in conversation-handler.ts),
@@ -858,5 +883,19 @@ export async function regenerateSelfInvite(workspaceId: string): Promise<InviteS
     const fresh = await regenerateInvite(admin, current);
     trackInviteEvent("invite_regenerated", { inviteType: "self" });
     return toInviteSummary(fresh);
+  });
+}
+
+/** See markFamilyInviteLinkOpened — self-invite equivalent. */
+export async function markSelfInviteLinkOpened(workspaceId: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Your session has expired. Please sign in again." };
+
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId, inviteType: "self", createdByUserId: user.id });
+    if (current) await markInviteLinkOpened(admin, current.id);
+    return { ok: true } as const;
   });
 }

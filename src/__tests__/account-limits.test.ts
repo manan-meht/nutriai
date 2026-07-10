@@ -2,6 +2,7 @@ import { FAMILY_MEMBER_LIMIT, GYM_CLIENT_LIMIT, FAMILY_LIMIT_REACHED_MESSAGE, GY
 
 jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
+  normalizePhone: jest.fn((phone: string) => phone.replace(/\D/g, "")),
 }));
 
 // Trial lifecycle is covered separately in trials.test.ts — here we only

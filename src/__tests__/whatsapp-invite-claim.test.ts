@@ -133,7 +133,7 @@ describe("handleIncomingMessage — JOIN command claiming", () => {
         {
           id: "invite-2", token: "9D31P2", invite_type: "self", created_by_user_id: "user-2",
           workspace_id: "ws-2", target_profile_id: null, status: "pending",
-          expires_at: new Date(Date.now() + 86400000).toISOString(), metadata: { displayName: "Priya" },
+          expires_at: new Date(Date.now() + 86400000).toISOString(), metadata: { fullName: "Priya" },
         },
       ],
     });

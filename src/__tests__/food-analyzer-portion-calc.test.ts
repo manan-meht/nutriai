@@ -134,16 +134,16 @@ describe("applyPortionConsistencyCaps — the estimate must match its own portio
     expect(capped.foods[0].protein_max).toBeLessThanOrEqual(14);
   });
 
-  it("scales down a >45g total when no item clearly supports a large protein serving, and flags portion_uncertain", () => {
+  it("scales down a >45g total when no item clearly supports a large protein serving, and marks portion_confidence low", () => {
     const analysis = makeAnalysis([
       makeItem({ name: "Mystery protein blob", protein_min: 40, protein_max: 60 }),
     ], { confidence: "medium" });
     const capped = applyPortionConsistencyCaps(analysis);
     expect(capped.total_protein_max).toBeLessThanOrEqual(45);
-    expect(capped.portion_uncertain).toBe(true);
+    expect(capped.portion_confidence).toBe("low");
   });
 
-  it("does not cap a >45g total when a clearly large protein item backs it up", () => {
+  it("does not cap a >45g total when a clearly large protein item backs it up, and leaves portion_confidence untouched", () => {
     const analysis = makeAnalysis([
       makeItem({
         food_category: "chicken", portion_size: "large",
@@ -153,6 +153,6 @@ describe("applyPortionConsistencyCaps — the estimate must match its own portio
     ], { confidence: "medium" });
     const capped = applyPortionConsistencyCaps(analysis);
     expect(capped.total_protein_max).toBeGreaterThan(45);
-    expect(capped.portion_uncertain).toBeFalsy();
+    expect(capped.portion_confidence).toBeFalsy();
   });
 });

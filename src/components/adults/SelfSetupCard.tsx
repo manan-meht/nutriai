@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { saveSelfDetailsAndCreateInvite, getOrCreateSelfInvite, regenerateSelfInvite } from "@/app/(adults)/adults/dashboard/actions";
+import { saveSelfDetailsAndCreateInvite, getOrCreateSelfInvite, regenerateSelfInvite, markSelfInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 
 interface Props {
@@ -239,6 +239,7 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
                 description="Tap the button below, then hit send in WhatsApp — you'll be connected the moment we receive it."
                 load={() => getOrCreateSelfInvite(workspaceId, fullName)}
                 regenerate={() => regenerateSelfInvite(workspaceId)}
+                onLinkOpened={() => markSelfInviteLinkOpened(workspaceId)}
                 pendingLabel="Pending — waiting for your message on WhatsApp."
               />
               <button type="button" onClick={onSkip} className="text-xs text-gray-400 underline self-start">

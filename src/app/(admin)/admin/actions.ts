@@ -167,6 +167,22 @@ export interface MealReviewDetail {
     correctedSuggestion: string | null;
     reviewNotes: string | null;
   } | null;
+  // The actual calorie/protein/carb/fat estimates the AI produced, from the
+  // confirmed meal_logs row this submission is linked to (meal_log_id) —
+  // distinct from ai_meal_classifications, which only stores categorical
+  // status enums (protein_anchor_status etc), not numeric macros. Null if
+  // this submission hasn't been linked to a confirmed meal log yet.
+  mealLog: {
+    totalCaloriesMin: number;
+    totalCaloriesMax: number;
+    totalProteinMin: number;
+    totalProteinMax: number;
+    totalCarbsMin: number;
+    totalCarbsMax: number;
+    totalFatMin: number;
+    totalFatMax: number;
+    foods: any[];
+  } | null;
   sameDaySubmissions: Array<{ id: string; imageUrl: string | null; mealType: string; submittedAt: string }>;
 }
 
@@ -177,7 +193,9 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
   const db = createServiceClient();
   const { data: row, error } = await db
     .from("meal_submissions")
-    .select("*, ai_meal_classifications(*), human_meal_reviews(*)")
+    .select(
+      "*, ai_meal_classifications(*), human_meal_reviews(*), meal_logs(total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max, foods)"
+    )
     .eq("id", mealSubmissionId)
     .single();
 
@@ -185,6 +203,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
 
   const classification = pickLatestClassification(row.ai_meal_classifications);
   const latestReview = pickLatestReview(row.human_meal_reviews);
+  const mealLogRow = row.meal_logs;
 
   const dayStart = new Date(row.submitted_at);
   dayStart.setHours(0, 0, 0, 0);
@@ -250,6 +269,19 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           correctedHealthierDirectionSignal: latestReview.corrected_healthier_direction_signal,
           correctedSuggestion: latestReview.corrected_suggestion,
           reviewNotes: latestReview.review_notes,
+        }
+      : null,
+    mealLog: mealLogRow
+      ? {
+          totalCaloriesMin: mealLogRow.total_calories_min ?? 0,
+          totalCaloriesMax: mealLogRow.total_calories_max ?? 0,
+          totalProteinMin: mealLogRow.total_protein_min ?? 0,
+          totalProteinMax: mealLogRow.total_protein_max ?? 0,
+          totalCarbsMin: mealLogRow.total_carbs_min ?? 0,
+          totalCarbsMax: mealLogRow.total_carbs_max ?? 0,
+          totalFatMin: mealLogRow.total_fat_min ?? 0,
+          totalFatMax: mealLogRow.total_fat_max ?? 0,
+          foods: mealLogRow.foods ?? [],
         }
       : null,
     sameDaySubmissions: (sameDayRows ?? []).map((r: any) => ({

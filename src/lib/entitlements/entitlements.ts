@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { now } from "@/lib/time/clock";
 import {
+  BILLING_AVAILABLE,
   SUBSCRIPTION_ENFORCEMENT_ENABLED,
   FAMILY_TRIAL_ENFORCEMENT_ENABLED,
   GYM_TRIAL_ENFORCEMENT_ENABLED,
@@ -126,12 +127,13 @@ export async function getEntitlementSnapshot(
     trialStartAt: data.trial_start_at,
     trialEndAt: data.trial_end_at,
     trialDaysRemaining,
-    // When either the master switch or this module's own enforcement flag
-    // is off, entitlement state is still computed and displayed (banners,
-    // trial countdown) but never blocks actions — lets this feature be
-    // reviewed live, or rolled out to one module before the other, without
-    // affecting real users.
+    // During Beta (BILLING_AVAILABLE off), billing is not available at all,
+    // so no workspace is ever read-only regardless of trial/entitlement
+    // status — status is still computed and displayed for banners/countdowns,
+    // it just never blocks actions. Once billing launches, the master switch
+    // and per-module enforcement flags below take over as before.
     isReadOnly:
+      BILLING_AVAILABLE &&
       SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       perModuleEnforcementEnabled &&
       (status === "expired" || status === "cancelled"),

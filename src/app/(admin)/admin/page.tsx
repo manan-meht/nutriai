@@ -65,7 +65,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
     <div className="space-y-5">
       <h1 className="text-lg font-bold text-gray-900">Meal Review Queue</h1>
 
-      <form className="bg-white rounded-2xl border border-gray-100 p-4 flex flex-wrap gap-3 items-end" method="get">
+      <form className="bg-white rounded-2xl border border-gray-100 p-4 grid grid-cols-2 sm:flex sm:flex-wrap gap-3 sm:items-end" method="get">
         <FilterSelect name="status" label="Status" defaultValue={filters.status ?? "pending"} options={["pending", "reviewed", "escalated", "all"]} />
         <FilterSelect name="priority" label="Priority" defaultValue={filters.priority ?? "all"} options={["all", "high", "medium", "low"]} />
         <FilterSelect name="mealType" label="Meal type" defaultValue={sp.mealType ?? ""} options={["", ...MEAL_TYPES]} />
@@ -88,7 +88,9 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
           defaultValue={filters.sort ?? "newest"}
           options={["newest", "oldest", "lowest_confidence", "highest_priority"]}
         />
-        <button className="bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-1.5">Apply</button>
+        <button className="col-span-2 sm:col-auto bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-2 sm:py-1.5">
+          Apply
+        </button>
       </form>
 
       {result.items.length === 0 ? (
@@ -96,57 +98,97 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
           No meals need review right now.
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
-                <th className="p-3">Photo</th>
-                <th className="p-3">Submitted</th>
-                <th className="p-3">Meal type</th>
-                <th className="p-3">Source</th>
-                <th className="p-3">AI summary</th>
-                <th className="p-3">Confidence</th>
-                <th className="p-3">Priority</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">User</th>
-                <th className="p-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {result.items.map((item) => (
-                <tr key={item.id} className="border-b border-gray-50 last:border-0">
-                  <td className="p-3">
-                    {item.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
-                      <img src={item.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-gray-100" />
-                    )}
-                  </td>
-                  <td className="p-3 text-gray-600 whitespace-nowrap">
-                    {new Date(item.submittedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                  </td>
-                  <td className="p-3 capitalize text-gray-700">{item.mealType}</td>
-                  <td className="p-3 capitalize text-gray-700">{item.source}</td>
-                  <td className="p-3 text-gray-600 max-w-[200px] truncate">{item.aiSummary}</td>
-                  <td className="p-3 text-gray-600">{item.confidenceScore != null ? `${Math.round(item.confidenceScore * 100)}%` : "—"}</td>
-                  <td className="p-3">
-                    <StatusBadge label={item.priority} mood={priorityMood(item.priority)} />
-                  </td>
-                  <td className="p-3">
-                    <StatusBadge label={item.reviewStatus} mood={reviewStatusMood(item.reviewStatus)} />
-                  </td>
-                  <td className="p-3 text-gray-500 whitespace-nowrap">{item.anonymizedUserId}</td>
-                  <td className="p-3">
-                    <Link href={`/admin?id=${item.id}`} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
-                      Review
-                    </Link>
-                  </td>
+        <>
+          {/* Card list — mobile/tablet (below md). Table below covers md+. */}
+          <div className="md:hidden space-y-3">
+            {result.items.map((item) => (
+              <Link
+                key={item.id}
+                href={`/admin?id=${item.id}`}
+                className="block bg-white rounded-2xl border border-gray-100 p-4 active:bg-gray-50 transition-colors"
+              >
+                <div className="flex gap-3">
+                  {item.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
+                    <img src={item.imageUrl} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-xl bg-gray-100 flex-shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="capitalize font-medium text-gray-900 text-sm">{item.mealType}</span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">
+                        {new Date(item.submittedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 truncate mb-2">{item.aiSummary}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <StatusBadge label={item.priority} mood={priorityMood(item.priority)} />
+                      <StatusBadge label={item.reviewStatus} mood={reviewStatusMood(item.reviewStatus)} />
+                      <span className="text-xs text-gray-400 capitalize">{item.source}</span>
+                      {item.confidenceScore != null && (
+                        <span className="text-xs text-gray-400">{Math.round(item.confidenceScore * 100)}% conf.</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Table — md+ only. */}
+          <div className="hidden md:block bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                  <th className="p-3">Photo</th>
+                  <th className="p-3">Submitted</th>
+                  <th className="p-3">Meal type</th>
+                  <th className="p-3">Source</th>
+                  <th className="p-3">AI summary</th>
+                  <th className="p-3">Confidence</th>
+                  <th className="p-3">Priority</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">User</th>
+                  <th className="p-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {result.items.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-50 last:border-0">
+                    <td className="p-3">
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
+                        <img src={item.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-gray-100" />
+                      )}
+                    </td>
+                    <td className="p-3 text-gray-600 whitespace-nowrap">
+                      {new Date(item.submittedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </td>
+                    <td className="p-3 capitalize text-gray-700">{item.mealType}</td>
+                    <td className="p-3 capitalize text-gray-700">{item.source}</td>
+                    <td className="p-3 text-gray-600 max-w-[200px] truncate">{item.aiSummary}</td>
+                    <td className="p-3 text-gray-600">{item.confidenceScore != null ? `${Math.round(item.confidenceScore * 100)}%` : "—"}</td>
+                    <td className="p-3">
+                      <StatusBadge label={item.priority} mood={priorityMood(item.priority)} />
+                    </td>
+                    <td className="p-3">
+                      <StatusBadge label={item.reviewStatus} mood={reviewStatusMood(item.reviewStatus)} />
+                    </td>
+                    <td className="p-3 text-gray-500 whitespace-nowrap">{item.anonymizedUserId}</td>
+                    <td className="p-3">
+                      <Link href={`/admin?id=${item.id}`} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
+                        Review
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

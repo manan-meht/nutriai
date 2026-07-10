@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
+import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, markInviteLinkOpened, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import type { InviteSummary } from "@/lib/invites/types";
 import {
@@ -651,6 +651,20 @@ export async function revokeCoachClientInvite(clientId: string): Promise<{ ok: t
 
     await revokeInvite(admin, current.id);
     trackInviteEvent("invite_revoked", { inviteType: "coach_client", clientId });
+    return { ok: true } as const;
+  });
+}
+
+/** See markFamilyInviteLinkOpened (adults) — coach_client equivalent. */
+export async function markCoachClientInviteLinkOpened(clientId: string): Promise<{ ok: true } | { error: string }> {
+  const { user, client } = await requireOwnedClient(clientId);
+  if (!user) return { error: "Your session has expired. Please sign in again." };
+  if (!client) return { error: "Client not found" };
+
+  return withInviteErrorHandling(async () => {
+    const admin = createServiceClient();
+    const current = await findLatestInvite(admin, { workspaceId: client.workspace_id, inviteType: "coach_client", targetProfileId: clientId });
+    if (current) await markInviteLinkOpened(admin, current.id);
     return { ok: true } as const;
   });
 }

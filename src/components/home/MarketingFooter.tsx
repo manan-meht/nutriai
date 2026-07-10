@@ -59,6 +59,10 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
               Privacy Policy
             </Link>
             <span aria-hidden="true">·</span>
+            <Link href="/feedback" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Feedback
+            </Link>
+            <span aria-hidden="true">·</span>
             <span>
               Support:{" "}
               <a

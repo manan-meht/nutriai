@@ -47,9 +47,13 @@ function makeFakeServiceClient(opts: {
 }
 
 describe("entitlements — trial lifecycle", () => {
+  const originalBillingAvailable = process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+
   afterEach(() => {
     __setClockOverrideForTests(null);
     jest.resetModules();
+    if (originalBillingAvailable === undefined) delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+    else process.env.NEXT_PUBLIC_BILLING_AVAILABLE = originalBillingAvailable;
   });
 
   it("getEntitlementSnapshot: not_started when no entitlement row exists yet", async () => {
@@ -88,10 +92,12 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.trialDaysRemaining).toBe(21);
   });
 
-  it("getEntitlementSnapshot: expired and read-only exactly after the 30-day window elapses", async () => {
+  it("getEntitlementSnapshot: expired and read-only exactly after the 30-day window elapses (billing available)", async () => {
     // Trial started 2026-01-01T00:00:00Z, so it ends 2026-01-31T00:00:00Z.
     // One millisecond after that instant, it must read as expired.
+    // Read-only enforcement only applies once billing is available (post-Beta).
     jest.resetModules();
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-01-31T00:00:00.001Z"));
     jest.doMock("@/lib/supabase/server", () => ({
@@ -135,8 +141,9 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.isReadOnly).toBe(false);
   });
 
-  it("getEntitlementSnapshot: a lapsed paid period (active status, current_period_end passed) reads as expired", async () => {
+  it("getEntitlementSnapshot: a lapsed paid period (active status, current_period_end passed) reads as expired (billing available)", async () => {
     jest.resetModules();
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-03-01T00:00:00.000Z"));
     jest.doMock("@/lib/supabase/server", () => ({
@@ -177,5 +184,55 @@ describe("entitlements — trial lifecycle", () => {
     expect(written.module).toBe("gym");
     expect(written.trial_start_at).toBe("2026-01-01T00:00:00.000Z");
     expect(written.trial_end_at).toBe("2026-01-31T00:00:00.000Z");
+  });
+});
+
+describe("entitlements — Beta (BILLING_AVAILABLE off, the default)", () => {
+  const originalBillingAvailable = process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+
+  afterEach(() => {
+    __setClockOverrideForTests(null);
+    jest.resetModules();
+    if (originalBillingAvailable === undefined) delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+    else process.env.NEXT_PUBLIC_BILLING_AVAILABLE = originalBillingAvailable;
+  });
+
+  it("never marks a workspace read-only, even long after its trial expired", async () => {
+    jest.resetModules();
+    delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+    const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
+    setClock(new Date("2027-01-01T00:00:00.000Z")); // ~a year past trial end
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () =>
+        makeFakeServiceClient({
+          row: {
+            status: "trialing",
+            trial_start_at: "2026-01-01T00:00:00.000Z",
+            trial_end_at: "2026-01-31T00:00:00.000Z",
+            current_period_end: null,
+          },
+        }),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    const snapshot = await getEntitlementSnapshot("ws-1", "adults");
+    expect(snapshot.status).toBe("expired");
+    expect(snapshot.isReadOnly).toBe(false);
+  });
+
+  it("never marks a cancelled workspace read-only either", async () => {
+    jest.resetModules();
+    delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () =>
+        makeFakeServiceClient({
+          row: { status: "cancelled", trial_start_at: null, trial_end_at: null, current_period_end: null },
+        }),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    const snapshot = await getEntitlementSnapshot("ws-1", "gym");
+    expect(snapshot.status).toBe("cancelled");
+    expect(snapshot.isReadOnly).toBe(false);
   });
 });

@@ -33,6 +33,14 @@ export const GYM_TRIAL_ENFORCEMENT_ENABLED = flag("NEXT_PUBLIC_GYM_TRIAL_ENFORCE
 export const FAMILY_LIMIT_ENFORCEMENT_ENABLED = flag("NEXT_PUBLIC_FAMILY_LIMIT_ENFORCEMENT_ENABLED", true);
 export const GYM_LIMIT_ENFORCEMENT_ENABLED = flag("NEXT_PUBLIC_GYM_LIMIT_ENFORCEMENT_ENABLED", true);
 
+/** Whether real billing (checkout, subscriptions, trial-expiry enforcement)
+ * is available to end users at all. Off during Beta: no one is ever
+ * read-only regardless of trial/entitlement status, and the dashboard shows
+ * the Beta banner instead of Subscribe/Upgrade CTAs. Independent of
+ * STRIPE_CHECKOUT_ENABLED below, which gates the underlying provider
+ * integration rather than whether billing is user-facing yet. */
+export const BILLING_AVAILABLE = flag("NEXT_PUBLIC_BILLING_AVAILABLE", false);
+
 export const STRIPE_CHECKOUT_ENABLED = flag("NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED", true);
 
 /** International (non-launch-country) USD billing via Stripe. Off would

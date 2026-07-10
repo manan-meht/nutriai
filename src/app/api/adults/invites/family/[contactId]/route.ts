@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite } from "@/app/(adults)/adults/dashboard/actions";
+import { getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite, markFamilyInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
 
 export const runtime = "edge";
 
@@ -26,6 +26,13 @@ export async function PATCH(_request: NextRequest, { params }: { params: Promise
 export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
   const result = await revokeFamilyInvite(contactId);
+  if ("error" in result) return NextResponse.json(result, { status: 400 });
+  return NextResponse.json(result);
+}
+
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ contactId: string }> }) {
+  const { contactId } = await params;
+  const result = await markFamilyInviteLinkOpened(contactId);
   if ("error" in result) return NextResponse.json(result, { status: 400 });
   return NextResponse.json(result);
 }

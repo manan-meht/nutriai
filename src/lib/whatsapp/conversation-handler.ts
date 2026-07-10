@@ -3,10 +3,16 @@ import { sendTextMessage, normalizePhone } from "./client";
 import {
   analyzeFood,
   answerNutritionQuestion,
-  buildEstimateMessage,
   buildClarificationMessage,
   buildContradictionCheckMessage,
   buildSavedMessage,
+  buildAutoSaveMessage,
+  buildHighImpactClarificationMessage,
+  buildLowConfidenceClarificationMessage,
+  buildCorrectionUpdateMessage,
+  computeSaveDecision,
+  pickDiscardAck,
+  pickUndoAck,
   resolveMealLabel,
   formatMealLabel,
   FoodAnalysisResult,
@@ -80,9 +86,50 @@ function isWorkoutMessage(text: string) {
 }
 
 const GREETINGS = ["hi", "hello", "hey", "hii", "hlo", "namaste", "namaskar", "gm", "sup", "good morning", "good afternoon", "good evening"];
-const AFFIRMATIVES = ["yes", "y", "ok", "okay", "haan", "han", "ha", "correct", "right", "looks good", "perfect", "sure", "yep", "yup", "log it", "save it", "confirmed", "👍", "✅"];
-const NEGATIVES = ["no", "nope", "nahi", "wrong", "change", "edit", "update", "not right", "incorrect", "different"];
-const CANCEL_PHRASES = ["cancel", "don't save", "dont save", "discard", "never mind", "nevermind", "forget it"];
+const AFFIRMATIVES = ["yes", "y", "ok", "okay", "haan", "han", "ha", "correct", "right", "looks right", "looks good", "perfect", "sure", "yep", "yup", "save", "log it", "save it", "confirmed", "👍", "✅"];
+
+// A bare negative ("no", "nope") is genuinely ambiguous — it could mean
+// "discard this" or "let me correct it" — so it's classified separately
+// from both discard and correction, and gets a follow-up question instead
+// of a guess. Anchored to the WHOLE message (not just a prefix), so "No,
+// this is not chicken, it's fish." — a correction — never matches this:
+// only a message that IS just a bare negative (optionally with trailing
+// punctuation) counts.
+const BARE_NEGATIVE_PATTERNS = [
+  /^no\.?!?$/, /^nope\.?!?$/, /^nah\.?!?$/, /^no thanks?\.?!?$/, /^nahi\.?$/, /^na\.?$/,
+];
+
+// Short words that clearly signal "I want to correct something" but don't
+// say what yet — distinct from a bare negative, which is ambiguous about
+// whether the user wants to correct or discard.
+const VAGUE_CORRECTION_WORDS = ["wrong", "change", "edit", "update", "not right", "incorrect", "different"];
+
+// Explicit "don't log this" intent. Regex-based (rather than a plain
+// keyword list) so natural phrasings like "nothing. No need to record
+// anything" are caught by their meaning, not an exact-string match — a
+// plain keyword list previously missed that exact reply, which fell
+// through to being treated as a food correction and produced a
+// nonsensical "I've revised the estimate" with the same, unchanged
+// numbers. None of these require the WHOLE message to match, since a
+// discard phrase can appear inside a longer sentence ("nothing, no need
+// to record anything") — but none of them overlap with plain "no", so a
+// correction like "No, this is fish" never matches any of these either.
+const CANCEL_PATTERNS = [
+  /^skip\.?$/, /^skip (it|this)\.?$/,
+  /^cancel\.?$/,
+  /^discard\.?$/,
+  /^nothing\.?$/,
+  /nothing to save/,
+  /ignore this/,
+  /^leave it( as is)?\.?$/,
+  /don'?t (save|log|record|bother)/,
+  /do not (save|log|record)/,
+  /not recording/,
+  /no need/,
+  /never ?mind/,
+  /forget it/,
+];
+
 const SHOW_TODAY_PHRASES = ["show today", "today's summary", "todays summary", "daily summary", "show my day", "show summary"];
 
 function isGreeting(text: string) {
@@ -93,14 +140,42 @@ function isAffirmative(text: string) {
   const t = text.toLowerCase().trim();
   return AFFIRMATIVES.some((a) => t === a || t.startsWith(a + " ") || t.startsWith(a + "!") || t.startsWith(a + ","));
 }
-function isNegative(text: string) {
+function isBareNegative(text: string) {
   const t = text.toLowerCase().trim();
-  return NEGATIVES.some((n) => t === n || t.startsWith(n + " ") || t.startsWith(n + ","));
+  return BARE_NEGATIVE_PATTERNS.some((re) => re.test(t));
+}
+/** Only matches when the WHOLE message is just the vague word (plus
+ * trailing punctuation) — a prefix match would also swallow real,
+ * specific corrections like "change the rice to half cup" or "change to
+ * dinner" (the latter is already handled earlier by detectMealTypeChange
+ * anyway), losing the correction the user already gave in full. */
+function isVagueCorrectionSignal(text: string) {
+  const t = text.toLowerCase().trim();
+  return VAGUE_CORRECTION_WORDS.some((w) => t === w || t === w + "." || t === w + "!");
 }
 function isCancel(text: string) {
   const t = text.toLowerCase().trim();
-  return CANCEL_PHRASES.some((p) => t === p || t.includes(p));
+  return CANCEL_PATTERNS.some((re) => re.test(t));
 }
+
+// "Undo" wording used to remove an already-auto-saved meal. Distinct from
+// (but overlapping with) isCancel's discard phrases — the SAME words
+// ("skip", "don't record", "no need to record") mean different things
+// depending on whether a meal has already been saved: before saving they
+// mean "never log this," after saving they mean "take back what was
+// logged." Both are routed through this single check; which one applies
+// is determined by the caller's context (idle+recentlySaved / vs a
+// pending, unsaved meal), not by the wording itself.
+const UNDO_PATTERNS = [
+  /^undo\.?$/,
+  /remove (that|this|it)( log| meal)?/,
+  /delete (that|this|it)( log| meal)?/,
+];
+function isUndoIntent(text: string) {
+  const t = text.toLowerCase().trim();
+  return UNDO_PATTERNS.some((re) => re.test(t)) || isCancel(t);
+}
+
 function isShowToday(text: string) {
   const t = text.toLowerCase().trim();
   return SHOW_TODAY_PHRASES.some((p) => t === p || t.includes(p)) || t === "today";
@@ -113,7 +188,26 @@ function isHypotheticalQuestion(text: string) {
 function isNutritionQuestion(text: string) {
   const t = text.toLowerCase().trim();
   if (!t.endsWith("?")) return false;
-  return /how many (calories|kcal|protein|carbs|grams)|what should i eat|what.?s (healthier|better)|is .* healthy|calories in|protein in/.test(t);
+  return /how many (calories|kcal|protein|carbs|grams)|what should i eat|what.?s (healthier|better)|is .* healthy|calories in|protein in|would this be|okay for (breakfast|lunch|dinner|snack)/.test(t);
+}
+
+type PendingReplyIntent = "confirm" | "discard" | "vague_correction" | "correction" | "ambiguous_negative" | "unclear";
+
+/** Classifies a free-text reply to a pending meal estimate, in priority
+ * order: confirmation, explicit discard, ambiguous bare negative, vague
+ * correction signal, then (if there's enough text to work with) a real
+ * correction. Question intent is handled separately, earlier in the
+ * pipeline, since it applies regardless of state and never reaches this
+ * classifier. */
+export function classifyPendingReply(text: string): PendingReplyIntent {
+  const t = text.trim();
+  if (!t) return "unclear";
+  if (isAffirmative(t)) return "confirm";
+  if (isCancel(t)) return "discard";
+  if (isBareNegative(t)) return "ambiguous_negative";
+  if (isVagueCorrectionSignal(t)) return "vague_correction";
+  if (t.length > 3) return "correction";
+  return "unclear";
 }
 
 const MEAL_TYPE_WORDS: Record<string, MealType> = {
@@ -549,6 +643,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (error) console.error("[whatsapp] meal_logs update failed:", error.message);
   }
 
+  /** "Undo" — removes an already-auto-saved meal_logs row outright.
+   * meal_submissions/ai_meal_classifications rows (see
+   * 0013_meal_review_console.sql) reference it via `on delete set null`,
+   * so review-console history survives with the link cleared rather than
+   * being deleted itself. */
+  async function deleteMeal(mealLogId: string) {
+    const { error } = await db.from("meal_logs").delete().eq("id", mealLogId);
+    if (error) console.error("[whatsapp] meal_logs delete failed:", error.message);
+  }
+
   /** Feeds the Tistra Meal Review Console (src/app/(admin)/admin) so
    * employees can QC AI classifications and build the food knowledge base.
    * Best-effort and non-blocking — a failure here must never prevent the
@@ -670,6 +774,95 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
   }
 
+  /** The confidence-based auto-save decision point — every path that ends
+   * up with a fresh (or corrected) FoodAnalysisResult funnels through
+   * here, whether that's a brand-new photo, a resolved clarification, or
+   * a correction to an already-saved meal. Decides, via
+   * computeSaveDecision(), whether to pause for a targeted clarification
+   * or to save/update immediately — "Reply Yes to save" is no longer the
+   * default path. References `seed`/`targetProtein`, declared further
+   * down in handleIncomingMessage — safe because this is only ever called
+   * after those assignments have run. */
+  async function finalizeEstimate(
+    analysis: FoodAnalysisResult,
+    opts: { existing?: PendingMeal; isClarificationResolution?: boolean } = {}
+  ) {
+    const decision = computeSaveDecision(analysis);
+
+    if (decision.shouldAskClarification) {
+      const clarificationMsg = decision.hasHighImpactAmbiguity
+        ? buildHighImpactClarificationMessage(analysis, decision)
+        : buildLowConfidenceClarificationMessage(decision);
+      await sendTextMessage(msg.from, clarificationMsg);
+      await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+      return;
+    }
+
+    const resolvedLabel = resolveMealLabel(analysis.meal_type);
+    const existing = opts.existing;
+
+    // Updating an already-saved meal (a correction, or a clarification
+    // answer for a meal that — unusually — was already saved) happens in
+    // place: never a second meal_logs row for the same meal.
+    if (existing?.status === "saved" && existing.savedMealId) {
+      await updateSavedMeal(existing.savedMealId, analysis, resolvedLabel);
+      await sendTextMessage(msg.from, buildCorrectionUpdateMessage(resolvedLabel, analysis));
+      await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId: existing.savedMealId });
+      return;
+    }
+
+    const savedMealId = await saveMeal(analysis, resolvedLabel);
+    const dailyTotals = await getDailyTotals();
+    const autoSaveMsg = buildAutoSaveMessage(analysis, resolvedLabel, decision, {
+      seed,
+      dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
+      isClarificationResolution: opts.isClarificationResolution,
+    });
+    await sendTextMessage(msg.from, autoSaveMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+    await setConvState("idle", savedMealId ? { ...toPendingMeal(analysis, "saved"), savedMealId } : null);
+  }
+
+  /** Shared "the user sent free text that should update/finalize a
+   * pending or already-saved meal" handler — used for corrections arriving
+   * directly, after a bare "no", after a clarification is answered, after
+   * a drink-contradiction check, and after an auto-saved meal gets
+   * corrected. Runs the conflicting-drink contradiction check and the
+   * zero-macro guard, records portion-correction feedback, then hands off
+   * to finalizeEstimate() to decide save/update/ask-again. References
+   * `seed`, declared further down in handleIncomingMessage — safe because
+   * this is only ever called after that assignment has run. */
+  async function runFreeTextCorrection(
+    correctionText: string,
+    previous: PendingMeal | null,
+    opts: { isClarificationResolution?: boolean } = {}
+  ) {
+    if (previous) {
+      const conflictBase = isConflictingDrinkCorrection(previous.meal_type, correctionText);
+      if (conflictBase) {
+        const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous.foods) });
+        analysis.image_url = previous.image_url;
+        await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
+        await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
+        return;
+      }
+    }
+
+    const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous?.foods) });
+    analysis.image_url = previous?.image_url;
+
+    if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
+      await sendTextMessage(msg.from, buildClarificationMessage(seed));
+      await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+      return;
+    }
+
+    if (previous) {
+      await recordPortionCorrectionFeedback(previous, analysis, correctionText, previous.status === "saved" ? previous.savedMealId : undefined);
+    }
+
+    await finalizeEstimate(analysis, { existing: previous ?? undefined, isClarificationResolution: opts.isClarificationResolution });
+  }
+
   // "My Progress" — send the end-user dashboard link. Only offered when
   // the feature flag is on; otherwise this falls through to normal
   // meal-logging handling like any other text.
@@ -777,7 +970,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       await setConvState(state, pendingMeal);
       return;
     }
-    if (isNutritionQuestion(text) && !isNegative(text)) {
+    if (isNutritionQuestion(text)) {
       try {
         const answer = await answerNutritionQuestion(text);
         await sendTextMessage(msg.from, answer);
@@ -789,11 +982,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
   }
 
-  // "cancel" / "don't save" — discard whatever's pending, from any
-  // confirm/correct/clarify state.
+  // Explicit discard intent ("skip", "don't save", "no need to record
+  // anything", ...) — discard whatever's pending, from any confirm/
+  // correct/clarify/ambiguous-negative state. Checked before any of those
+  // states get a chance to (mis)treat the message as a correction.
   if (msg.type === "text" && text && isCancel(text) &&
-    (state === "awaiting_confirmation" || state === "awaiting_correction" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation")) {
-    await sendTextMessage(msg.from, "Okay, discarded — nothing saved.");
+    (state === "awaiting_confirmation" || state === "awaiting_correction" || state === "awaiting_clarification" ||
+      state === "awaiting_correction_confirmation" || state === "awaiting_skip_or_correction")) {
+    await sendTextMessage(msg.from, pickDiscardAck(seed));
     await setConvState("idle", null);
     return;
   }
@@ -807,7 +1003,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // looking at the new photo. A new image is never a correction of the old
   // guess — it's treated as an entirely new estimate.
   if (msg.type === "image" && mediaBuffer &&
-    (state === "awaiting_confirmation" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation")) {
+    (state === "awaiting_confirmation" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation" ||
+      state === "awaiting_skip_or_correction" || state === "awaiting_edit_or_undo")) {
     try {
       const analysis = await analyzeFood({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text });
       analysis.image_url = await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType);
@@ -818,9 +1015,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         return;
       }
 
-      const confirmMsg = buildEstimateMessage(analysis, { seed });
-      await sendTextMessage(msg.from, confirmMsg);
-      await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      // A brand new photo is always a fresh meal, never a correction/update
+      // of whatever the conversation was previously waiting on.
+      await finalizeEstimate(analysis);
     } catch (err) {
       console.error("[whatsapp] food analysis error (new photo mid-flow):", err instanceof Error ? err.message : err);
       const hint = isAdults
@@ -859,17 +1056,38 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   const recentlySaved = pendingMeal?.status === "saved" && pendingMeal.savedMealId &&
     Date.now() - new Date(pendingMeal.updatedAt).getTime() < RECENT_SAVE_WINDOW_MS;
 
+  // "Undo" / "don't record" / "skip" / "no need to record" after an
+  // auto-save removes that just-saved meal outright — the SAME wording
+  // that discards a not-yet-saved meal (isCancel) means "take back what
+  // was already logged" here instead of "never log it."
+  if (state === "idle" && recentlySaved && msg.type === "text" && text && isUndoIntent(text)) {
+    await deleteMeal(pendingMeal!.savedMealId!);
+    await sendTextMessage(msg.from, pickUndoAck(seed));
+    await setConvState("idle", null);
+    return;
+  }
+
+  // A bare "no" after auto-save is just as ambiguous as before a save —
+  // could mean "remove this" or "let me correct something" — so it gets
+  // the same "ask, don't guess" treatment via awaiting_edit_or_undo.
+  if (state === "idle" && recentlySaved && msg.type === "text" && text && isBareNegative(text)) {
+    await sendTextMessage(msg.from, "No problem — should I remove this log, or do you want to correct something?");
+    await setConvState("awaiting_edit_or_undo", pendingMeal);
+    return;
+  }
+
+  // "Yes" (or similar) after the meal is already auto-saved has nothing
+  // left to confirm — treat it as a no-op acknowledgment rather than
+  // sending it to the LLM as if it were a food correction.
+  if (state === "idle" && recentlySaved && msg.type === "text" && text && isAffirmative(text)) {
+    await sendTextMessage(msg.from, "Already logged — no changes needed.");
+    await setConvState("idle", pendingMeal);
+    return;
+  }
+
   if (state === "idle" && recentlySaved && msg.type === "text" && text && !isGreeting(text)) {
     try {
-      const analysis = await analyzeFood({ text, correctionContext: JSON.stringify(pendingMeal!.foods) });
-      const resolvedLabel = resolveMealLabel(analysis.meal_type);
-      await updateSavedMeal(pendingMeal!.savedMealId!, analysis, resolvedLabel);
-      await recordPortionCorrectionFeedback(pendingMeal!, analysis, text, pendingMeal!.savedMealId);
-      const updated: PendingMeal = { ...analysis, status: "saved", savedMealId: pendingMeal!.savedMealId, updatedAt: new Date().toISOString() };
-      const protein = Math.round((analysis.total_protein_min + analysis.total_protein_max) / 2);
-      const cal = Math.round((analysis.total_calories_min + analysis.total_calories_max) / 2);
-      await sendTextMessage(msg.from, `Got it — updated the saved ${formatMealLabel(resolvedLabel).toLowerCase()}.\nNew estimate: ${protein}g protein · ${cal} kcal.`);
-      await setConvState("idle", updated);
+      await runFreeTextCorrection(text, pendingMeal);
     } catch {
       await sendTextMessage(msg.from, isAdults ? "I couldn't update that — could you rephrase?" : "Couldn't update that — could you rephrase?");
       await setConvState("idle", pendingMeal);
@@ -930,12 +1148,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       }
 
       if (isCorrecting && pendingMeal && msg.type === "text" && msg.text) {
-        await recordPortionCorrectionFeedback(pendingMeal, analysis, msg.text);
+        await recordPortionCorrectionFeedback(pendingMeal, analysis, msg.text, pendingMeal.status === "saved" ? pendingMeal.savedMealId : undefined);
       }
 
-      const confirmMsg = buildEstimateMessage(analysis, { isCorrection: isCorrecting, seed });
-      await sendTextMessage(msg.from, confirmMsg);
-      await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      // Confidence-based auto-save: high/medium confidence with no
+      // blocking ambiguity saves (or updates, if this was a correction to
+      // an already-saved meal) immediately — "Reply Yes to save" is no
+      // longer the default. Low confidence or a high-impact food-identity
+      // ambiguity (tofu vs paneer vs chicken, 1 egg vs 3, ...) pauses for
+      // one targeted question instead.
+      await finalizeEstimate(analysis, { existing: isCorrecting ? (pendingMeal ?? undefined) : undefined });
     } catch (err) {
       console.error("[whatsapp] food analysis error:", err instanceof Error ? err.message : err);
       const hint = isAdults
@@ -948,21 +1170,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   if (state === "awaiting_clarification") {
-    // Any reply here is treated as clarifying text describing the food.
+    // Any reply here is treated as the answer to the clarification
+    // question (whether that was a generic "what is this?" or a targeted
+    // high-impact-ambiguity question) — resolving it should log the meal
+    // immediately (via finalizeEstimate inside runFreeTextCorrection), not
+    // ask for a further "Yes."
     if (msg.type === "text" && msg.text) {
       try {
-        const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
-        analysis.image_url = pendingMeal?.image_url;
-
-        if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
-          await sendTextMessage(msg.from, buildClarificationMessage(seed));
-          await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
-          return;
-        }
-
-        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
-        await sendTextMessage(msg.from, confirmMsg);
-        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+        await runFreeTextCorrection(msg.text, pendingMeal, { isClarificationResolution: true });
       } catch {
         await sendTextMessage(msg.from, buildClarificationMessage(seed));
         await setConvState("awaiting_clarification", pendingMeal);
@@ -988,13 +1203,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
     if (msg.type === "text" && msg.text) {
-      // User gave the real answer instead of confirming — treat as a fresh correction.
+      // User gave the real answer instead of confirming — treat as a fresh
+      // correction, which (via finalizeEstimate) logs it immediately.
       try {
-        const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
-        analysis.image_url = pendingMeal?.image_url;
-        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
-        await sendTextMessage(msg.from, confirmMsg);
-        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+        await runFreeTextCorrection(msg.text, pendingMeal);
       } catch {
         await sendTextMessage(msg.from, "What should I log this as?");
         await setConvState("awaiting_correction_confirmation", pendingMeal);
@@ -1006,8 +1218,82 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
-  if (state === "awaiting_confirmation") {
+  // Reached when a bare "no" after an auto-saved meal was ambiguous about
+  // whether the user meant to remove the log or correct something.
+  // Explicit undo/discard wording is already handled by the isUndoIntent
+  // check above (idle+recentlySaved), which runs before conversation state
+  // even changes to this one — but a second bare "no" or "undo" typed here
+  // still needs handling, since this state can be re-entered via its own
+  // fallback below.
+  if (state === "awaiting_edit_or_undo") {
+    if (msg.type === "text" && text && isUndoIntent(text)) {
+      if (pendingMeal?.savedMealId) {
+        await deleteMeal(pendingMeal.savedMealId);
+      }
+      await sendTextMessage(msg.from, pickUndoAck(seed));
+      await setConvState("idle", null);
+      return;
+    }
+
+    if (msg.type === "text" && msg.text && msg.text.trim().length > 0) {
+      try {
+        await runFreeTextCorrection(msg.text, pendingMeal);
+      } catch {
+        await sendTextMessage(msg.from, "Please say Undo to remove this log, or tell me what to correct.");
+        await setConvState("awaiting_edit_or_undo", pendingMeal); // release lock, unchanged
+      }
+      return;
+    }
+
+    await sendTextMessage(msg.from, "Please say Undo to remove this log, or tell me what to correct.");
+    await setConvState("awaiting_edit_or_undo", pendingMeal); // release lock, unchanged
+    return;
+  }
+
+  // Reached when a bare "no" (see BARE_NEGATIVE_PATTERNS) was ambiguous
+  // about whether the user meant to discard the pending meal or correct
+  // it — the bot asked which, and this is that follow-up reply. Explicit
+  // discard is already handled by the shared isCancel() check above (this
+  // state is in its applicable-states list), so only confirm/correction/
+  // fallback need handling here.
+  if (state === "awaiting_skip_or_correction") {
     if (isAffirmative(text)) {
+      if (pendingMeal) {
+        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+        const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+        const dailyTotals = await getDailyTotals();
+        const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
+          seed,
+          dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
+        });
+        await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+        await setConvState("idle", savedMealId ? { ...toPendingMeal(pendingMeal, "saved"), savedMealId } : null);
+      } else {
+        await sendTextMessage(msg.from, "There's nothing pending to save right now. Send a photo, or tell me what you'd like to log.");
+        await setConvState("idle", null);
+      }
+      return;
+    }
+
+    if (msg.type === "text" && msg.text && msg.text.trim().length > 0) {
+      try {
+        await runFreeTextCorrection(msg.text, pendingMeal);
+      } catch {
+        await sendTextMessage(msg.from, "Please reply *Skip* to discard, or tell me what to correct.");
+        await setConvState("awaiting_skip_or_correction", pendingMeal); // release lock, unchanged
+      }
+      return;
+    }
+
+    await sendTextMessage(msg.from, "Please reply *Skip* to discard, or tell me what to correct.");
+    await setConvState("awaiting_skip_or_correction", pendingMeal); // release lock, unchanged
+    return;
+  }
+
+  if (state === "awaiting_confirmation") {
+    const intent = classifyPendingReply(text);
+
+    if (intent === "confirm") {
       if (pendingMeal) {
         const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
@@ -1028,43 +1314,31 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
 
-    if (isNegative(text) && text.split(" ").length <= 2) {
+    // A bare "no" — genuinely ambiguous. Don't guess whether the user
+    // wants to discard or correct; ask which, and park the pending meal
+    // untouched until they clarify.
+    if (intent === "ambiguous_negative") {
+      await sendTextMessage(
+        msg.from,
+        "No problem — should I skip this meal, or do you want to correct the food or portion?"
+      );
+      await setConvState("awaiting_skip_or_correction", pendingMeal);
+      return;
+    }
+
+    // A short, unambiguous "I want to correct something" signal without
+    // specifics yet ("wrong", "change") — ask what, rather than sending
+    // that single word to the LLM as if it described food.
+    if (intent === "vague_correction") {
       const ask = isAdults ? "Of course! What should I change? 😊" : "What should I change? Just tell me what was different 😊";
       await sendTextMessage(msg.from, ask);
       await setConvState("awaiting_correction", pendingMeal);
       return;
     }
 
-    if (msg.text && msg.text.length > 5 && !isAffirmative(text)) {
+    if (intent === "correction" && msg.text) {
       try {
-        // Same conflicting-drink contradiction check applies when the
-        // correction arrives directly in the confirmation state.
-        if (pendingMeal) {
-          const conflictBase = isConflictingDrinkCorrection(pendingMeal.meal_type, msg.text);
-          if (conflictBase) {
-            const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal.foods) });
-            analysis.image_url = pendingMeal.image_url;
-            await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
-            await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
-            return;
-          }
-        }
-        const analysis = await analyzeFood({ text: msg.text, correctionContext: JSON.stringify(pendingMeal?.foods) });
-        analysis.image_url = pendingMeal?.image_url;
-
-        if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
-          await sendTextMessage(msg.from, buildClarificationMessage(seed));
-          await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
-          return;
-        }
-
-        if (pendingMeal) {
-          await recordPortionCorrectionFeedback(pendingMeal, analysis, msg.text);
-        }
-
-        const confirmMsg = buildEstimateMessage(analysis, { isCorrection: true, seed });
-        await sendTextMessage(msg.from, confirmMsg);
-        await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+        await runFreeTextCorrection(msg.text, pendingMeal);
       } catch {
         const ask = isAdults ? "What should I change? 😊" : "What should I change? Just tell me what was different 😊";
         await sendTextMessage(msg.from, ask);
@@ -1074,8 +1348,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     const repeat = isAdults
-      ? "Reply *Yes* to save this meal, or tell me what to correct 🙏"
-      : "Reply *Yes* to log this meal, or tell me what to change 😊";
+      ? "Reply *Yes* to save this meal, tell me what to correct, or reply *Skip* to discard 🙏"
+      : "Reply *Yes* to log this meal, tell me what to change, or reply *Skip* to discard 😊";
     await sendTextMessage(msg.from, repeat);
     await setConvState("awaiting_confirmation", pendingMeal); // release lock, unchanged
     return;

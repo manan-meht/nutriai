@@ -59,6 +59,7 @@ describe("getEntitlementSnapshot — per-module trial enforcement flags", () => 
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_GYM_TRIAL_ENFORCEMENT_ENABLED;
     delete process.env.NEXT_PUBLIC_FAMILY_TRIAL_ENFORCEMENT_ENABLED;
+    delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
     jest.resetModules();
   });
 
@@ -84,6 +85,8 @@ describe("getEntitlementSnapshot — per-module trial enforcement flags", () => 
   };
 
   it("gym stays read-only-blocking when only gym enforcement is disabled but family is not affected", async () => {
+    // Read-only enforcement only applies once billing is available (post-Beta).
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
     process.env.NEXT_PUBLIC_GYM_TRIAL_ENFORCEMENT_ENABLED = "false";
     jest.resetModules();
     jest.doMock("@/lib/supabase/server", () => ({ createServiceClient: () => makeFakeServiceClient(expiredTrialRow) }));

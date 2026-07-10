@@ -26,6 +26,7 @@ function mapInviteRow(row: any): WhatsappInvite {
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    linkOpenedAt: row.link_opened_at ?? null,
   };
 }
 
@@ -129,6 +130,20 @@ export async function updateInviteMetadata(db: any, inviteId: string, metadata: 
   if (error) throw new Error(`Failed to update invite metadata: ${error.message}`);
 }
 
+/** Records that the caregiver/coach actually clicked "Send invite on
+ * WhatsApp" or "Copy invite link" — called by the UI's own click handlers
+ * (see InviteCard), not tied to invite status, so it's harmless to call
+ * repeatedly (only the first call matters; later ones are no-ops since the
+ * WHERE clause only matches while it's still null). */
+export async function markInviteLinkOpened(db: any, inviteId: string): Promise<void> {
+  const { error } = await db
+    .from("whatsapp_invites")
+    .update({ link_opened_at: new Date().toISOString() })
+    .eq("id", inviteId)
+    .is("link_opened_at", null);
+  if (error) console.error("[invites] failed to mark link opened:", error.message);
+}
+
 export async function revokeInvite(db: any, inviteId: string): Promise<void> {
   const { error } = await db
     .from("whatsapp_invites")
@@ -205,6 +220,7 @@ export function toInviteSummary(invite: WhatsappInvite, recipientName?: string):
     expiresAt: invite.expiresAt,
     claimedByWhatsappNumberMasked: maskWhatsAppNumber(invite.claimedByWhatsappNumber),
     claimedAt: invite.claimedAt,
+    linkOpenedAt: invite.linkOpenedAt,
   };
 }
 

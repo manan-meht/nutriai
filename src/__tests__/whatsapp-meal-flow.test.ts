@@ -1,8 +1,9 @@
-// Covers the "understand, estimate, confirm, then save" rewrite of the
-// WhatsApp meal-logging flow (see src/lib/whatsapp/conversation-handler.ts
-// and src/lib/ai/food-analyzer.ts): pending-meal confirmation, zero-macro
-// clarification, correction updates, cancel, and duplicate-save prevention
-// after a post-save correction.
+// Covers the confidence-based auto-save WhatsApp meal-logging flow (see
+// src/lib/whatsapp/conversation-handler.ts and src/lib/ai/food-analyzer.ts):
+// high/medium confidence auto-saves immediately (no "Reply Yes" needed),
+// high-impact food-identity ambiguity pauses for a targeted clarification,
+// corrections after auto-save update the same row (never a duplicate), and
+// Undo/skip/don't-record remove a just-auto-saved meal.
 
 jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn().mockResolvedValue(undefined),
@@ -99,6 +100,13 @@ function makeFakeSupabase(contact: any) {
           return Promise.resolve({ error: null });
         },
       }),
+      delete: () => ({
+        eq: (_col: string, id: string) => {
+          const idx = mealLogs.findIndex((m) => m.id === id);
+          if (idx >= 0) mealLogs.splice(idx, 1);
+          return Promise.resolve({ error: null });
+        },
+      }),
       select: () => ({
         eq: () => ({
           gte: async () => ({ data: mealLogs, error: null }),
@@ -168,185 +176,277 @@ function realFoodAnalysis(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("handleIncomingMessage — pending meal confirm/correct/save flow", () => {
+const HIGH_CONFIDENCE_DECISION = {
+  confidenceLevel: "high" as const, hasHighImpactAmbiguity: false,
+  shouldAutoSave: true, shouldAskClarification: false,
+};
+const MEDIUM_CONFIDENCE_DECISION = {
+  confidenceLevel: "medium" as const, hasHighImpactAmbiguity: false,
+  shouldAutoSave: true, shouldAskClarification: false,
+};
+function highImpactAmbiguityDecision(question: string) {
+  return {
+    confidenceLevel: "low" as const, hasHighImpactAmbiguity: true,
+    highImpactAmbiguityReason: "tofu vs paneer vs chicken changes protein significantly",
+    clarificationQuestion: question,
+    shouldAutoSave: false, shouldAskClarification: true,
+  };
+}
+
+/** Wires up the common mocks every test needs, and returns the imported
+ * modules so each test can further configure per-test return values. */
+async function setup(contactOverrides: Record<string, unknown> = {}) {
+  jest.resetModules();
+  const fakeDb = makeFakeSupabase({ ...contact, ...contactOverrides });
+  jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+
+  const foodAnalyzer = await import("@/lib/ai/food-analyzer");
+  (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
+  (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
+  (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValue(HIGH_CONFIDENCE_DECISION);
+  (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mockReturnValue("Logged lunch ✅\n\nNeed to fix anything? Just reply with a correction, or say Undo to remove this log.");
+  (foodAnalyzer.buildCorrectionUpdateMessage as jest.Mock).mockReturnValue("Thanks for the correction — I've updated the log.");
+  (foodAnalyzer.pickDiscardAck as jest.Mock).mockReturnValue("Got it — nothing saved.");
+  (foodAnalyzer.pickUndoAck as jest.Mock).mockReturnValue("Got it — I removed that log.");
+
+  const { sendTextMessage } = await import("@/lib/whatsapp/client");
+  const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
+
+  return { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage };
+}
+
+const photoMsg = { from: "911234567890", type: "image" as const, mediaMimeType: "image/jpeg" };
+const photoBuffer = new Uint8Array([1, 2, 3]);
+
+describe("handleIncomingMessage — confidence-based auto-save flow", () => {
   afterEach(() => jest.resetModules());
 
-  it("never lets a 0 kcal / 0g protein analysis go straight to a save prompt — asks for clarification instead", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+  it("Test A: a high-confidence meal is auto-saved immediately, with no 'Reply Yes' prompt", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValue(HIGH_CONFIDENCE_DECISION);
+    (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mockReturnValue(
+      "Logged lunch ✅\n\nI found:\n- Rice\n\nEstimated: 27g protein · 480 kcal.\n\nNeed to fix anything? Just reply with a correction, or say Undo to remove this log."
+    );
 
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
+    await handleIncomingMessage(photoMsg, photoBuffer);
+
+    expect(fakeDb._mealLogs.length).toBe(1);
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Logged lunch ✅"));
+    expect(sendTextMessage).not.toHaveBeenCalledWith("911234567890", expect.stringContaining("Reply Yes"));
+  });
+
+  it("Test B: a medium-confidence meal is auto-saved with correction-invite wording", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis({ confidence: "medium" }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValue(MEDIUM_CONFIDENCE_DECISION);
+    (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mockReturnValue(
+      "Logged this estimate as lunch ✅\n\nI'm estimating:\n- Chicken curry — small portion\n\nEstimated: 30g protein · 680 kcal.\n\nIf anything is off, reply with a correction, or say Undo to remove this log."
+    );
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+
+    expect(fakeDb._mealLogs.length).toBe(1);
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Logged this estimate as lunch ✅"));
+    expect(sendTextMessage).not.toHaveBeenCalledWith("911234567890", expect.stringContaining("Reply Yes"));
+  });
+
+  it("Test C: high-impact food-identity ambiguity is not auto-saved — asks a targeted clarification", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    const ambiguousAnalysis = realFoodAnalysis({
+      foods: [
+        { name: "Rice", quantity: "1 cup" },
+        { name: "Mixed vegetable curry", quantity: "1/2 cup" },
+        { name: "Cubed item", quantity: "1/2 cup", is_ambiguous: true },
+      ],
+      has_high_impact_ambiguity: true,
+      clarification_question: "Is the top-left cubed item tofu, paneer, or chicken?",
+    });
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(ambiguousAnalysis);
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValue(
+      highImpactAmbiguityDecision("Is the top-left cubed item tofu, paneer, or chicken?")
+    );
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue(
+      "I can estimate this, but one item changes the nutrition a lot: is the top-left cubed item tofu, paneer, or chicken?\n\nI also see Rice, Mixed vegetable curry.\n\nReply with the item name and I'll log it."
+    );
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+
+    expect(fakeDb._mealLogs.length).toBe(0);
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "911234567890",
+      expect.stringContaining("tofu, paneer, or chicken")
+    );
+  });
+
+  it("Test D: answering the clarification logs the meal using the resolved item", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
+      has_high_impact_ambiguity: true,
+      clarification_question: "Is the top-left cubed item tofu, paneer, or chicken?",
+    }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(
+      highImpactAmbiguityDecision("Is the top-left cubed item tofu, paneer, or chicken?")
+    );
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue("Is it tofu, paneer, or chicken?");
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(0);
+
+    // User answers with the specific item — this resolves the ambiguity.
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
+      foods: [{ name: "Paneer", quantity: "small portion" }],
+      has_high_impact_ambiguity: false,
+    }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(HIGH_CONFIDENCE_DECISION);
+    (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mockReturnValue("Thanks — I've logged this as lunch ✅");
+
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Paneer" });
+
+    expect(fakeDb._mealLogs.length).toBe(1);
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Thanks — I've logged this as lunch"));
+  });
+
+  it("Test E: 'Undo' after auto-save removes the meal that was just logged", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(1);
+
+    (sendTextMessage as jest.Mock).mockClear();
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Undo" });
+
+    expect(fakeDb._mealLogs.length).toBe(0);
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("removed that log"));
+  });
+
+  it("Test F: 'No need to record this' after auto-save removes the meal, without re-estimating", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(1);
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockClear();
+    (sendTextMessage as jest.Mock).mockClear();
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "No need to record this" });
+
+    expect(foodAnalyzer.analyzeFood).not.toHaveBeenCalled();
+    expect(fakeDb._mealLogs.length).toBe(0);
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("removed that log"));
+  });
+
+  it("Test G: a correction after auto-save updates the same row — no duplicate meal", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(1);
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis({
+      total_calories_min: 300, total_calories_max: 350, total_protein_min: 20, total_protein_max: 24,
+    }));
+    (sendTextMessage as jest.Mock).mockClear();
+
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Rice was half cup." });
+
+    expect(fakeDb._mealLogs.length).toBe(1); // still just one row
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("updated the log"));
+  });
+
+  it("Test H: a correction phrased with a leading 'No' updates the meal to the corrected food, without removing it", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(1);
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis({
+      foods: [{ name: "Rice", quantity: "1 cup" }, { name: "Fish curry", quantity: "1 katori" }],
+    }));
+    (sendTextMessage as jest.Mock).mockClear();
+
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "No, this is fish, not chicken." });
+
+    expect(fakeDb._mealLogs.length).toBe(1); // updated, not removed, not duplicated
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("updated the log"));
+  });
+
+  it("never lets a 0 kcal / 0g protein analysis auto-save — asks for clarification instead", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
     (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(zeroMacroAnalysis());
     (foodAnalyzer.buildClarificationMessage as jest.Mock).mockReturnValue("I couldn't identify this clearly. Is this tea, coffee, soup, or something else?");
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
 
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
-
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
+    await handleIncomingMessage(photoMsg, photoBuffer);
 
     expect(sendTextMessage).toHaveBeenCalledWith(
       "911234567890",
       expect.stringContaining("couldn't identify this clearly")
     );
-    // Never told the user to reply Yes off a 0/0 estimate.
-    expect(sendTextMessage).not.toHaveBeenCalledWith("911234567890", expect.stringContaining("Reply *Yes*"));
     expect(fakeDb._mealLogs.length).toBe(0);
   });
 
-  it("allows a genuinely zero-calorie item (e.g. black tea) through to confirmation", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+  it("allows a genuinely zero-calorie item (e.g. black tea) to auto-save", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(zeroMacroAnalysis({ is_zero_calorie_item: true, meal_type: "tea", summary: "black tea", confidence: "high" }));
+    (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mockReturnValue("Logged tea ✅");
 
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
-    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(zeroMacroAnalysis({ is_zero_calorie_item: true, meal_type: "tea", summary: "black tea" }));
-    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
+    await handleIncomingMessage(photoMsg, photoBuffer);
 
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
-
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
-
-    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Reply *Yes*"));
-    expect(fakeDb._mealLogs.length).toBe(0); // not saved yet — only confirmed after Yes
-  });
-
-  it("a correction after a save updates the existing meal_logs row instead of creating a second one", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
-
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
-    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
-    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
-    (foodAnalyzer.buildSavedMessage as jest.Mock).mockReturnValue("Saved as lunch.");
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
-
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
-
-    // 1. Photo -> estimate
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
-    // 2. Yes -> saved
-    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Yes" });
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Logged tea"));
     expect(fakeDb._mealLogs.length).toBe(1);
+  });
 
-    // 3. Correction after save -> should update the same row, not insert a new one
-    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis({
-      total_calories_min: 300, total_calories_max: 350, total_protein_min: 20, total_protein_max: 24,
+  it("a new photo arriving while a previous ambiguity is still awaiting clarification is analyzed fresh, not silently ignored", async () => {
+    const { fakeDb, foodAnalyzer, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
+      summary: "first meal", has_high_impact_ambiguity: true, clarification_question: "Tofu, paneer, or chicken?",
     }));
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
-    (sendTextMessage as jest.Mock).mockClear();
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(highImpactAmbiguityDecision("Tofu, paneer, or chicken?"));
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue("Tofu, paneer, or chicken?");
 
-    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Actually rice was half cup." });
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(0);
 
-    expect(fakeDb._mealLogs.length).toBe(1); // still just one row
-    expect(sendTextMessage).toHaveBeenCalledWith(
-      "911234567890",
-      expect.stringContaining("updated the saved")
-    );
-  });
-
-  it("a new photo arriving while a previous estimate is still awaiting Yes is analyzed fresh, not silently ignored", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
-
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
-    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "first meal" }));
-    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
-
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
-
-    // First photo -> awaiting_confirmation with a pending (unconfirmed) estimate.
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
-
-    // A second, different photo arrives before the user ever replies Yes to the first.
+    // A second, different photo arrives before the user ever answers the clarification.
     (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "second meal", meal_type: "dinner" }));
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([4, 5, 6])
-    );
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(HIGH_CONFIDENCE_DECISION);
+    await handleIncomingMessage(photoMsg, new Uint8Array([4, 5, 6]));
 
-    // The new photo must have been analyzed (not silently dropped/ignored).
     expect(foodAnalyzer.analyzeFood).toHaveBeenCalledTimes(2);
-    expect(fakeDb._mealLogs.length).toBe(0); // still nothing saved — second estimate awaits its own Yes
+    expect(fakeDb._mealLogs.length).toBe(1); // the second (unambiguous) photo auto-saved
   });
 
-  it("'cancel' discards a pending meal without saving anything", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+  it("'skip' while awaiting clarification discards the pending (unsaved) meal", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis({
+      has_high_impact_ambiguity: true, clarification_question: "Tofu, paneer, or chicken?",
+    }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValue(highImpactAmbiguityDecision("Tofu, paneer, or chicken?"));
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue("Tofu, paneer, or chicken?");
 
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
-    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
-    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
-
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
-
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
-    await handleIncomingMessage({ from: "911234567890", type: "text", text: "cancel" });
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "skip" });
 
     expect(fakeDb._mealLogs.length).toBe(0);
-    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("discarded"));
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("nothing saved"));
   });
 
-  it("a hypothetical question is answered without saving or modifying the pending meal", async () => {
-    jest.resetModules();
-    const fakeDb = makeFakeSupabase(contact);
-    jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
-
-    const foodAnalyzer = await import("@/lib/ai/food-analyzer");
+  it("a hypothetical question is answered without saving, discarding, or modifying anything", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
     (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
-    (foodAnalyzer.buildEstimateMessage as jest.Mock).mockReturnValue("Reply *Yes* to save, or tell me what to change.");
     (foodAnalyzer.answerNutritionQuestion as jest.Mock).mockResolvedValue(
       "If the rice was replaced with 1 cup cooked pasta, this meal would be roughly 500-600 kcal."
     );
-    (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
-    (foodAnalyzer.formatMealLabel as jest.Mock).mockImplementation((t: string) => t);
 
-    const { sendTextMessage } = await import("@/lib/whatsapp/client");
-    const { handleIncomingMessage } = await import("@/lib/whatsapp/conversation-handler");
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs.length).toBe(1); // auto-saved on the photo itself
 
-    await handleIncomingMessage(
-      { from: "911234567890", type: "image", mediaMimeType: "image/jpeg" },
-      new Uint8Array([1, 2, 3])
-    );
     await handleIncomingMessage({ from: "911234567890", type: "text", text: "If this was pasta then what would be my calories?" });
 
-    expect(fakeDb._mealLogs.length).toBe(0); // question never saves anything
+    expect(fakeDb._mealLogs.length).toBe(1); // unchanged — the question didn't touch the saved meal
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("500-600 kcal"));
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("was this just a question"));
-
-    // The pending meal from the photo should still be confirmable afterward.
-    (sendTextMessage as jest.Mock).mockClear();
-    (foodAnalyzer.buildSavedMessage as jest.Mock).mockReturnValue("Saved as lunch.");
-    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Yes" });
-    expect(fakeDb._mealLogs.length).toBe(1);
   });
 });

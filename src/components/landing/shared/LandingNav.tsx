@@ -42,6 +42,12 @@ export function LandingNav({ product, variant, experimentId }: LandingNavProps) 
       {/* Actions */}
       <div className="flex items-center gap-3">
         <Link
+          href="/pricing"
+          className="hidden sm:inline text-sm font-medium text-gray-600 hover:text-gray-900"
+        >
+          Pricing
+        </Link>
+        <Link
           href={getLoginUrl({ product, source: "nav" })}
           className="text-sm font-medium text-gray-600 hover:text-gray-900"
         >
