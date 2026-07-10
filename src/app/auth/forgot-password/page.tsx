@@ -28,7 +28,7 @@ function ForgotPasswordForm() {
     setError(null);
     setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent("/auth/reset-password")}`;
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(`/auth/reset-password?product=${product}`)}`;
       const { error } = await supabase.auth.resetPasswordForEmail(scopedEmail(email, product), { redirectTo });
       if (error) throw error;
       setSent(true);

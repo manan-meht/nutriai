@@ -412,7 +412,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, adults_contact_goals(target_protein_g, status)")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, adults_contact_goals(target_protein_g, status)")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -431,6 +431,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   const workspaceId = entity.workspace_id;
   const trainerId = isAdults ? entity.caregiver_id : entity.trainer_id;
   const firstName = entity.full_name.split(" ")[0];
+  // gym_clients has no timezone column — resolveMealLabel falls back to
+  // Asia/Kolkata for those. Used so meal-type-by-time (see
+  // resolveMealLabel) reflects the contact's actual clock, not the
+  // server's or a hardcoded default.
+  const contactTimezone: string | undefined = isAdults ? entity.timezone : undefined;
 
   // Mark invite accepted on first-ever message from this contact
   if (isAdults && adultsContact.invite_sent_at && !adultsContact.invite_accepted_at) {
@@ -604,6 +609,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         total_carbs_max: analysis.total_carbs_max,
         total_fat_min: analysis.total_fat_min,
         total_fat_max: analysis.total_fat_max,
+        total_fiber_min: analysis.total_fiber_min,
+        total_fiber_max: analysis.total_fiber_max,
         ai_summary: analysis.summary,
         image_url: analysis.image_url ?? null,
         source: "whatsapp",
@@ -637,6 +644,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         total_carbs_max: analysis.total_carbs_max,
         total_fat_min: analysis.total_fat_min,
         total_fat_max: analysis.total_fat_max,
+        total_fiber_min: analysis.total_fiber_min,
+        total_fiber_max: analysis.total_fiber_max,
         ai_summary: analysis.summary,
       })
       .eq("id", mealLogId);
@@ -798,7 +807,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
 
-    const resolvedLabel = resolveMealLabel(analysis.meal_type);
+    const resolvedLabel = resolveMealLabel(analysis.meal_type, new Date(), contactTimezone);
     const existing = opts.existing;
 
     // Updating an already-saved meal (a correction, or a clarification
@@ -1006,8 +1015,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     (state === "awaiting_confirmation" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation" ||
       state === "awaiting_skip_or_correction" || state === "awaiting_edit_or_undo")) {
     try {
-      const analysis = await analyzeFood({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text });
-      analysis.image_url = await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType);
+      // The photo upload doesn't depend on the analysis result (or vice
+      // versa) — running them in parallel instead of sequentially shaves
+      // the upload's full round-trip off the total reply latency.
+      const [analysis, imageUrl] = await Promise.all([
+        analyzeFood({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text }),
+        uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType),
+      ]);
+      analysis.image_url = imageUrl;
 
       if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
         await sendTextMessage(msg.from, buildClarificationMessage(seed));
@@ -1036,7 +1051,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     const requestedType = detectMealTypeChange(text);
     if (requestedType) {
       const updated: PendingMeal = { ...pendingMeal, meal_type: requestedType, updatedAt: new Date().toISOString() };
-      const resolvedLabel = resolveMealLabel(requestedType);
+      // An explicit "change to lunch"/"make this dinner" command is saved
+      // exactly as asked — unlike the model's own guess, this is never
+      // second-guessed against the clock (see resolveMealLabel's docs).
+      const resolvedLabel = requestedType;
       if (pendingMeal.status === "saved" && pendingMeal.savedMealId &&
         Date.now() - new Date(pendingMeal.updatedAt).getTime() < RECENT_SAVE_WINDOW_MS) {
         await updateSavedMeal(pendingMeal.savedMealId, updated, resolvedLabel);
@@ -1101,15 +1119,25 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       let analysis: FoodAnalysisResult;
 
       if (msg.type === "image" && mediaBuffer) {
-        analysis = await analyzeFood({
-          imageBuffer: mediaBuffer,
-          imageMimeType: msg.mediaMimeType,
-          correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
-          text: msg.text,
-        });
         // Reuse the photo already attached to a prior correction round
-        // rather than re-uploading it on every correction message.
-        analysis.image_url = pendingMeal?.image_url ?? (await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType));
+        // rather than re-uploading it on every correction message. When an
+        // upload IS needed (the common case — a fresh photo), run it in
+        // parallel with the Gemini analysis rather than after it: the two
+        // are independent, and waiting for them sequentially was adding the
+        // upload's full round-trip on top of the AI call's latency on
+        // every single photo message.
+        const needsUpload = !pendingMeal?.image_url;
+        const [analysisResult, imageUrl] = await Promise.all([
+          analyzeFood({
+            imageBuffer: mediaBuffer,
+            imageMimeType: msg.mediaMimeType,
+            correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
+            text: msg.text,
+          }),
+          needsUpload ? uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType) : Promise.resolve(undefined),
+        ]);
+        analysis = analysisResult;
+        analysis.image_url = pendingMeal?.image_url ?? imageUrl;
       } else if (msg.type === "text" && msg.text) {
         analysis = await analyzeFood({
           text: msg.text,
@@ -1191,7 +1219,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
   if (state === "awaiting_correction_confirmation") {
     if (isAffirmative(text) && pendingMeal) {
-      const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+      const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
       const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
       const dailyTotals = await getDailyTotals();
       const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
@@ -1259,7 +1287,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (state === "awaiting_skip_or_correction") {
     if (isAffirmative(text)) {
       if (pendingMeal) {
-        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
         const dailyTotals = await getDailyTotals();
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
@@ -1295,7 +1323,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     if (intent === "confirm") {
       if (pendingMeal) {
-        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type);
+        const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
         const dailyTotals = await getDailyTotals();
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {

@@ -16,6 +16,8 @@ import { getEntitlementSnapshot, startTrialIfNeeded } from "@/lib/entitlements/e
 import { GYM_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
+import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 
 export interface GymClient {
   id: string;
@@ -216,6 +218,8 @@ export interface MealLog {
     carbs_max: number;
     fat_min: number;
     fat_max: number;
+    fiber_min?: number;
+    fiber_max?: number;
   }>;
   totalCaloriesMin: number;
   totalCaloriesMax: number;
@@ -225,7 +229,13 @@ export interface MealLog {
   totalCarbsMax: number;
   totalFatMin: number;
   totalFatMax: number;
+  totalFiberMin: number;
+  totalFiberMax: number;
   aiSummary?: string;
+  /** Present when a Tistra reviewer has corrected this meal's classification
+   * via the Meal Review Console — dashboards should prefer this over the
+   * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
+  humanCorrection?: HumanCorrectionFields;
 }
 
 export interface WorkoutLog {
@@ -311,7 +321,10 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     })),
   };
 
-  const meals: MealLog[] = (mealsRes.data ?? []).map((m: any) => ({
+  const rawMeals = mealsRes.data ?? [];
+  const corrections = await fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id));
+
+  const meals: MealLog[] = rawMeals.map((m: any) => ({
     id: m.id,
     clientId: m.client_id,
     mealType: m.meal_type,
@@ -325,7 +338,10 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     totalCarbsMax: m.total_carbs_max ?? 0,
     totalFatMin: m.total_fat_min ?? 0,
     totalFatMax: m.total_fat_max ?? 0,
+    totalFiberMin: m.total_fiber_min ?? 0,
+    totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
+    humanCorrection: corrections[m.id],
   }));
 
   const workouts: WorkoutLog[] = (workoutsRes.data ?? []).map((w: any) => ({
@@ -434,6 +450,8 @@ export async function getClientMeals(clientId: string, days = 7): Promise<MealLo
     totalCarbsMax: m.total_carbs_max ?? 0,
     totalFatMin: m.total_fat_min ?? 0,
     totalFatMax: m.total_fat_max ?? 0,
+    totalFiberMin: m.total_fiber_min ?? 0,
+    totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
   }));
 }

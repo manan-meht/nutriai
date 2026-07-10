@@ -23,7 +23,7 @@ import {
 function baseAnalysis(overrides: Partial<FoodAnalysisResult> = {}): FoodAnalysisResult {
   return {
     foods: [
-      { name: "Chicken hariyali tikka", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 120, calories_max: 190, protein_min: 18, protein_max: 25, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0 },
+      { name: "Chicken hariyali tikka", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 120, calories_max: 190, protein_min: 18, protein_max: 25, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0 },
     ],
     meal_type: "lunch",
     total_calories_min: 480,
@@ -34,6 +34,8 @@ function baseAnalysis(overrides: Partial<FoodAnalysisResult> = {}): FoodAnalysis
     total_carbs_max: 0,
     total_fat_min: 0,
     total_fat_max: 0,
+    total_fiber_min: 0,
+    total_fiber_max: 0,
     summary: "chicken, omelette, avocado",
     confidence: "high",
     is_zero_calorie_item: false,
@@ -48,7 +50,7 @@ describe("needsPortionConfirmation — conditional gating, not a default", () =>
 
   it("does NOT flag a clearly-visible SMALL portion just because it's small", () => {
     const analysis = baseAnalysis({
-      foods: [{ name: "Chicken", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 100, calories_max: 150, protein_min: 15, protein_max: 22, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0 }],
+      foods: [{ name: "Chicken", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 100, calories_max: 150, protein_min: 15, protein_max: 22, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0 }],
       total_protein_min: 22, total_protein_max: 30,
       confidence: "high",
       // No portion_confidence/image_quality/food_visibility/has_hidden_protein_food set —
@@ -98,7 +100,7 @@ describe("buildEstimateMessage — no default uncertainty language", () => {
   it("describes a clear small portion plainly, without an uncertainty caveat", () => {
     const analysis = baseAnalysis({
       foods: [
-        { name: "Hariyali chicken", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 120, calories_max: 190, protein_min: 12, protein_max: 23, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0 },
+        { name: "Hariyali chicken", quantity: "3-4 small pieces", visible_quantity: "3-4 small pieces", portion_size: "small", calories_min: 120, calories_max: 190, protein_min: 12, protein_max: 23, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0 },
       ],
       total_protein_min: 25, total_protein_max: 36,
       confidence: "high",
@@ -133,7 +135,7 @@ describe("buildEstimateMessage — no default uncertainty language", () => {
 
   it("uses visible_quantity (what was actually counted) over the generic quantity field", () => {
     const analysis = baseAnalysis({
-      foods: [{ name: "Chicken", quantity: "1 serving", visible_quantity: "3-4 small pieces", calories_min: 100, calories_max: 150, protein_min: 15, protein_max: 20, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0 }],
+      foods: [{ name: "Chicken", quantity: "1 serving", visible_quantity: "3-4 small pieces", calories_min: 100, calories_max: 150, protein_min: 15, protein_max: 20, carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0 }],
     });
     const msg = buildEstimateMessage(analysis, { seed: "test" });
     expect(msg).toContain("3-4 small pieces");

@@ -17,18 +17,24 @@ function moodClasses(mood: TrendMood) {
         bg: "bg-[var(--color-status-good-bg)]",
         text: "text-[var(--color-status-good-text)]",
         dot: "bg-[var(--color-status-good-dot)]",
+        bar: "bg-[var(--color-status-good-dot)]",
+        barFillPct: 100,
       };
     case "attention":
       return {
         bg: "bg-[var(--color-status-support-bg)]",
         text: "text-[var(--color-status-support-text)]",
         dot: "bg-[var(--color-status-support-dot)]",
+        bar: "bg-[var(--color-status-support-dot)]",
+        barFillPct: 25,
       };
     default:
       return {
         bg: "bg-[var(--color-status-steady-bg)]",
         text: "text-[var(--color-status-steady-text)]",
         dot: "bg-[var(--color-status-steady-dot)]",
+        bar: "bg-[var(--color-status-steady-dot)]",
+        barFillPct: 60,
       };
   }
 }
@@ -40,19 +46,29 @@ const MEAL_LABELS: Record<string, string> = {
   dinner: "Dinner",
 };
 
+const TREND_CARD_ICONS: Record<string, { icon: string; badge: string }> = {
+  protein: { icon: "🥩", badge: "bg-[var(--color-dashboard-primary-light)] text-[var(--color-dashboard-primary)]" },
+  balance: { icon: "🍽️", badge: "bg-[var(--color-status-good-bg)] text-[var(--color-status-good-text)]" },
+  direction: { icon: "🧭", badge: "bg-[var(--color-status-steady-bg)] text-[var(--color-status-steady-text)]" },
+};
+
 /** Top-of-dashboard trend cards: protein, balanced plates, healthier direction. */
 export function TrendCardGrid({ cards }: { cards: TrendCard[] }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {cards.map((card) => {
         const c = moodClasses(card.mood);
+        const iconMeta = TREND_CARD_ICONS[card.key];
         return (
-          <div
-            key={card.key}
-            className={`rounded-2xl border-t-4 border-t-[var(--color-dashboard-primary)] p-4 ${c.bg}`}
-          >
+          <div key={card.key} className={`rounded-2xl p-4 ${c.bg}`}>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
+              {iconMeta ? (
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${iconMeta.badge}`}>
+                  {iconMeta.icon}
+                </span>
+              ) : (
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
+              )}
               <p className={`text-sm font-semibold ${c.text}`}>{card.title}</p>
             </div>
             <p className={`text-xs leading-relaxed ${c.text} opacity-90`}>{card.body}</p>
@@ -216,12 +232,15 @@ export function WeeklyProgressBoard({ metrics }: { metrics: WeeklyProgressMetric
         {metrics.map((m) => {
           const c = moodClasses(m.mood);
           return (
-            <div key={m.label} className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
-              <div>
+            <div key={m.label} className="rounded-xl border border-gray-100 px-3 py-2.5">
+              <div className="flex items-center justify-between mb-1.5">
                 <p className="text-sm text-gray-800">{m.label}</p>
-                <p className="text-xs text-gray-500">{m.thisWeekLabel}</p>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{m.changeLabel}</span>
               </div>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.bg} ${c.text}`}>{m.changeLabel}</span>
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mb-1">
+                <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${c.barFillPct}%` }} />
+              </div>
+              <p className="text-xs text-gray-500">{m.thisWeekLabel}</p>
             </div>
           );
         })}

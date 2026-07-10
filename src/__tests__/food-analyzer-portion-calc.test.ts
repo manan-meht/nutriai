@@ -19,7 +19,7 @@ function makeItem(overrides: Partial<FoodItem> = {}): FoodItem {
   return {
     name: "item", quantity: "1 serving",
     calories_min: 0, calories_max: 0, protein_min: 0, protein_max: 0,
-    carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0,
+    carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0,
     ...overrides,
   };
 }
@@ -33,7 +33,7 @@ function makeAnalysis(foods: FoodItem[], overrides: Partial<FoodAnalysisResult> 
     total_calories_max: sum("calories_max"),
     total_protein_min: sum("protein_min"),
     total_protein_max: sum("protein_max"),
-    total_carbs_min: 0, total_carbs_max: 0, total_fat_min: 0, total_fat_max: 0,
+    total_carbs_min: 0, total_carbs_max: 0, total_fat_min: 0, total_fat_max: 0, total_fiber_min: 0, total_fiber_max: 0,
     summary: "test meal",
     confidence: "medium",
     is_zero_calorie_item: false,

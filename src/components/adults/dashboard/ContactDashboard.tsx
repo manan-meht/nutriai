@@ -11,6 +11,14 @@ import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
 import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
+import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
+import {
+  DEFAULT_DASHBOARD_DATE_RANGE,
+  dateRangeLabel,
+  filterByDateRange,
+  getDateRangeDayCount,
+  type DashboardDateRange,
+} from "@/lib/dashboard/date-range";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -21,8 +29,7 @@ import {
 } from "@/components/shared/dashboard/HabitDashboardSections";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
-const ProteinChart = dynamic(() => import("@/components/gym/dashboard/MacroCharts").then((m) => m.ProteinChart), { ssr: false });
-const CalorieChart = dynamic(() => import("@/components/gym/dashboard/MacroCharts").then((m) => m.CalorieChart), { ssr: false });
+const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
 
 const GOAL_LABELS: Record<string, string> = {
   eat_enough: "Eat enough food", enough_protein: "Enough protein", increase_protein: "More protein",
@@ -52,6 +59,7 @@ async function fetchInviteJson(url: string, init?: RequestInit): Promise<any> {
 export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
+  const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
   // Multiple goals can be selected when adding a contact (each becomes its
   // own row) — numeric targets (protein/calories/meals) are shared across
   // all of them and only ever read off the first, but the display below
@@ -60,18 +68,22 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const activeGoal = activeGoals[0];
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
-  const since7 = new Date(); since7.setDate(since7.getDate() - 7);
-  const meals7d = meals.filter((m) => new Date(m.loggedAt) >= since7);
-  const daysLogged7d = new Set(meals7d.map((m) => m.loggedAt.slice(0, 10))).size;
+  const mealsInRange = filterByDateRange(meals, dateRange);
+  const earliestMealAt = meals.length ? new Date(meals[meals.length - 1].loggedAt) : undefined;
+  const rangeDays = getDateRangeDayCount(dateRange, new Date(), earliestMealAt);
+  const daysLoggedInRange = new Set(mealsInRange.map((m) => m.loggedAt.slice(0, 10))).size;
 
-  const avgProtein = meals7d.length
-    ? Math.round(meals7d.reduce((s, m) => s + (m.totalProteinMin + m.totalProteinMax) / 2, 0) / 7)
+  const avgProtein = mealsInRange.length
+    ? Math.round(mealsInRange.reduce((s, m) => s + (m.totalProteinMin + m.totalProteinMax) / 2, 0) / rangeDays)
     : 0;
-  const avgCalories = meals7d.length
-    ? Math.round(meals7d.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / 7)
+  const avgCalories = mealsInRange.length
+    ? Math.round(mealsInRange.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / rangeDays)
     : 0;
 
-  // Adapt meals type for shared components (gym meal logs shape)
+  // Adapt meals type for shared components (gym meal logs shape) — used by
+  // ActivityHeatmap, which is typed against the gym MealLog shape.
+  // AdultsMealLog is already structurally assignable to MacronutrientSummary's
+  // MacroMeal, so no adapter is needed there.
   const gymStyleMeals = meals.map((m) => ({
     ...m,
     clientId: m.contactId,
@@ -162,26 +174,43 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           />
         )}
 
-        {/* Habit-based insight cards */}
+        {/* Greeting + global date-range selector — everything below that's
+            range-aware (metric cards, macro summary) reflects this. */}
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 leading-tight">Hi, {contact.fullName.split(" ")[0]} 👋</h2>
+            <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+          </div>
+          <DateRangeSelector value={dateRange} onChange={setDateRange} />
+        </div>
+
+        {/* Habit-based insight cards — kept near the top so mobile users see
+            the "so what" before the raw numbers below. */}
         <TrendCardGrid
           cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]}
         />
 
-        {/* Health summary cards */}
+        {/* Key metric cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <HealthCard
-            label="Meals this week"
-            value={`${meals7d.length}`}
-            sub={`${daysLogged7d} of 7 days`}
-            ok={daysLogged7d >= 5}
+            icon="🍽️"
+            iconColor="purple"
+            label="Meals logged"
+            value={`${mealsInRange.length}`}
+            sub={`${daysLoggedInRange} of ${rangeDays} day${rangeDays === 1 ? "" : "s"}`}
+            ok={rangeDays <= 1 ? undefined : daysLoggedInRange / rangeDays >= 0.7}
           />
           <HealthCard
+            icon="🌱"
+            iconColor="green"
             label="Avg protein/day"
             value={avgProtein > 0 ? `${avgProtein}g` : "—"}
             sub={`target: ${proteinTarget}g${isRecommendedProtein ? " (recommended)" : ""}`}
             ok={proteinOk ?? undefined}
           />
           <HealthCard
+            icon="🔥"
+            iconColor="orange"
             label="Avg calories/day"
             value={avgCalories > 0 ? `${avgCalories}` : "—"}
             sub={calTarget ? `target: ≥${calTarget}` : "kcal"}
@@ -225,19 +254,25 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           <FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} />
         </div>
 
-        {/* Weekly progress board */}
+        {/* Single unified macro section — protein, carbs, fat, fiber.
+            Replaces the old separate Protein/Calories charts; calories
+            stays as the top-level metric card above instead of being
+            duplicated here. */}
+        <MacronutrientSummary
+          meals={mealsInRange}
+          days={rangeDays}
+          targets={{ protein: proteinTarget }}
+        />
+
+        {/* Weekly / range progress board */}
         <WeeklyProgressBoard metrics={habitDashboard.weeklyProgress} />
 
-        {/* Activity heatmap */}
+        {/* Activity heatmap — kept at a fixed 30-day window regardless of
+            the date-range selector above, since a 90-day/1-year heatmap
+            grid stops being scannable at this card size. */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Meal activity – last 30 days</p>
           <ActivityHeatmap meals={gymStyleMeals as any} workouts={[]} days={30} />
-        </div>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <ProteinChart meals={gymStyleMeals as any} targetProteinG={proteinTarget} />
-          <CalorieChart meals={gymStyleMeals as any} targetCaloriesMin={activeGoal?.targetCaloriesMin} targetCaloriesMax={activeGoal?.targetCaloriesMax} />
         </div>
 
         {/* Recent meals */}
@@ -291,7 +326,16 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   );
 }
 
-function HealthCard({ label, value, sub, ok }: { label: string; value: string; sub?: string; ok?: boolean }) {
+const ICON_BADGE_CLASSES: Record<"purple" | "green" | "orange" | "blue", string> = {
+  purple: "bg-[var(--color-dashboard-primary-light)] text-[var(--color-dashboard-primary)]",
+  green: "bg-[var(--color-status-good-bg)] text-[var(--color-status-good-text)]",
+  orange: "bg-[var(--color-status-steady-bg)] text-[var(--color-status-steady-text)]",
+  blue: "bg-blue-50 text-blue-600",
+};
+
+function HealthCard({
+  icon, iconColor, label, value, sub, ok,
+}: { icon?: string; iconColor?: "purple" | "green" | "orange" | "blue"; label: string; value: string; sub?: string; ok?: boolean }) {
   return (
     <div
       className={`rounded-2xl border p-4 ${
@@ -302,6 +346,11 @@ function HealthCard({ label, value, sub, ok }: { label: string; value: string; s
             : "bg-white border-gray-100"
       }`}
     >
+      {icon && (
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm mb-2 ${ICON_BADGE_CLASSES[iconColor ?? "purple"]}`}>
+          {icon}
+        </div>
+      )}
       <p
         className={`text-2xl font-bold mb-0.5 ${
           ok === true ? "text-[var(--color-status-good-text)]" : ok === false ? "text-[var(--color-status-steady-text)]" : "text-gray-900"

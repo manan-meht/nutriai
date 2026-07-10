@@ -42,6 +42,8 @@ export interface FoodItem {
   carbs_max: number;
   fat_min: number;
   fat_max: number;
+  fiber_min: number;
+  fiber_max: number;
   /** What was actually counted in the image (e.g. "3-4 small pieces") —
    * kept separate from `quantity` so portion estimation is traceable back
    * to what was visible, not a default serving size. */
@@ -91,6 +93,8 @@ export interface FoodAnalysisResult {
   total_carbs_max: number;
   total_fat_min: number;
   total_fat_max: number;
+  total_fiber_min: number;
+  total_fiber_max: number;
   summary: string;
   /** How sure the model is about what it identified. Drives whether we say
    * "I think this is" vs "I'm not fully sure" vs asking a clarifying
@@ -178,6 +182,14 @@ Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use th
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
 
+Fiber (fiber_min/fiber_max per item, total_fiber_min/total_fiber_max overall) — use honest, conservative ranges, not zero by default:
+- Vegetables/salad/sabzi: roughly 2-4g fiber per 100g visible portion.
+- Legumes/dal/beans/chana/rajma: roughly 4-8g fiber per 100g cooked (dal is watered down — use the lower end for a thin dal, higher for a thick chana/rajma curry).
+- Whole grains (brown rice, whole wheat roti/atta, oats): roughly 2-3g per 100g; plain white rice is closer to 0.5-1g per 100g.
+- Fruits: roughly 1.5-3g fiber per 100g.
+- Meat/fish/egg/dairy/oil: 0g fiber.
+- A near-zero fiber total is only correct for a meal that's genuinely just meat/rice/drinks with no vegetables, legumes, whole grains, or fruit visible — do not default fiber to 0 for a normal mixed plate.
+
 PORTION-WORDING CONSISTENCY — before finalizing your response, check that your numbers match your own words:
 - If a chicken/meat/fish item is labeled "small" or "tiny" portion, its protein contribution should usually be capped around 25g.
 - If you say "likely 1-2 eggs," that item's protein should usually be capped around 14g — do not report a 2-egg omelette as more than ~14g protein.
@@ -229,7 +241,9 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
       "carbs_min": number,
       "carbs_max": number,
       "fat_min": number,
-      "fat_max": number
+      "fat_max": number,
+      "fiber_min": number,
+      "fiber_max": number
     }
   ],
   "meal_type": "breakfast|lunch|dinner|snack|drink|tea|coffee|wine|juice|other",
@@ -241,6 +255,8 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
   "total_carbs_max": number,
   "total_fat_min": number,
   "total_fat_max": number,
+  "total_fiber_min": number,
+  "total_fiber_max": number,
   "summary": "brief one-line summary, e.g. Dal rice with sabzi and roti",
   "confidence": "high|medium|low",
   "is_zero_calorie_item": boolean,
@@ -610,13 +626,24 @@ function defaultMealTypeByTime(date: Date, timezone?: string): MealType {
   return "snack";
 }
 
-/** Resolves the final label to show/save for a meal: drinks keep their
- * specific label (Tea, Coffee, Wine, Juice); everything else falls back to
- * a time-of-day default when the model didn't already say breakfast/lunch/
- * dinner/snack explicitly. */
+/** Resolves the final label to show/save for a meal from the MODEL'S OWN
+ * guess: drinks keep their specific label (Tea, Coffee, Wine, Juice) since
+ * that's a real visual signal the model can see. For everything else, the
+ * clock — not the model — decides breakfast/lunch/dinner/snack.
+ *
+ * The vision prompt is never told the current time, so a model-guessed
+ * "lunch" for a plate of rice and curry photographed at 9pm is just a
+ * coin-flip on food appearance, not a real signal — a bug that showed up
+ * as meals sent well into dinner hours getting saved as "lunch". Time of
+ * day is a far more reliable signal for meal categorization than a vision
+ * model's guess, so it's now authoritative for the four standard types.
+ *
+ * This must only be used for the model's own initial/re-estimated guess —
+ * an EXPLICIT user correction ("change to lunch") must bypass this and be
+ * saved exactly as asked; see detectMealTypeChange's call site in
+ * conversation-handler.ts, which does not call this function. */
 export function resolveMealLabel(mealType: MealType, now: Date = new Date(), timezone?: string): MealType {
   if (isDrinkMealType(mealType)) return mealType;
-  if (["breakfast", "lunch", "dinner", "snack"].includes(mealType)) return mealType;
   return defaultMealTypeByTime(now, timezone);
 }
 

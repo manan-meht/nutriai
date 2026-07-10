@@ -76,6 +76,8 @@ export interface AdultsMealLog {
   totalCarbsMax: number;
   totalFatMin: number;
   totalFatMax: number;
+  totalFiberMin: number;
+  totalFiberMax: number;
   aiSummary?: string;
   imageUrl?: string;
   /** Present when a Tistra reviewer has corrected this meal's classification
@@ -244,8 +246,14 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Widened from a 30-day window so the dashboard's date-range selector
+  // (up to "This year"/"All time") has real data to filter client-side —
+  // see DateRangeSelector / getDateRangeBounds in
+  // src/lib/dashboard/date-range.ts. 400 days covers a full year plus
+  // slack without an unbounded query; there's no pagination here yet, so
+  // this is a pragmatic cap rather than a true "all time" fetch.
   const since = new Date();
-  since.setDate(since.getDate() - 30);
+  since.setDate(since.getDate() - 400);
 
   const [contactRes, mealsRes] = await Promise.all([
     supabase
@@ -316,6 +324,8 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     totalCarbsMax: m.total_carbs_max ?? 0,
     totalFatMin: m.total_fat_min ?? 0,
     totalFatMax: m.total_fat_max ?? 0,
+    totalFiberMin: m.total_fiber_min ?? 0,
+    totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
     imageUrl: m.image_url ?? undefined,
     humanCorrection: corrections[m.id],
