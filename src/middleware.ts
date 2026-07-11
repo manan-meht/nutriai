@@ -1,4 +1,4 @@
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import {
@@ -11,6 +11,20 @@ import {
 } from "@/lib/experiments/landing-page-experiment";
 
 export async function middleware(request: NextRequest) {
+  // The PKCE code exchange in /auth/callback is the most fragile moment of
+  // the auth flow — it depends on a code-verifier cookie that was just set
+  // moments ago surviving untouched. updateSession() below calls
+  // supabase.auth.getUser(), which (for a visitor with a stale/invalid
+  // session cookie left over from a previous login — e.g. after switching
+  // accounts) can trigger a token refresh/cookie rewrite of its own,
+  // racing with the callback route's own cookie read for no benefit: there
+  // is no existing session to refresh usefully on a route whose entire job
+  // is exchanging a fresh code for a new one. Skip it here (and on
+  // /auth/error, which has nothing session-dependent to refresh either).
+  if (request.nextUrl.pathname.startsWith("/auth/callback") || request.nextUrl.pathname.startsWith("/auth/error")) {
+    return NextResponse.next();
+  }
+
   const response = await updateSession(request);
 
   // Set landing experiment cookie if not already present.
