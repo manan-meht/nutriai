@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { apiGet } from "../../src/lib/api";
 import { supabase } from "../../src/lib/supabase";
@@ -40,25 +40,33 @@ export default function DashboardScreen() {
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+  const load = useCallback(async (isRefresh = false) => {
+    isRefresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
+    try {
+      const { data } = await supabase.auth.getSession();
       const p = detectProductFromEmail(data.session?.user.email);
       setProduct(p);
       const config = PRODUCT_CONFIG[p];
-      Promise.all([
+      const [workspaceRes, listRes] = await Promise.all([
         apiGet<WorkspaceResponse>(config.workspacePath),
         apiGet<Record<string, Person[]>>(config.listPath),
-      ])
-        .then(([workspaceRes, listRes]) => {
-          setWorkspace(workspaceRes);
-          setPeople(listRes[config.listKey] ?? []);
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : "Something went wrong."))
-        .finally(() => setLoading(false));
-    });
+      ]);
+      setWorkspace(workspaceRes);
+      setPeople(listRes[config.listKey] ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      isRefresh ? setRefreshing(false) : setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -88,6 +96,7 @@ export default function DashboardScreen() {
         data={people}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6750A4" />}
         ListEmptyComponent={<Text style={styles.empty}>{config.emptyLabel}</Text>}
         renderItem={({ item }) => (
           <Pressable style={styles.card} onPress={() => router.push(`/person/${item.id}`)}>

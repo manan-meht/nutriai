@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { apiGet } from "../../../src/lib/api";
 import { supabase } from "../../../src/lib/supabase";
-import { detectProductFromEmail } from "../../../src/lib/product";
+import { detectProductFromEmail, type Product } from "../../../src/lib/product";
 
 interface Meal {
   id: string;
@@ -16,15 +16,30 @@ interface Meal {
   aiSummary?: string;
 }
 
-// Both mobile-api detail responses share this shape closely enough to
-// read generically here — adults nests under `contact`, gym under
-// `client`; gym's response also includes `workouts`/`biomarkers`, not
-// shown yet in this first pass (meal history only, matching what's common
-// to both products).
+interface Workout {
+  id: string;
+  loggedAt: string;
+  description?: string;
+  workoutType?: string;
+  durationMinutes?: number;
+}
+
+interface Biomarker {
+  id: string;
+  loggedAt: string;
+  weightKg?: number;
+  bmi?: number;
+}
+
+// Adults nests under `contact`, gym under `client`; only gym's response
+// includes workouts/biomarkers — both are optional here and simply absent
+// for adults.
 interface DetailResponse {
   contact?: { fullName: string };
   client?: { fullName: string };
   meals: Meal[];
+  workouts?: Workout[];
+  biomarkers?: Biomarker[];
 }
 
 function formatRange(min: number, max: number, unit = ""): string {
@@ -38,18 +53,30 @@ export default function PersonDetailScreen() {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(
+    async (isRefresh = false) => {
+      isRefresh ? setRefreshing(true) : setLoading(true);
+      setError(null);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const product: Product = detectProductFromEmail(data.session?.user.email);
+        const path = product === "adults" ? `/adults/contacts/${id}` : `/gym/clients/${id}`;
+        setDetail(await apiGet<DetailResponse>(path));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+      } finally {
+        isRefresh ? setRefreshing(false) : setLoading(false);
+      }
+    },
+    [id]
+  );
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const product = detectProductFromEmail(data.session?.user.email);
-      const path = product === "adults" ? `/adults/contacts/${id}` : `/gym/clients/${id}`;
-      apiGet<DetailResponse>(path)
-        .then(setDetail)
-        .catch((err) => setError(err instanceof Error ? err.message : "Something went wrong."))
-        .finally(() => setLoading(false));
-    });
-  }, [id]);
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -68,6 +95,7 @@ export default function PersonDetailScreen() {
   }
 
   const name = detail.contact?.fullName ?? detail.client?.fullName ?? "Unknown";
+  const latestBiomarker = detail.biomarkers?.[detail.biomarkers.length - 1];
 
   return (
     <View style={styles.container}>
@@ -82,6 +110,37 @@ export default function PersonDetailScreen() {
         data={detail.meals}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6750A4" />}
+        ListHeaderComponent={
+          detail.workouts?.length || latestBiomarker ? (
+            <View style={styles.headerSections}>
+              {latestBiomarker && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Latest measurements</Text>
+                  <Text style={styles.sectionMeta}>
+                    {latestBiomarker.weightKg != null ? `${latestBiomarker.weightKg}kg` : ""}
+                    {latestBiomarker.bmi != null ? ` · BMI ${latestBiomarker.bmi}` : ""}
+                  </Text>
+                </View>
+              )}
+              {detail.workouts && detail.workouts.length > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Recent workouts</Text>
+                  {detail.workouts.slice(0, 5).map((w) => (
+                    <View key={w.id} style={styles.workoutRow}>
+                      <Text style={styles.workoutDesc}>
+                        {w.workoutType ?? w.description ?? "Workout"}
+                        {w.durationMinutes ? ` · ${w.durationMinutes}min` : ""}
+                      </Text>
+                      <Text style={styles.loggedAt}>{new Date(w.loggedAt).toLocaleDateString()}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              <Text style={styles.sectionTitle}>Meals</Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={<Text style={styles.empty}>No meals logged yet.</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -109,6 +168,12 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, color: "#666", marginTop: 2, marginBottom: 20 },
   list: { paddingBottom: 24 },
   empty: { color: "#999", textAlign: "center", marginTop: 40 },
+  headerSections: { marginBottom: 8 },
+  section: { marginBottom: 20 },
+  sectionTitle: { fontSize: 13, fontWeight: "700", color: "#999", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
+  sectionMeta: { fontSize: 15, color: "#111" },
+  workoutRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
+  workoutDesc: { fontSize: 14, color: "#111", flexShrink: 1 },
   card: {
     backgroundColor: "#f7f5fb",
     borderRadius: 14,
