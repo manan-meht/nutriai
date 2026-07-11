@@ -38,9 +38,12 @@ export default function AuthCallbackScreen() {
       // listener in app/_layout.tsx, not this screen.
     }
 
+    // Expo Router's own NavigationContainer already listens for incoming
+    // URLs to route here in the first place — a second Linking.addEventListener
+    // subscription on top of that trips React Navigation's "linking
+    // configured in multiple places" warning/error. getInitialURL() alone
+    // is a one-time getter, not a subscription, so it's safe to call here.
     Linking.getInitialURL().then(handle);
-    const subscription = Linking.addEventListener("url", ({ url }) => handle(url));
-    return () => subscription.remove();
   }, []);
 
   if (error) {
