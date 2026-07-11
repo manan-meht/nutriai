@@ -53,7 +53,19 @@ unknown/not-yours id.
 
 Create a new Cloudflare Pages project connected to this same GitHub repo,
 with its root/build directory set to `apps/mobile-api`. Build command:
-`npx @cloudflare/next-on-pages`. Needs `NEXT_PUBLIC_SUPABASE_URL`,
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` set as
-environment variables (same values as the main app). Route mobile traffic
-to it via a subdomain (e.g. `api.<yourdomain>`) or a Cloudflare path rule.
+`npx @cloudflare/next-on-pages`. Deploy command:
+`npx wrangler pages deploy .vercel/output/static --project-name=nutriai-mobile-api`
+(the Pages project must already exist — `npx wrangler pages project create
+nutriai-mobile-api --production-branch=main` once, if the dashboard created
+a plain Workers project instead of a Pages one). Needs
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
+`SUPABASE_SERVICE_ROLE_KEY` set as environment variables (same values as
+the main app). Route mobile traffic to it via a subdomain (e.g.
+`api.<yourdomain>`) or a Cloudflare path rule.
+
+**Required compatibility flag:** in the Pages project's Settings →
+Functions (or Runtime) → Compatibility flags, add `nodejs_compat` to both
+Production and Preview. Without it, every route 500s with "Error - no
+nodejs_compat compatibility flag" — `@supabase/supabase-js` relies on
+Node.js APIs under the hood that aren't available in the Workers runtime
+by default.
