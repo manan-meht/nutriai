@@ -30,8 +30,12 @@ export default function RootLayout() {
     // segments[0] against a group name, since useSegments() doesn't
     // reliably include a group's name when its own *index* route matches
     // the current path (e.g. opening the app straight at "/") — that left
-    // an earlier version of this redirect never firing.
-    const onPreAuthScreen = segments[0] === "select-product" || segments[0] === "login";
+    // an earlier version of this redirect never firing. auth-callback is
+    // included so this effect doesn't yank the user back to select-product
+    // while app/auth-callback.tsx is still processing the OAuth tokens and
+    // session === null momentarily.
+    const onPreAuthScreen =
+      segments[0] === "select-product" || segments[0] === "login" || segments[0] === "auth-callback";
     if (!session && !onPreAuthScreen) {
       // select-product, not a login screen, is the default landing screen
       // for a logged-out user — no marketing pages in this app.
