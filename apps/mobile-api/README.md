@@ -65,7 +65,10 @@ the main app). Route mobile traffic to it via a subdomain (e.g.
 
 **Required compatibility flag:** in the Pages project's Settings →
 Functions (or Runtime) → Compatibility flags, add `nodejs_compat` to both
-Production and Preview. Without it, every route 500s with "Error - no
+Production and Preview separately — the two are independent, and it's easy
+to only set one. Without it, every route 500s with "Error - no
 nodejs_compat compatibility flag" — `@supabase/supabase-js` relies on
 Node.js APIs under the hood that aren't available in the Workers runtime
-by default.
+by default. **A fresh deployment is required after setting/changing the
+flags** — Cloudflare does not apply flag changes retroactively to a
+deployment that already ran.
