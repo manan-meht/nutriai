@@ -20,47 +20,25 @@ import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, up
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
 import type { InviteSummary } from "@/lib/invites/types";
-
-export interface AdultsContact {
-  id: string;
-  workspaceId: string;
-  fullName: string;
-  whatsappNumber: string;
-  relationship?: string;
-  /** System-level type driving dashboard copy — "self" for self-tracking,
-   * "family_caregiver" for the existing caregiver-adds-someone-else flow.
-   * Distinct from `relationship` above (the free-text son/daughter/etc
-   * label shown in the UI). */
-  relationshipType: "self" | "family_caregiver";
-  age?: number;
-  gender?: "male" | "female" | "other";
-  weightKg?: number;
-  heightCm?: number;
-  healthNotes?: string;
-  inviteSentAt?: string;
-  inviteAcceptedAt?: string;
-  createdAt: string;
-  deletedAt?: string;
-  trackedBiomarkers: string[];
-  goals: AdultsGoal[];
-  mealCount: number;
-  lastMealAt?: string;
-  timezone: string;
-  remindersEnabled: boolean;
-  reminderTimes: string[];
-}
-
-export interface AdultsGoal {
-  id: string;
-  goalType: string;
-  title: string;
-  description?: string;
-  targetCaloriesMin?: number;
-  targetCaloriesMax?: number;
-  targetProteinG?: number;
-  targetMealsPerDay?: number;
-  status: string;
-}
+import {
+  getContacts as getContactsCore,
+  getRemovedContacts as getRemovedContactsCore,
+  getOrCreateWorkspace,
+} from "@nutriai/nutrition-core";
+import type { AdultsContact, AdultsGoal } from "@nutriai/nutrition-core";
+// AdultsContact/AdultsGoal come from @nutriai/nutrition-core, shared with
+// apps/mobile-api (see packages/nutrition-core and that app's README) —
+// re-exported here so existing importers of these types from this module
+// don't need to change. Written as a direct `export type ... from`
+// re-export (rather than `import type` + a separate `export type {}`)
+// because "use server" files are scanned by Next for server-action exports
+// before type erasure, and that scanner doesn't reliably recognize the
+// two-statement form as type-only. AdultsMealLog/AdultsContactDetails stay
+// defined locally below: they carry the human-correction fields narrowly
+// typed against this app's own classification unions (PresenceStatus/
+// BalanceStatus/Likelihood, see src/lib/nutrition/human-corrections.ts),
+// which the shared package deliberately does not depend on.
+export type { AdultsContact, AdultsGoal } from "@nutriai/nutrition-core";
 
 export interface AdultsMealLog {
   id: string;
@@ -92,34 +70,9 @@ export interface AdultsContactDetails {
 }
 
 export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number; plan: string }> {
-  const { createClient: createServiceClient } = await import("@supabase/supabase-js");
-  const admin = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  const { data: existing } = await admin
-    .from("workspaces")
-    .select("id, name, extra_capacity, plan")
-    .eq("owner_id", userId)
-    .eq("type", "adults")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .single();
-
-  if (existing) return { id: existing.id, name: existing.name, extraCapacity: existing.extra_capacity ?? 0, plan: existing.plan ?? "family" };
-
-  const name = `${caregiverName ?? "My"}'s Family`;
-  const slug = `adults-${userId.slice(0, 8)}-${Date.now()}`;
-
-  const { data: created, error } = await admin
-    .from("workspaces")
-    .insert({ type: "adults", name, slug, owner_id: userId })
-    .select("id, name, extra_capacity, plan")
-    .single();
-
-  if (error || !created) throw new Error(`Failed to create workspace: ${error?.message}`);
-  return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0, plan: created.plan ?? "family" };
+  const admin = createServiceClient();
+  const workspace = await getOrCreateWorkspace(admin, userId, "adults", caregiverName);
+  return { ...workspace, plan: workspace.plan ?? "family" };
 }
 
 /** Persists self-tracking intent on the workspace as soon as it's known
@@ -135,93 +88,16 @@ export async function markWorkspaceSelfPlan(workspaceId: string): Promise<void> 
   await admin.from("workspaces").update({ plan: "self" }).eq("id", workspaceId).eq("plan", "family");
 }
 
-function mapContactRow(c: any, mealsByContact: Record<string, { count: number; lastAt?: string }>): AdultsContact {
-  return {
-    id: c.id,
-    workspaceId: c.workspace_id,
-    fullName: c.full_name,
-    whatsappNumber: c.whatsapp_number,
-    relationship: c.relationship,
-    relationshipType: c.relationship_type ?? "family_caregiver",
-    age: c.age,
-    gender: c.gender,
-    weightKg: c.weight_kg,
-    heightCm: c.height_cm,
-    healthNotes: c.health_notes,
-    inviteSentAt: c.invite_sent_at,
-    inviteAcceptedAt: c.invite_accepted_at,
-    createdAt: c.created_at,
-    deletedAt: c.deleted_at ?? undefined,
-    trackedBiomarkers: c.tracked_biomarkers ?? [],
-    mealCount: mealsByContact[c.id]?.count ?? 0,
-    lastMealAt: mealsByContact[c.id]?.lastAt,
-    timezone: c.timezone ?? "Asia/Kolkata",
-    remindersEnabled: c.reminders_enabled ?? false,
-    reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
-    goals: (c.goals ?? []).map((g: any) => ({
-      id: g.id,
-      goalType: g.goal_type,
-      title: g.title,
-      description: g.description,
-      targetCaloriesMin: g.target_calories_min,
-      targetCaloriesMax: g.target_calories_max,
-      targetProteinG: g.target_protein_g,
-      targetMealsPerDay: g.target_meals_per_day,
-      status: g.status,
-    })),
-  };
-}
-
-async function fetchMealsByContact(supabase: Awaited<ReturnType<typeof createClient>>, contactIds: string[]) {
-  const { data: meals } = await supabase
-    .from("meal_logs")
-    .select("adults_contact_id, logged_at")
-    .in("adults_contact_id", contactIds)
-    .order("logged_at", { ascending: false });
-
-  const mealsByContact: Record<string, { count: number; lastAt?: string }> = {};
-  for (const m of meals ?? []) {
-    if (!m.adults_contact_id) continue;
-    if (!mealsByContact[m.adults_contact_id]) {
-      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at };
-    }
-    mealsByContact[m.adults_contact_id].count++;
-  }
-  return mealsByContact;
-}
-
 export async function getContacts(workspaceId: string): Promise<AdultsContact[]> {
   const supabase = await createClient();
-
-  const { data: contacts } = await supabase
-    .from("adults_contacts")
-    .select("*, goals:adults_contact_goals(*)")
-    .eq("workspace_id", workspaceId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
-  if (!contacts?.length) return [];
-
-  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+  return getContactsCore(workspaceId, supabase);
 }
 
 /** Previously-removed family members — data preserved and viewable, but they
  * no longer count as active and can't be logged against going forward. */
 export async function getRemovedContacts(workspaceId: string): Promise<AdultsContact[]> {
   const supabase = await createClient();
-
-  const { data: contacts } = await supabase
-    .from("adults_contacts")
-    .select("*, goals:adults_contact_goals(*)")
-    .eq("workspace_id", workspaceId)
-    .not("deleted_at", "is", null)
-    .order("deleted_at", { ascending: false });
-
-  if (!contacts?.length) return [];
-
-  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+  return getRemovedContactsCore(workspaceId, supabase);
 }
 
 /** Soft-delete: preserves the contact's historical data (meals, goals) while

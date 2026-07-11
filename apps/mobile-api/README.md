@@ -14,19 +14,21 @@ deploy failure the main app was already hitting. Deploying this as its own
 Cloudflare Pages project gives it an independent 25 MiB budget instead of
 competing with the main app's for space.
 
-## Code duplication is intentional
+## Shared read/mapping logic lives in @nutriai/nutrition-core
 
-`src/lib/adults.ts`, `src/lib/gym.ts`, and `src/lib/entitlements.ts` mirror
-the read paths of the main app's `src/app/(adults)/adults/dashboard/actions.ts`,
+This repo is an npm workspace (see the root `package.json`'s `workspaces`
+field). `src/lib/adults.ts`, `src/lib/gym.ts`, and `src/lib/entitlements.ts`
+are thin wrappers around `packages/nutrition-core`, which the main app's
+`src/app/(adults)/adults/dashboard/actions.ts`,
 `src/app/(gym)/gym/dashboard/actions.ts`, and
-`src/lib/entitlements/entitlements.ts` — copied, not imported, since this is
-a separately deployed app with no build-time access to the main repo's
-source tree. **Keep these in sync manually** if the underlying schema or
-mapping logic changes on the main side. If this pattern needs to scale
-beyond these two products, moving the shared logic into a real npm
-workspace package (e.g. `packages/nutrition-core`) shared by both apps is
-the next step — not done here to avoid a same-day restructuring of the
-main app while it's already mid-incident on deploy size.
+`src/lib/entitlements/entitlements.ts` also delegate their read/mapping
+logic to — so a schema or mapping change made in one place is picked up by
+both apps. Each app still supplies its own Supabase client (cookie-based
+here vs bearer-token there) and its own business rules on top (e.g. this
+app's entitlement read-only enforcement is currently hardcoded off for
+Beta, independently of the main app's billing feature flags — see
+`src/lib/entitlements.ts`). Write actions (add/remove/invite/goals) stay
+exclusively in the main app; this app never needs them.
 
 ## Auth
 
@@ -62,6 +64,23 @@ a plain Workers project instead of a Pages one). Needs
 `SUPABASE_SERVICE_ROLE_KEY` set as environment variables (same values as
 the main app). Route mobile traffic to it via a subdomain (e.g.
 `api.<yourdomain>`) or a Cloudflare path rule.
+
+Cloudflare Pages runs `npm install` against the whole workspace (it detects
+the root `package-lock.json` even with root directory set to
+`apps/mobile-api`) before running the build command above, so
+`@nutriai/nutrition-core` resolves the same way it does locally — no extra
+configuration needed for that.
+
+**This app's build must use webpack, not Turbopack** (`next build
+--webpack` — already set as the `build` script in `package.json`, which
+`next-on-pages` invokes). Turbopack's workspace-root inference is
+unreliable for an npm-workspace member whose `node_modules` (including
+`next` itself) is hoisted to the monorepo root: with `turbopack.root` left
+at this app's own directory, Turbopack can't walk up far enough to find
+`next/package.json`; pointing `turbopack.root` at the monorepo root instead
+makes Next infer the *wrong* project directory and pull in the main app's
+`src/middleware.ts`. Webpack has neither problem. Revisit this once a Next
+release fixes Turbopack's monorepo root detection.
 
 **Required compatibility flag:** in the Pages project's Settings →
 Functions (or Runtime) → Compatibility flags, add `nodejs_compat` to both

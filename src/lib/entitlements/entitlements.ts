@@ -8,27 +8,13 @@ import {
 } from "@/lib/billing/feature-flags";
 import type { BillingMarket, BillingInterval } from "@/lib/billing/pricing";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
+import { getEntitlementSnapshot as getEntitlementSnapshotCore } from "@nutriai/nutrition-core";
+import type { EntitlementModule, EntitlementStatus } from "@nutriai/nutrition-core";
 
-export type EntitlementModule = "adults" | "gym";
-
-export type EntitlementStatus =
-  | "not_started"
-  | "trialing"
-  | "active"
-  | "past_due"
-  | "cancel_at_period_end"
-  | "expired"
-  | "cancelled";
+export type { EntitlementModule, EntitlementStatus };
 
 const TRIAL_LENGTH_DAYS = 30;
 const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
-
-interface EntitlementRow {
-  status: EntitlementStatus;
-  trial_start_at: string | null;
-  trial_end_at: string | null;
-  current_period_end: string | null;
-}
 
 export interface EntitlementSnapshot {
   /** Effective status accounting for trial expiry — may differ from the raw
@@ -78,55 +64,22 @@ export async function startTrialIfNeeded(
   if (error) throw new Error(`Failed to start trial: ${error.message}`);
 }
 
-function computeEffectiveStatus(row: EntitlementRow, at: Date): EntitlementStatus {
-  if (row.status === "trialing" && row.trial_end_at && at.getTime() > new Date(row.trial_end_at).getTime()) {
-    return "expired";
-  }
-  if (row.status === "active" && row.current_period_end && at.getTime() > new Date(row.current_period_end).getTime()) {
-    // Paid period lapsed with no renewal recorded — treat as expired rather
-    // than silently continuing access.
-    return "expired";
-  }
-  return row.status;
-}
-
 /** Reads the current entitlement state for (workspaceId, module), computed
- * against the controllable clock so expiry is deterministic in tests. */
+ * against the controllable clock so expiry is deterministic in tests. The
+ * status/trial-days math itself lives in @nutriai/nutrition-core, shared
+ * with the mobile API — only the isReadOnly enforcement rule below (which
+ * depends on this app's billing feature flags) is app-specific. */
 export async function getEntitlementSnapshot(
   workspaceId: string,
   module: EntitlementModule
 ): Promise<EntitlementSnapshot> {
   const admin = createServiceClient();
-  const { data } = await admin
-    .from("entitlements")
-    .select("status, trial_start_at, trial_end_at, current_period_end")
-    .eq("workspace_id", workspaceId)
-    .eq("module", module)
-    .maybeSingle();
-
-  if (!data) {
-    return {
-      status: "not_started",
-      trialStartAt: null,
-      trialEndAt: null,
-      trialDaysRemaining: null,
-      isReadOnly: false,
-    };
-  }
-
-  const at = now();
-  const status = computeEffectiveStatus(data, at);
-  const trialDaysRemaining = data.trial_end_at
-    ? Math.max(0, Math.ceil((new Date(data.trial_end_at).getTime() - at.getTime()) / (24 * 60 * 60 * 1000)))
-    : null;
+  const core = await getEntitlementSnapshotCore(admin, workspaceId, module, now());
 
   const perModuleEnforcementEnabled = module === "adults" ? FAMILY_TRIAL_ENFORCEMENT_ENABLED : GYM_TRIAL_ENFORCEMENT_ENABLED;
 
   return {
-    status,
-    trialStartAt: data.trial_start_at,
-    trialEndAt: data.trial_end_at,
-    trialDaysRemaining,
+    ...core,
     // During Beta (BILLING_AVAILABLE off), billing is not available at all,
     // so no workspace is ever read-only regardless of trial/entitlement
     // status — status is still computed and displayed for banners/countdowns,
@@ -136,7 +89,7 @@ export async function getEntitlementSnapshot(
       BILLING_AVAILABLE &&
       SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       perModuleEnforcementEnabled &&
-      (status === "expired" || status === "cancelled"),
+      (core.status === "expired" || core.status === "cancelled"),
   };
 }
 

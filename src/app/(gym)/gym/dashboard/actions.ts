@@ -18,170 +18,42 @@ import { now } from "@/lib/time/clock";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
 import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
-
-export interface GymClient {
-  id: string;
-  workspaceId: string;
-  fullName: string;
-  whatsappNumber: string;
-  age?: number;
-  gender?: "male" | "female" | "other";
-  weightKg?: number;
-  heightCm?: number;
-  bmi?: number;
-  inviteSentAt?: string;
-  createdAt: string;
-  deletedAt?: string;
-  goals: GymClientGoal[];
-  mealCount: number;
-  lastMealAt?: string;
-  trackedBiomarkers: string[];
-}
-
-export interface BiomarkerLog {
-  id: string;
-  clientId: string;
-  loggedAt: string;
-  weightKg?: number;
-  bmi?: number;
-  waistCm?: number;
-  hipCm?: number;
-  waistHipRatio?: number;
-  bodyFatPct?: number;
-  neckCm?: number;
-  chestCm?: number;
-  bicepCm?: number;
-  thighCm?: number;
-  notes?: string;
-}
-
-export interface GymClientGoal {
-  id: string;
-  goalType: string;
-  title: string;
-  description?: string;
-  targetWeightKg?: number;
-  targetProteinG?: number;
-  targetCaloriesMin?: number;
-  targetCaloriesMax?: number;
-  targetMealsPerDay?: number;
-  deadline?: string;
-  status: string;
-}
+import {
+  getClients as getClientsCore,
+  getRemovedClients as getRemovedClientsCore,
+  getOrCreateWorkspace as getOrCreateWorkspaceCore,
+} from "@nutriai/nutrition-core";
+import type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutriai/nutrition-core";
+// GymClient/GymClientGoal/BiomarkerLog/WorkoutLog come from
+// @nutriai/nutrition-core, shared with apps/mobile-api (see
+// packages/nutrition-core and that app's README) — re-exported here so
+// existing importers of these types from this module don't need to change.
+// Written as a direct `export type ... from` re-export (rather than
+// `import type` + a separate `export type {}`) because "use server" files
+// are scanned by Next for server-action exports before type erasure, and
+// that scanner doesn't reliably recognize the two-statement form as
+// type-only. MealLog/ClientDetails stay defined locally below: MealLog
+// carries the human-correction fields narrowly typed against this app's
+// own classification unions (PresenceStatus/BalanceStatus/Likelihood, see
+// src/lib/nutrition/human-corrections.ts), which the shared package
+// deliberately does not depend on.
+export type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutriai/nutrition-core";
 
 export async function getOrCreateWorkspace(userId: string, coachName?: string): Promise<{ id: string; name: string; extraCapacity: number }> {
-  const { createClient: createServiceClient } = await import("@supabase/supabase-js");
-  const admin = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-
-  const { data: existing } = await admin
-    .from("workspaces")
-    .select("id, name, extra_capacity")
-    .eq("owner_id", userId)
-    .eq("type", "gym")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .single();
-
-  if (existing) return { id: existing.id, name: existing.name, extraCapacity: existing.extra_capacity ?? 0 };
-
-  const name = `${coachName ?? "My"}'s Gym`;
-  const slug = `gym-${userId.slice(0, 8)}-${Date.now()}`;
-
-  const { data: created, error } = await admin
-    .from("workspaces")
-    .insert({ type: "gym", name, slug, owner_id: userId })
-    .select("id, name, extra_capacity")
-    .single();
-
-  if (error || !created) throw new Error(`Failed to create workspace: ${error?.message}`);
-  return { id: created.id, name: created.name, extraCapacity: created.extra_capacity ?? 0 };
-}
-
-function mapClientRow(c: any, mealsByClient: Record<string, { count: number; lastAt?: string }>): GymClient {
-  return {
-    id: c.id,
-    workspaceId: c.workspace_id,
-    fullName: c.full_name,
-    whatsappNumber: c.whatsapp_number,
-    age: c.age,
-    gender: c.gender,
-    weightKg: c.weight_kg,
-    heightCm: c.height_cm,
-    bmi: c.bmi,
-    inviteSentAt: c.invite_sent_at,
-    createdAt: c.created_at,
-    deletedAt: c.deleted_at ?? undefined,
-    mealCount: mealsByClient[c.id]?.count ?? 0,
-    lastMealAt: mealsByClient[c.id]?.lastAt,
-    trackedBiomarkers: c.tracked_biomarkers ?? [],
-    goals: (c.goals ?? []).map((g: any) => ({
-      id: g.id,
-      goalType: g.goal_type,
-      title: g.title,
-      description: g.description,
-      targetWeightKg: g.target_weight_kg,
-      targetProteinG: g.target_protein_g,
-      targetCaloriesMin: g.target_calories_min,
-      targetCaloriesMax: g.target_calories_max,
-      targetMealsPerDay: g.target_meals_per_day,
-      deadline: g.deadline,
-      status: g.status,
-    })),
-  };
-}
-
-async function fetchMealsByClient(supabase: Awaited<ReturnType<typeof createClient>>, clientIds: string[]) {
-  const { data: meals } = await supabase
-    .from("meal_logs")
-    .select("client_id, logged_at")
-    .in("client_id", clientIds)
-    .order("logged_at", { ascending: false });
-
-  const mealsByClient: Record<string, { count: number; lastAt?: string }> = {};
-  for (const m of meals ?? []) {
-    if (!mealsByClient[m.client_id]) {
-      mealsByClient[m.client_id] = { count: 0, lastAt: m.logged_at };
-    }
-    mealsByClient[m.client_id].count++;
-  }
-  return mealsByClient;
+  const admin = createServiceClient();
+  return getOrCreateWorkspaceCore(admin, userId, "gym", coachName);
 }
 
 export async function getClients(workspaceId: string): Promise<GymClient[]> {
   const supabase = await createClient();
-
-  const { data: clients } = await supabase
-    .from("gym_clients")
-    .select("*, goals:gym_client_goals(*)")
-    .eq("workspace_id", workspaceId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
-  if (!clients?.length) return [];
-
-  const mealsByClient = await fetchMealsByClient(supabase, clients.map((c: any) => c.id));
-  return clients.map((c: any) => mapClientRow(c, mealsByClient));
+  return getClientsCore(workspaceId, supabase);
 }
 
 /** Previously-removed clients — data preserved and viewable, but they no
  * longer count as active and can't be logged against going forward. */
 export async function getRemovedClients(workspaceId: string): Promise<GymClient[]> {
   const supabase = await createClient();
-
-  const { data: clients } = await supabase
-    .from("gym_clients")
-    .select("*, goals:gym_client_goals(*)")
-    .eq("workspace_id", workspaceId)
-    .not("deleted_at", "is", null)
-    .order("deleted_at", { ascending: false });
-
-  if (!clients?.length) return [];
-
-  const mealsByClient = await fetchMealsByClient(supabase, clients.map((c: any) => c.id));
-  return clients.map((c: any) => mapClientRow(c, mealsByClient));
+  return getRemovedClientsCore(workspaceId, supabase);
 }
 
 /** Soft-delete: preserves the client's historical data (meals, workouts,
@@ -236,15 +108,6 @@ export interface MealLog {
    * via the Meal Review Console — dashboards should prefer this over the
    * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
   humanCorrection?: HumanCorrectionFields;
-}
-
-export interface WorkoutLog {
-  id: string;
-  clientId: string;
-  loggedAt: string;
-  description?: string;
-  workoutType?: string;
-  durationMinutes?: number;
 }
 
 export interface ClientDetails {
