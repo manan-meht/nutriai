@@ -91,3 +91,40 @@ Node.js APIs under the hood that aren't available in the Workers runtime
 by default. **A fresh deployment is required after setting/changing the
 flags** — Cloudflare does not apply flag changes retroactively to a
 deployment that already ran.
+
+## First-deploy checklist (learned the hard way)
+
+Getting this project's first Production deployment actually working took
+several rounds of debugging, all stemming from one pattern: **Cloudflare's
+Production and Preview environments are completely independent** —
+compatibility flags, environment variables, and even which deployment
+counts as "Production" at all must each be configured/triggered
+separately. Checklist for a new project or a new environment:
+
+1. **Project type**: the dashboard's "Ship something new" flow can create
+   a native Workers project shell instead of a classic Pages project. If
+   `wrangler pages deploy` fails with `The Pages project "X" does not
+   exist`, run `npx wrangler pages project create <name>
+   --production-branch=main` once from your terminal first.
+2. **Deploy command must specify the branch explicitly**: use
+   `npx wrangler pages deploy .vercel/output/static
+   --project-name=<name> --branch=main` — without `--branch=main`, a build
+   from `main` still gets tagged **Preview**, not Production, and the bare
+   `<name>.pages.dev` domain won't update. Check via `npx wrangler pages
+   deployment list --project-name=<name>` — confirm the latest row shows
+   `Environment: Production`.
+3. **Compatibility flags** (Settings → Runtime): add `nodejs_compat` to
+   **both** Production and Preview via the "Choose Environment" dropdown —
+   setting only one is the easy mistake to make.
+4. **Environment variables** (Settings → Variables and secrets): add
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
+   `SUPABASE_SERVICE_ROLE_KEY` (as a Secret) to **both** Production and
+   Preview, same dropdown. Missing this produces a 500 with `Error:
+   supabaseKey is required.` in the logs — check with `npx wrangler pages
+   deployment tail <deployment-id> --project-name=<name>` while making a
+   real request, since the client-facing error is just a generic "Internal
+   Server Error" with no detail.
+5. **Nothing here applies retroactively**: after changing compatibility
+   flags or env vars, you must trigger a brand new deployment (another
+   `wrangler pages deploy`, or push a commit) — an already-running
+   deployment keeps its original bindings/flags forever.
