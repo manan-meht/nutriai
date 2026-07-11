@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
-import { apiGet } from "../../src/lib/api";
-import { supabase } from "../../src/lib/supabase";
-import { clearSelectedProduct, detectProductFromEmail, type Product } from "../../src/lib/product";
+import { apiGet } from "../lib/api";
+import { supabase } from "../lib/supabase";
 
 interface WorkspaceResponse {
   workspace: { id: string; name: string };
@@ -17,52 +16,45 @@ interface Person {
   mealCount: number;
 }
 
-const PRODUCT_CONFIG: Record<
-  Product,
-  { workspacePath: string; listPath: string; listKey: "contacts" | "clients"; personLabel: string; emptyLabel: string }
-> = {
-  adults: { workspacePath: "/adults/workspace", listPath: "/adults/contacts", listKey: "contacts", personLabel: "person", emptyLabel: "No one added yet." },
-  gym: { workspacePath: "/gym/workspace", listPath: "/gym/clients", listKey: "clients", personLabel: "client", emptyLabel: "No clients added yet." },
-};
+interface PeopleDashboardProps {
+  workspacePath: string;
+  listPath: string;
+  listKey: "contacts" | "clients";
+  emptyLabel: string;
+  detailRouteBase: string;
+}
 
-// First end-to-end screen: proves login (session) -> mobile-api (bearer
-// auth) -> real data render, in one place, before building out the rest
-// of the app's screens. Branches on the product detected from the
-// account's own scoped email (see detectProductFromEmail) rather than the
-// AsyncStorage selection from select-product.tsx — that selection only
-// exists to scope the email correctly *before* a session exists; once
-// authenticated, the account itself is the source of truth, so an
-// existing session on a cold app start lands here directly instead of
-// being routed back through product-selection/login.
-export default function DashboardScreen() {
+// Shared by app/(app)/family/index.tsx and app/(app)/coach/index.tsx —
+// those are deliberately separate route files/flows per product, but the
+// list-of-people layout is identical between them, only the endpoints and
+// copy differ (Self skips this screen entirely, see app/(app)/self/index.tsx).
+export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, detailRouteBase }: PeopleDashboardProps) {
   const router = useRouter();
-  const [product, setProduct] = useState<Product | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
-    setError(null);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const p = detectProductFromEmail(data.session?.user.email);
-      setProduct(p);
-      const config = PRODUCT_CONFIG[p];
-      const [workspaceRes, listRes] = await Promise.all([
-        apiGet<WorkspaceResponse>(config.workspacePath),
-        apiGet<Record<string, Person[]>>(config.listPath),
-      ]);
-      setWorkspace(workspaceRes);
-      setPeople(listRes[config.listKey] ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      isRefresh ? setRefreshing(false) : setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (isRefresh = false) => {
+      isRefresh ? setRefreshing(true) : setLoading(true);
+      setError(null);
+      try {
+        const [workspaceRes, listRes] = await Promise.all([
+          apiGet<WorkspaceResponse>(workspacePath),
+          apiGet<Record<string, Person[]>>(listPath),
+        ]);
+        setWorkspace(workspaceRes);
+        setPeople(listRes[listKey] ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+      } finally {
+        isRefresh ? setRefreshing(false) : setLoading(false);
+      }
+    },
+    [workspacePath, listPath, listKey]
+  );
 
   useEffect(() => {
     load();
@@ -76,15 +68,14 @@ export default function DashboardScreen() {
     );
   }
 
-  if (error || !product) {
+  if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>{error ?? "Something went wrong."}</Text>
+        <Text style={styles.error}>{error}</Text>
       </View>
     );
   }
 
-  const config = PRODUCT_CONFIG[product];
   const name = workspace?.caregiverName ?? workspace?.coachName;
 
   return (
@@ -97,22 +88,16 @@ export default function DashboardScreen() {
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6750A4" />}
-        ListEmptyComponent={<Text style={styles.empty}>{config.emptyLabel}</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{emptyLabel}</Text>}
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => router.push(`/person/${item.id}`)}>
+          <Pressable style={styles.card} onPress={() => router.push(`${detailRouteBase}/${item.id}`)}>
             <Text style={styles.cardName}>{item.fullName}</Text>
             <Text style={styles.cardMeta}>{item.mealCount} meals logged</Text>
           </Pressable>
         )}
       />
 
-      <Pressable
-        style={styles.signOut}
-        onPress={() => {
-          clearSelectedProduct();
-          supabase.auth.signOut();
-        }}
-      >
+      <Pressable style={styles.signOut} onPress={() => supabase.auth.signOut()}>
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
     </View>

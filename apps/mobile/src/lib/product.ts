@@ -1,37 +1,31 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "./supabase";
+import { apiGet } from "./api";
 
 export type Product = "adults" | "gym";
-
-const STORAGE_KEY = "selectedProduct";
-
-// Persists the user's product choice from the selection screen through
-// login and into the dashboard, so a screen deep in the (app) group
-// doesn't need it threaded through as a route param. AsyncStorage (not
-// component state) so it survives a cold app restart with an existing
-// session — the selection screen otherwise only ever runs once per login.
-export async function getSelectedProduct(): Promise<Product | null> {
-  const value = await AsyncStorage.getItem(STORAGE_KEY);
-  return value === "adults" || value === "gym" ? value : null;
-}
-
-export async function setSelectedProduct(product: Product): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, product);
-}
-
-export async function clearSelectedProduct(): Promise<void> {
-  await AsyncStorage.removeItem(STORAGE_KEY);
-}
+export type Tier = "self" | "family" | "coach";
 
 /**
  * Derives which product an already-authenticated session belongs to from
  * the account's actual (scoped) email — see scopedEmail() in
- * src/lib/auth.ts, which tags adults/family accounts with
- * "+nutriai-adults" and leaves gym accounts untouched. This is the source
- * of truth for the dashboard screen (not the AsyncStorage selection from
- * select-product.tsx, which only exists to pick the right scoping *before*
- * a session exists) — it works correctly for an existing session on a
- * cold app start, not just a fresh login.
+ * src/lib/auth.ts, which tags adults/family/self accounts with
+ * "+nutriai-adults" and leaves gym/coach accounts untouched.
  */
 export function detectProductFromEmail(email: string | null | undefined): Product {
   return email?.includes("+nutriai-adults@") ? "adults" : "gym";
+}
+
+/**
+ * Self and Family both scope to the same "adults" account tag (see
+ * detectProductFromEmail), so they can't be told apart from the email
+ * alone the way Coach can — this fetches the workspace itself and reads
+ * workspace.plan, the same field the main web app uses for this exact
+ * distinction (see workspaces.plan in the main app's schema).
+ */
+export async function detectTier(): Promise<Tier> {
+  const { data } = await supabase.auth.getSession();
+  const product = detectProductFromEmail(data.session?.user.email);
+  if (product === "gym") return "coach";
+
+  const { workspace } = await apiGet<{ workspace: { plan?: string } }>("/adults/workspace");
+  return workspace.plan === "self" ? "self" : "family";
 }

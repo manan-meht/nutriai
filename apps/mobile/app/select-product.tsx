@@ -1,30 +1,34 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
-import { setSelectedProduct, type Product } from "../src/lib/product";
 
 // First screen a logged-out user sees — no marketing pages in the mobile
-// app, just a direct choice before login, matching the two products the
-// mobile-api actually serves (see apps/mobile-api).
+// app, just a direct choice before login. Self and Family both lead to
+// the "adults" product's login (see app/login/self.tsx and
+// app/login/family.tsx — they share the same account scoping, only the
+// copy differs; which dashboard area a session lands in afterward is
+// decided by workspace.plan, see app/_layout.tsx), Coach to the "gym"
+// product's login.
 export default function SelectProductScreen() {
   const router = useRouter();
-
-  async function choose(product: Product) {
-    await setSelectedProduct(product);
-    router.push("/login");
-  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Tistra Health</Text>
       <Text style={styles.subtitle}>Who's tracking?</Text>
 
-      <Pressable style={styles.card} onPress={() => choose("adults")}>
+      <Pressable style={styles.card} onPress={() => router.push("/login/self")}>
         <Text style={styles.cardEmoji}>🙋</Text>
-        <Text style={styles.cardTitle}>Family / Self</Text>
-        <Text style={styles.cardSubtitle}>Track your own meals, or a family member's.</Text>
+        <Text style={styles.cardTitle}>Self</Text>
+        <Text style={styles.cardSubtitle}>Track your own meals and habits.</Text>
       </Pressable>
 
-      <Pressable style={styles.card} onPress={() => choose("gym")}>
+      <Pressable style={styles.card} onPress={() => router.push("/login/family")}>
+        <Text style={styles.cardEmoji}>👨‍👩‍👧</Text>
+        <Text style={styles.cardTitle}>Family</Text>
+        <Text style={styles.cardSubtitle}>Track meals for a partner, parent, or child.</Text>
+      </Pressable>
+
+      <Pressable style={styles.card} onPress={() => router.push("/login/coach")}>
         <Text style={styles.cardEmoji}>💪</Text>
         <Text style={styles.cardTitle}>Gym & Coach</Text>
         <Text style={styles.cardSubtitle}>Track nutrition for your clients.</Text>

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { apiGet } from "../../../src/lib/api";
-import { supabase } from "../../../src/lib/supabase";
-import { detectProductFromEmail, type Product } from "../../../src/lib/product";
+import { useRouter } from "expo-router";
+import { apiGet } from "../lib/api";
 
 interface Meal {
   id: string;
@@ -32,8 +30,7 @@ interface Biomarker {
 }
 
 // Adults nests under `contact`, gym under `client`; only gym's response
-// includes workouts/biomarkers — both are optional here and simply absent
-// for adults.
+// includes workouts/biomarkers.
 interface DetailResponse {
   contact?: { fullName: string };
   client?: { fullName: string };
@@ -48,8 +45,20 @@ function formatRange(min: number, max: number, unit = ""): string {
   return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
 }
 
-export default function PersonDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+interface PersonDetailProps {
+  apiPath: string;
+  /** Shows a back button when true (Family/Coach, reached via a list
+   * screen) — Self skips straight here from login, so there's nothing to
+   * go back to; it shows a sign-out link in that spot instead. */
+  showBackButton?: boolean;
+  onSignOut?: () => void;
+}
+
+// Shared by app/(app)/family/person/[id].tsx, app/(app)/coach/person/[id].tsx,
+// and app/(app)/self/index.tsx (Self skips the list screen and lands here
+// directly after login) — those are deliberately separate route
+// files/flows per product, but the meal-history layout is identical.
+export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: PersonDetailProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,17 +70,14 @@ export default function PersonDetailScreen() {
       isRefresh ? setRefreshing(true) : setLoading(true);
       setError(null);
       try {
-        const { data } = await supabase.auth.getSession();
-        const product: Product = detectProductFromEmail(data.session?.user.email);
-        const path = product === "adults" ? `/adults/contacts/${id}` : `/gym/clients/${id}`;
-        setDetail(await apiGet<DetailResponse>(path));
+        setDetail(await apiGet<DetailResponse>(apiPath));
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       } finally {
         isRefresh ? setRefreshing(false) : setLoading(false);
       }
     },
-    [id]
+    [apiPath]
   );
 
   useEffect(() => {
@@ -99,9 +105,17 @@ export default function PersonDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.back} onPress={() => router.back()}>
-        <Text style={styles.backText}>← Back</Text>
-      </Pressable>
+      {showBackButton ? (
+        <Pressable style={styles.back} onPress={() => router.back()}>
+          <Text style={styles.backText}>← Back</Text>
+        </Pressable>
+      ) : (
+        onSignOut && (
+          <Pressable style={styles.back} onPress={onSignOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        )
+      )}
 
       <Text style={styles.name}>{name}</Text>
       <Text style={styles.subtitle}>{detail.meals.length} meal{detail.meals.length === 1 ? "" : "s"} logged</Text>
@@ -164,6 +178,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
   back: { marginBottom: 12 },
   backText: { color: "#6750A4", fontSize: 15, fontWeight: "500" },
+  signOutText: { color: "#c00", fontSize: 15, fontWeight: "500" },
   name: { fontSize: 24, fontWeight: "700", color: "#111" },
   subtitle: { fontSize: 14, color: "#666", marginTop: 2, marginBottom: 20 },
   list: { paddingBottom: 24 },
