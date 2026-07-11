@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from 
 import { supabase } from "../lib/supabase";
 import { scopedEmail } from "../lib/auth";
 import { signInWithOAuthProvider } from "../lib/oauth";
+import { colors, radii } from "../lib/theme";
 
 interface LoginFormProps {
   /** Determines the account scoping via scopedEmail() — "adults" for both
@@ -66,7 +67,7 @@ export function LoginForm({ scopeAs, subtitle }: LoginFormProps) {
         disabled={loading || !!oauthLoading}
       >
         {oauthLoading === "google" ? (
-          <ActivityIndicator color="#111" />
+          <ActivityIndicator color={colors.textPrimary} />
         ) : (
           <Text style={styles.oauthButtonText}>Continue with Google</Text>
         )}
@@ -78,7 +79,7 @@ export function LoginForm({ scopeAs, subtitle }: LoginFormProps) {
         disabled={loading || !!oauthLoading}
       >
         {oauthLoading === "facebook" ? (
-          <ActivityIndicator color="#111" />
+          <ActivityIndicator color={colors.textPrimary} />
         ) : (
           <Text style={styles.oauthButtonText}>Continue with Facebook</Text>
         )}
@@ -109,44 +110,44 @@ export function LoginForm({ scopeAs, subtitle }: LoginFormProps) {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={styles.button} onPress={handleLogin} disabled={loading || !!oauthLoading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
+        {loading ? <ActivityIndicator color={colors.white} /> : <Text style={styles.buttonText}>Sign in</Text>}
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#fff" },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 4, color: "#111" },
-  subtitle: { fontSize: 15, color: "#666", marginBottom: 32 },
+  container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: colors.white },
+  title: { fontSize: 28, fontWeight: "700", marginBottom: 4, color: colors.textPrimary },
+  subtitle: { fontSize: 15, color: colors.textSecondary, marginBottom: 32 },
   oauthButton: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
     padding: 14,
     alignItems: "center",
     marginBottom: 10,
-    backgroundColor: "#fff",
+    backgroundColor: colors.white,
   },
-  oauthButtonText: { fontSize: 15, fontWeight: "600", color: "#111" },
+  oauthButtonText: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
   divider: { flexDirection: "row", alignItems: "center", marginVertical: 16 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: "#eee" },
-  dividerText: { marginHorizontal: 10, fontSize: 13, color: "#999" },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: { marginHorizontal: 10, fontSize: 13, color: colors.textMeta },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 12,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
     padding: 14,
     marginBottom: 12,
     fontSize: 16,
   },
   button: {
-    backgroundColor: "#6750A4",
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
     padding: 16,
     alignItems: "center",
     marginTop: 8,
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  error: { color: "#c00", marginBottom: 12 },
+  buttonText: { color: colors.white, fontSize: 16, fontWeight: "600" },
+  error: { color: colors.error, marginBottom: 12 },
 });

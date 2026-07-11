@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList, Refresh
 import { useRouter } from "expo-router";
 import { apiGet } from "../lib/api";
 import { supabase } from "../lib/supabase";
+import { colors, radii } from "../lib/theme";
 
 interface WorkspaceResponse {
   workspace: { id: string; name: string };
@@ -24,10 +25,17 @@ interface PeopleDashboardProps {
   detailRouteBase: string;
 }
 
+function initials(name: string): string {
+  return name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+}
+
 // Shared by app/(app)/family/index.tsx and app/(app)/coach/index.tsx —
 // those are deliberately separate route files/flows per product, but the
 // list-of-people layout is identical between them, only the endpoints and
 // copy differ (Self skips this screen entirely, see app/(app)/self/index.tsx).
+// Visual language mirrors the web dashboard's ContactCard/ClientCard —
+// see src/components/adults/AdultsDashboardClient.tsx and
+// src/components/gym/ClientCard.tsx.
 export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, detailRouteBase }: PeopleDashboardProps) {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
@@ -63,7 +71,7 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6750A4" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -80,19 +88,37 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
 
   return (
     <View style={styles.container}>
-      <Text style={styles.greeting}>{name ? `Hi, ${name.split(" ")[0]} 👋` : "Your dashboard"}</Text>
-      <Text style={styles.subtitle}>{workspace?.workspace.name}</Text>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>{name ? `Hi, ${name.split(" ")[0]} 👋` : "Your dashboard"}</Text>
+          <Text style={styles.subtitle}>{workspace?.workspace.name}</Text>
+        </View>
+      </View>
 
       <FlatList
         data={people}
         keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6750A4" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListEmptyComponent={<Text style={styles.empty}>{emptyLabel}</Text>}
         renderItem={({ item }) => (
           <Pressable style={styles.card} onPress={() => router.push(`${detailRouteBase}/${item.id}`)}>
-            <Text style={styles.cardName}>{item.fullName}</Text>
-            <Text style={styles.cardMeta}>{item.mealCount} meals logged</Text>
+            <View style={styles.cardRow}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initials(item.fullName)}</Text>
+                {item.mealCount > 0 && <View style={styles.presenceDot} />}
+              </View>
+              <View style={styles.cardInfo}>
+                <Text style={styles.cardName}>{item.fullName}</Text>
+                {item.mealCount > 0 ? (
+                  <View style={styles.activityBanner}>
+                    <Text style={styles.activityText}>🍽️ {item.mealCount} meal{item.mealCount === 1 ? "" : "s"} logged</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.cardMeta}>No meals logged yet</Text>
+                )}
+              </View>
+            </View>
           </Pressable>
         )}
       />
@@ -105,21 +131,54 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", paddingTop: 64, paddingHorizontal: 20 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
-  greeting: { fontSize: 24, fontWeight: "700", color: "#111" },
-  subtitle: { fontSize: 15, color: "#666", marginTop: 2, marginBottom: 20 },
+  container: { flex: 1, backgroundColor: colors.surface, paddingTop: 60, paddingHorizontal: 20 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface },
+  header: { marginBottom: 20 },
+  greeting: { fontSize: 24, fontWeight: "700", color: colors.textPrimary },
+  subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
   list: { paddingBottom: 24 },
-  empty: { color: "#999", textAlign: "center", marginTop: 40 },
+  empty: { color: colors.textMeta, textAlign: "center", marginTop: 40 },
   card: {
-    backgroundColor: "#f7f5fb",
-    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 16,
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  cardName: { fontSize: 16, fontWeight: "600", color: "#111" },
-  cardMeta: { fontSize: 13, color: "#666", marginTop: 2 },
-  error: { color: "#c00", padding: 20, textAlign: "center" },
+  cardRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontSize: 14, fontWeight: "700", color: colors.primary },
+  presenceDot: {
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 12,
+    height: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.activityDot,
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
+  cardInfo: { flex: 1 },
+  cardName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, marginBottom: 4 },
+  cardMeta: { fontSize: 12, color: colors.textMeta },
+  activityBanner: {
+    backgroundColor: colors.activityBg,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+  },
+  activityText: { fontSize: 12, fontWeight: "600", color: colors.activityText },
+  error: { color: colors.error, padding: 20, textAlign: "center" },
   signOut: { alignItems: "center", paddingVertical: 16 },
-  signOutText: { color: "#c00", fontSize: 14, fontWeight: "500" },
+  signOutText: { color: colors.error, fontSize: 14, fontWeight: "500" },
 });

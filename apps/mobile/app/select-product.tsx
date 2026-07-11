@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import { colors, radii } from "../src/lib/theme";
 
 // First screen a logged-out user sees — no marketing pages in the mobile
 // app, just a direct choice before login. Self and Family both lead to
@@ -38,18 +39,18 @@ export default function SelectProductScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#fff" },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 4, color: "#111", textAlign: "center" },
-  subtitle: { fontSize: 15, color: "#666", marginBottom: 32, textAlign: "center" },
+  container: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: colors.white },
+  title: { fontSize: 28, fontWeight: "700", marginBottom: 4, color: colors.textPrimary, textAlign: "center" },
+  subtitle: { fontSize: 15, color: colors.textSecondary, marginBottom: 32, textAlign: "center" },
   card: {
     borderWidth: 1,
-    borderColor: "#eee",
-    backgroundColor: "#faf9fc",
-    borderRadius: 16,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
     padding: 20,
     marginBottom: 16,
   },
   cardEmoji: { fontSize: 32, marginBottom: 8 },
-  cardTitle: { fontSize: 18, fontWeight: "600", color: "#111", marginBottom: 4 },
-  cardSubtitle: { fontSize: 14, color: "#666" },
+  cardTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: 4 },
+  cardSubtitle: { fontSize: 14, color: colors.textSecondary },
 });

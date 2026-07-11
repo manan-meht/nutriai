@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { apiGet } from "../lib/api";
+import { colors, radii, mealEmoji } from "../lib/theme";
 
 interface Meal {
   id: string;
@@ -39,6 +40,10 @@ interface DetailResponse {
   biomarkers?: Biomarker[];
 }
 
+function initials(name: string): string {
+  return name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+}
+
 function formatRange(min: number, max: number, unit = ""): string {
   const lo = Math.round(min);
   const hi = Math.round(max);
@@ -58,6 +63,9 @@ interface PersonDetailProps {
 // and app/(app)/self/index.tsx (Self skips the list screen and lands here
 // directly after login) — those are deliberately separate route
 // files/flows per product, but the meal-history layout is identical.
+// Visual language mirrors the web app's contact detail page (solid
+// primary-color header bar) — see
+// src/components/adults/dashboard/ContactDashboard.tsx.
 export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: PersonDetailProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
@@ -87,7 +95,7 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#6750A4" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
@@ -105,26 +113,34 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
 
   return (
     <View style={styles.container}>
-      {showBackButton ? (
-        <Pressable style={styles.back} onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
-        </Pressable>
-      ) : (
-        onSignOut && (
-          <Pressable style={styles.back} onPress={onSignOut}>
-            <Text style={styles.signOutText}>Sign out</Text>
+      <View style={styles.header}>
+        {showBackButton ? (
+          <Pressable style={styles.headerAction} onPress={() => router.back()}>
+            <Text style={styles.headerActionText}>← Back</Text>
           </Pressable>
-        )
-      )}
-
-      <Text style={styles.name}>{name}</Text>
-      <Text style={styles.subtitle}>{detail.meals.length} meal{detail.meals.length === 1 ? "" : "s"} logged</Text>
+        ) : (
+          onSignOut && (
+            <Pressable style={styles.headerAction} onPress={onSignOut}>
+              <Text style={styles.headerActionText}>Sign out</Text>
+            </Pressable>
+          )
+        )}
+        <View style={styles.headerRow}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials(name)}</Text>
+          </View>
+          <View>
+            <Text style={styles.name}>{name}</Text>
+            <Text style={styles.subtitle}>{detail.meals.length} meal{detail.meals.length === 1 ? "" : "s"} logged</Text>
+          </View>
+        </View>
+      </View>
 
       <FlatList
         data={detail.meals}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor="#6750A4" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListHeaderComponent={
           detail.workouts?.length || latestBiomarker ? (
             <View style={styles.headerSections}>
@@ -159,13 +175,16 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.mealType}>{item.mealType.charAt(0).toUpperCase() + item.mealType.slice(1)}</Text>
+              <Text style={styles.mealType}>
+                {mealEmoji(item.mealType)} {item.mealType.charAt(0).toUpperCase() + item.mealType.slice(1)}
+              </Text>
               <Text style={styles.loggedAt}>{new Date(item.loggedAt).toLocaleDateString()}</Text>
             </View>
             {item.aiSummary && <Text style={styles.summary}>{item.aiSummary}</Text>}
-            <Text style={styles.macros}>
-              {formatRange(item.totalCaloriesMin, item.totalCaloriesMax)} cal · {formatRange(item.totalProteinMin, item.totalProteinMax, "g")} protein
-            </Text>
+            <View style={styles.macroRow}>
+              <Text style={styles.macroProtein}>{formatRange(item.totalProteinMin, item.totalProteinMax, "g")} protein</Text>
+              <Text style={styles.macroCalories}>{formatRange(item.totalCaloriesMin, item.totalCaloriesMax)} cal</Text>
+            </View>
           </View>
         )}
       />
@@ -174,31 +193,45 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff", paddingTop: 56, paddingHorizontal: 20 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
-  back: { marginBottom: 12 },
-  backText: { color: "#6750A4", fontSize: 15, fontWeight: "500" },
-  signOutText: { color: "#c00", fontSize: 15, fontWeight: "500" },
-  name: { fontSize: 24, fontWeight: "700", color: "#111" },
-  subtitle: { fontSize: 14, color: "#666", marginTop: 2, marginBottom: 20 },
-  list: { paddingBottom: 24 },
-  empty: { color: "#999", textAlign: "center", marginTop: 40 },
+  container: { flex: 1, backgroundColor: colors.surface },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface },
+  header: { backgroundColor: colors.primary, paddingTop: 56, paddingBottom: 20, paddingHorizontal: 20 },
+  headerAction: { marginBottom: 16 },
+  headerActionText: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontWeight: "500" },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.full,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { fontSize: 15, fontWeight: "700", color: colors.white },
+  name: { fontSize: 20, fontWeight: "700", color: colors.white },
+  subtitle: { fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2 },
+  list: { padding: 20, paddingBottom: 24 },
+  empty: { color: colors.textMeta, textAlign: "center", marginTop: 40 },
   headerSections: { marginBottom: 8 },
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 13, fontWeight: "700", color: "#999", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
-  sectionMeta: { fontSize: 15, color: "#111" },
+  sectionTitle: { fontSize: 12, fontWeight: "700", color: colors.textMeta, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
+  sectionMeta: { fontSize: 15, color: colors.textPrimary },
   workoutRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
-  workoutDesc: { fontSize: 14, color: "#111", flexShrink: 1 },
+  workoutDesc: { fontSize: 14, color: colors.textPrimary, flexShrink: 1 },
   card: {
-    backgroundColor: "#f7f5fb",
-    borderRadius: 14,
+    backgroundColor: colors.white,
+    borderRadius: radii.card,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: 16,
     marginBottom: 10,
   },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
-  mealType: { fontSize: 15, fontWeight: "600", color: "#111" },
-  loggedAt: { fontSize: 13, color: "#999" },
-  summary: { fontSize: 14, color: "#444", marginBottom: 6 },
-  macros: { fontSize: 13, color: "#666" },
-  error: { color: "#c00", padding: 20, textAlign: "center" },
+  mealType: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
+  loggedAt: { fontSize: 12, color: colors.textMeta },
+  summary: { fontSize: 14, color: "#4B5563", marginBottom: 8 },
+  macroRow: { flexDirection: "row", gap: 12 },
+  macroProtein: { fontSize: 12, fontWeight: "600", color: colors.primary },
+  macroCalories: { fontSize: 12, color: colors.textSecondary },
+  error: { color: colors.error, padding: 20, textAlign: "center" },
 });
