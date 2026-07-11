@@ -25,3 +25,20 @@ export async function claimMessageId(messageId: string): Promise<boolean> {
   console.error("[whatsapp-dedup] claim failed, processing anyway:", error);
   return true;
 }
+
+/**
+ * Claims a WhatsApp media id, the same way claimMessageId claims a wamid.
+ * Covers a different redelivery path: the WhatsApp client itself silently
+ * resending a photo as a second, distinct message (its own wamid) after a
+ * flaky send. That isn't caught by claimMessageId since the wamid differs,
+ * but the underlying media id — assigned once per upload by Meta — is the
+ * same, so claiming it here stops the same photo being analyzed and logged
+ * twice under two different message ids.
+ */
+export async function claimMediaId(mediaId: string): Promise<boolean> {
+  const { error } = await admin().from("whatsapp_processed_media").insert({ media_id: mediaId });
+  if (!error) return true;
+  if (error.code === "23505") return false;
+  console.error("[whatsapp-dedup] media claim failed, processing anyway:", error);
+  return true;
+}

@@ -3,7 +3,7 @@ export const runtime = "edge";
 import { NextRequest, NextResponse } from "next/server";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
 import { handleIncomingMessage } from "@/lib/whatsapp/conversation-handler";
-import { claimMessageId } from "@/lib/whatsapp/dedup";
+import { claimMessageId, claimMediaId } from "@/lib/whatsapp/dedup";
 
 
 // Meta webhook verification
@@ -68,6 +68,16 @@ async function processWebhook(body: any) {
             const mediaId: string = message.image?.id;
             const mimeType: string = message.image?.mime_type ?? "image/jpeg";
             const caption: string | undefined = message.image?.caption;
+
+            // The WhatsApp client can resend the same photo as a second,
+            // distinct message (its own wamid) after a flaky send — the
+            // wamid dedup above doesn't catch that since the ids differ,
+            // but the underlying media id is the same. Skip it here before
+            // spending an AI call and a duplicate log entry on it.
+            if (mediaId && !(await claimMediaId(mediaId))) {
+              console.log(`[webhook] skipping duplicate media ${mediaId} from ${from}`);
+              continue;
+            }
 
             const { buffer } = await downloadMedia(mediaId);
 
