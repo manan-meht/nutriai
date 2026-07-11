@@ -21,3 +21,17 @@ export async function setSelectedProduct(product: Product): Promise<void> {
 export async function clearSelectedProduct(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
+
+/**
+ * Derives which product an already-authenticated session belongs to from
+ * the account's actual (scoped) email — see scopedEmail() in
+ * src/lib/auth.ts, which tags adults/family accounts with
+ * "+nutriai-adults" and leaves gym accounts untouched. This is the source
+ * of truth for the dashboard screen (not the AsyncStorage selection from
+ * select-product.tsx, which only exists to pick the right scoping *before*
+ * a session exists) — it works correctly for an existing session on a
+ * cold app start, not just a fresh login.
+ */
+export function detectProductFromEmail(email: string | null | undefined): Product {
+  return email?.includes("+nutriai-adults@") ? "adults" : "gym";
+}

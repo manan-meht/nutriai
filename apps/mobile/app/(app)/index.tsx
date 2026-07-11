@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList } from "react-native";
 import { apiGet } from "../../src/lib/api";
 import { supabase } from "../../src/lib/supabase";
-import { getSelectedProduct, clearSelectedProduct, type Product } from "../../src/lib/product";
+import { clearSelectedProduct, detectProductFromEmail, type Product } from "../../src/lib/product";
 
 interface WorkspaceResponse {
   workspace: { id: string; name: string };
@@ -26,9 +26,13 @@ const PRODUCT_CONFIG: Record<
 
 // First end-to-end screen: proves login (session) -> mobile-api (bearer
 // auth) -> real data render, in one place, before building out the rest
-// of the app's screens. Branches on the product chosen on
-// app/select-product.tsx rather than being two separate screens, since
-// the layout is identical — only the endpoints and copy differ.
+// of the app's screens. Branches on the product detected from the
+// account's own scoped email (see detectProductFromEmail) rather than the
+// AsyncStorage selection from select-product.tsx — that selection only
+// exists to scope the email correctly *before* a session exists; once
+// authenticated, the account itself is the source of truth, so an
+// existing session on a cold app start lands here directly instead of
+// being routed back through product-selection/login.
 export default function DashboardScreen() {
   const [product, setProduct] = useState<Product | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
@@ -37,12 +41,8 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getSelectedProduct().then((p) => {
-      if (!p) {
-        setError("No product selected.");
-        setLoading(false);
-        return;
-      }
+    supabase.auth.getSession().then(({ data }) => {
+      const p = detectProductFromEmail(data.session?.user.email);
       setProduct(p);
       const config = PRODUCT_CONFIG[p];
       Promise.all([
