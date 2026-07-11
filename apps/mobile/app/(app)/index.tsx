@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList } from "react-native";
+import { useRouter } from "expo-router";
 import { apiGet } from "../../src/lib/api";
 import { supabase } from "../../src/lib/supabase";
 import { clearSelectedProduct, detectProductFromEmail, type Product } from "../../src/lib/product";
@@ -34,6 +35,7 @@ const PRODUCT_CONFIG: Record<
 // existing session on a cold app start lands here directly instead of
 // being routed back through product-selection/login.
 export default function DashboardScreen() {
+  const router = useRouter();
   const [product, setProduct] = useState<Product | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
@@ -88,10 +90,10 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.list}
         ListEmptyComponent={<Text style={styles.empty}>{config.emptyLabel}</Text>}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <Pressable style={styles.card} onPress={() => router.push(`/person/${item.id}`)}>
             <Text style={styles.cardName}>{item.fullName}</Text>
             <Text style={styles.cardMeta}>{item.mealCount} meals logged</Text>
-          </View>
+          </Pressable>
         )}
       />
 
