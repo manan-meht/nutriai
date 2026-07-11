@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { apiGet } from "../lib/api";
 import { colors, radii, mealEmoji } from "../lib/theme";
+import { classifyMeal, type ClassifiableMeal } from "../lib/nutrition/food-classification";
+import { applyHumanCorrection, type HumanCorrectionFields } from "../lib/nutrition/human-corrections";
+import { buildHabitDashboard } from "../lib/nutrition/habit-insights";
+import { recommendProteinGrams } from "../lib/nutrition/protein-recommendation";
+import { filterByDateRange, getDateRangeStart } from "../lib/dashboard/date-range";
+import {
+  TrendCardGrid,
+  HealthCard,
+  WeeklyFocusCard,
+  HabitMomentumCard,
+  FoodPatternSpectrumCard,
+  WeeklyProgressBoard,
+} from "./HabitDashboard";
+import { ActivityHeatmap } from "./ActivityHeatmap";
+import { MacroBarChart, type DayDatum } from "./MacroBarChart";
 
 interface Meal {
   id: string;
   mealType: string;
   loggedAt: string;
+  foods: Array<{ name: string }>;
   totalCaloriesMin: number;
   totalCaloriesMax: number;
   totalProteinMin: number;
   totalProteinMax: number;
   aiSummary?: string;
+  humanCorrection?: HumanCorrectionFields;
 }
 
 interface Workout {
@@ -30,11 +47,20 @@ interface Biomarker {
   bmi?: number;
 }
 
+interface PersonSummary {
+  fullName: string;
+  age?: number;
+  gender?: string;
+  weightKg?: number;
+  heightCm?: number;
+  goals?: Array<{ status: string; targetProteinG?: number; targetCaloriesMin?: number; targetCaloriesMax?: number }>;
+}
+
 // Adults nests under `contact`, gym under `client`; only gym's response
 // includes workouts/biomarkers.
 interface DetailResponse {
-  contact?: { fullName: string };
-  client?: { fullName: string };
+  contact?: PersonSummary;
+  client?: PersonSummary;
   meals: Meal[];
   workouts?: Workout[];
   biomarkers?: Biomarker[];
@@ -48,6 +74,29 @@ function formatRange(min: number, max: number, unit = ""): string {
   const lo = Math.round(min);
   const hi = Math.round(max);
   return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
+}
+
+function midpoint(min: number, max: number): number {
+  return (min + max) / 2;
+}
+
+/** Same day-bucketing pattern as buildDayData() in the web app's
+ * MacroCharts.tsx — per-day totals are the midpoint of each meal's
+ * min/max range, summed across all meals logged that day. */
+function buildDailyTotals(meals: Meal[], days: number): { protein: DayDatum[]; calories: DayDatum[] } {
+  const protein: DayDatum[] = [];
+  const calories: DayDatum[] = [];
+  const d = new Date();
+  for (let i = 0; i < days; i++) {
+    const day = new Date(d);
+    day.setDate(day.getDate() - (days - 1 - i));
+    const key = day.toISOString().slice(0, 10);
+    const label = day.toLocaleDateString(undefined, { weekday: "short" });
+    const dayMeals = meals.filter((m) => m.loggedAt.slice(0, 10) === key);
+    protein.push({ label, value: Math.round(dayMeals.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0)) });
+    calories.push({ label, value: Math.round(dayMeals.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0)) });
+  }
+  return { protein, calories };
 }
 
 interface PersonDetailProps {
@@ -64,8 +113,8 @@ interface PersonDetailProps {
 // directly after login) — those are deliberately separate route
 // files/flows per product, but the meal-history layout is identical.
 // Visual language mirrors the web app's contact detail page (solid
-// primary-color header bar) — see
-// src/components/adults/dashboard/ContactDashboard.tsx.
+// primary-color header bar, habit-insights sections, macro charts,
+// activity heatmap) — see src/components/adults/dashboard/ContactDashboard.tsx.
 export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: PersonDetailProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
@@ -92,6 +141,29 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
     load();
   }, [load]);
 
+  const classifiedMeals = useMemo(() => {
+    if (!detail) return [];
+    return detail.meals.map((m) => {
+      const classifiable: ClassifiableMeal = { id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary };
+      return applyHumanCorrection(classifyMeal(classifiable), m.humanCorrection);
+    });
+  }, [detail]);
+
+  const habitDashboard = useMemo(() => buildHabitDashboard(classifiedMeals), [classifiedMeals]);
+
+  const weekStats = useMemo(() => {
+    if (!detail) return null;
+    const mealsThisWeek = filterByDateRange(detail.meals, "this_week");
+    const daysLogged = new Set(mealsThisWeek.map((m) => m.loggedAt.slice(0, 10))).size;
+    const start = getDateRangeStart("this_week");
+    const rangeDays = start ? Math.max(1, Math.round((Date.now() - start.getTime()) / 86_400_000) + 1) : 7;
+    const avgProtein = Math.round(mealsThisWeek.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0) / rangeDays);
+    const avgCalories = Math.round(mealsThisWeek.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0) / rangeDays);
+    return { mealsThisWeek: mealsThisWeek.length, daysLogged, rangeDays, avgProtein, avgCalories };
+  }, [detail]);
+
+  const dailyTotals = useMemo(() => (detail ? buildDailyTotals(detail.meals, 7) : null), [detail]);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -100,7 +172,7 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
     );
   }
 
-  if (error || !detail) {
+  if (error || !detail || !weekStats || !dailyTotals) {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>{error ?? "Not found."}</Text>
@@ -108,8 +180,17 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
     );
   }
 
-  const name = detail.contact?.fullName ?? detail.client?.fullName ?? "Unknown";
+  const person = detail.contact ?? detail.client;
+  const name = person?.fullName ?? "Unknown";
   const latestBiomarker = detail.biomarkers?.[detail.biomarkers.length - 1];
+  const activeGoal = person?.goals?.find((g) => g.status === "active");
+  const proteinTarget = activeGoal?.targetProteinG ?? recommendProteinGrams({
+    weightKg: person?.weightKg,
+    heightCm: person?.heightCm,
+    age: person?.age,
+    gender: person?.gender,
+  });
+  const calTarget = activeGoal?.targetCaloriesMin;
 
   return (
     <View style={styles.container}>
@@ -142,34 +223,59 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListHeaderComponent={
-          detail.workouts?.length || latestBiomarker ? (
-            <View style={styles.headerSections}>
-              {latestBiomarker && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Latest measurements</Text>
-                  <Text style={styles.sectionMeta}>
-                    {latestBiomarker.weightKg != null ? `${latestBiomarker.weightKg}kg` : ""}
-                    {latestBiomarker.bmi != null ? ` · BMI ${latestBiomarker.bmi}` : ""}
-                  </Text>
-                </View>
-              )}
-              {detail.workouts && detail.workouts.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Recent workouts</Text>
-                  {detail.workouts.slice(0, 5).map((w) => (
-                    <View key={w.id} style={styles.workoutRow}>
-                      <Text style={styles.workoutDesc}>
-                        {w.workoutType ?? w.description ?? "Workout"}
-                        {w.durationMinutes ? ` · ${w.durationMinutes}min` : ""}
-                      </Text>
-                      <Text style={styles.loggedAt}>{new Date(w.loggedAt).toLocaleDateString()}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-              <Text style={styles.sectionTitle}>Meals</Text>
+          <View style={styles.sections}>
+            <View style={styles.healthRow}>
+              <HealthCard icon="🍽️" label="Meals this week" value={String(weekStats.mealsThisWeek)} sub={`${weekStats.daysLogged} of ${weekStats.rangeDays} days`} ok={weekStats.rangeDays > 1 ? weekStats.daysLogged / weekStats.rangeDays >= 0.7 : undefined} />
+              <HealthCard icon="🥩" label="Avg protein/day" value={weekStats.avgProtein > 0 ? `${weekStats.avgProtein}g` : "—"} sub={`target: ${proteinTarget}g`} ok={weekStats.avgProtein >= proteinTarget * 0.8} />
+              <HealthCard icon="🔥" label="Avg calories/day" value={weekStats.avgCalories > 0 ? String(weekStats.avgCalories) : "—"} sub={calTarget ? `≥${calTarget} kcal` : "kcal"} ok={calTarget ? weekStats.avgCalories >= calTarget * 0.8 : undefined} />
             </View>
-          ) : null
+
+            <Text style={styles.sectionTitle}>Weekly trends</Text>
+            <TrendCardGrid cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]} />
+
+            <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
+
+            <View style={styles.twoCol}>
+              <View style={styles.twoColItem}><HabitMomentumCard momentum={habitDashboard.habitMomentum} /></View>
+              <View style={styles.twoColItem}><FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} /></View>
+            </View>
+
+            <MacroBarChart title="Protein (last 7 days)" data={dailyTotals.protein} unit="g" barColor={colors.primary} target={proteinTarget} />
+            <MacroBarChart title="Calories (last 7 days)" data={dailyTotals.calories} unit=" kcal" barColor="#6366F1" target={calTarget} />
+
+            <Text style={styles.sectionTitle}>Weekly progress</Text>
+            <WeeklyProgressBoard metrics={habitDashboard.weeklyProgress} />
+
+            <Text style={styles.sectionTitle}>Activity (last 30 days)</Text>
+            <ActivityHeatmap meals={detail.meals} workouts={detail.workouts} />
+
+            {latestBiomarker && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Latest measurements</Text>
+                <Text style={styles.sectionMeta}>
+                  {latestBiomarker.weightKg != null ? `${latestBiomarker.weightKg}kg` : ""}
+                  {latestBiomarker.bmi != null ? ` · BMI ${latestBiomarker.bmi}` : ""}
+                </Text>
+              </View>
+            )}
+
+            {detail.workouts && detail.workouts.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Recent workouts</Text>
+                {detail.workouts.slice(0, 5).map((w) => (
+                  <View key={w.id} style={styles.workoutRow}>
+                    <Text style={styles.workoutDesc}>
+                      {w.workoutType ?? w.description ?? "Workout"}
+                      {w.durationMinutes ? ` · ${w.durationMinutes}min` : ""}
+                    </Text>
+                    <Text style={styles.loggedAt}>{new Date(w.loggedAt).toLocaleDateString()}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Text style={styles.sectionTitle}>Recent meals</Text>
+          </View>
         }
         ListEmptyComponent={<Text style={styles.empty}>No meals logged yet.</Text>}
         renderItem={({ item }) => (
@@ -212,8 +318,11 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: "rgba(255,255,255,0.7)", marginTop: 2 },
   list: { padding: 20, paddingBottom: 24 },
   empty: { color: colors.textMeta, textAlign: "center", marginTop: 40 },
-  headerSections: { marginBottom: 8 },
-  section: { marginBottom: 20 },
+  sections: { gap: 16, marginBottom: 8 },
+  healthRow: { flexDirection: "row", gap: 10 },
+  twoCol: { flexDirection: "row", gap: 10 },
+  twoColItem: { flex: 1 },
+  section: {},
   sectionTitle: { fontSize: 12, fontWeight: "700", color: colors.textMeta, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
   sectionMeta: { fontSize: 15, color: colors.textPrimary },
   workoutRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
