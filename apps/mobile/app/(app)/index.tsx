@@ -2,43 +2,60 @@ import { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator, Pressable, FlatList } from "react-native";
 import { apiGet } from "../../src/lib/api";
 import { supabase } from "../../src/lib/supabase";
+import { getSelectedProduct, clearSelectedProduct, type Product } from "../../src/lib/product";
 
 interface WorkspaceResponse {
-  workspace: { id: string; name: string; plan: string };
-  caregiverName: string | null;
+  workspace: { id: string; name: string };
+  caregiverName?: string | null;
+  coachName?: string | null;
 }
 
-interface Contact {
+interface Person {
   id: string;
   fullName: string;
   mealCount: number;
-  relationshipType: "self" | "family_caregiver";
 }
 
-interface ContactsResponse {
-  contacts: Contact[];
-}
+const PRODUCT_CONFIG: Record<
+  Product,
+  { workspacePath: string; listPath: string; listKey: "contacts" | "clients"; personLabel: string; emptyLabel: string }
+> = {
+  adults: { workspacePath: "/adults/workspace", listPath: "/adults/contacts", listKey: "contacts", personLabel: "person", emptyLabel: "No one added yet." },
+  gym: { workspacePath: "/gym/workspace", listPath: "/gym/clients", listKey: "clients", personLabel: "client", emptyLabel: "No clients added yet." },
+};
 
 // First end-to-end screen: proves login (session) -> mobile-api (bearer
 // auth) -> real data render, in one place, before building out the rest
-// of the app's screens.
-export default function WorkspaceScreen() {
+// of the app's screens. Branches on the product chosen on
+// app/select-product.tsx rather than being two separate screens, since
+// the layout is identical — only the endpoints and copy differ.
+export default function DashboardScreen() {
+  const [product, setProduct] = useState<Product | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      apiGet<WorkspaceResponse>("/adults/workspace"),
-      apiGet<ContactsResponse>("/adults/contacts"),
-    ])
-      .then(([workspaceRes, contactsRes]) => {
-        setWorkspace(workspaceRes);
-        setContacts(contactsRes.contacts);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Something went wrong."))
-      .finally(() => setLoading(false));
+    getSelectedProduct().then((p) => {
+      if (!p) {
+        setError("No product selected.");
+        setLoading(false);
+        return;
+      }
+      setProduct(p);
+      const config = PRODUCT_CONFIG[p];
+      Promise.all([
+        apiGet<WorkspaceResponse>(config.workspacePath),
+        apiGet<Record<string, Person[]>>(config.listPath),
+      ])
+        .then(([workspaceRes, listRes]) => {
+          setWorkspace(workspaceRes);
+          setPeople(listRes[config.listKey] ?? []);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Something went wrong."))
+        .finally(() => setLoading(false));
+    });
   }, []);
 
   if (loading) {
@@ -49,26 +66,27 @@ export default function WorkspaceScreen() {
     );
   }
 
-  if (error) {
+  if (error || !product) {
     return (
       <View style={styles.center}>
-        <Text style={styles.error}>{error}</Text>
+        <Text style={styles.error}>{error ?? "Something went wrong."}</Text>
       </View>
     );
   }
 
+  const config = PRODUCT_CONFIG[product];
+  const name = workspace?.caregiverName ?? workspace?.coachName;
+
   return (
     <View style={styles.container}>
-      <Text style={styles.greeting}>
-        {workspace?.caregiverName ? `Hi, ${workspace.caregiverName.split(" ")[0]} 👋` : "Your family"}
-      </Text>
+      <Text style={styles.greeting}>{name ? `Hi, ${name.split(" ")[0]} 👋` : "Your dashboard"}</Text>
       <Text style={styles.subtitle}>{workspace?.workspace.name}</Text>
 
       <FlatList
-        data={contacts}
-        keyExtractor={(c) => c.id}
+        data={people}
+        keyExtractor={(p) => p.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>No one added yet.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{config.emptyLabel}</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <Text style={styles.cardName}>{item.fullName}</Text>
@@ -77,7 +95,13 @@ export default function WorkspaceScreen() {
         )}
       />
 
-      <Pressable style={styles.signOut} onPress={() => supabase.auth.signOut()}>
+      <Pressable
+        style={styles.signOut}
+        onPress={() => {
+          clearSelectedProduct();
+          supabase.auth.signOut();
+        }}
+      >
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
     </View>

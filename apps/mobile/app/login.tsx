@@ -1,22 +1,42 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
 import { scopedEmail } from "../src/lib/auth";
+import { getSelectedProduct, type Product } from "../src/lib/product";
 
-// Adults/Family/Self product only for this first screen — gym login can
-// be added the same way once this flow is proven.
+const PRODUCT_COPY: Record<Product, string> = {
+  adults: "Sign in to your family account",
+  gym: "Sign in to your coaching account",
+};
+
 export default function LoginScreen() {
+  const router = useRouter();
+  const [product, setProduct] = useState<Product | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    getSelectedProduct().then((p) => {
+      if (!p) {
+        // Arrived at /login directly without picking a product first
+        // (e.g. deep link, or a cold start mid-flow) — send them back.
+        router.replace("/select-product");
+      } else {
+        setProduct(p);
+      }
+    });
+  }, [router]);
+
   async function handleLogin() {
+    if (!product) return;
     setError(null);
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email: scopedEmail(email.trim(), "adults"),
+        email: scopedEmail(email.trim(), product),
         password,
       });
       if (error) throw error;
@@ -29,10 +49,12 @@ export default function LoginScreen() {
     }
   }
 
+  if (!product) return null;
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Tistra Health</Text>
-      <Text style={styles.subtitle}>Sign in to your family account</Text>
+      <Text style={styles.subtitle}>{PRODUCT_COPY[product]}</Text>
 
       <TextInput
         style={styles.input}
