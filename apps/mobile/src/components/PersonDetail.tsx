@@ -1,29 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, RefreshControl, Image, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { apiGet } from "../lib/api";
 import { colors, radii, mealEmoji } from "../lib/theme";
 import {
-  classifyMeal,
-  type ClassifiableMeal,
-  applyHumanCorrection,
-  type HumanCorrectionFields,
-  buildHabitDashboard,
   recommendProteinGrams,
   filterByDateRange,
   getDateRangeDayCount,
   type DashboardDateRange,
 } from "@nutriai/dashboard-core";
-import {
-  TrendCardGrid,
-  HealthCard,
-  WeeklyFocusCard,
-  HabitMomentumCard,
-  FoodPatternSpectrumCard,
-  WeeklyProgressBoard,
-} from "./HabitDashboard";
+import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile, type NutritionGoal } from "@nutriai/health-scoring";
+import { NUTRITION_GOAL_LABELS } from "../lib/goalOptions";
 import { ActivityHeatmap } from "./ActivityHeatmap";
-import { MacroBarChart, type DayDatum } from "./MacroBarChart";
+import { MacronutrientSummary } from "./MacronutrientSummary";
+import { FoodBalanceScoreCard } from "./FoodBalanceScoreCard";
 import { DateRangeSelector } from "./DateRangeSelector";
 
 interface Meal {
@@ -35,8 +25,14 @@ interface Meal {
   totalCaloriesMax: number;
   totalProteinMin: number;
   totalProteinMax: number;
+  totalCarbsMin: number;
+  totalCarbsMax: number;
+  totalFatMin: number;
+  totalFatMax: number;
+  totalFiberMin: number;
+  totalFiberMax: number;
   aiSummary?: string;
-  humanCorrection?: HumanCorrectionFields;
+  imageUrl?: string;
 }
 
 interface Workout {
@@ -60,7 +56,12 @@ interface PersonSummary {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
-  goals?: Array<{ status: string; targetProteinG?: number; targetCaloriesMin?: number; targetCaloriesMax?: number }>;
+  dateOfBirth?: string;
+  metabolicEquationSex?: string;
+  activityLevel?: string;
+  resistanceTrainingStatus?: string;
+  targetWeightKg?: number;
+  primaryNutritionGoal?: string;
 }
 
 // Adults nests under `contact`, gym under `client`; only gym's response
@@ -83,31 +84,12 @@ function formatRange(min: number, max: number, unit = ""): string {
   return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
 }
 
-function midpoint(min: number, max: number): number {
-  return (min + max) / 2;
-}
-
-/** Same day-bucketing pattern as buildDayData() in the web app's
- * MacroCharts.tsx — per-day totals are the midpoint of each meal's
- * min/max range, summed across all meals logged that day. */
-function buildDailyTotals(meals: Meal[], days: number): { protein: DayDatum[]; calories: DayDatum[] } {
-  const protein: DayDatum[] = [];
-  const calories: DayDatum[] = [];
-  const d = new Date();
-  for (let i = 0; i < days; i++) {
-    const day = new Date(d);
-    day.setDate(day.getDate() - (days - 1 - i));
-    const key = day.toISOString().slice(0, 10);
-    const label = day.toLocaleDateString(undefined, { weekday: "short" });
-    const dayMeals = meals.filter((m) => m.loggedAt.slice(0, 10) === key);
-    protein.push({ label, value: Math.round(dayMeals.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0)) });
-    calories.push({ label, value: Math.round(dayMeals.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0)) });
-  }
-  return { protein, calories };
-}
-
 interface PersonDetailProps {
   apiPath: string;
+  /** Whichever query param the /food-balance-score endpoint needs — passed
+   * separately from apiPath since that endpoint lives at its own route,
+   * not nested under /adults or /gym (see FoodBalanceScoreCard.tsx). */
+  foodBalanceQuery: { contactId?: string; clientId?: string };
   /** Shows a back button when true (Family/Coach, reached via a list
    * screen) — Self skips straight here from login, so there's nothing to
    * go back to; it shows a sign-out link in that spot instead. */
@@ -118,20 +100,23 @@ interface PersonDetailProps {
   editRoute?: string;
 }
 
-// Shared by app/(app)/family/person/[id].tsx, app/(app)/coach/person/[id].tsx,
-// and app/(app)/self/index.tsx (Self skips the list screen and lands here
-// directly after login) — those are deliberately separate route
-// files/flows per product, but the meal-history layout is identical.
-// Visual language mirrors the web app's contact detail page (solid
-// primary-color header bar, habit-insights sections, macro charts,
-// activity heatmap) — see src/components/adults/dashboard/ContactDashboard.tsx.
-export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRoute }: PersonDetailProps) {
+// Shared by app/(app)/family/person/[id]/index.tsx,
+// app/(app)/coach/person/[id]/index.tsx, and app/(app)/self/index.tsx
+// (Self skips the list screen and lands here directly after login) —
+// those are deliberately separate route files/flows per product, but the
+// meal-history layout is identical. Mirrors
+// src/components/adults/dashboard/ContactDashboard.tsx's 6-section layout
+// exactly: (1) greeting + date range + inline goal, (2) Food Balance
+// Score, (3) macronutrient summary, (4) key metric cards, (5) activity
+// heatmap, (6) recent meals with a tap-to-open photo modal.
+export function PersonDetail({ apiPath, foodBalanceQuery, showBackButton = true, onSignOut, editRoute }: PersonDetailProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DashboardDateRange>("this_week");
+  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string } | null>(null);
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -152,31 +137,6 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
     load();
   }, [load]);
 
-  const classifiedMeals = useMemo(() => {
-    if (!detail) return [];
-    return detail.meals.map((m) => {
-      const classifiable: ClassifiableMeal = { id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary };
-      return applyHumanCorrection(classifyMeal(classifiable), m.humanCorrection);
-    });
-  }, [detail]);
-
-  const habitDashboard = useMemo(() => buildHabitDashboard(classifiedMeals), [classifiedMeals]);
-
-  const weekStats = useMemo(() => {
-    if (!detail) return null;
-    const mealsInRange = filterByDateRange(detail.meals, dateRange);
-    const daysLogged = new Set(mealsInRange.map((m) => m.loggedAt.slice(0, 10))).size;
-    const earliestMealAt = detail.meals.length
-      ? new Date(Math.min(...detail.meals.map((m) => new Date(m.loggedAt).getTime())))
-      : undefined;
-    const rangeDays = getDateRangeDayCount(dateRange, new Date(), earliestMealAt);
-    const avgProtein = Math.round(mealsInRange.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0) / rangeDays);
-    const avgCalories = Math.round(mealsInRange.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0) / rangeDays);
-    return { mealsThisWeek: mealsInRange.length, daysLogged, rangeDays, avgProtein, avgCalories };
-  }, [detail, dateRange]);
-
-  const dailyTotals = useMemo(() => (detail ? buildDailyTotals(detail.meals, 7) : null), [detail]);
-
   if (loading) {
     return (
       <View style={styles.center}>
@@ -185,7 +145,7 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
     );
   }
 
-  if (error || !detail || !weekStats || !dailyTotals) {
+  if (error || !detail) {
     return (
       <View style={styles.center}>
         <Text style={styles.error}>{error ?? "Not found."}</Text>
@@ -196,14 +156,44 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
   const person = detail.contact ?? detail.client;
   const name = person?.fullName ?? "Unknown";
   const latestBiomarker = detail.biomarkers?.[detail.biomarkers.length - 1];
-  const activeGoal = person?.goals?.find((g) => g.status === "active");
-  const proteinTarget = activeGoal?.targetProteinG ?? recommendProteinGrams({
+
+  // Food Balance Score profile — same computation as
+  // ContactDashboard.tsx/ClientDashboard.tsx on web, so the displayed
+  // protein/calorie targets match exactly regardless of platform.
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = person?.primaryNutritionGoal
+    ? {
+        goal: person.primaryNutritionGoal as NutritionGoal,
+        dateOfBirth: person.dateOfBirth,
+        age: person.age,
+        heightCm: person.heightCm,
+        currentWeightKg: person.weightKg,
+        metabolicEquationSex: person.metabolicEquationSex as FoodBalanceUserProfile["metabolicEquationSex"],
+        activityLevel: person.activityLevel as FoodBalanceUserProfile["activityLevel"],
+        resistanceTraining: person.resistanceTrainingStatus as FoodBalanceUserProfile["resistanceTraining"],
+        targetWeightKg: person.targetWeightKg,
+      }
+    : undefined;
+
+  const recommendedProteinG = recommendProteinGrams({
     weightKg: person?.weightKg,
     heightCm: person?.heightCm,
     age: person?.age,
     gender: person?.gender,
   });
-  const calTarget = activeGoal?.targetCaloriesMin;
+  const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
+  const proteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
+  const isRecommendedProtein = !proteinRange;
+  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goal) : null;
+  const calTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
+
+  const mealsInRange = filterByDateRange(detail.meals, dateRange);
+  const daysLogged = new Set(mealsInRange.map((m) => m.loggedAt.slice(0, 10))).size;
+  const earliestMealAt = detail.meals.length
+    ? new Date(Math.min(...detail.meals.map((m) => new Date(m.loggedAt).getTime())))
+    : undefined;
+  const rangeDays = getDateRangeDayCount(dateRange, new Date(), earliestMealAt);
+  const avgProtein = Math.round(mealsInRange.reduce((s, m) => s + (m.totalProteinMin + m.totalProteinMax) / 2, 0) / rangeDays);
+  const avgCalories = Math.round(mealsInRange.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / rangeDays);
 
   return (
     <View style={styles.container}>
@@ -242,31 +232,36 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListHeaderComponent={
           <View style={styles.sections}>
-            <DateRangeSelector value={dateRange} onChange={setDateRange} />
+            {/* Section 1 — greeting + date-range selector + inline goal. */}
+            <View>
+              <DateRangeSelector value={dateRange} onChange={setDateRange} />
+              <View style={styles.goalRow}>
+                <View style={styles.goalPill}>
+                  <Text style={styles.goalPillText}>
+                    🎯 {person?.primaryNutritionGoal
+                      ? NUTRITION_GOAL_LABELS[person.primaryNutritionGoal as NutritionGoal] ?? person.primaryNutritionGoal
+                      : "No goal set yet"}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
+            {/* Section 2 — Food Balance Score, recommendations included
+                inside the card itself once available. */}
+            <FoodBalanceScoreCard {...foodBalanceQuery} />
+
+            {/* Section 3 — Macronutrient summary. */}
+            <MacronutrientSummary meals={mealsInRange} days={rangeDays} targets={{ protein: proteinTarget }} />
+
+            {/* Section 4 — key metric cards. */}
             <View style={styles.healthRow}>
-              <HealthCard icon="🍽️" label="Meals this week" value={String(weekStats.mealsThisWeek)} sub={`${weekStats.daysLogged} of ${weekStats.rangeDays} days`} ok={weekStats.rangeDays > 1 ? weekStats.daysLogged / weekStats.rangeDays >= 0.7 : undefined} />
-              <HealthCard icon="🥩" label="Avg protein/day" value={weekStats.avgProtein > 0 ? `${weekStats.avgProtein}g` : "—"} sub={`target: ${proteinTarget}g`} ok={weekStats.avgProtein >= proteinTarget * 0.8} />
-              <HealthCard icon="🔥" label="Avg calories/day" value={weekStats.avgCalories > 0 ? String(weekStats.avgCalories) : "—"} sub={calTarget ? `≥${calTarget} kcal` : "kcal"} ok={calTarget ? weekStats.avgCalories >= calTarget * 0.8 : undefined} />
+              <HealthCard icon="🍽️" label="Meals logged" value={String(mealsInRange.length)} sub={`${daysLogged} of ${rangeDays} days`} ok={rangeDays > 1 ? daysLogged / rangeDays >= 0.7 : undefined} />
+              <HealthCard icon="🌱" label="Avg protein/day" value={avgProtein > 0 ? `${avgProtein}g` : "—"} sub={`target: ${proteinTarget}g${isRecommendedProtein ? " (recommended)" : ""}`} ok={avgProtein >= proteinTarget * 0.8} />
+              <HealthCard icon="🔥" label="Avg calories/day" value={avgCalories > 0 ? String(avgCalories) : "—"} sub={calTarget ? `target: ≥${calTarget}` : "kcal"} ok={calTarget ? avgCalories >= calTarget * 0.8 : undefined} />
             </View>
 
-            <Text style={styles.sectionTitle}>Weekly trends</Text>
-            <TrendCardGrid cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]} />
-
-            <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
-
-            <View style={styles.twoCol}>
-              <View style={styles.twoColItem}><HabitMomentumCard momentum={habitDashboard.habitMomentum} /></View>
-              <View style={styles.twoColItem}><FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} /></View>
-            </View>
-
-            <MacroBarChart title="Protein (last 7 days)" data={dailyTotals.protein} unit="g" barColor={colors.primary} target={proteinTarget} />
-            <MacroBarChart title="Calories (last 7 days)" data={dailyTotals.calories} unit=" kcal" barColor="#6366F1" target={calTarget} />
-
-            <Text style={styles.sectionTitle}>Weekly progress</Text>
-            <WeeklyProgressBoard metrics={habitDashboard.weeklyProgress} />
-
-            <Text style={styles.sectionTitle}>Activity (last 30 days)</Text>
+            {/* Section 5 — activity heatmap. */}
+            <Text style={styles.sectionTitle}>Meal activity – last 30 days</Text>
             <ActivityHeatmap meals={detail.meals} workouts={detail.workouts} />
 
             {latestBiomarker && (
@@ -294,6 +289,7 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
               </View>
             )}
 
+            {/* Section 6 — recent meals. */}
             <Text style={styles.sectionTitle}>Recent meals</Text>
           </View>
         }
@@ -306,6 +302,11 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
               </Text>
               <Text style={styles.loggedAt}>{new Date(item.loggedAt).toLocaleDateString()}</Text>
             </View>
+            {item.imageUrl && (
+              <Pressable onPress={() => setModalPhoto({ url: item.imageUrl!, label: item.mealType })}>
+                <Image source={{ uri: item.imageUrl }} style={styles.mealPhoto} resizeMode="cover" />
+              </Pressable>
+            )}
             {item.aiSummary && <Text style={styles.summary}>{item.aiSummary}</Text>}
             <View style={styles.macroRow}>
               <Text style={styles.macroProtein}>{formatRange(item.totalProteinMin, item.totalProteinMax, "g")} protein</Text>
@@ -314,6 +315,14 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRo
           </View>
         )}
       />
+
+      <Modal visible={!!modalPhoto} transparent animationType="fade" onRequestClose={() => setModalPhoto(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setModalPhoto(null)}>
+          {modalPhoto && (
+            <Image source={{ uri: modalPhoto.url }} style={styles.modalImage} resizeMode="contain" />
+          )}
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -340,9 +349,10 @@ const styles = StyleSheet.create({
   list: { padding: 20, paddingBottom: 24 },
   empty: { color: colors.textMeta, textAlign: "center", marginTop: 40 },
   sections: { gap: 16, marginBottom: 8 },
+  goalRow: { flexDirection: "row", marginTop: 10 },
+  goalPill: { backgroundColor: colors.primaryLight, borderRadius: radii.full, paddingHorizontal: 12, paddingVertical: 6 },
+  goalPillText: { fontSize: 12, fontWeight: "700", color: colors.primary },
   healthRow: { flexDirection: "row", gap: 10 },
-  twoCol: { flexDirection: "row", gap: 10 },
-  twoColItem: { flex: 1 },
   section: {},
   sectionTitle: { fontSize: 12, fontWeight: "700", color: colors.textMeta, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
   sectionMeta: { fontSize: 15, color: colors.textPrimary },
@@ -359,9 +369,51 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
   mealType: { fontSize: 15, fontWeight: "600", color: colors.textPrimary },
   loggedAt: { fontSize: 12, color: colors.textMeta },
+  mealPhoto: { width: "100%", height: 160, borderRadius: radii.pill, marginVertical: 8 },
   summary: { fontSize: 14, color: "#4B5563", marginBottom: 8 },
   macroRow: { flexDirection: "row", gap: 12 },
   macroProtein: { fontSize: 12, fontWeight: "600", color: colors.primary },
   macroCalories: { fontSize: 12, color: colors.textSecondary },
   error: { color: colors.error, padding: 20, textAlign: "center" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.9)", alignItems: "center", justifyContent: "center" },
+  modalImage: { width: "100%", height: "80%" },
+});
+
+function HealthCard({
+  icon,
+  label,
+  value,
+  sub,
+  ok,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  sub?: string;
+  ok?: boolean;
+}) {
+  const palette = ok === true ? colors.good : ok === false ? colors.support : null;
+  return (
+    <View style={[healthCardStyles.card, palette && { backgroundColor: palette.bg }]}>
+      <Text style={healthCardStyles.icon}>{icon}</Text>
+      <Text style={[healthCardStyles.value, palette && { color: palette.text }]}>{value}</Text>
+      <Text style={[healthCardStyles.label, palette && { color: palette.text }]}>{label}</Text>
+      {sub && <Text style={[healthCardStyles.sub, palette && { color: palette.text }]}>{sub}</Text>}
+    </View>
+  );
+}
+
+const healthCardStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    padding: 12,
+  },
+  icon: { fontSize: 18, marginBottom: 4 },
+  value: { fontSize: 18, fontWeight: "700", color: colors.textPrimary },
+  label: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  sub: { fontSize: 10, color: colors.textMeta, marginTop: 2 },
 });

@@ -104,6 +104,7 @@ export interface MealLog {
   totalFiberMin: number;
   totalFiberMax: number;
   aiSummary?: string;
+  imageUrl?: string;
   /** Present when a Tistra reviewer has corrected this meal's classification
    * via the Meal Review Console — dashboards should prefer this over the
    * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
@@ -211,6 +212,7 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
+    imageUrl: m.image_url ?? undefined,
     humanCorrection: corrections[m.id],
   }));
 
@@ -294,37 +296,6 @@ export async function logBiomarker(clientId: string, data: {
   if (error) throw new Error(error.message);
 }
 
-export async function getClientMeals(clientId: string, days = 7): Promise<MealLog[]> {
-  const supabase = await createClient();
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  const { data } = await supabase
-    .from("meal_logs")
-    .select("*")
-    .eq("client_id", clientId)
-    .gte("logged_at", since.toISOString())
-    .order("logged_at", { ascending: false });
-
-  return (data ?? []).map((m: any) => ({
-    id: m.id,
-    clientId: m.client_id,
-    mealType: m.meal_type,
-    loggedAt: m.logged_at,
-    foods: m.foods ?? [],
-    totalCaloriesMin: m.total_calories_min ?? 0,
-    totalCaloriesMax: m.total_calories_max ?? 0,
-    totalProteinMin: m.total_protein_min ?? 0,
-    totalProteinMax: m.total_protein_max ?? 0,
-    totalCarbsMin: m.total_carbs_min ?? 0,
-    totalCarbsMax: m.total_carbs_max ?? 0,
-    totalFatMin: m.total_fat_min ?? 0,
-    totalFatMax: m.total_fat_max ?? 0,
-    totalFiberMin: m.total_fiber_min ?? 0,
-    totalFiberMax: m.total_fiber_max ?? 0,
-    aiSummary: m.ai_summary,
-  }));
-}
 
 export async function addClient(formData: {
   workspaceId: string;

@@ -154,6 +154,7 @@ export interface MealLog {
   totalFiberMin: number;
   totalFiberMax: number;
   aiSummary?: string;
+  imageUrl?: string;
   humanCorrection?: HumanCorrectionFields;
 }
 

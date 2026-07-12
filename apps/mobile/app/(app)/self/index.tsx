@@ -58,6 +58,7 @@ export default function SelfDashboardScreen() {
   return (
     <PersonDetail
       apiPath={`/adults/contacts/${selfContactId}`}
+      foodBalanceQuery={{ contactId: selfContactId }}
       showBackButton={false}
       onSignOut={() => supabase.auth.signOut()}
     />

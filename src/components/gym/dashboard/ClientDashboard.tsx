@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ClientDetails } from "@/app/(gym)/gym/dashboard/actions";
-import { MealFeed } from "./MealFeed";
 import { BiomarkerSection } from "./BiomarkerSection";
 import { ProgressInsights } from "@/components/shared/ProgressInsights";
 import { computeInsights } from "@/lib/insights";
@@ -16,25 +15,15 @@ import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceS
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { EditClientModal } from "./EditClientModal";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
+import { MealPhotoModal } from "@/components/shared/dashboard/MealPhotoModal";
 import {
   DEFAULT_DASHBOARD_DATE_RANGE,
   dateRangeLabel,
   filterByDateRange,
   getDateRangeDayCount,
   type DashboardDateRange,
-  classifyMeal,
-  applyHumanCorrection,
-  buildHabitDashboard,
 } from "@nutriai/dashboard-core";
 import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
-import {
-  TrendCardGrid,
-  MealTimelineSection,
-  WeeklyFocusCard,
-  HabitMomentumCard,
-  FoodPatternSpectrumCard,
-  WeeklyProgressBoard,
-} from "@/components/shared/dashboard/HabitDashboardSections";
 
 const ActivityHeatmap = dynamic(() => import("./ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -79,6 +68,7 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
     ...meals7d.map((m) => m.loggedAt.slice(0, 10)),
     ...workouts7d.map((w) => w.loggedAt.slice(0, 10)),
   ]).size;
+  const daysLoggedIn7d = new Set(meals7d.map((m) => m.loggedAt.slice(0, 10))).size;
 
   const avgProtein = meals7d.length
     ? Math.round(meals7d.reduce((s, m) => s + (m.totalProteinMin + m.totalProteinMax) / 2, 0) / 7)
@@ -96,19 +86,7 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
   });
   const proteinPct = proteinTarget && avgProtein ? Math.round((avgProtein / proteinTarget) * 100) : null;
 
-  // Habit dashboard — same trend cards / weekly focus / habit momentum /
-  // food pattern spectrum / meal timeline the adults/family dashboard has,
-  // built off the same generic classifyMeal + human-corrections pipeline
-  // (gym's actions.ts now fetches corrections too, see getClientDetails).
-  // Kept alongside the existing gym-specific ProgressInsights below rather
-  // than replacing it — that's a different, pre-existing feature.
-  const classifiedMeals = meals.map((m) =>
-    applyHumanCorrection(
-      classifyMeal({ id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary }),
-      m.humanCorrection
-    )
-  );
-  const habitDashboard = buildHabitDashboard(classifiedMeals);
+  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string } | null>(null);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,11 +107,6 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
               <p className="text-xs text-gray-400">{client.whatsappNumber}</p>
             </div>
           </div>
-          {client.primaryNutritionGoal && (
-            <span className="hidden sm:block text-xs font-medium bg-purple-50 text-purple-700 px-3 py-1.5 rounded-full">
-              {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
-            </span>
-          )}
           <button
             onClick={() => setShowEdit(true)}
             className="text-sm font-medium text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition-colors"
@@ -156,12 +129,6 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-        {/* Food Balance Score — see ContactDashboard.tsx for the same card
-            on the adults product; deliberately first, above the invite
-            card. Behind a feature flag; the card itself also renders
-            nothing while the flag is off (404 from the API). */}
-        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard clientId={client.id} />}
-
         {/* WhatsApp-first invite — the coach shares this link themselves;
             the bot never messages the client first. Hidden once the client
             is clearly already connected (sending meals) — otherwise a
@@ -182,84 +149,111 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
           />
         )}
 
-        {/* Habit-based insight cards — kept near the top, mirroring the
-            adults/family dashboard, so the "so what" is visible before the
-            raw numbers below. */}
-        <TrendCardGrid
-          cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]}
-        />
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard icon="🍽️" iconColor="purple" label="Meals this week" value={String(meals7d.length)} sub="this week" />
-          <StatCard
-            icon="🌱"
-            iconColor="green"
-            label="Avg protein/day"
-            value={`${avgProtein}g`}
-            sub={proteinPct !== null ? `${proteinPct}% of target` : "no target set"}
-            highlight={proteinPct !== null && proteinPct >= 80}
-          />
-          <StatCard icon="🔥" iconColor="orange" label="Avg calories/day" value={avgCalories > 0 ? String(avgCalories) : "—"} sub="kcal" />
-          <StatCard icon="💪" iconColor="blue" label="Active days" value={`${daysActive7d}/7`} sub={`${workouts7d.length} workout${workouts7d.length !== 1 ? "s" : ""}`} />
-        </div>
-
-        {/* Progress insights */}
-        {insights && <ProgressInsights insights={insights} variant="gym" />}
-
-        {/* Goal card */}
-        {client.primaryNutritionGoal && (
-          <div className="bg-purple-50 rounded-2xl p-4 flex flex-wrap gap-4 items-start">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1">Goal</p>
-              <p className="font-semibold text-gray-900">
-                {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
-              </p>
+        {/* Section 1 — greeting + date-range selector, with the goal shown
+            inline (no separate goal card) — mirrors ContactDashboard.tsx on
+            the adults product exactly. */}
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 leading-tight">Hi, {client.fullName.split(" ")[0]} 👋</h2>
+              <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
             </div>
-            <div className="flex flex-wrap gap-3 text-sm">
-              {proteinTarget && <GoalStat label="Protein" value={`${proteinTarget}g/day`} />}
-              {calTarget && <GoalStat label="Min calories" value={`${calTarget} kcal`} />}
-              {client.targetWeightKg && <GoalStat label="Target weight" value={`${client.targetWeightKg}kg`} />}
-            </div>
+            <DateRangeSelector value={dateRange} onChange={setDateRange} />
           </div>
-        )}
-
-        {/* Today's meal timeline */}
-        <MealTimelineSection meals={classifiedMeals} />
-
-        {/* Weekly focus habit */}
-        <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
-
-        {/* Habit Momentum + Food pattern spectrum */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <HabitMomentumCard momentum={habitDashboard.habitMomentum} />
-          <FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} />
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-xs font-semibold text-purple-700 bg-purple-50 rounded-full px-3 py-1">
+              🎯 {client.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal : "No goal set yet"}
+            </span>
+            <button onClick={() => setShowEdit(true)} className="text-xs font-medium text-gray-400 underline">
+              Edit
+            </button>
+          </div>
         </div>
 
-        {/* Activity heatmap */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Last 30 days</p>
-          <ActivityHeatmap meals={meals} workouts={workouts} days={30} />
-        </div>
+        {/* Section 2 — Food Balance Score, recommendations included inside
+            the card itself once they're available. */}
+        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard clientId={client.id} />}
 
-        {/* Macronutrient summary — same unified component the adults/family
-            dashboard uses (protein, carbs, fat, and fiber), replacing the
-            old separate Protein/Calorie/Carbs+Fat charts so both products
-            show the same breakdown instead of gym missing fiber entirely. */}
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
-          <DateRangeSelector value={dateRange} onChange={setDateRange} />
-        </div>
+        {/* Section 3 — Macronutrient summary (protein, carbs, fat, fiber). */}
         <MacronutrientSummary
           meals={mealsInRange}
           days={rangeDays}
           targets={{ protein: proteinTarget }}
         />
 
-        {/* Weekly / range progress board */}
-        <WeeklyProgressBoard metrics={habitDashboard.weeklyProgress} />
+        {/* Section 4 — key metric cards (same 3-card set as the adults
+            dashboard; the gym-only "Active days" card moved out to keep
+            these two dashboards in parity). */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <StatCard icon="🍽️" iconColor="purple" label="Meals logged" value={String(meals7d.length)} sub={`${daysLoggedIn7d} of 7 days`} />
+          <StatCard
+            icon="🌱"
+            iconColor="green"
+            label="Avg protein/day"
+            value={avgProtein > 0 ? `${avgProtein}g` : "—"}
+            sub={proteinTarget ? `target: ${proteinTarget}g` : "no target set"}
+            highlight={proteinPct !== null && proteinPct >= 80}
+          />
+          <StatCard icon="🔥" iconColor="orange" label="Avg calories/day" value={avgCalories > 0 ? String(avgCalories) : "—"} sub={calTarget ? `target: ≥${calTarget}` : "kcal"} />
+        </div>
 
-        {/* Workouts */}
+        {/* Progress insights — gym-only, kept as supplementary content. */}
+        {insights && <ProgressInsights insights={insights} variant="gym" />}
+
+        {/* Section 5 — activity heatmap. */}
+        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Meal activity – last 30 days</p>
+          <ActivityHeatmap meals={meals} workouts={workouts} days={30} />
+        </div>
+
+        {/* Section 6 — recent meals; tapping a meal's photo opens it in a
+            modal (MealPhotoModal), same as the adults dashboard. */}
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent meals</p>
+          {meals.length === 0 ? (
+            <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
+              No meals shared yet — they just need to send a WhatsApp photo!
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {meals.slice(0, 10).map((meal) => {
+                const avgProt = Math.round((meal.totalProteinMin + meal.totalProteinMax) / 2);
+                const avgCal = Math.round((meal.totalCaloriesMin + meal.totalCaloriesMax) / 2);
+                const time = new Date(meal.loggedAt).toLocaleString("en-IN", {
+                  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+                });
+                return (
+                  <div key={meal.id} className="flex items-start gap-3 bg-white rounded-xl border border-gray-100 p-3">
+                    {meal.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
+                      <img
+                        src={meal.imageUrl}
+                        alt={`${meal.mealType} photo`}
+                        onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType })}
+                        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
+                      />
+                    ) : (
+                      <span className="text-xl mt-0.5">🍽️</span>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <span className="text-sm font-medium text-gray-900 capitalize">{meal.mealType}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{time}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{meal.aiSummary ?? meal.foods.map((f: any) => f.name).join(", ")}</p>
+                      <div className="flex gap-3 mt-1">
+                        <span className="text-xs font-medium text-purple-700">{avgProt}g protein</span>
+                        <span className="text-xs text-gray-400">{avgCal} kcal</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Workouts — gym-only, kept as supplementary content. */}
         {workouts.length > 0 && (
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent workouts</p>
@@ -280,20 +274,16 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
           </div>
         )}
 
-        {/* Biomarkers */}
+        {/* Biomarkers — gym-only, kept as supplementary content. */}
         <BiomarkerSection
           clientId={client.id}
           heightCm={client.heightCm}
           trackedBiomarkers={client.trackedBiomarkers}
           biomarkers={biomarkers}
         />
-
-        {/* Meal feed */}
-        <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent meals</p>
-          <MealFeed meals={meals} />
-        </div>
       </main>
+
+      {modalPhoto && <MealPhotoModal url={modalPhoto.url} label={modalPhoto.label} onClose={() => setModalPhoto(null)} />}
     </div>
   );
 }
@@ -318,15 +308,6 @@ function StatCard({
       <p className={`text-2xl font-bold mb-0.5 ${highlight ? "text-green-700" : "text-gray-900"}`}>{value}</p>
       <p className="text-xs font-medium text-gray-600">{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
-function GoalStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-xs text-purple-500">{label}</p>
-      <p className="text-sm font-semibold text-purple-900">{value}</p>
     </div>
   );
 }

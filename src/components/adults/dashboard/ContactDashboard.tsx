@@ -6,9 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContactDetails } from "@/app/(adults)/adults/dashboard/actions";
 import {
-  classifyMeal,
-  applyHumanCorrection,
-  buildHabitDashboard,
   recommendProteinGrams,
   DEFAULT_DASHBOARD_DATE_RANGE,
   dateRangeLabel,
@@ -23,14 +20,7 @@ import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelect
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
-import {
-  TrendCardGrid,
-  MealTimelineSection,
-  WeeklyFocusCard,
-  HabitMomentumCard,
-  FoodPatternSpectrumCard,
-  WeeklyProgressBoard,
-} from "@/components/shared/dashboard/HabitDashboardSections";
+import { MealPhotoModal } from "@/components/shared/dashboard/MealPhotoModal";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -119,13 +109,7 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const proteinOk = proteinTarget ? avgProtein >= proteinTarget * 0.8 : null;
   const calOk = calTarget ? avgCalories >= calTarget * 0.8 : null;
 
-  const classifiedMeals = meals.map((m) =>
-    applyHumanCorrection(
-      classifyMeal({ id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary }),
-      m.humanCorrection
-    )
-  );
-  const habitDashboard = buildHabitDashboard(classifiedMeals);
+  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string } | null>(null);
 
   return (
     <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
@@ -170,12 +154,6 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-        {/* Food Balance Score — deliberately first, above the invite card,
-            per the feature's "prominent card at the top of the dashboard"
-            requirement. Behind a feature flag; the card itself also
-            renders nothing while the flag is off (404 from the API). */}
-        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard contactId={contact.id} />}
-
         {/* WhatsApp-first invite — the caregiver shares this link
             themselves; the bot never messages first. Not shown for a
             caregiver's own self-tracked profile (handled by SelfSetupCard
@@ -191,23 +169,41 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           />
         )}
 
-        {/* Greeting + global date-range selector — everything below that's
+        {/* Section 1 — greeting + date-range selector, with the goal shown
+            inline (no separate goal card) — everything below that's
             range-aware (metric cards, macro summary) reflects this. */}
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 leading-tight">Hi, {contact.fullName.split(" ")[0]} 👋</h2>
-            <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 leading-tight">Hi, {contact.fullName.split(" ")[0]} 👋</h2>
+              <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+            </div>
+            <DateRangeSelector value={dateRange} onChange={setDateRange} />
           </div>
-          <DateRangeSelector value={dateRange} onChange={setDateRange} />
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-xs font-semibold text-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)] rounded-full px-3 py-1">
+              🎯 {contact.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] ?? contact.primaryNutritionGoal : "No goal set yet"}
+            </span>
+            <button onClick={() => setShowEdit(true)} className="text-xs font-medium text-gray-400 underline">
+              Edit
+            </button>
+          </div>
         </div>
 
-        {/* Habit-based insight cards — kept near the top so mobile users see
-            the "so what" before the raw numbers below. */}
-        <TrendCardGrid
-          cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]}
+        {/* Section 2 — Food Balance Score, recommendations included inside
+            the card itself once they're available. Behind a feature flag;
+            the card itself also renders nothing while the flag is off (404
+            from the API). */}
+        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard contactId={contact.id} />}
+
+        {/* Section 3 — Macronutrient summary (protein, carbs, fat, fiber). */}
+        <MacronutrientSummary
+          meals={mealsInRange}
+          days={rangeDays}
+          targets={{ protein: proteinTarget }}
         />
 
-        {/* Key metric cards */}
+        {/* Section 4 — key metric cards. */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <HealthCard
             icon="🍽️"
@@ -235,58 +231,17 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           />
         </div>
 
-        {/* Goal */}
-        <div className="bg-[var(--color-dashboard-primary-light)] rounded-2xl p-4">
-          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Goal</p>
-          <p className="font-semibold text-gray-900 mb-0.5">
-            {contact.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] ?? contact.primaryNutritionGoal : "No goal set yet"}
-          </p>
-          <div className="flex flex-wrap gap-3 text-sm">
-            <GoalPill label="Protein" value={`${proteinTarget}g/day${isRecommendedProtein ? " (recommended)" : ""}`} />
-            {calTarget && <GoalPill label="Min calories" value={`${calTarget} kcal`} />}
-          </div>
-          <button
-            onClick={() => setShowEdit(true)}
-            className="text-xs font-medium text-[var(--color-dashboard-primary)] underline mt-3"
-          >
-            Edit goal
-          </button>
-        </div>
-
-        {/* Today's meal timeline */}
-        <MealTimelineSection meals={classifiedMeals} timeZone={contact.timezone} />
-
-        {/* Weekly focus habit */}
-        <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
-
-        {/* Habit Momentum + Food pattern spectrum */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <HabitMomentumCard momentum={habitDashboard.habitMomentum} />
-          <FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} />
-        </div>
-
-        {/* Single unified macro section — protein, carbs, fat, fiber.
-            Replaces the old separate Protein/Calories charts; calories
-            stays as the top-level metric card above instead of being
-            duplicated here. */}
-        <MacronutrientSummary
-          meals={mealsInRange}
-          days={rangeDays}
-          targets={{ protein: proteinTarget }}
-        />
-
-        {/* Weekly / range progress board */}
-        <WeeklyProgressBoard metrics={habitDashboard.weeklyProgress} />
-
-        {/* Activity heatmap — kept at a fixed 30-day window regardless of
-            the date-range selector above, since a 90-day/1-year heatmap
-            grid stops being scannable at this card size. */}
+        {/* Section 5 — activity heatmap, kept at a fixed 30-day window
+            regardless of the date-range selector above, since a
+            90-day/1-year heatmap grid stops being scannable at this card
+            size. */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Meal activity – last 30 days</p>
           <ActivityHeatmap meals={gymStyleMeals as any} workouts={[]} days={30} />
         </div>
 
-        {/* Recent meals */}
+        {/* Section 6 — recent meals; tapping a meal's photo opens it in a
+            modal (MealPhotoModal). */}
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent meals</p>
           {meals.length === 0 ? (
@@ -310,7 +265,8 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
                       <img
                         src={meal.imageUrl}
                         alt={`${meal.mealType} photo`}
-                        className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                        onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType })}
+                        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
                       />
                     ) : (
                       <span className="text-xl mt-0.5">{emoji}</span>
@@ -333,6 +289,8 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
           )}
         </div>
       </main>
+
+      {modalPhoto && <MealPhotoModal url={modalPhoto.url} label={modalPhoto.label} onClose={() => setModalPhoto(null)} />}
     </div>
   );
 }
@@ -371,15 +329,6 @@ function HealthCard({
       </p>
       <p className="text-xs font-medium text-gray-600">{label}</p>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
-    </div>
-  );
-}
-
-function GoalPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white rounded-xl px-3 py-2">
-      <p className="text-xs text-[var(--color-dashboard-primary)]/70">{label}</p>
-      <p className="text-sm font-semibold text-[var(--color-dashboard-primary)]">{value}</p>
     </div>
   );
 }

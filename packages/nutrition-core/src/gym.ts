@@ -160,6 +160,7 @@ export async function getClientDetails(
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
+    imageUrl: m.image_url ?? undefined,
     humanCorrection: corrections[m.id],
   }));
 
