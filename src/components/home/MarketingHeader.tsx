@@ -34,6 +34,7 @@ const VARIANT_PRODUCT: Record<Exclude<MarketingHeaderVariant, "home">, ProductTy
 export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: MarketingHeaderProps) {
   const [homeHref, setHomeHref] = useState(initialHomeHref);
   const [showGetStarted, setShowGetStarted] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
   const [dashboardHref, setDashboardHref] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,12 +88,12 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
               </Link>
             ) : (
               <>
-                <Link
-                  href="/login"
+                <button
+                  onClick={() => setShowSignIn(true)}
                   className="text-sm font-medium text-gray-600 hover:text-gray-900 px-3 py-2"
                 >
                   Sign in
-                </Link>
+                </button>
                 <button
                   onClick={() => setShowGetStarted(true)}
                   className="bg-[#6750A4] hover:bg-[#4F378A] text-white px-5 py-2.5 rounded-full text-sm font-semibold transition-colors"
@@ -120,6 +121,7 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
         )}
       </div>
       {showGetStarted && <GetStartedModal onClose={() => setShowGetStarted(false)} />}
+      {showSignIn && <GetStartedModal mode="signin" onClose={() => setShowSignIn(false)} />}
     </header>
   );
 }

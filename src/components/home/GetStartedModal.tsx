@@ -3,13 +3,23 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { getSignupUrl } from "@/lib/landing/routes";
+import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
 
 interface GetStartedModalProps {
   onClose: () => void;
+  /** "signup" (default) sends each option to that product's signup flow;
+   * "signin" sends it to that product's login instead — used by the
+   * header's "Sign in" button so it also asks which product before
+   * routing, instead of silently defaulting to one plan (see the header's
+   * comment on why that was a bug). Login has no separate "me" vs
+   * "family" destination (both are the "adults" product's one login
+   * screen — the mobile app's Self/Family login share the same scoping
+   * for the same reason), so those two options both point at the same
+   * adults login URL in signin mode. */
+  mode?: "signup" | "signin";
 }
 
-const OPTIONS = [
+const SIGNUP_OPTIONS = [
   {
     href: getSignupUrl({ product: "adults", source: "home_get_started", variant: "standard", productParam: "me" }) +
       "&next=" + encodeURIComponent("/adults/dashboard?self=1"),
@@ -34,11 +44,38 @@ const OPTIONS = [
   },
 ];
 
-// Opened by the header's "Get Started" button on the homepage — previously
-// that button just anchor-scrolled to the homepage's own use-case section
-// (a no-op if you were already there), which wasn't a real product choice.
-// This makes the choice explicit and takes people straight to signup.
-export function GetStartedModal({ onClose }: GetStartedModalProps) {
+const SIGNIN_OPTIONS = [
+  {
+    href: getLoginUrl({ product: "adults", source: "home_sign_in" }),
+    icon: "🙋",
+    title: "For Me",
+    description: "Build awareness without calorie counting.",
+    cta: "Sign in as myself",
+  },
+  {
+    href: getLoginUrl({ product: "adults", source: "home_sign_in" }),
+    icon: "👨‍👩‍👧",
+    title: "For Family",
+    description: "Support aging parents or family members through simple WhatsApp meal updates.",
+    cta: "Sign in for family",
+  },
+  {
+    href: getLoginUrl({ product: "gym", source: "home_sign_in" }),
+    icon: "🏋️",
+    title: "For Coaches",
+    description: "See which clients need a nutrition check-in this week.",
+    cta: "Sign in as a coach",
+  },
+];
+
+// Opened by the header's "Get Started" and "Sign in" buttons on the
+// homepage — previously "Get Started" just anchor-scrolled to the
+// homepage's own use-case section (a no-op if you were already there), and
+// "Sign in" skipped product choice entirely, landing everyone on the
+// family plan's login regardless of what they actually wanted. This makes
+// the choice explicit in both flows.
+export function GetStartedModal({ onClose, mode = "signup" }: GetStartedModalProps) {
+  const OPTIONS = mode === "signin" ? SIGNIN_OPTIONS : SIGNUP_OPTIONS;
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -52,7 +89,9 @@ export function GetStartedModal({ onClose }: GetStartedModalProps) {
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">How would you like to use Tistra Health?</h2>
+          <h2 className="text-xl font-bold text-gray-900">
+            {mode === "signin" ? "Which account are you signing in to?" : "How would you like to use Tistra Health?"}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none" aria-label="Close">
             ×
           </button>
