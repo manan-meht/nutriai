@@ -17,10 +17,10 @@ import {
   filterByDateRange,
   getDateRangeDayCount,
   type DashboardDateRange,
-} from "@/lib/dashboard/date-range";
-import { classifyMeal } from "@/lib/nutrition/food-classification";
-import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
-import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
+  classifyMeal,
+  applyHumanCorrection,
+  buildHabitDashboard,
+} from "@nutriai/dashboard-core";
 import {
   TrendCardGrid,
   MealTimelineSection,

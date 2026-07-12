@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import type { HumanCorrectionFields } from "./human-corrections";
+import type { HumanCorrectionFields } from "@nutriai/dashboard-core";
 
 // Server-only — imports @/lib/supabase/server (next/headers). Keep this
 // separate from human-corrections.ts, which client dashboard components

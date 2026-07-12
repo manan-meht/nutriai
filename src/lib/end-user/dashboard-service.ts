@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ContactType } from "@/lib/end-user/otp";
-import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import type { HumanCorrectionFields } from "@nutriai/dashboard-core";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 
 function admin() {

@@ -12,9 +12,7 @@ import {
   signOutDeviceAction,
   signOutAllDevicesAction,
 } from "@/app/(public)/my-progress/actions";
-import { classifyMeal } from "@/lib/nutrition/food-classification";
-import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
-import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
+import { classifyMeal, applyHumanCorrection, buildHabitDashboard } from "@nutriai/dashboard-core";
 import {
   TrendCardGrid,
   MealTimelineSection,

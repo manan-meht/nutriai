@@ -5,20 +5,20 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContactDetails } from "@/app/(adults)/adults/dashboard/actions";
-import { classifyMeal } from "@/lib/nutrition/food-classification";
-import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
-import { buildHabitDashboard } from "@/lib/nutrition/habit-insights";
-import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
-import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
-import { InviteCard } from "@/components/shared/invites/InviteCard";
-import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import {
+  classifyMeal,
+  applyHumanCorrection,
+  buildHabitDashboard,
+  recommendProteinGrams,
   DEFAULT_DASHBOARD_DATE_RANGE,
   dateRangeLabel,
   filterByDateRange,
   getDateRangeDayCount,
   type DashboardDateRange,
-} from "@/lib/dashboard/date-range";
+} from "@nutriai/dashboard-core";
+import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
+import { InviteCard } from "@/components/shared/invites/InviteCard";
+import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import {
   TrendCardGrid,
   MealTimelineSection,

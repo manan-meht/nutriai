@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { recommendProteinGrams } from "@/lib/nutrition/protein-recommendation";
+import { recommendProteinGrams } from "@nutriai/dashboard-core";
 import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 
 const GOAL_TYPE_OPTIONS: Array<{ value: string; label: string }> = [

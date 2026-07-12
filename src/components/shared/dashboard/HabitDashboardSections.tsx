@@ -1,14 +1,14 @@
 "use client";
 
-import type { ClassifiedMeal } from "@/lib/nutrition/food-classification";
 import type {
+  ClassifiedMeal,
   TrendCard,
   WeeklyFocusHabit,
   HabitMomentum,
   PatternSpectrum,
   WeeklyProgressMetric,
   TrendMood,
-} from "@/lib/nutrition/habit-insights";
+} from "@nutriai/dashboard-core";
 
 function moodClasses(mood: TrendMood) {
   switch (mood) {

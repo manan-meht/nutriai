@@ -3,11 +3,17 @@ import { View, Text, StyleSheet, ActivityIndicator, FlatList, Pressable, Refresh
 import { useRouter } from "expo-router";
 import { apiGet } from "../lib/api";
 import { colors, radii, mealEmoji } from "../lib/theme";
-import { classifyMeal, type ClassifiableMeal } from "../lib/nutrition/food-classification";
-import { applyHumanCorrection, type HumanCorrectionFields } from "../lib/nutrition/human-corrections";
-import { buildHabitDashboard } from "../lib/nutrition/habit-insights";
-import { recommendProteinGrams } from "../lib/nutrition/protein-recommendation";
-import { filterByDateRange, getDateRangeDayCount, type DashboardDateRange } from "../lib/dashboard/date-range";
+import {
+  classifyMeal,
+  type ClassifiableMeal,
+  applyHumanCorrection,
+  type HumanCorrectionFields,
+  buildHabitDashboard,
+  recommendProteinGrams,
+  filterByDateRange,
+  getDateRangeDayCount,
+  type DashboardDateRange,
+} from "@nutriai/dashboard-core";
 import {
   TrendCardGrid,
   HealthCard,

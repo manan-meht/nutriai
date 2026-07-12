@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DATE_RANGE_OPTIONS, dateRangeLabel, type DashboardDateRange } from "@/lib/dashboard/date-range";
+import { DATE_RANGE_OPTIONS, dateRangeLabel, type DashboardDateRange } from "@nutriai/dashboard-core";
 
 interface Props {
   value: DashboardDateRange;

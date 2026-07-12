@@ -20,7 +20,7 @@ import {
 } from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
-import { classifyMeal } from "@/lib/nutrition/food-classification";
+import { classifyMeal } from "@nutriai/dashboard-core";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";

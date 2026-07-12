@@ -1,5 +1,4 @@
-import { applyHumanCorrection } from "@/lib/nutrition/human-corrections";
-import { classifyMeal } from "@/lib/nutrition/food-classification";
+import { applyHumanCorrection, classifyMeal } from "@nutriai/dashboard-core";
 
 describe("applyHumanCorrection", () => {
   const baseMeal = classifyMeal({

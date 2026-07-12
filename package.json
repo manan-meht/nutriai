@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@nutriai/dashboard-core": "*",
     "@nutriai/nutrition-core": "*",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.110.0",

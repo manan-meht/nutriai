@@ -1,5 +1,5 @@
 import { ScrollView, Pressable, Text, StyleSheet } from "react-native";
-import { DATE_RANGE_OPTIONS, type DashboardDateRange } from "../lib/dashboard/date-range";
+import { DATE_RANGE_OPTIONS, type DashboardDateRange } from "@nutriai/dashboard-core";
 import { colors, radii } from "../lib/theme";
 
 interface DateRangeSelectorProps {

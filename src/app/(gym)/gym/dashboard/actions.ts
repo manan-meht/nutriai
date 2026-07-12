@@ -16,7 +16,7 @@ import { getEntitlementSnapshot, startTrialIfNeeded } from "@/lib/entitlements/e
 import { GYM_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
 import { findContactByWhatsappNumber } from "@/lib/end-user/otp";
-import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import type { HumanCorrectionFields } from "@nutriai/dashboard-core";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 import {
   getClients as getClientsCore,

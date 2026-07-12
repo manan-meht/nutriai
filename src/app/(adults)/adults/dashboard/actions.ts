@@ -14,7 +14,7 @@ import {
 import { getEntitlementSnapshot, startTrialIfNeeded } from "@/lib/entitlements/entitlements";
 import { FAMILY_LIMIT_ENFORCEMENT_ENABLED } from "@/lib/billing/feature-flags";
 import { now } from "@/lib/time/clock";
-import type { HumanCorrectionFields } from "@/lib/nutrition/human-corrections";
+import type { HumanCorrectionFields } from "@nutriai/dashboard-core";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
 import { getOrCreateInvite, findLatestInvite, regenerateInvite, revokeInvite, updateInviteMetadata, markInviteLinkOpened, toInviteSummary, withInviteErrorHandling } from "@/lib/invites/service";
 import { trackInviteEvent } from "@/lib/invites/analytics";

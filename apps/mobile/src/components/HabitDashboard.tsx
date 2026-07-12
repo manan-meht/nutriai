@@ -6,7 +6,7 @@ import type {
   PatternSpectrum,
   WeeklyProgressMetric,
   TrendMood,
-} from "../lib/nutrition/habit-insights";
+} from "@nutriai/dashboard-core";
 import { colors, radii } from "../lib/theme";
 
 // RN port of src/components/shared/dashboard/HabitDashboardSections.tsx —
