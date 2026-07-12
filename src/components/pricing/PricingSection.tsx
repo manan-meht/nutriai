@@ -23,7 +23,7 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
     trackPricingEvent("beta_billing_notice_viewed", { sourcePage });
 
     let cancelled = false;
-    fetch("/api/dashboard-href")
+    fetch("/api/feedback?resource=dashboard-href")
       .then((res) => res.json())
       .then((data: { href: string | null }) => {
         if (!cancelled) setLoggedInHref(data.href);

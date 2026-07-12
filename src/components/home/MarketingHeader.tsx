@@ -39,7 +39,7 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/dashboard-href")
+    fetch("/api/feedback?resource=dashboard-href")
       .then((res) => res.json())
       .then((data: { href: string | null }) => {
         if (cancelled) return;

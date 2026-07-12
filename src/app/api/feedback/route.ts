@@ -4,8 +4,26 @@ import { sendFeedbackEmail } from "@/lib/feedback/send-feedback-email";
 import { displayEmail } from "@/lib/auth";
 import { validateFeedbackSubmission, isSuspiciouslyFast } from "@/lib/feedback/validate";
 import type { FeedbackAccountType, FeedbackSubmitRequest } from "@/lib/feedback/types";
+import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 
 export const runtime = "edge";
+
+// GET (?resource=dashboard-href) folded in from the deleted standalone
+// /api/dashboard-href route — unrelated to feedback, but each standalone
+// route file costs ~550KB of near-fixed framework overhead in the compiled
+// Cloudflare Worker, and this app is right at Cloudflare's 25 MiB Pages
+// Functions bundle limit. This was the smallest/simplest existing
+// no-path-param route to fold it into.
+export async function GET(request: NextRequest) {
+  if (new URL(request.url).searchParams.get("resource") !== "dashboard-href") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ href: null });
+  const href = await getDashboardHrefForUser(user.id);
+  return NextResponse.json({ href });
+}
 
 // Loose but real per-IP/per-user caps — this repo has no shared in-memory
 // rate limiter (Cloudflare edge isolates don't share process memory, see
