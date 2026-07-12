@@ -11,6 +11,8 @@ import { computeInsights } from "@/lib/insights";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachClientInvite, markCoachClientInviteLinkOpened } from "@/app/(gym)/gym/dashboard/actions";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
+import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
+import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import {
   DEFAULT_DASHBOARD_DATE_RANGE,
   dateRangeLabel,
@@ -120,6 +122,12 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* Food Balance Score — see ContactDashboard.tsx for the same card
+            on the adults product; deliberately first, above the invite
+            card. Behind a feature flag; the card itself also renders
+            nothing while the flag is off (404 from the API). */}
+        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard clientId={client.id} />}
 
         {/* WhatsApp-first invite — the coach shares this link themselves;
             the bot never messages the client first. Hidden once the client

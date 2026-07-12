@@ -40,7 +40,7 @@ alter table gym_clients
 -- for calibration too, and is keyed generically rather than to a specific
 -- product's contact table.
 create table if not exists food_balance_weight_entries (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   contact_id uuid, -- references adults_contacts(id) OR gym_clients(id), not enforced by FK since it's polymorphic
   contact_type text not null check (contact_type in ('adults_contact', 'gym_client')),
   weight_kg numeric not null,
@@ -55,7 +55,7 @@ create index if not exists food_balance_weight_entries_contact_idx
 -- One row per calculated Food Balance Score, keeping enough to explain and
 -- reproduce how a score was produced without duplicating raw meal data.
 create table if not exists food_balance_score_snapshots (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   contact_id uuid not null,
   contact_type text not null check (contact_type in ('adults_contact', 'gym_client')),
   raw_score numeric,
@@ -80,7 +80,7 @@ create index if not exists food_balance_score_snapshots_contact_idx
 -- (see @nutriai/health-scoring's WEIGHT_CALIBRATION_CONFIG — the actual
 -- calibration job is a documented follow-up, not implemented in this pass).
 create table if not exists food_balance_energy_calibrations (
-  id uuid primary key default uuid_generate_v4(),
+  id uuid primary key default gen_random_uuid(),
   contact_id uuid not null,
   contact_type text not null check (contact_type in ('adults_contact', 'gym_client')),
   previous_lower_kcal numeric not null,
@@ -95,3 +95,107 @@ create table if not exists food_balance_energy_calibrations (
 
 create index if not exists food_balance_energy_calibrations_contact_idx
   on food_balance_energy_calibrations (contact_id, contact_type, created_at desc);
+
+-- RLS: the Food Balance Score API route reads/writes these tables through
+-- the cookie-authenticated client (see src/lib/supabase/server.ts's
+-- createClient(), anon key + user session — NOT the service-role client),
+-- so — unlike this repo's several service-role-only tables that enable RLS
+-- with zero policies (e.g. meal_portion_corrections, feedback_submissions)
+-- — these need real ownership-scoped policies or every query against them
+-- would be silently denied.
+--
+-- Both products are covered directly, matching how each table's own
+-- ownership column already works elsewhere in this codebase: adults_contacts
+-- via `caregiver_id = auth.uid()` (see
+-- src/app/(adults)/adults/dashboard/actions.ts's getContactDetails) and
+-- gym_clients via `trainer_id = auth.uid()` (see the same file's
+-- getClientDetails). Note this is a direct column check, not the
+-- `workspace_members`-joined "workspaces: member access" policy referenced
+-- elsewhere in gym/dashboard/actions.ts (that policy is for the `workspaces`
+-- table itself and has known gaps for the owner; gym_clients' own RLS
+-- policy is unrelated and already works, as getClientDetails' existing
+-- `.eq("trainer_id", user.id)` query confirms).
+alter table food_balance_weight_entries enable row level security;
+alter table food_balance_score_snapshots enable row level security;
+alter table food_balance_energy_calibrations enable row level security;
+
+create policy "contact/client owners can access their weight entries"
+  on food_balance_weight_entries for all
+  using (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_weight_entries.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_weight_entries.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  )
+  with check (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_weight_entries.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_weight_entries.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  );
+
+create policy "contact/client owners can access their score snapshots"
+  on food_balance_score_snapshots for all
+  using (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_score_snapshots.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_score_snapshots.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  )
+  with check (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_score_snapshots.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_score_snapshots.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  );
+
+create policy "contact/client owners can access their energy calibrations"
+  on food_balance_energy_calibrations for all
+  using (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_energy_calibrations.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_energy_calibrations.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  )
+  with check (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = food_balance_energy_calibrations.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = food_balance_energy_calibrations.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  );

@@ -5,7 +5,11 @@ import type { FoodBalanceScoreResult } from "@nutriai/health-scoring";
 import { trackFoodBalanceEvent } from "@/lib/food-balance/analytics";
 
 interface FoodBalanceScoreCardProps {
-  contactId: string;
+  /** Exactly one of these is provided — adults product passes contactId,
+   * gym product passes clientId (see /api/v1/food-balance-score, which
+   * accepts either as a mutually exclusive query param). */
+  contactId?: string;
+  clientId?: string;
 }
 
 const SCORE_BAND_LABEL = [
@@ -56,16 +60,17 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function FoodBalanceScoreCard({ contactId }: FoodBalanceScoreCardProps) {
+export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCardProps) {
   const [result, setResult] = useState<FoodBalanceScoreResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const queryParam = contactId ? `contactId=${contactId}` : `clientId=${clientId}`;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(false);
-    fetch(`/api/v1/food-balance-score?contactId=${contactId}`)
+    fetch(`/api/v1/food-balance-score?${queryParam}`)
       .then((res) => {
         if (res.status === 404) return null; // feature flag off — render nothing
         if (!res.ok) throw new Error("failed");
@@ -88,7 +93,7 @@ export function FoodBalanceScoreCard({ contactId }: FoodBalanceScoreCardProps) {
     return () => {
       cancelled = true;
     };
-  }, [contactId]);
+  }, [queryParam]);
 
   if (loading) return null;
   if (error) {

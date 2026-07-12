@@ -6,7 +6,30 @@ import type {
   MealPreparationSource,
   DiversityFoodGroup,
 } from "@nutriai/health-scoring";
-import type { AdultsMealLog } from "@nutriai/nutrition-core";
+import type { AdultsMealLog, MealLog } from "@nutriai/nutrition-core";
+
+/** Structural subset shared by AdultsMealLog and (gym) MealLog — this
+ * mapper only reads these fields, so one function serves both products
+ * rather than duplicating it per-product. */
+type MealLogLike = Pick<
+  AdultsMealLog | MealLog,
+  | "id"
+  | "loggedAt"
+  | "mealType"
+  | "foods"
+  | "aiSummary"
+  | "humanCorrection"
+  | "totalCaloriesMin"
+  | "totalCaloriesMax"
+  | "totalProteinMin"
+  | "totalProteinMax"
+  | "totalCarbsMin"
+  | "totalCarbsMax"
+  | "totalFatMin"
+  | "totalFatMax"
+  | "totalFiberMin"
+  | "totalFiberMax"
+>;
 
 function midpoint(min: number, max: number): number {
   return (min + max) / 2;
@@ -57,9 +80,10 @@ function foodGroupsFrom(classified: ClassifiedMeal): DiversityFoodGroup[] {
  * non-duplicate row is treated as user-confirmed, matching how this product
  * actually works today (there is no separate "pending confirmation" meal
  * state); see the Food Balance Score implementation report for what a real
- * per-meal AI-confidence field would improve here. */
+ * per-meal AI-confidence field would improve here. Shared by both the
+ * adults and gym products — see MealLogLike above. */
 export function mapMealLogToFoodBalanceInput(
-  meal: AdultsMealLog,
+  meal: MealLogLike,
   options: { isDeleted?: boolean; isDuplicate?: boolean } = {}
 ): FoodBalanceMealInput {
   const classified = applyHumanCorrection(

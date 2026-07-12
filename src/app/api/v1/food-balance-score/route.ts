@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getContactDetails } from "@/app/(adults)/adults/dashboard/actions";
+import { getClientDetails } from "@/app/(gym)/gym/dashboard/actions";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile } from "@/lib/food-balance/adapter";
 import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
@@ -13,38 +14,54 @@ export const runtime = "edge";
 // per the feature's spec — the first versioned route in this app; existing
 // routes are unversioned, so this establishes the convention rather than
 // following one that already existed.
+//
+// Supports both products via mutually exclusive query params —
+// ?contactId= (adults, ownership via caregiver_id) or ?clientId= (gym,
+// ownership via trainer_id) — rather than two separate route files, per
+// the "do not create a second endpoint" guidance and the existing
+// mobile-api Cloudflare Worker size lesson (each extra route file has real
+// fixed overhead).
 export async function GET(request: NextRequest) {
   if (!FOOD_BALANCE_SCORE_ENABLED) {
     return NextResponse.json({ error: "Not available" }, { status: 404 });
   }
 
   const contactId = request.nextUrl.searchParams.get("contactId");
-  if (!contactId) return NextResponse.json({ error: "contactId is required" }, { status: 400 });
+  const clientId = request.nextUrl.searchParams.get("clientId");
+  if (!contactId && !clientId) {
+    return NextResponse.json({ error: "contactId or clientId is required" }, { status: 400 });
+  }
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  // getContactDetails already scopes the query to `caregiver_id = user.id`,
-  // so a mismatched contactId simply returns null here rather than another
-  // user's data ever being reachable.
-  const details = await getContactDetails(contactId);
+  const isGym = Boolean(clientId);
+  const id = (contactId ?? clientId)!;
+  const table = isGym ? "gym_clients" : "adults_contacts";
+  const ownerColumn = isGym ? "trainer_id" : "caregiver_id";
+  const contactType = isGym ? "gym_client" : "adults_contact";
+
+  // getContactDetails/getClientDetails already scope their query to the
+  // owning caregiver_id/trainer_id, so a mismatched id simply returns null
+  // here rather than another user's data ever being reachable.
+  const details = isGym ? await getClientDetails(id) : await getContactDetails(id);
   if (!details) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const { data: profileRow } = await supabase
-    .from("adults_contacts")
+    .from(table)
     .select(
       "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg"
     )
-    .eq("id", contactId)
-    .eq("caregiver_id", user.id)
+    .eq("id", id)
+    .eq(ownerColumn, user.id)
     .single();
 
   const { data: previousSnapshot } = await supabase
     .from("food_balance_score_snapshots")
     .select("displayed_score")
-    .eq("contact_id", contactId)
-    .eq("contact_type", "adults_contact")
+    .eq("contact_id", id)
+    .eq("contact_type", contactType)
     .order("calculated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -60,8 +77,8 @@ export async function GET(request: NextRequest) {
 
   if (result.calculatedAt) {
     await supabase.from("food_balance_score_snapshots").insert({
-      contact_id: contactId,
-      contact_type: "adults_contact",
+      contact_id: id,
+      contact_type: contactType,
       raw_score: result.rawScore,
       displayed_score: result.score,
       food_foundation_score: result.foodFoundationScore,
