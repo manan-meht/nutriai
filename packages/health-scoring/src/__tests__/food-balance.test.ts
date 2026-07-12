@@ -8,10 +8,16 @@ import {
   calculateMaintenanceEstimate,
   calculateEnergyTargetRange,
   calculateEnergyAlignmentScore,
+  calculateHealthyAgingEnergyAdequacyScore,
   hasSufficientEnergyConfidence,
   calculateFoodBalanceConfidence,
   getFoodBalanceRecommendations,
   calculateFoodBalanceScore,
+  calculateHealthyAgingProteinScore,
+  calculateHealthyAgingProteinDistribution,
+  calculateHealthyAgingCoverage,
+  calculateHealthyAgingFoodPattern,
+  meaningfulProteinThresholdGrams,
   FOOD_BALANCE_SCORING_VERSION,
   type FoodBalanceMealInput,
   type FoodBalanceUserProfile,
@@ -467,5 +473,228 @@ describe("calculateFoodBalanceScore (end-to-end)", () => {
     const result = calculateFoodBalanceScore({ allMeals: meals });
     expect(result.status).toBe("refreshing_data");
     expect(Number.isNaN(result.score)).toBe(false);
+  });
+});
+
+describe("healthy_aging goal", () => {
+  const healthyAgingProfile: FoodBalanceUserProfile = {
+    goal: "healthy_aging",
+    currentWeightKg: 70,
+    heightCm: 165,
+    age: 68,
+    metabolicEquationSex: "female",
+    activityLevel: "lightly_active",
+  };
+
+  it("is accepted as a valid goal by calculateGoalAlignmentScore", () => {
+    const meals = mealsAcrossDays(15);
+    const result = calculateGoalAlignmentScore(meals, healthyAgingProfile, 1, 1);
+    expect(result.score).not.toBeNull();
+  });
+
+  it("uses the 35/25/15/15/10 Healthy Aging Alignment weighting", () => {
+    const meals = mealsAcrossDays(15);
+    const result = calculateGoalAlignmentScore(meals, healthyAgingProfile, 1, 1);
+    expect(result.components.energyAlignment?.weight).toBeCloseTo(0.35);
+    expect(result.components.proteinAdequacy?.weight).toBeCloseTo(0.25);
+    expect(result.components.proteinDistribution?.weight).toBeCloseTo(0.15);
+    expect(result.components.nutrientDenseFoodCoverage?.weight).toBeCloseTo(0.15);
+    expect(result.components.healthyAgingFoodPattern?.weight).toBeCloseTo(0.1);
+  });
+
+  it("does not flag a resistance-training note (that's gain_muscle only)", () => {
+    const meals = mealsAcrossDays(15);
+    const result = calculateGoalAlignmentScore(meals, healthyAgingProfile, 1, 1);
+    expect(result.needsResistanceTrainingNote).toBe(false);
+  });
+
+  describe("energy adequacy", () => {
+    const range = { lowerKcal: 1800, upperKcal: 2000, midpointKcal: 1900, isActivityBased: true };
+
+    it("scores 100 within the maintenance range", () => {
+      expect(calculateHealthyAgingEnergyAdequacyScore(1900, range)).toBe(100);
+    });
+
+    it("penalizes intake below the range", () => {
+      expect(calculateHealthyAgingEnergyAdequacyScore(1600, range)).toBeLessThan(100);
+    });
+
+    it("penalizes intake above the range", () => {
+      expect(calculateHealthyAgingEnergyAdequacyScore(2300, range)).toBeLessThan(100);
+    });
+
+    it("penalizes an equal deviation below the range more steeply than above it", () => {
+      const below = calculateHealthyAgingEnergyAdequacyScore(1700, range); // 100 below L
+      const above = calculateHealthyAgingEnergyAdequacyScore(2100, range); // 100 above U
+      expect(below).toBeLessThan(above);
+    });
+
+    it("uses the maintenance estimate as the target range (no deficit/surplus offset)", () => {
+      const maintenance = calculateMaintenanceEstimate(healthyAgingProfile);
+      const target = calculateEnergyTargetRange(healthyAgingProfile, "healthy_aging");
+      expect(target!.lowerKcal).toBeCloseTo(maintenance!.lowerKcal);
+      expect(target!.upperKcal).toBeCloseTo(maintenance!.upperKcal);
+    });
+
+    it("omits energy and renormalizes when confidence is below the threshold", () => {
+      const result = calculateGoalAlignmentScore(mealsAcrossDays(15), healthyAgingProfile, 0.2, 0.2);
+      expect(result.missingInputs).toContain("energy");
+      expect(result.components.energyAlignment).toBeUndefined();
+      expect(result.score).not.toBeNull();
+    });
+  });
+
+  describe("protein adequacy", () => {
+    it("scores 0 at the very bottom of the low range", () => {
+      expect(calculateHealthyAgingProteinScore(0)).toBe(0);
+    });
+    it("scores 40 at the 0.6 g/kg breakpoint", () => {
+      expect(calculateHealthyAgingProteinScore(0.6)).toBeCloseTo(40);
+    });
+    it("interpolates between 0.6 and 1.0 g/kg", () => {
+      const score = calculateHealthyAgingProteinScore(0.8);
+      expect(score).toBeGreaterThan(40);
+      expect(score).toBeLessThan(100);
+    });
+    it("scores 100 at 1.0 g/kg", () => {
+      expect(calculateHealthyAgingProteinScore(1.0)).toBe(100);
+    });
+    it("scores 100 at 1.2 g/kg (no extra reward within the target range)", () => {
+      expect(calculateHealthyAgingProteinScore(1.2)).toBe(100);
+    });
+    it("gives no additional reward above 1.2 g/kg", () => {
+      expect(calculateHealthyAgingProteinScore(2.0)).toBe(100);
+    });
+  });
+
+  describe("protein distribution", () => {
+    const weightKg = 70;
+
+    it("computes the meaningful-protein threshold as clamp(0.3 * weightKg, 20, 30)", () => {
+      expect(meaningfulProteinThresholdGrams(70)).toBe(21);
+      expect(meaningfulProteinThresholdGrams(40)).toBe(20); // clamped to the floor
+      expect(meaningfulProteinThresholdGrams(200)).toBe(30); // clamped to the ceiling
+    });
+
+    it("scores higher with protein across more meals per day", () => {
+      const oneMealPerDay = Array.from({ length: 10 }, (_, i) =>
+        meal({ loggedAt: daysAgo(i), proteinG: 25, mealType: i % 2 === 0 ? "lunch" : "snack", ...(i % 2 === 0 ? {} : { proteinG: 2 }) })
+      );
+      const threeMealsPerDay = Array.from({ length: 30 }, (_, i) =>
+        meal({ loggedAt: daysAgo(Math.floor(i / 3)), proteinG: 25 })
+      );
+      const oneResult = calculateHealthyAgingProteinDistribution(oneMealPerDay, weightKg);
+      const threeResult = calculateHealthyAgingProteinDistribution(threeMealsPerDay, weightKg);
+      expect(threeResult.score!).toBeGreaterThan(oneResult.score!);
+    });
+
+    it("reduces confidence rather than score for under-logged days", () => {
+      const sparse = [meal({ loggedAt: daysAgo(0), proteinG: 25 }), meal({ loggedAt: daysAgo(1), proteinG: undefined })];
+      const result = calculateHealthyAgingProteinDistribution(sparse, weightKg);
+      expect(result.confidence).toBeLessThan(1);
+    });
+  });
+
+  describe("nutrient-dense food coverage", () => {
+    it("returns null with no coverage-tagged meals", () => {
+      const meals = mealsAcrossDays(10, { healthyAgingCoverageGroups: [] });
+      expect(calculateHealthyAgingCoverage(meals).score).toBeNull();
+    });
+
+    it("scores higher with complete category coverage than partial", () => {
+      const complete = mealsAcrossDays(14, {
+        healthyAgingCoverageGroups: [
+          "calcium_rich_or_fortified_foods",
+          "b12_containing_or_fortified_foods",
+          "legumes_or_soy",
+          "vegetables_including_leafy_vegetables",
+          "fruit",
+          "whole_grains_or_high_fibre_starches",
+          "nuts_and_seeds",
+        ],
+      });
+      const partial = mealsAcrossDays(14, { healthyAgingCoverageGroups: ["vegetables_including_leafy_vegetables"] });
+      const completeResult = calculateHealthyAgingCoverage(complete);
+      const partialResult = calculateHealthyAgingCoverage(partial);
+      expect(completeResult.score!).toBeGreaterThan(partialResult.score!);
+    });
+
+    it("excludes untagged meals from the denominator rather than treating them as missing", () => {
+      const mixed = [
+        ...mealsAcrossDays(5, { healthyAgingCoverageGroups: ["fruit"] }),
+        ...mealsAcrossDays(5, { healthyAgingCoverageGroups: undefined }),
+      ];
+      const result = calculateHealthyAgingCoverage(mixed);
+      expect(result.confidence).toBeCloseTo(0.5, 1);
+    });
+  });
+
+  describe("healthy-aging food pattern", () => {
+    it("is null when coverage is unavailable", () => {
+      expect(calculateHealthyAgingFoodPattern([], null, 0).score).toBeNull();
+    });
+
+    it("has limited impact from a single celebratory/concern meal", () => {
+      const meals = mealsAcrossDays(14, { healthyAgingCoverageGroups: ["fruit", "vegetables_including_leafy_vegetables"] });
+      const withOneConcern = meals.map((m, i) => (i === 0 ? { ...m, isHealthyAgingPatternConcern: true } : m));
+      const coverage = calculateHealthyAgingCoverage(meals);
+      const baseline = calculateHealthyAgingFoodPattern(meals, coverage.score, coverage.confidence);
+      const withConcern = calculateHealthyAgingFoodPattern(withOneConcern, coverage.score, coverage.confidence);
+      expect(baseline.score! - withConcern.score!).toBeLessThan(5);
+    });
+  });
+
+  describe("recommendations", () => {
+    it("never generates a hydration-category recommendation", () => {
+      const scores: FoodBalanceComponentScores = {
+        foodFoundation: {
+          macroAndFibreBalance: { score: 30, weight: 0.25, label: "Macro and fibre balance", confidence: 0.9 },
+          minimallyProcessedFoodBalance: { score: 30, weight: 0.25, label: "Minimally processed", confidence: 0.9 },
+          fruitAndVegetableIntake: { score: 30, weight: 0.2, label: "Fruits and vegetables", confidence: 0.9 },
+          foodDiversity: { score: 30, weight: 0.2, label: "Food diversity", confidence: 0.9 },
+          homePreparedMealShare: { score: 30, weight: 0.1, label: "Home-prepared meals", confidence: 0.9 },
+        },
+        goalAlignment: {
+          energyAlignment: { score: 30, weight: 0.35, label: "Energy alignment", confidence: 0.9 },
+          proteinAdequacy: { score: 30, weight: 0.25, label: "Protein adequacy", confidence: 0.9 },
+          proteinDistribution: { score: 30, weight: 0.15, label: "Protein distribution", confidence: 0.9 },
+          nutrientDenseFoodCoverage: { score: 30, weight: 0.15, label: "Nutrient-dense food coverage", confidence: 0.9 },
+          healthyAgingFoodPattern: { score: 30, weight: 0.1, label: "Healthy-aging food pattern", confidence: 0.9 },
+        },
+      };
+      const recommendations = getFoodBalanceRecommendations(scores);
+      expect(recommendations.every((r) => !String(r.category).includes("hydrat"))).toBe(true);
+      expect(recommendations.every((r) => !r.title.toLowerCase().includes("water"))).toBe(true);
+    });
+  });
+
+  it("full end-to-end score for healthy_aging stays within 0-100 and status reflects data completeness", () => {
+    const meals = mealsAcrossDays(21, {
+      isUserCorrected: true,
+      healthyAgingCoverageGroups: ["fruit", "legumes_or_soy"],
+    });
+    const result = calculateFoodBalanceScore({ allMeals: meals, profile: healthyAgingProfile });
+    expect(result.score).not.toBeNull();
+    expect(result.score!).toBeGreaterThanOrEqual(0);
+    expect(result.score!).toBeLessThanOrEqual(100);
+    expect(["fully_personalized", "partially_personalized"]).toContain(result.status);
+  });
+});
+
+describe("existing goals are unaffected by the healthy_aging addition", () => {
+  it("reduce_weight still produces the same shape of result", () => {
+    const meals = mealsAcrossDays(15);
+    const profile: FoodBalanceUserProfile = {
+      goal: "reduce_weight",
+      currentWeightKg: 70,
+      heightCm: 170,
+      age: 30,
+      metabolicEquationSex: "male",
+      activityLevel: "moderately_active",
+    };
+    const result = calculateGoalAlignmentScore(meals, profile, 1, 1);
+    expect(result.components.energyAlignment).toBeDefined();
+    expect(result.components.nutrientDenseFoodCoverage).toBeUndefined();
+    expect(result.components.healthyAgingFoodPattern).toBeUndefined();
   });
 });

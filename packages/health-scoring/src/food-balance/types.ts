@@ -4,7 +4,8 @@ export type NutritionGoal =
   | "gain_muscle"
   | "body_recomposition"
   | "maintain_weight"
-  | "improve_nutrition";
+  | "improve_nutrition"
+  | "healthy_aging";
 
 export type ActivityLevel =
   | "mostly_sitting"
@@ -26,6 +27,18 @@ export type DiversityFoodGroup =
   | "protein_sources";
 
 export type ResistanceTrainingStatus = "regularly" | "sometimes" | "not_currently" | "unknown";
+
+/** Coverage categories for Healthy Aging's Nutrient-Dense Food Coverage
+ * component — presence-based, never a claim of measured micronutrient
+ * adequacy (see food-foundation.ts's calculateHealthyAgingCoverage). */
+export type HealthyAgingCoverageGroup =
+  | "calcium_rich_or_fortified_foods"
+  | "b12_containing_or_fortified_foods"
+  | "legumes_or_soy"
+  | "vegetables_including_leafy_vegetables"
+  | "fruit"
+  | "whole_grains_or_high_fibre_starches"
+  | "nuts_and_seeds";
 
 export type MetabolicEquationSex = "male" | "female";
 
@@ -67,6 +80,18 @@ export interface FoodBalanceMealInput {
    * both become "chickpeas") — this package does not do NLP normalization. */
   wholeFoods?: string[];
   foodGroups?: DiversityFoodGroup[];
+  /** Healthy Aging's coverage categories present in this meal — a separate
+   * (coarser, nutrient-oriented) tagging from foodGroups above, which is
+   * used by the general Food Foundation's diversity component. Unknown/
+   * omitted rather than guessed when the classification pipeline hasn't
+   * tagged a meal for these categories. */
+  healthyAgingCoverageGroups?: HealthyAgingCoverageGroup[];
+  /** True when this meal is high-confidence processed meat, an
+   * excessively salty packaged food, deep-fried, or a nutritionally
+   * limited ultra-processed food — used only for the Healthy-Aging Food
+   * Pattern's small "repeated exposure" reduction, never the general Food
+   * Foundation (which already scores overall processing level). */
+  isHealthyAgingPatternConcern?: boolean;
 }
 
 export interface FoodBalanceWeightEntry {
@@ -110,8 +135,24 @@ export interface FoodBalanceComponentScores {
     intakeConsistency: ComponentScore;
     carbohydrateSupport: ComponentScore;
     proteinDistribution: ComponentScore;
+    // Healthy Aging only — energyAlignment/proteinAdequacy/
+    // proteinDistribution above are reused (same keys, goal-specific
+    // weights/targets), these two are Healthy-Aging-specific:
+    nutrientDenseFoodCoverage: ComponentScore;
+    healthyAgingFoodPattern: ComponentScore;
   }>;
 }
+
+/** Convenience alias matching the spec's suggested shape — components live
+ * in FoodBalanceComponentScores["goalAlignment"] above (same object other
+ * goals use), this just documents which keys apply to healthy_aging. */
+export type HealthyAgingComponentScores = {
+  energyAdequacy: ComponentScore | null;
+  proteinAdequacy: ComponentScore | null;
+  proteinDistribution: ComponentScore | null;
+  nutrientDenseFoodCoverage: ComponentScore | null;
+  healthyAgingFoodPattern: ComponentScore | null;
+};
 
 export interface FoodBalanceDataCoverage {
   eligibleMealCount: number;

@@ -4,6 +4,7 @@ export * from "./eligibility";
 export * from "./targets";
 export * from "./food-foundation";
 export * from "./goal-alignment";
+export * from "./healthy-aging";
 export * from "./energy";
 export * from "./confidence";
 export * from "./recommendations";

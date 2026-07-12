@@ -21,7 +21,7 @@ alter table adults_contacts
   add column if not exists activity_level text check (activity_level in ('mostly_sitting', 'lightly_active', 'moderately_active', 'very_active', 'unknown')),
   add column if not exists resistance_training_status text check (resistance_training_status in ('regularly', 'sometimes', 'not_currently', 'unknown')),
   add column if not exists preferred_units text check (preferred_units in ('metric', 'imperial')) default 'metric',
-  add column if not exists primary_nutrition_goal text check (primary_nutrition_goal in ('reduce_weight', 'reduce_body_fat', 'gain_muscle', 'body_recomposition', 'maintain_weight', 'improve_nutrition')),
+  add column if not exists primary_nutrition_goal text check (primary_nutrition_goal in ('reduce_weight', 'reduce_body_fat', 'gain_muscle', 'body_recomposition', 'maintain_weight', 'improve_nutrition', 'healthy_aging')),
   add column if not exists target_weight_kg numeric;
 
 alter table gym_clients
@@ -30,7 +30,7 @@ alter table gym_clients
   add column if not exists activity_level text check (activity_level in ('mostly_sitting', 'lightly_active', 'moderately_active', 'very_active', 'unknown')),
   add column if not exists resistance_training_status text check (resistance_training_status in ('regularly', 'sometimes', 'not_currently', 'unknown')),
   add column if not exists preferred_units text check (preferred_units in ('metric', 'imperial')) default 'metric',
-  add column if not exists primary_nutrition_goal text check (primary_nutrition_goal in ('reduce_weight', 'reduce_body_fat', 'gain_muscle', 'body_recomposition', 'maintain_weight', 'improve_nutrition')),
+  add column if not exists primary_nutrition_goal text check (primary_nutrition_goal in ('reduce_weight', 'reduce_body_fat', 'gain_muscle', 'body_recomposition', 'maintain_weight', 'improve_nutrition', 'healthy_aging')),
   add column if not exists target_weight_kg numeric;
 
 -- Optional standalone weight-trend entries. `biomarker_logs` already

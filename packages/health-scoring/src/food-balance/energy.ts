@@ -1,4 +1,4 @@
-import { ACTIVITY_MULTIPLIERS, ENERGY_CONFIG, GOAL_ENERGY_OFFSETS, clamp } from "./constants";
+import { ACTIVITY_MULTIPLIERS, ENERGY_CONFIG, GOAL_ENERGY_OFFSETS, HEALTHY_AGING_ENERGY_CONFIG, clamp } from "./constants";
 import type { EnergyTargetRange, FoodBalanceUserProfile, MetabolicEquationSex, NutritionGoal } from "./types";
 
 /** Mifflin-St Jeor resting metabolic rate. Never inferred from name/photo/
@@ -69,6 +69,18 @@ export function calculateEnergyTargetRange(
   const offsets = GOAL_ENERGY_OFFSETS[goal];
   if (!offsets) return null;
 
+  // Healthy Aging targets maintenance itself — use the maintenance
+  // estimate's own range directly rather than collapsing it to a single
+  // point via zero-offset multiplication.
+  if (goal === "healthy_aging") {
+    return {
+      lowerKcal: maintenance.lowerKcal,
+      upperKcal: maintenance.upperKcal,
+      midpointKcal: maintenance.midpointKcal,
+      isActivityBased: maintenance.isActivityBased,
+    };
+  }
+
   const lowerKcal = maintenance.midpointKcal * (1 + offsets.lowerPct);
   const upperKcal = maintenance.midpointKcal * (1 + offsets.upperPct);
   const [orderedLower, orderedUpper] = lowerKcal <= upperKcal ? [lowerKcal, upperKcal] : [upperKcal, lowerKcal];
@@ -95,6 +107,31 @@ export function calculateEnergyAlignmentScore(averageDailyCalories: number, rang
   const distance = averageDailyCalories < L ? L - averageDailyCalories : averageDailyCalories - U;
   const relativeDeviation = distance / T;
   return clamp(100 - 250 * relativeDeviation, 0, 100);
+}
+
+/** Healthy Aging's energy-adequacy formula — deliberately asymmetric: a
+ * steeper penalty below the maintenance range than above it (400 vs 250
+ * coefficient), because for this goal inadequate intake is the primary risk
+ * to guard against, not excess. This is an explainable product-scoring
+ * formula, not a clinically validated diagnostic equation. Always a
+ * scoring-window average, never a single day's verdict. */
+export function calculateHealthyAgingEnergyAdequacyScore(averageDailyCalories: number, range: EnergyTargetRange): number {
+  const { lowerKcal: L, upperKcal: U, midpointKcal: M } = range;
+  if (averageDailyCalories >= L && averageDailyCalories <= U) return 100;
+  if (averageDailyCalories < L) {
+    return clamp(100 - HEALTHY_AGING_ENERGY_CONFIG.belowRangeCoefficient * ((L - averageDailyCalories) / M), 0, 100);
+  }
+  return clamp(100 - HEALTHY_AGING_ENERGY_CONFIG.aboveRangeCoefficient * ((averageDailyCalories - U) / M), 0, 100);
+}
+
+/** Secondary reasonableness check only (per the spec, never the primary
+ * calculation) — flags when a weight is far enough from a typical range
+ * that the flat 30 kcal/kg/day heuristic shouldn't be trusted blindly.
+ * This product has no clinician-reviewed adjusted-weight equation today,
+ * so extreme-weight cases are flagged for reduced confidence rather than
+ * inventing one (per the spec's explicit instruction). */
+export function isExtremeWeightForReasonablenessCheck(weightKg: number): boolean {
+  return weightKg < 40 || weightKg > 150;
 }
 
 /** True when there's enough profile + meal-confidence data to responsibly

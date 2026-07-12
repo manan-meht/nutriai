@@ -1,7 +1,13 @@
 import { clamp, GOAL_ALIGNMENT_WEIGHTS, MEANINGFUL_PROTEIN_SERVING_G } from "./constants";
-import { calculateEnergyAlignmentScore, calculateEnergyTargetRange, hasSufficientEnergyConfidence } from "./energy";
+import { calculateEnergyAlignmentScore, calculateEnergyTargetRange, calculateHealthyAgingEnergyAdequacyScore, hasSufficientEnergyConfidence } from "./energy";
 import { scoreAgainstRange } from "./food-foundation";
-import { fibreTargetG, proteinTargetG, carbTargetG } from "./targets";
+import { fibreTargetG, proteinTargetG, carbTargetG, weightOrDefault } from "./targets";
+import {
+  calculateHealthyAgingCoverage,
+  calculateHealthyAgingFoodPattern,
+  calculateHealthyAgingProteinDistribution,
+  calculateHealthyAgingProteinScore,
+} from "./healthy-aging";
 import type { ComponentScore, FoodBalanceComponentScores, FoodBalanceMealInput, FoodBalanceUserProfile, NutritionGoal } from "./types";
 
 function average(values: number[]): number | null {
@@ -82,9 +88,16 @@ function calculateProteinAdequacyScore(
 ): { score: number | null; confidence: number } {
   const avgProtein = average(meals.filter((m) => m.proteinG != null).map((m) => m.proteinG!));
   if (avgProtein == null) return { score: null, confidence: 0 };
-  const score = scoreAgainstRange(avgProtein, proteinTargetG(profile));
   const withData = meals.filter((m) => m.proteinG != null).length;
-  return { score, confidence: clamp(withData / meals.length, 0, 1) };
+  const confidence = clamp(withData / meals.length, 0, 1);
+
+  if (profile?.goal === "healthy_aging") {
+    const gramsPerKg = avgProtein / weightOrDefault(profile.currentWeightKg);
+    return { score: calculateHealthyAgingProteinScore(gramsPerKg), confidence };
+  }
+
+  const score = scoreAgainstRange(avgProtein, proteinTargetG(profile));
+  return { score, confidence };
 }
 
 export interface GoalAlignmentResult {
@@ -110,12 +123,23 @@ export function calculateGoalAlignmentScore(
     return { score: null, confidence: 0, components: {}, missingInputs: [], needsResistanceTrainingNote: false };
   }
 
+  const isHealthyAging = profile.goal === "healthy_aging";
+
   const proteinAdequacy = "proteinAdequacy" in weights ? calculateProteinAdequacyScore(meals, profile) : null;
   const intakeConsistency = "intakeConsistency" in weights ? calculateIntakeConsistencyScore(meals) : null;
   const fibreAndMealVolume = "fibreAndMealVolume" in weights ? calculateFibreAndMealVolumeScore(meals) : null;
   const fibreAdequacy = "fibreAdequacy" in weights ? calculateFibreAndMealVolumeScore(meals) : null;
   const carbohydrateSupport = "carbohydrateSupport" in weights ? calculateCarbohydrateSupportScore(meals, profile) : null;
-  const proteinDistribution = "proteinDistribution" in weights ? calculateProteinDistributionScore(meals) : null;
+  const proteinDistribution = "proteinDistribution" in weights
+    ? isHealthyAging
+      ? calculateHealthyAgingProteinDistribution(meals, weightOrDefault(profile.currentWeightKg))
+      : calculateProteinDistributionScore(meals)
+    : null;
+
+  const healthyAgingCoverage = isHealthyAging ? calculateHealthyAgingCoverage(meals) : null;
+  const healthyAgingFoodPattern = isHealthyAging
+    ? calculateHealthyAgingFoodPattern(meals, healthyAgingCoverage!.score, healthyAgingCoverage!.confidence)
+    : null;
 
   let energyScore: number | null = null;
   let energyConfidence = 0;
@@ -128,7 +152,9 @@ export function calculateGoalAlignmentScore(
       const dailyCalories = meals.filter((m) => m.calories != null).map((m) => m.calories!);
       const days = new Set(meals.map((m) => m.loggedAt.slice(0, 10))).size || 1;
       const avgDailyCalories = dailyCalories.reduce((a, b) => a + b, 0) / days;
-      energyScore = calculateEnergyAlignmentScore(avgDailyCalories, energyRange);
+      energyScore = isHealthyAging
+        ? calculateHealthyAgingEnergyAdequacyScore(avgDailyCalories, energyRange)
+        : calculateEnergyAlignmentScore(avgDailyCalories, energyRange);
       energyConfidence = Math.min(mealCoverageConfidence, portionEstimationConfidence);
     }
   }
@@ -146,6 +172,24 @@ export function calculateGoalAlignmentScore(
   if (intakeConsistency) parts.push({ key: "intakeConsistency", value: intakeConsistency.score, weight: (weights as any).intakeConsistency, confidence: intakeConsistency.confidence, label: "Intake consistency" });
   if (carbohydrateSupport) parts.push({ key: "carbohydrateSupport", value: carbohydrateSupport.score, weight: (weights as any).carbohydrateSupport, confidence: carbohydrateSupport.confidence, label: "Carbohydrate support" });
   if (proteinDistribution) parts.push({ key: "proteinDistribution", value: proteinDistribution.score, weight: (weights as any).proteinDistribution, confidence: proteinDistribution.confidence, label: "Protein distribution" });
+  if (healthyAgingCoverage) {
+    parts.push({
+      key: "nutrientDenseFoodCoverage",
+      value: healthyAgingCoverage.score,
+      weight: (weights as any).nutrientDenseFoodCoverage,
+      confidence: healthyAgingCoverage.confidence,
+      label: "Nutrient-dense food coverage",
+    });
+  }
+  if (healthyAgingFoodPattern) {
+    parts.push({
+      key: "healthyAgingFoodPattern",
+      value: healthyAgingFoodPattern.score,
+      weight: (weights as any).healthyAgingFoodPattern,
+      confidence: healthyAgingFoodPattern.confidence,
+      label: "Healthy-aging food pattern",
+    });
+  }
 
   const score = weightedAverage(parts.map((p) => ({ value: p.value, weight: p.weight })));
 
