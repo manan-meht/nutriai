@@ -10,8 +10,11 @@
 export const FOOD_BALANCE_SCORING_VERSION = "1.1.0";
 
 export const FOOD_BALANCE_CONFIG = {
-  minEligibleMeals: 15,
-  minDistinctLoggingDays: 5,
+  // Lowered from the originally-recommended 15 meals / 5 days so the score
+  // starts showing sooner (real-world testing found 15/5 too slow to hit)
+  // — still configurable here without touching calculation logic.
+  minEligibleMeals: 6,
+  minDistinctLoggingDays: 3,
   scoringWindowDays: 14,
   recentWindowDays: 7,
   fullConfidenceMealCount: 21,

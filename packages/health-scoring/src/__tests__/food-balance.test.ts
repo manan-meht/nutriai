@@ -56,26 +56,26 @@ function mealsAcrossDays(count: number, mealOverrides: Partial<FoodBalanceMealIn
 }
 
 describe("eligibility", () => {
-  it("is not eligible at 14 meals even across enough days", () => {
-    const meals = Array.from({ length: 14 }, (_, i) => meal({ loggedAt: daysAgo(i % 6) }));
+  it("is not eligible at 5 meals even across enough days", () => {
+    const meals = Array.from({ length: 5 }, (_, i) => meal({ loggedAt: daysAgo(i % 6) }));
     expect(isFoodBalanceScoreEligible(meals).eligible).toBe(false);
   });
 
-  it("is eligible at exactly 15 meals across 5 distinct days", () => {
-    const meals = Array.from({ length: 15 }, (_, i) => meal({ loggedAt: daysAgo(i % 5) }));
+  it("is eligible at exactly 6 meals across 3 distinct days", () => {
+    const meals = Array.from({ length: 6 }, (_, i) => meal({ loggedAt: daysAgo(i % 3) }));
     const result = isFoodBalanceScoreEligible(meals);
     expect(result.eligible).toBe(true);
-    expect(result.eligibleMealCount).toBe(15);
+    expect(result.eligibleMealCount).toBe(6);
   });
 
-  it("is eligible at 16 meals", () => {
-    const meals = Array.from({ length: 16 }, (_, i) => meal({ loggedAt: daysAgo(i % 5) }));
+  it("is eligible at 7 meals", () => {
+    const meals = Array.from({ length: 7 }, (_, i) => meal({ loggedAt: daysAgo(i % 5) }));
     expect(isFoodBalanceScoreEligible(meals).eligible).toBe(true);
   });
 
   it("requires distinct days even with enough total meals", () => {
-    // 15 meals but all logged on the same 2 days.
-    const meals = Array.from({ length: 15 }, (_, i) => meal({ loggedAt: daysAgo(i % 2) }));
+    // 6 meals but all logged on the same 2 days.
+    const meals = Array.from({ length: 6 }, (_, i) => meal({ loggedAt: daysAgo(i % 2) }));
     expect(isFoodBalanceScoreEligible(meals).eligible).toBe(false);
   });
 
@@ -377,8 +377,8 @@ describe("recommendations", () => {
 });
 
 describe("calculateFoodBalanceScore (end-to-end)", () => {
-  it("returns collecting_data status under 15 meals", () => {
-    const result = calculateFoodBalanceScore({ allMeals: mealsAcrossDays(10) });
+  it("returns collecting_data status under 6 meals", () => {
+    const result = calculateFoodBalanceScore({ allMeals: mealsAcrossDays(4) });
     expect(result.status).toBe("collecting_data");
     expect(result.score).toBeNull();
   });
@@ -454,9 +454,9 @@ describe("calculateFoodBalanceScore (end-to-end)", () => {
   });
 
   it("excludes deleted/duplicate meals from eligibility and scoring", () => {
-    const meals = mealsAcrossDays(20).map((m, i) => (i < 6 ? { ...m, isDeleted: true } : m));
+    const meals = mealsAcrossDays(20).map((m, i) => (i < 16 ? { ...m, isDeleted: true } : m));
     const result = calculateFoodBalanceScore({ allMeals: meals });
-    expect(result.dataCoverage.eligibleMealCount).toBe(14);
+    expect(result.dataCoverage.eligibleMealCount).toBe(4);
     expect(result.status).toBe("collecting_data");
   });
 
