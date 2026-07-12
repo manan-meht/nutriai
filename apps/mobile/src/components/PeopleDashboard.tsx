@@ -30,6 +30,7 @@ interface PeopleDashboardProps {
   listKey: "contacts" | "clients";
   emptyLabel: string;
   detailRouteBase: string;
+  addRoute: string;
 }
 
 function initials(name: string): string {
@@ -53,7 +54,7 @@ function formatRelative(isoDate: string): string {
 // Visual language mirrors the web dashboard's ContactCard/ClientCard —
 // see src/components/adults/AdultsDashboardClient.tsx and
 // src/components/gym/ClientCard.tsx.
-export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, detailRouteBase }: PeopleDashboardProps) {
+export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, detailRouteBase, addRoute }: PeopleDashboardProps) {
   const router = useRouter();
   const [workspace, setWorkspace] = useState<WorkspaceResponse | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
@@ -106,10 +107,13 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTextBlock}>
           <Text style={styles.greeting}>{name ? `Hi, ${name.split(" ")[0]} 👋` : "Your dashboard"}</Text>
           <Text style={styles.subtitle}>{workspace?.workspace.name}</Text>
         </View>
+        <Pressable style={styles.addButton} onPress={() => router.push(addRoute)}>
+          <Text style={styles.addButtonText}>+ Add</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -161,7 +165,10 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface, paddingTop: 60, paddingHorizontal: 20 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.surface },
-  header: { marginBottom: 20 },
+  header: { marginBottom: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerTextBlock: { flex: 1 },
+  addButton: { backgroundColor: colors.primary, borderRadius: radii.full, paddingHorizontal: 16, paddingVertical: 10 },
+  addButtonText: { color: colors.white, fontSize: 14, fontWeight: "700" },
   greeting: { fontSize: 24, fontWeight: "700", color: colors.textPrimary },
   subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
   list: { paddingBottom: 24 },

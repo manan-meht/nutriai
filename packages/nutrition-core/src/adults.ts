@@ -25,6 +25,13 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
     timezone: c.timezone ?? "Asia/Kolkata",
     remindersEnabled: c.reminders_enabled ?? false,
     reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
+    dateOfBirth: c.date_of_birth ?? undefined,
+    metabolicEquationSex: c.metabolic_equation_sex ?? undefined,
+    activityLevel: c.activity_level ?? undefined,
+    resistanceTrainingStatus: c.resistance_training_status ?? undefined,
+    preferredUnits: c.preferred_units ?? undefined,
+    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    targetWeightKg: c.target_weight_kg ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,

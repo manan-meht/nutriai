@@ -8,6 +8,7 @@ export default function FamilyDashboardScreen() {
       listKey="contacts"
       emptyLabel="No one added yet."
       detailRouteBase="/(app)/family/person"
+      addRoute="/(app)/family/add"
     />
   );
 }

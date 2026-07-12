@@ -8,6 +8,7 @@ export default function CoachDashboardScreen() {
       listKey="clients"
       emptyLabel="No clients added yet."
       detailRouteBase="/(app)/coach/person"
+      addRoute="/(app)/coach/add"
     />
   );
 }

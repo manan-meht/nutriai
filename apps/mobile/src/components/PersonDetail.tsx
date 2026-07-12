@@ -113,6 +113,9 @@ interface PersonDetailProps {
    * go back to; it shows a sign-out link in that spot instead. */
   showBackButton?: boolean;
   onSignOut?: () => void;
+  /** Route to the edit screen (see PersonForm.tsx) — omitted for Self,
+   * which edits its own details via a different flow (not built yet). */
+  editRoute?: string;
 }
 
 // Shared by app/(app)/family/person/[id].tsx, app/(app)/coach/person/[id].tsx,
@@ -122,7 +125,7 @@ interface PersonDetailProps {
 // Visual language mirrors the web app's contact detail page (solid
 // primary-color header bar, habit-insights sections, macro charts,
 // activity heatmap) — see src/components/adults/dashboard/ContactDashboard.tsx.
-export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: PersonDetailProps) {
+export function PersonDetail({ apiPath, showBackButton = true, onSignOut, editRoute }: PersonDetailProps) {
   const router = useRouter();
   const [detail, setDetail] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -220,10 +223,15 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{initials(name)}</Text>
           </View>
-          <View>
+          <View style={styles.headerNameBlock}>
             <Text style={styles.name}>{name}</Text>
             <Text style={styles.subtitle}>{detail.meals.length} meal{detail.meals.length === 1 ? "" : "s"} logged</Text>
           </View>
+          {editRoute && (
+            <Pressable style={styles.headerAction} onPress={() => router.push(editRoute)}>
+              <Text style={styles.headerActionText}>Edit</Text>
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -317,6 +325,7 @@ const styles = StyleSheet.create({
   headerAction: { marginBottom: 16 },
   headerActionText: { color: "rgba(255,255,255,0.85)", fontSize: 14, fontWeight: "500" },
   headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerNameBlock: { flex: 1 },
   avatar: {
     width: 44,
     height: 44,

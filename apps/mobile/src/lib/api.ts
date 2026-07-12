@@ -13,11 +13,27 @@ if (!API_BASE_URL) {
  * against it. Throws on any non-2xx response.
  */
 export async function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path, { method: "GET" });
+}
+
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  return apiRequest<T>(path, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
+  return apiRequest<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error("Not authenticated");
 
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    ...init,
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+    },
   });
 
   if (!res.ok) {
