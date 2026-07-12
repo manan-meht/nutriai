@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { scopedEmail } from "../lib/auth";
 import { signInWithOAuthProvider } from "../lib/oauth";
 import { colors, radii } from "../lib/theme";
+import { GoogleIcon, FacebookIcon } from "./BrandIcons";
 
 interface LoginFormProps {
   /** Determines the account scoping via scopedEmail() — "adults" for both
@@ -69,7 +70,10 @@ export function LoginForm({ scopeAs, subtitle }: LoginFormProps) {
         {oauthLoading === "google" ? (
           <ActivityIndicator color={colors.textPrimary} />
         ) : (
-          <Text style={styles.oauthButtonText}>Continue with Google</Text>
+          <>
+            <GoogleIcon />
+            <Text style={styles.oauthButtonText}>Continue with Google</Text>
+          </>
         )}
       </Pressable>
 
@@ -81,7 +85,10 @@ export function LoginForm({ scopeAs, subtitle }: LoginFormProps) {
         {oauthLoading === "facebook" ? (
           <ActivityIndicator color={colors.textPrimary} />
         ) : (
-          <Text style={styles.oauthButtonText}>Continue with Facebook</Text>
+          <>
+            <FacebookIcon />
+            <Text style={styles.oauthButtonText}>Continue with Facebook</Text>
+          </>
         )}
       </Pressable>
 
@@ -125,7 +132,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radii.pill,
     padding: 14,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
     marginBottom: 10,
     backgroundColor: colors.white,
   },

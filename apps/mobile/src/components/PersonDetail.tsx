@@ -7,7 +7,7 @@ import { classifyMeal, type ClassifiableMeal } from "../lib/nutrition/food-class
 import { applyHumanCorrection, type HumanCorrectionFields } from "../lib/nutrition/human-corrections";
 import { buildHabitDashboard } from "../lib/nutrition/habit-insights";
 import { recommendProteinGrams } from "../lib/nutrition/protein-recommendation";
-import { filterByDateRange, getDateRangeStart } from "../lib/dashboard/date-range";
+import { filterByDateRange, getDateRangeDayCount, type DashboardDateRange } from "../lib/dashboard/date-range";
 import {
   TrendCardGrid,
   HealthCard,
@@ -18,6 +18,7 @@ import {
 } from "./HabitDashboard";
 import { ActivityHeatmap } from "./ActivityHeatmap";
 import { MacroBarChart, type DayDatum } from "./MacroBarChart";
+import { DateRangeSelector } from "./DateRangeSelector";
 
 interface Meal {
   id: string;
@@ -121,6 +122,7 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DashboardDateRange>("this_week");
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -153,14 +155,16 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
 
   const weekStats = useMemo(() => {
     if (!detail) return null;
-    const mealsThisWeek = filterByDateRange(detail.meals, "this_week");
-    const daysLogged = new Set(mealsThisWeek.map((m) => m.loggedAt.slice(0, 10))).size;
-    const start = getDateRangeStart("this_week");
-    const rangeDays = start ? Math.max(1, Math.round((Date.now() - start.getTime()) / 86_400_000) + 1) : 7;
-    const avgProtein = Math.round(mealsThisWeek.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0) / rangeDays);
-    const avgCalories = Math.round(mealsThisWeek.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0) / rangeDays);
-    return { mealsThisWeek: mealsThisWeek.length, daysLogged, rangeDays, avgProtein, avgCalories };
-  }, [detail]);
+    const mealsInRange = filterByDateRange(detail.meals, dateRange);
+    const daysLogged = new Set(mealsInRange.map((m) => m.loggedAt.slice(0, 10))).size;
+    const earliestMealAt = detail.meals.length
+      ? new Date(Math.min(...detail.meals.map((m) => new Date(m.loggedAt).getTime())))
+      : undefined;
+    const rangeDays = getDateRangeDayCount(dateRange, new Date(), earliestMealAt);
+    const avgProtein = Math.round(mealsInRange.reduce((s, m) => s + midpoint(m.totalProteinMin, m.totalProteinMax), 0) / rangeDays);
+    const avgCalories = Math.round(mealsInRange.reduce((s, m) => s + midpoint(m.totalCaloriesMin, m.totalCaloriesMax), 0) / rangeDays);
+    return { mealsThisWeek: mealsInRange.length, daysLogged, rangeDays, avgProtein, avgCalories };
+  }, [detail, dateRange]);
 
   const dailyTotals = useMemo(() => (detail ? buildDailyTotals(detail.meals, 7) : null), [detail]);
 
@@ -224,6 +228,8 @@ export function PersonDetail({ apiPath, showBackButton = true, onSignOut }: Pers
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListHeaderComponent={
           <View style={styles.sections}>
+            <DateRangeSelector value={dateRange} onChange={setDateRange} />
+
             <View style={styles.healthRow}>
               <HealthCard icon="🍽️" label="Meals this week" value={String(weekStats.mealsThisWeek)} sub={`${weekStats.daysLogged} of ${weekStats.rangeDays} days`} ok={weekStats.rangeDays > 1 ? weekStats.daysLogged / weekStats.rangeDays >= 0.7 : undefined} />
               <HealthCard icon="🥩" label="Avg protein/day" value={weekStats.avgProtein > 0 ? `${weekStats.avgProtein}g` : "—"} sub={`target: ${proteinTarget}g`} ok={weekStats.avgProtein >= proteinTarget * 0.8} />

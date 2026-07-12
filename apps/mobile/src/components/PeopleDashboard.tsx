@@ -11,10 +11,17 @@ interface WorkspaceResponse {
   coachName?: string | null;
 }
 
+interface Goal {
+  status: string;
+  title: string;
+}
+
 interface Person {
   id: string;
   fullName: string;
   mealCount: number;
+  lastMealAt?: string;
+  goals?: Goal[];
 }
 
 interface PeopleDashboardProps {
@@ -27,6 +34,16 @@ interface PeopleDashboardProps {
 
 function initials(name: string): string {
   return name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+}
+
+function formatRelative(isoDate: string): string {
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }
 
 // Shared by app/(app)/family/index.tsx and app/(app)/coach/index.tsx —
@@ -101,26 +118,37 @@ export function PeopleDashboard({ workspacePath, listPath, listKey, emptyLabel, 
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={colors.primary} />}
         ListEmptyComponent={<Text style={styles.empty}>{emptyLabel}</Text>}
-        renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => router.push(`${detailRouteBase}/${item.id}`)}>
-            <View style={styles.cardRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials(item.fullName)}</Text>
-                {item.mealCount > 0 && <View style={styles.presenceDot} />}
+        renderItem={({ item }) => {
+          const activeGoal = item.goals?.find((g) => g.status === "active");
+          return (
+            <Pressable style={styles.card} onPress={() => router.push(`${detailRouteBase}/${item.id}`)}>
+              <View style={styles.cardRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initials(item.fullName)}</Text>
+                  {item.mealCount > 0 && <View style={styles.presenceDot} />}
+                </View>
+                <View style={styles.cardInfo}>
+                  <Text style={styles.cardName}>{item.fullName}</Text>
+                  {item.mealCount > 0 ? (
+                    <View style={styles.metaRow}>
+                      <View style={styles.activityBanner}>
+                        <Text style={styles.activityText}>🍽️ {item.mealCount} logged</Text>
+                      </View>
+                      {item.lastMealAt && <Text style={styles.cardMeta}>Last: {formatRelative(item.lastMealAt)}</Text>}
+                    </View>
+                  ) : (
+                    <Text style={styles.cardMeta}>No meals logged yet</Text>
+                  )}
+                  {activeGoal && (
+                    <View style={styles.goalPill}>
+                      <Text style={styles.goalText}>🎯 {activeGoal.title}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
-              <View style={styles.cardInfo}>
-                <Text style={styles.cardName}>{item.fullName}</Text>
-                {item.mealCount > 0 ? (
-                  <View style={styles.activityBanner}>
-                    <Text style={styles.activityText}>🍽️ {item.mealCount} meal{item.mealCount === 1 ? "" : "s"} logged</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.cardMeta}>No meals logged yet</Text>
-                )}
-              </View>
-            </View>
-          </Pressable>
-        )}
+            </Pressable>
+          );
+        }}
       />
 
       <Pressable style={styles.signOut} onPress={() => supabase.auth.signOut()}>
@@ -170,6 +198,7 @@ const styles = StyleSheet.create({
   cardInfo: { flex: 1 },
   cardName: { fontSize: 15, fontWeight: "600", color: colors.textPrimary, marginBottom: 4 },
   cardMeta: { fontSize: 12, color: colors.textMeta },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   activityBanner: {
     backgroundColor: colors.activityBg,
     borderRadius: 8,
@@ -178,6 +207,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   activityText: { fontSize: 12, fontWeight: "600", color: colors.activityText },
+  goalPill: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignSelf: "flex-start",
+    marginTop: 6,
+  },
+  goalText: { fontSize: 11, fontWeight: "600", color: colors.primary },
   error: { color: colors.error, padding: 20, textAlign: "center" },
   signOut: { alignItems: "center", paddingVertical: 16 },
   signOutText: { color: colors.error, fontSize: 14, fontWeight: "500" },
