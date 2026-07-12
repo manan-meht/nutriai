@@ -82,6 +82,13 @@ export const SELF_TRACKING_ENABLED = flag("NEXT_PUBLIC_SELF_TRACKING_ENABLED", f
  * trusted-devices settings, 90-day session). Off by default. */
 export const PARENT_DASHBOARD_ACCESS_ENABLED = flag("NEXT_PUBLIC_PARENT_DASHBOARD_ACCESS_ENABLED", false);
 
+/** Food Balance Score card on the adults/end-user dashboards (see
+ * @nutriai/health-scoring for the scoring engine). Off by default — this
+ * infra only supports a global on/off toggle, not per-user/percentage
+ * rollout (documented as a follow-up in the feature's implementation
+ * report); flip on for internal/staging review before wider rollout. */
+export const FOOD_BALANCE_SCORE_ENABLED = flag("NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1", false);
+
 /** How long a parent's trusted-device session lasts after WhatsApp OTP
  * verification before re-verification is required. Configurable per spec
  * (default 90 days) — distinct from the shorter 60-day default used by the

@@ -19,6 +19,8 @@ import {
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
+import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
+import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -158,6 +160,12 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
       )}
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+        {/* Food Balance Score — deliberately first, above the invite card,
+            per the feature's "prominent card at the top of the dashboard"
+            requirement. Behind a feature flag; the card itself also
+            renders nothing while the flag is off (404 from the API). */}
+        {FOOD_BALANCE_SCORE_ENABLED && <FoodBalanceScoreCard contactId={contact.id} />}
 
         {/* WhatsApp-first invite — the caregiver shares this link
             themselves; the bot never messages first. Not shown for a

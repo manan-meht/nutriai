@@ -9,6 +9,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@nutriai/health-scoring": "*",
     "@nutriai/nutrition-core": "*",
     "@supabase/supabase-js": "^2.110.0",
     "next": "^16.2.9",
