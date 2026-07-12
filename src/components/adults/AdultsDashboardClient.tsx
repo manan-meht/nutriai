@@ -294,6 +294,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         <AddContactModal
           workspaceId={workspaceId}
           caregiverName={displayName || caregiverEmail}
+          hasSelfContact={hasSelfContact}
           onClose={() => setShowModal(false)}
           onAdded={() => router.refresh()}
         />

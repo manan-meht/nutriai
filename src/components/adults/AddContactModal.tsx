@@ -9,6 +9,10 @@ const DEFAULT_REMINDER_TIMES: [string, string, string] = ["08:00", "12:00", "19:
 interface Props {
   workspaceId: string;
   caregiverName: string;
+  /** Hides the "Myself" relationship option once the workspace already has
+   * a self-tracked contact — relationship_type "self" is limited to one per
+   * workspace (see hasSelfContact in AdultsDashboardClient.tsx). */
+  hasSelfContact: boolean;
   onClose: () => void;
   onAdded: () => void;
 }
@@ -26,7 +30,7 @@ const GOAL_TYPES = [
 
 const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Friend", "Other"];
 
-export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }: Props) {
+export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, onClose, onAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ name: string; whatsapp: string } | null>(null);
@@ -68,11 +72,16 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
     setError(null);
     setLoading(true);
     try {
+      const isSelf = relationship === "self";
       const result = await addContact({
         workspaceId,
         fullName,
         whatsappNumber: `+${countryCode}${whatsapp.replace(/\D/g, "")}`,
-        relationship: relationship || undefined,
+        // "Myself" isn't a relationship description, so it drives
+        // relationshipType instead of the free-text relationship field —
+        // matches how addSelfContact itself calls addContact.
+        relationship: isSelf ? undefined : relationship || undefined,
+        relationshipType: isSelf ? "self" : undefined,
         age: age ? parseInt(age) : undefined,
         gender: gender || undefined,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
@@ -145,6 +154,7 @@ export function AddContactModal({ workspaceId, caregiverName, onClose, onAdded }
             <Field label="Relationship">
               <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inp}>
                 <option value="">Select</option>
+                {!hasSelfContact && <option value="self">Myself</option>}
                 {RELATIONSHIPS.map((r) => <option key={r} value={r.toLowerCase()}>{r}</option>)}
               </select>
             </Field>
