@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { updateContact, upsertContactGoal } from "@/app/(adults)/adults/dashboard/actions";
+import { updateContact } from "@/app/(adults)/adults/dashboard/actions";
 
 export const runtime = "edge";
 
@@ -10,26 +10,19 @@ export const runtime = "edge";
 // action's encryption key/manifest. A regular fetch-based route sidesteps
 // that mechanism entirely.
 //
-// Contact fields and the goal are updated in one PATCH (goal nested under
-// `body.goal`) rather than two separate routes — each distinct route file
-// costs ~1.5MB of near-fixed framework overhead in the compiled Cloudflare
-// Worker (see next-on-pages build output), which is what pushed the Worker
-// over Cloudflare's 25MB size limit and caused deploys to fail silently.
+// Used to also update a separate adults_contact_goals row via a nested
+// `body.goal` (upsertContactGoal) — that table's replaced entirely by the
+// Food Balance Score's primary_nutrition_goal + profile fields, which are
+// now just plain columns on the contact itself, so updateContact alone
+// covers it.
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
   try {
-    const { goal, ...contactFields } = body;
-
-    const contactRes = await updateContact(contactId, contactFields);
+    const contactRes = await updateContact(contactId, body);
     if (contactRes.error) return NextResponse.json(contactRes, { status: 400 });
-
-    if (goal) {
-      const goalRes = await upsertContactGoal(contactId, goal);
-      if (goalRes.error) return NextResponse.json(goalRes, { status: 400 });
-    }
 
     return NextResponse.json({});
   } catch (err) {

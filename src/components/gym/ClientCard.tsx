@@ -1,24 +1,5 @@
 import type { GymClient } from "@/app/(gym)/gym/dashboard/actions";
-
-const GOAL_LABELS: Record<string, string> = {
-  weight_loss: "Weight loss",
-  muscle_gain: "Muscle gain",
-  fat_loss: "Fat loss",
-  maintenance: "Maintenance",
-  strength: "Strength",
-  endurance: "Endurance",
-  custom: "Custom",
-};
-
-const GOAL_COLORS: Record<string, string> = {
-  weight_loss: "bg-orange-50 text-orange-700",
-  muscle_gain: "bg-blue-50 text-blue-700",
-  fat_loss: "bg-red-50 text-red-700",
-  maintenance: "bg-gray-100 text-gray-600",
-  strength: "bg-yellow-50 text-yellow-700",
-  endurance: "bg-green-50 text-green-700",
-  custom: "bg-purple-50 text-purple-700",
-};
+import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 
 interface ClientCardProps {
   client: GymClient;
@@ -34,7 +15,6 @@ export function ClientCard({ client, onOpen, onRemove }: ClientCardProps) {
     .join("")
     .toUpperCase();
 
-  const activeGoal = client.goals.find((g) => g.status === "active");
   const isActive = client.mealCount > 0;
 
   const lastMealLabel = client.lastMealAt
@@ -107,23 +87,11 @@ export function ClientCard({ client, onOpen, onRemove }: ClientCardProps) {
       </div>
 
       {/* Goal */}
-      {activeGoal ? (
-        <div className={`rounded-xl px-3 py-2 ${GOAL_COLORS[activeGoal.goalType] ?? "bg-purple-50 text-purple-700"}`}>
-          <p className="text-xs font-semibold mb-0.5">{GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType}</p>
-          {activeGoal.description && (
-            <p className="text-xs opacity-80 line-clamp-1">{activeGoal.description}</p>
-          )}
-          <div className="flex gap-3 mt-1.5 flex-wrap">
-            {activeGoal.targetProteinG && (
-              <span className="text-xs opacity-70">{activeGoal.targetProteinG}g protein</span>
-            )}
-            {activeGoal.targetCaloriesMin && activeGoal.targetCaloriesMax && (
-              <span className="text-xs opacity-70">{activeGoal.targetCaloriesMin}–{activeGoal.targetCaloriesMax} kcal</span>
-            )}
-            {activeGoal.deadline && (
-              <span className="text-xs opacity-70">by {new Date(activeGoal.deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</span>
-            )}
-          </div>
+      {client.primaryNutritionGoal ? (
+        <div className="rounded-xl px-3 py-2 bg-purple-50 text-purple-700">
+          <p className="text-xs font-semibold mb-0.5">
+            {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
+          </p>
         </div>
       ) : (
         <div className="rounded-xl px-3 py-2 bg-gray-50 text-gray-400 text-xs">No goal set</div>

@@ -170,6 +170,13 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     timezone: c.timezone ?? "Asia/Kolkata",
     remindersEnabled: c.reminders_enabled ?? false,
     reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
+    dateOfBirth: c.date_of_birth ?? undefined,
+    metabolicEquationSex: c.metabolic_equation_sex ?? undefined,
+    activityLevel: c.activity_level ?? undefined,
+    resistanceTrainingStatus: c.resistance_training_status ?? undefined,
+    preferredUnits: c.preferred_units ?? undefined,
+    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    targetWeightKg: c.target_weight_kg ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,
@@ -224,16 +231,17 @@ export async function addContact(formData: {
   timezone?: string;
   remindersEnabled?: boolean;
   reminderTimes?: string[];
-  /** Multiple goals may be selected at once — each becomes its own
-   * adults_contact_goals row, sharing the same numeric targets below
-   * (those represent the person's overall daily targets, not
-   * goal-type-specific numbers). */
-  goals?: Array<{ type: string; title: string }>;
-  goalDescription?: string;
-  targetCaloriesMin?: number;
-  targetCaloriesMax?: number;
-  targetProteinG?: number;
-  targetMealsPerDay?: number;
+  /** Food Balance Score profile fields (see
+   * supabase/migrations/0027_food_balance_score.sql) — replaces the old
+   * adults_contact_goals checklist entirely; protein/calorie targets shown
+   * on the dashboard are now computed from these via @nutriai/health-scoring
+   * instead of being typed in by hand. */
+  primaryNutritionGoal?: string;
+  dateOfBirth?: string;
+  metabolicEquationSex?: string;
+  activityLevel?: string;
+  resistanceTrainingStatus?: string;
+  targetWeightKg?: number;
 }): Promise<{ contactId: string; error?: undefined } | { contactId?: undefined; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -337,6 +345,12 @@ export async function addContact(formData: {
       ...(formData.timezone ? { timezone: formData.timezone } : {}),
       reminders_enabled: formData.remindersEnabled ?? false,
       ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
+      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      date_of_birth: formData.dateOfBirth || null,
+      metabolic_equation_sex: formData.metabolicEquationSex || null,
+      activity_level: formData.activityLevel || null,
+      resistance_training_status: formData.resistanceTrainingStatus || null,
+      target_weight_kg: formData.targetWeightKg || null,
     })
     .select("id")
     .single();
@@ -352,22 +366,6 @@ export async function addContact(formData: {
   // Starts the Family trial on first successful add; a no-op for every
   // subsequent contact (see startTrialIfNeeded — idempotent per workspace).
   await startTrialIfNeeded(formData.workspaceId, user.id, "adults");
-
-  if (formData.goals && formData.goals.length > 0) {
-    await supabase.from("adults_contact_goals").insert(
-      formData.goals.map((goal) => ({
-        contact_id: contact.id,
-        caregiver_id: user.id,
-        goal_type: goal.type,
-        title: goal.title,
-        description: formData.goalDescription || null,
-        target_calories_min: formData.targetCaloriesMin || null,
-        target_calories_max: formData.targetCaloriesMax || null,
-        target_protein_g: formData.targetProteinG || null,
-        target_meals_per_day: formData.targetMealsPerDay || null,
-      }))
-    );
-  }
 
   try {
     await sendContactInvite(supabase, user.id, formData.fullName, formData.whatsappNumber);
@@ -469,6 +467,15 @@ export async function updateContact(
     timezone?: string;
     remindersEnabled?: boolean;
     reminderTimes?: string[];
+    /** Food Balance Score profile fields — see addContact's own comment on
+     * these; replaces the old adults_contact_goals-based upsertContactGoal
+     * entirely (targets are now computed, not typed in). */
+    primaryNutritionGoal?: string;
+    dateOfBirth?: string;
+    metabolicEquationSex?: string;
+    activityLevel?: string;
+    resistanceTrainingStatus?: string;
+    targetWeightKg?: number;
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -488,67 +495,15 @@ export async function updateContact(
       ...(formData.timezone ? { timezone: formData.timezone } : {}),
       ...(formData.remindersEnabled !== undefined ? { reminders_enabled: formData.remindersEnabled } : {}),
       ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
+      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      date_of_birth: formData.dateOfBirth || null,
+      metabolic_equation_sex: formData.metabolicEquationSex || null,
+      activity_level: formData.activityLevel || null,
+      resistance_training_status: formData.resistanceTrainingStatus || null,
+      target_weight_kg: formData.targetWeightKg || null,
     })
     .eq("id", contactId)
     .eq("caregiver_id", user.id);
-
-  if (error) return { error: error.message };
-  return {};
-}
-
-/** Create or update the contact's single active goal. There is at most one
- * active goal per contact today (mirrors the create-time behavior in
- * addContact), so this upserts by finding the existing active goal rather
- * than allowing duplicates to accumulate. */
-export async function upsertContactGoal(
-  contactId: string,
-  formData: {
-    goalType: string;
-    title: string;
-    description?: string;
-    targetCaloriesMin?: number;
-    targetCaloriesMax?: number;
-    targetProteinG?: number;
-    targetMealsPerDay?: number;
-  }
-): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not authenticated");
-
-  const { data: contact } = await supabase
-    .from("adults_contacts")
-    .select("id")
-    .eq("id", contactId)
-    .eq("caregiver_id", user.id)
-    .single();
-  if (!contact) return { error: "Contact not found" };
-
-  const goalFields = {
-    goal_type: formData.goalType,
-    title: formData.title,
-    description: formData.description || null,
-    target_calories_min: formData.targetCaloriesMin || null,
-    target_calories_max: formData.targetCaloriesMax || null,
-    target_protein_g: formData.targetProteinG || null,
-    target_meals_per_day: formData.targetMealsPerDay || null,
-  };
-
-  const { data: existingGoal } = await supabase
-    .from("adults_contact_goals")
-    .select("id")
-    .eq("contact_id", contactId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  const { error } = existingGoal
-    ? await supabase.from("adults_contact_goals").update(goalFields).eq("id", existingGoal.id)
-    : await supabase.from("adults_contact_goals").insert({
-        contact_id: contactId,
-        caregiver_id: user.id,
-        status: "active",
-        ...goalFields,
-      });
 
   if (error) return { error: error.message };
   return {};
@@ -696,12 +651,16 @@ export interface SelfDetails {
   weightKg?: number;
   heightCm?: number;
   healthNotes?: string;
-  goals?: Array<{ type: string; title: string }>;
-  goalDescription?: string;
-  targetCaloriesMin?: number;
-  targetCaloriesMax?: number;
-  targetProteinG?: number;
-  targetMealsPerDay?: number;
+  /** Food Balance Score profile fields — see addContact's comment on these;
+   * materialized into adults_contacts columns at claim time (see
+   * handleInviteClaim in conversation-handler.ts), same as the rest of
+   * SelfDetails. */
+  primaryNutritionGoal?: string;
+  dateOfBirth?: string;
+  metabolicEquationSex?: string;
+  activityLevel?: string;
+  resistanceTrainingStatus?: string;
+  targetWeightKg?: number;
 }
 
 /** Self-tracking's equivalent of addContact — but since there's no

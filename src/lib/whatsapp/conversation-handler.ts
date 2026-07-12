@@ -20,7 +20,8 @@ import {
 } from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
-import { classifyMeal } from "@nutriai/dashboard-core";
+import { classifyMeal, recommendProteinGrams } from "@nutriai/dashboard-core";
+import { proteinTargetG, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
@@ -346,6 +347,15 @@ async function handleInviteClaim(
         health_notes: typeof meta.healthNotes === "string" ? meta.healthNotes : null,
         invite_sent_at: new Date().toISOString(),
         invite_accepted_at: new Date().toISOString(),
+        // Food Balance Score profile fields (see saveSelfDetailsAndCreateInvite
+        // / SelfSetupCard.tsx) — replaces the old adults_contact_goals write
+        // below entirely.
+        primary_nutrition_goal: typeof meta.primaryNutritionGoal === "string" ? meta.primaryNutritionGoal : null,
+        date_of_birth: typeof meta.dateOfBirth === "string" ? meta.dateOfBirth : null,
+        metabolic_equation_sex: typeof meta.metabolicEquationSex === "string" ? meta.metabolicEquationSex : null,
+        activity_level: typeof meta.activityLevel === "string" ? meta.activityLevel : null,
+        resistance_training_status: typeof meta.resistanceTrainingStatus === "string" ? meta.resistanceTrainingStatus : null,
+        target_weight_kg: typeof meta.targetWeightKg === "number" ? meta.targetWeightKg : null,
       })
       .select("id")
       .single();
@@ -356,23 +366,6 @@ async function handleInviteClaim(
       return;
     }
     targetProfileId = contact.id;
-
-    const goals = Array.isArray(meta.goals) ? meta.goals as Array<{ type: string; title: string }> : [];
-    if (goals.length > 0) {
-      await db.from("adults_contact_goals").insert(
-        goals.map((goal) => ({
-          contact_id: contact.id,
-          caregiver_id: invite!.createdByUserId,
-          goal_type: goal.type,
-          title: goal.title,
-          description: typeof meta.goalDescription === "string" ? meta.goalDescription : null,
-          target_calories_min: typeof meta.targetCaloriesMin === "number" ? meta.targetCaloriesMin : null,
-          target_calories_max: typeof meta.targetCaloriesMax === "number" ? meta.targetCaloriesMax : null,
-          target_protein_g: typeof meta.targetProteinG === "number" ? meta.targetProteinG : null,
-          target_meals_per_day: typeof meta.targetMealsPerDay === "number" ? meta.targetMealsPerDay : null,
-        }))
-      );
-    }
   }
 
   await markInviteClaimed(db, invite!.id, { claimedByWhatsappNumber: normalizedFrom, targetProfileId });
@@ -400,7 +393,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Look up in gym_clients first
   const { data: gymClients } = await db
     .from("gym_clients")
-    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, gym_client_goals(target_protein_g, status)")
+    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
     .order("created_at", { ascending: false });
 
   const gymClient = (gymClients ?? []).find((c: any) =>
@@ -412,7 +405,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, adults_contact_goals(target_protein_g, status)")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -926,11 +919,27 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
-  const activeGoal = isAdults
-    ? (entity.adults_contact_goals ?? []).find((g: any) => g.status === "active")
-    : (entity.gym_client_goals ?? []).find((g: any) => g.status === "active");
-
-  const targetProtein = activeGoal?.target_protein_g;
+  // Protein target for meal-feedback text — computed from the Food Balance
+  // Score profile (primary_nutrition_goal + weight/goal-specific range) when
+  // a goal has been set, same as the web dashboards; falls back to the
+  // general age/weight/gender recommendation otherwise (replaces the old
+  // adults_contact_goals/gym_client_goals-based target_protein_g).
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = entity.primary_nutrition_goal
+    ? {
+        goal: entity.primary_nutrition_goal,
+        dateOfBirth: entity.date_of_birth ?? undefined,
+        age: entity.age ?? undefined,
+        heightCm: entity.height_cm ?? undefined,
+        currentWeightKg: entity.weight_kg ?? undefined,
+        metabolicEquationSex: entity.metabolic_equation_sex ?? undefined,
+        activityLevel: entity.activity_level ?? undefined,
+        resistanceTraining: entity.resistance_training_status ?? undefined,
+      }
+    : undefined;
+  const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
+  const targetProtein = proteinRange
+    ? Math.round((proteinRange.lower + proteinRange.upper) / 2)
+    : recommendProteinGrams({ weightKg: entity.weight_kg, heightCm: entity.height_cm, age: entity.age, gender: entity.gender });
 
   // Block new AI meal analysis (the costly path) once the owner's trial or
   // subscription has lapsed. Greetings, workout logging, and "show today"

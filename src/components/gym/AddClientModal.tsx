@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { addClient } from "@/app/(gym)/gym/dashboard/actions";
+import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
 
 interface AddClientModalProps {
   workspaceId: string;
@@ -9,26 +10,6 @@ interface AddClientModalProps {
   onClose: () => void;
   onAdded: () => void;
 }
-
-const GOAL_TYPES = [
-  { value: "weight_loss", label: "Weight loss" },
-  { value: "muscle_gain", label: "Muscle gain" },
-  { value: "fat_loss", label: "Fat loss" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "strength", label: "Strength" },
-  { value: "endurance", label: "Endurance" },
-  { value: "custom", label: "Custom" },
-] as const;
-
-const GOAL_TITLES: Record<string, string> = {
-  weight_loss: "Lose weight",
-  muscle_gain: "Build muscle",
-  fat_loss: "Reduce body fat",
-  maintenance: "Maintain current weight",
-  strength: "Increase strength",
-  endurance: "Improve endurance",
-  custom: "Custom goal",
-};
 
 export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: AddClientModalProps) {
   const [loading, setLoading] = useState(false);
@@ -44,24 +25,12 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
   const [weightKg, setWeightKg] = useState("");
   const [heightCm, setHeightCm] = useState("");
 
-  // Goal
-  const [goalTypes, setGoalTypes] = useState<string[]>([]);
-  const [goalDescription, setGoalDescription] = useState("");
-  const [targetWeightKg, setTargetWeightKg] = useState("");
-  const [targetProteinG, setTargetProteinG] = useState("");
-  const [targetCalMin, setTargetCalMin] = useState("");
-  const [targetCalMax, setTargetCalMax] = useState("");
-  const [targetMeals, setTargetMeals] = useState("");
-  const [deadline, setDeadline] = useState("");
+  const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(EMPTY_NUTRITION_GOAL_FIELDS);
 
   const bmi =
     weightKg && heightCm
       ? (parseFloat(weightKg) / Math.pow(parseFloat(heightCm) / 100, 2)).toFixed(1)
       : null;
-
-  function toggleGoalType(value: string) {
-    setGoalTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -76,14 +45,12 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         gender: gender || undefined,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
-        goals: goalTypes.map((type) => ({ type, title: GOAL_TITLES[type] })),
-        goalDescription: goalDescription || undefined,
-        targetWeightKg: targetWeightKg ? parseFloat(targetWeightKg) : undefined,
-        targetProteinG: targetProteinG ? parseInt(targetProteinG) : undefined,
-        targetCaloriesMin: targetCalMin ? parseInt(targetCalMin) : undefined,
-        targetCaloriesMax: targetCalMax ? parseInt(targetCalMax) : undefined,
-        targetMealsPerDay: targetMeals ? parseInt(targetMeals) : undefined,
-        deadline: deadline || undefined,
+        primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
+        dateOfBirth: goalFields.dateOfBirth || undefined,
+        metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
+        activityLevel: goalFields.activityLevel || undefined,
+        resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+        targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
       });
       if (result.error) {
         setError(result.error);
@@ -215,64 +182,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
           </div>
         </section>
 
-        {/* ── Goal ───────────────────────────────────────────── */}
-        <section>
-          <h3 className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-4">
-            Goals <span className="text-gray-400 normal-case font-normal">— optional, select any that apply</span>
-          </h3>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {GOAL_TYPES.map(g => (
-              <button key={g.value} type="button"
-                onClick={() => toggleGoalType(g.value)}
-                aria-pressed={goalTypes.includes(g.value)}
-                className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
-                  goalTypes.includes(g.value)
-                    ? "bg-purple-600 text-white border-purple-600"
-                    : "bg-white text-gray-700 border-gray-200 hover:border-purple-300"
-                }`}>
-                {g.label}
-              </button>
-            ))}
-          </div>
-
-          {goalTypes.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <Field label="Goal description">
-                  <textarea value={goalDescription} onChange={e => setGoalDescription(e.target.value)}
-                    placeholder="e.g. Lose 5kg before wedding in March while maintaining muscle"
-                    rows={2} className={`${input} resize-none`} />
-                </Field>
-              </div>
-              {(goalTypes.includes("weight_loss") || goalTypes.includes("fat_loss") || goalTypes.includes("muscle_gain")) && (
-                <Field label="Target weight (kg)">
-                  <input value={targetWeightKg} onChange={e => setTargetWeightKg(e.target.value)}
-                    placeholder="68" type="number" step="0.1" className={input} />
-                </Field>
-              )}
-              <Field label="Daily protein target (g)">
-                <input value={targetProteinG} onChange={e => setTargetProteinG(e.target.value)}
-                  placeholder="160" type="number" className={input} />
-              </Field>
-              <Field label="Calories min (kcal)">
-                <input value={targetCalMin} onChange={e => setTargetCalMin(e.target.value)}
-                  placeholder="1800" type="number" className={input} />
-              </Field>
-              <Field label="Calories max (kcal)">
-                <input value={targetCalMax} onChange={e => setTargetCalMax(e.target.value)}
-                  placeholder="2200" type="number" className={input} />
-              </Field>
-              <Field label="Meals per day">
-                <input value={targetMeals} onChange={e => setTargetMeals(e.target.value)}
-                  placeholder="3" type="number" min="1" max="8" className={input} />
-              </Field>
-              <Field label="Goal deadline">
-                <input value={deadline} onChange={e => setDeadline(e.target.value)}
-                  type="date" className={input} />
-              </Field>
-            </div>
-          )}
-        </section>
+        <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
 
         {error && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>

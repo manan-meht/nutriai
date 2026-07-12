@@ -169,6 +169,13 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     mealCount: mealsRes.data?.length ?? 0,
     lastMealAt: mealsRes.data?.[0]?.logged_at,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
+    dateOfBirth: c.date_of_birth ?? undefined,
+    metabolicEquationSex: c.metabolic_equation_sex ?? undefined,
+    activityLevel: c.activity_level ?? undefined,
+    resistanceTrainingStatus: c.resistance_training_status ?? undefined,
+    preferredUnits: c.preferred_units ?? undefined,
+    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    targetWeightKg: c.target_weight_kg ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,
@@ -327,16 +334,17 @@ export async function addClient(formData: {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
-  /** Multiple goals may be selected at once — each becomes its own
-   * gym_client_goals row, sharing the same numeric targets below. */
-  goals?: Array<{ type: string; title: string }>;
-  goalDescription?: string;
+  /** Food Balance Score profile fields (see
+   * supabase/migrations/0027_food_balance_score.sql) — replaces the old
+   * gym_client_goals checklist entirely; protein/calorie targets shown on
+   * the dashboard are now computed from these via @nutriai/health-scoring
+   * instead of being typed in by hand. */
+  primaryNutritionGoal?: string;
+  dateOfBirth?: string;
+  metabolicEquationSex?: string;
+  activityLevel?: string;
+  resistanceTrainingStatus?: string;
   targetWeightKg?: number;
-  targetProteinG?: number;
-  targetCaloriesMin?: number;
-  targetCaloriesMax?: number;
-  targetMealsPerDay?: number;
-  deadline?: string;
 }): Promise<{ clientId: string; error?: undefined } | { clientId?: undefined; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -428,6 +436,12 @@ export async function addClient(formData: {
       weight_kg: formData.weightKg || null,
       height_cm: formData.heightCm || null,
       invite_sent_at: new Date().toISOString(),
+      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      date_of_birth: formData.dateOfBirth || null,
+      metabolic_equation_sex: formData.metabolicEquationSex || null,
+      activity_level: formData.activityLevel || null,
+      resistance_training_status: formData.resistanceTrainingStatus || null,
+      target_weight_kg: formData.targetWeightKg || null,
     })
     .select("id")
     .single();
@@ -444,25 +458,53 @@ export async function addClient(formData: {
   // subsequent client (see startTrialIfNeeded — idempotent per workspace).
   await startTrialIfNeeded(formData.workspaceId, user.id, "gym");
 
-  if (formData.goals && formData.goals.length > 0) {
-    await supabase.from("gym_client_goals").insert(
-      formData.goals.map((goal) => ({
-        client_id: client.id,
-        trainer_id: user.id,
-        goal_type: goal.type,
-        title: goal.title,
-        description: formData.goalDescription || null,
-        target_weight_kg: formData.targetWeightKg || null,
-        target_protein_g: formData.targetProteinG || null,
-        target_calories_min: formData.targetCaloriesMin || null,
-        target_calories_max: formData.targetCaloriesMax || null,
-        target_meals_per_day: formData.targetMealsPerDay || null,
-        deadline: formData.deadline || null,
-      }))
-    );
-  }
-
   return { clientId: client.id };
+}
+
+/** Edit an existing client's profile details and Food Balance Score goal —
+ * gym's equivalent of the adults product's updateContact. There was
+ * previously no edit path for a client at all (goals were write-once, set
+ * only at addClient time); this is the first one. */
+export async function updateClient(
+  clientId: string,
+  formData: {
+    fullName: string;
+    age?: number;
+    gender?: string;
+    weightKg?: number;
+    heightCm?: number;
+    primaryNutritionGoal?: string;
+    dateOfBirth?: string;
+    metabolicEquationSex?: string;
+    activityLevel?: string;
+    resistanceTrainingStatus?: string;
+    targetWeightKg?: number;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("gym_clients")
+    .update({
+      full_name: formData.fullName,
+      age: formData.age || null,
+      gender: formData.gender || null,
+      weight_kg: formData.weightKg || null,
+      height_cm: formData.heightCm || null,
+      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      date_of_birth: formData.dateOfBirth || null,
+      metabolic_equation_sex: formData.metabolicEquationSex || null,
+      activity_level: formData.activityLevel || null,
+      resistance_training_status: formData.resistanceTrainingStatus || null,
+      target_weight_kg: formData.targetWeightKg || null,
+    })
+    .eq("id", clientId)
+    .eq("trainer_id", user.id);
+
+  if (error) return { error: error.message };
+  return {};
 }
 
 // -----------------------------------------------------------------------

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { saveSelfDetailsAndCreateInvite, getOrCreateSelfInvite, regenerateSelfInvite, markSelfInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
+import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
 
 interface Props {
   workspaceId: string;
@@ -12,19 +13,6 @@ interface Props {
 }
 
 const POLL_INTERVAL_MS = 5000;
-
-const GOAL_TYPES = [
-  { value: "eat_enough",       label: "Eat enough food",     description: "Make sure you're eating enough calories each day" },
-  { value: "enough_protein",   label: "Enough protein",      description: "Meet a daily protein target to stay strong" },
-  { value: "increase_protein", label: "More protein",        description: "Gradually increase protein intake by ~10–20%" },
-  { value: "reduce_carbs",     label: "Fewer carbs",         description: "Reduce carbohydrate intake by ~10%" },
-  { value: "balanced_meals",   label: "Balanced meals",      description: "Eat 3 nutritious meals every day" },
-  { value: "weight_gain",      label: "Healthy weight gain", description: "Gain weight safely and steadily" },
-  { value: "hydration",        label: "Stay hydrated",       description: "Drink enough water daily" },
-  { value: "custom",           label: "Custom goal",         description: "Set your own targets" },
-] as const;
-
-const GOAL_TITLES: Record<string, string> = Object.fromEntries(GOAL_TYPES.map((g) => [g.value, g.label]));
 
 const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
 
@@ -50,22 +38,13 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
   const [weightKg, setWeightKg] = useState("");
   const [heightCm, setHeightCm] = useState("");
   const [healthNotes, setHealthNotes] = useState("");
-  const [goalTypes, setGoalTypes] = useState<string[]>([]);
-  const [goalDescription, setGoalDescription] = useState("");
-  const [targetProtein, setTargetProtein] = useState("");
-  const [targetCalMin, setTargetCalMin] = useState("");
-  const [targetCalMax, setTargetCalMax] = useState("");
-  const [targetMeals, setTargetMeals] = useState("3");
+  const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(EMPTY_NUTRITION_GOAL_FIELDS);
 
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
-
-  function toggleGoalType(value: string) {
-    setGoalTypes((prev) => (prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]));
-  }
 
   function startPolling() {
     if (pollRef.current) return;
@@ -90,12 +69,12 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
         healthNotes: healthNotes || undefined,
-        goals: goalTypes.map((type) => ({ type, title: GOAL_TITLES[type] })),
-        goalDescription: goalDescription || undefined,
-        targetProteinG: targetProtein ? parseInt(targetProtein) : undefined,
-        targetCaloriesMin: targetCalMin ? parseInt(targetCalMin) : undefined,
-        targetCaloriesMax: targetCalMax ? parseInt(targetCalMax) : undefined,
-        targetMealsPerDay: targetMeals ? parseInt(targetMeals) : undefined,
+        primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
+        dateOfBirth: goalFields.dateOfBirth || undefined,
+        metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
+        activityLevel: goalFields.activityLevel || undefined,
+        resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+        targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
       });
       if ("error" in result) {
         setError(result.error);
@@ -158,62 +137,7 @@ export function SelfSetupCard({ workspaceId, defaultFullName, onDone, onSkip }: 
                 </div>
               </div>
 
-              <section>
-                <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-3">
-                  Goals <span className="text-gray-400 normal-case font-normal">— optional, select any that apply</span>
-                </h3>
-                <div className="space-y-2">
-                  {GOAL_TYPES.map((g) => {
-                    const selected = goalTypes.includes(g.value);
-                    return (
-                      <button key={g.value} type="button"
-                        onClick={() => toggleGoalType(g.value)}
-                        aria-pressed={selected}
-                        className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border text-left transition-colors ${
-                          selected ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]" : "border-gray-200 hover:border-[var(--color-dashboard-primary)]"
-                        }`}>
-                        <span className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center ${
-                          selected ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary)]" : "border-gray-300"
-                        }`}>
-                          {selected && (
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </span>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{g.label}</p>
-                          <p className="text-xs text-gray-400">{g.description}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {goalTypes.length > 0 && (
-                  <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-100">
-                    <div className="col-span-2">
-                      <Field label="Notes on this goal">
-                        <textarea value={goalDescription} onChange={(e) => setGoalDescription(e.target.value)}
-                          placeholder="e.g. Doctor recommended at least 60g protein per day"
-                          rows={2} className={`${inp} resize-none`} />
-                      </Field>
-                    </div>
-                    <Field label="Daily protein target (g)">
-                      <input value={targetProtein} onChange={(e) => setTargetProtein(e.target.value)} placeholder="60" type="number" className={inp} />
-                    </Field>
-                    <Field label="Meals per day">
-                      <input value={targetMeals} onChange={(e) => setTargetMeals(e.target.value)} placeholder="3" type="number" min="1" max="6" className={inp} />
-                    </Field>
-                    <Field label="Min calories (kcal)">
-                      <input value={targetCalMin} onChange={(e) => setTargetCalMin(e.target.value)} placeholder="1400" type="number" className={inp} />
-                    </Field>
-                    <Field label="Max calories (kcal)">
-                      <input value={targetCalMax} onChange={(e) => setTargetCalMax(e.target.value)} placeholder="1800" type="number" className={inp} />
-                    </Field>
-                  </div>
-                )}
-              </section>
+              <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
 
               {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>}
 

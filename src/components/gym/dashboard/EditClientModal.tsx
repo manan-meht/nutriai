@@ -1,22 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
+import type { GymClient } from "@nutriai/nutrition-core";
 import { NutritionGoalFields, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
 
 interface Props {
-  contact: AdultsContact;
+  client: GymClient;
   onClose: () => void;
   onSaved: () => void;
 }
 
-/** Plain fetch instead of a Server Action — Server Actions on this
- * deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
- * fail with "Server Action ... was not found on the server" because
- * different edge instances serving the same deployment can disagree on the
- * action's encryption key/manifest. A regular HTTP route sidesteps that
- * mechanism entirely. */
+/** Plain fetch instead of a Server Action — same reasoning as
+ * EditContactModal.tsx (Server Actions intermittently fail on this
+ * Cloudflare Pages deployment). */
 async function fetchJson(url: string, init?: RequestInit): Promise<{ error?: string }> {
   const res = await fetch(url, init);
   const json = await res.json().catch(() => null);
@@ -24,31 +20,27 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ error?: str
   return json;
 }
 
-export function EditContactModal({ contact, onClose, onSaved }: Props) {
+/** Gym's equivalent of the adults product's EditContactModal — the first
+ * edit path for a client (previously add-only). No timezone/reminders
+ * fields here since gym_clients doesn't track those (unlike
+ * adults_contacts). */
+export function EditClientModal({ client, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [fullName, setFullName] = useState(contact.fullName);
-  const [relationship, setRelationship] = useState(contact.relationship ?? "");
-  const [age, setAge] = useState(contact.age?.toString() ?? "");
-  const [gender, setGender] = useState(contact.gender ?? "");
-  const [weightKg, setWeightKg] = useState(contact.weightKg?.toString() ?? "");
-  const [heightCm, setHeightCm] = useState(contact.heightCm?.toString() ?? "");
-  const [healthNotes, setHealthNotes] = useState(contact.healthNotes ?? "");
-
-  const [timezone, setTimezone] = useState(contact.timezone);
-  const [remindersEnabled, setRemindersEnabled] = useState(contact.remindersEnabled);
-  const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(
-    [contact.reminderTimes[0] ?? "08:00", contact.reminderTimes[1] ?? "12:00", contact.reminderTimes[2] ?? "19:00"]
-  );
+  const [fullName, setFullName] = useState(client.fullName);
+  const [age, setAge] = useState(client.age?.toString() ?? "");
+  const [gender, setGender] = useState(client.gender ?? "");
+  const [weightKg, setWeightKg] = useState(client.weightKg?.toString() ?? "");
+  const [heightCm, setHeightCm] = useState(client.heightCm?.toString() ?? "");
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>({
-    primaryNutritionGoal: (contact.primaryNutritionGoal as NutritionGoalFieldsValue["primaryNutritionGoal"]) ?? "",
-    dateOfBirth: contact.dateOfBirth ?? "",
-    metabolicEquationSex: contact.metabolicEquationSex ?? "",
-    activityLevel: contact.activityLevel ?? "unknown",
-    resistanceTrainingStatus: contact.resistanceTrainingStatus ?? "unknown",
-    targetWeightKg: contact.targetWeightKg?.toString() ?? "",
+    primaryNutritionGoal: (client.primaryNutritionGoal as NutritionGoalFieldsValue["primaryNutritionGoal"]) ?? "",
+    dateOfBirth: client.dateOfBirth ?? "",
+    metabolicEquationSex: client.metabolicEquationSex ?? "",
+    activityLevel: client.activityLevel ?? "unknown",
+    resistanceTrainingStatus: client.resistanceTrainingStatus ?? "unknown",
+    targetWeightKg: client.targetWeightKg?.toString() ?? "",
   });
 
   async function handleSave() {
@@ -56,20 +48,15 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
     setError(null);
 
     try {
-      const res = await fetchJson(`/api/adults/contacts/${contact.id}`, {
+      const res = await fetchJson(`/api/gym/clients/${client.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName,
-          relationship: relationship || undefined,
           age: age ? Number(age) : undefined,
           gender: gender || undefined,
           weightKg: weightKg ? Number(weightKg) : undefined,
           heightCm: heightCm ? Number(heightCm) : undefined,
-          healthNotes: healthNotes || undefined,
-          timezone,
-          remindersEnabled,
-          reminderTimes,
           primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
           dateOfBirth: goalFields.dateOfBirth || undefined,
           metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
@@ -105,9 +92,6 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           <Field label="Name">
             <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} />
           </Field>
-          <Field label="Relationship">
-            <input value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="e.g. Mother" className={inputClass} />
-          </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Age">
               <input type="number" value={age} onChange={(e) => setAge(e.target.value)} className={inputClass} />
@@ -129,45 +113,6 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
               <input type="number" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} className={inputClass} />
             </Field>
           </div>
-          <Field label="Health notes">
-            <textarea value={healthNotes} onChange={(e) => setHealthNotes(e.target.value)} rows={2} className={inputClass} />
-          </Field>
-
-          <div className="pt-2 border-t border-gray-100">
-            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2 mt-2">WhatsApp reminders</p>
-            <Field label="Timezone">
-              <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className={inputClass}>
-                {COMMON_TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-              </select>
-            </Field>
-            <label className="flex items-center gap-2 text-sm text-gray-700 my-2">
-              <input
-                type="checkbox"
-                checked={remindersEnabled}
-                onChange={(e) => setRemindersEnabled(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 accent-[var(--color-dashboard-primary)]"
-              />
-              Send meal reminders on WhatsApp
-            </label>
-            {remindersEnabled && (
-              <div className="grid grid-cols-3 gap-3">
-                {(["Morning", "Midday", "Evening"] as const).map((label, i) => (
-                  <Field key={label} label={label}>
-                    <input
-                      type="time"
-                      value={reminderTimes[i]}
-                      onChange={(e) => {
-                        const next = [...reminderTimes] as [string, string, string];
-                        next[i] = e.target.value;
-                        setReminderTimes(next);
-                      }}
-                      className={inputClass}
-                    />
-                  </Field>
-                ))}
-              </div>
-            )}
-          </div>
 
           <div className="pt-2 border-t border-gray-100">
             <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
@@ -185,14 +130,13 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
             <button
               onClick={handleSave}
               disabled={saving || !fullName.trim()}
-              className="flex-1 rounded-lg bg-[var(--color-dashboard-primary)] py-2.5 text-sm font-medium text-white disabled:opacity-50"
+              className="flex-1 rounded-lg bg-purple-600 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
         </div>
       </div>
-
     </div>
   );
 }

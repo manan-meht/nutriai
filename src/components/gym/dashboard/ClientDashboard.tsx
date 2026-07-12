@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ClientDetails } from "@/app/(gym)/gym/dashboard/actions";
 import { MealFeed } from "./MealFeed";
 import { BiomarkerSection } from "./BiomarkerSection";
@@ -13,6 +14,8 @@ import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachC
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
+import { EditClientModal } from "./EditClientModal";
+import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 import {
   DEFAULT_DASHBOARD_DATE_RANGE,
   dateRangeLabel,
@@ -23,6 +26,7 @@ import {
   applyHumanCorrection,
   buildHabitDashboard,
 } from "@nutriai/dashboard-core";
+import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -35,19 +39,30 @@ import {
 const ActivityHeatmap = dynamic(() => import("./ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
 
-const GOAL_LABELS: Record<string, string> = {
-  weight_loss: "Weight loss", muscle_gain: "Muscle gain", fat_loss: "Fat loss",
-  maintenance: "Maintenance", strength: "Strength", endurance: "Endurance", custom: "Custom",
-};
-
 export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientDetails) {
+  const router = useRouter();
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
-  // Multiple goals can be selected when adding a client — numeric targets
-  // are shared and read off the first, but the header badge and goal card
-  // below list every selected goal's title.
-  const activeGoals = client.goals.filter((g) => g.status === "active");
-  const activeGoal = activeGoals[0];
+  const [showEdit, setShowEdit] = useState(false);
   const initials = client.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+
+  // Food Balance Score profile — replaces the old gym_client_goals manual
+  // targets. Protein/calorie targets below are computed from this (via
+  // @nutriai/health-scoring) rather than typed in by hand.
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = client.primaryNutritionGoal
+    ? {
+        goal: client.primaryNutritionGoal as FoodBalanceUserProfile["goal"],
+        dateOfBirth: client.dateOfBirth,
+        age: client.age,
+        heightCm: client.heightCm,
+        currentWeightKg: client.weightKg,
+        metabolicEquationSex: client.metabolicEquationSex as FoodBalanceUserProfile["metabolicEquationSex"],
+        activityLevel: client.activityLevel as FoodBalanceUserProfile["activityLevel"],
+        resistanceTraining: client.resistanceTrainingStatus as FoodBalanceUserProfile["resistanceTraining"],
+        targetWeightKg: client.targetWeightKg,
+      }
+    : undefined;
+  const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
+  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goal) : null;
 
   // Macronutrient summary uses the date-range selector below (matching the
   // adults/family dashboard); the top stat row intentionally stays a fixed
@@ -72,10 +87,11 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
     ? Math.round(meals7d.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / 7)
     : 0;
 
-  const proteinTarget = activeGoal?.targetProteinG;
+  const proteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : undefined;
+  const calTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
   const insights = computeInsights(meals, {
-    targetProteinG: activeGoal?.targetProteinG,
-    targetCaloriesMin: activeGoal?.targetCaloriesMin,
+    targetProteinG: proteinTarget,
+    targetCaloriesMin: calTarget,
     product: "gym",
   });
   const proteinPct = proteinTarget && avgProtein ? Math.round((avgProtein / proteinTarget) * 100) : null;
@@ -113,13 +129,30 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
               <p className="text-xs text-gray-400">{client.whatsappNumber}</p>
             </div>
           </div>
-          {activeGoals.length > 0 && (
+          {client.primaryNutritionGoal && (
             <span className="hidden sm:block text-xs font-medium bg-purple-50 text-purple-700 px-3 py-1.5 rounded-full">
-              {activeGoals.map((g) => GOAL_LABELS[g.goalType] ?? g.goalType).join(" · ")}
+              {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
             </span>
           )}
+          <button
+            onClick={() => setShowEdit(true)}
+            className="text-sm font-medium text-gray-500 hover:text-gray-800 bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-1.5 transition-colors"
+          >
+            Edit
+          </button>
         </div>
       </header>
+
+      {showEdit && (
+        <EditClientModal
+          client={client}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false);
+            router.refresh();
+          }}
+        />
+      )}
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
@@ -158,7 +191,7 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
 
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard icon="🍽️" iconColor="purple" label="Meals this week" value={String(meals7d.length)} sub={`of ${activeGoal?.targetMealsPerDay ? activeGoal.targetMealsPerDay * 7 : "—"} target`} />
+          <StatCard icon="🍽️" iconColor="purple" label="Meals this week" value={String(meals7d.length)} sub="this week" />
           <StatCard
             icon="🌱"
             iconColor="green"
@@ -175,24 +208,18 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
         {insights && <ProgressInsights insights={insights} variant="gym" />}
 
         {/* Goal card */}
-        {activeGoal && (
+        {client.primaryNutritionGoal && (
           <div className="bg-purple-50 rounded-2xl p-4 flex flex-wrap gap-4 items-start">
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1">
-                {activeGoals.length > 1 ? "Active goals" : "Active goal"}
+              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest mb-1">Goal</p>
+              <p className="font-semibold text-gray-900">
+                {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
               </p>
-              <p className="font-semibold text-gray-900">{activeGoals.map((g) => g.title).join(" · ")}</p>
-              {activeGoal.description && <p className="text-sm text-gray-500 mt-0.5">{activeGoal.description}</p>}
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
-              {activeGoal.targetProteinG && <GoalStat label="Protein" value={`${activeGoal.targetProteinG}g/day`} />}
-              {activeGoal.targetCaloriesMin && activeGoal.targetCaloriesMax && (
-                <GoalStat label="Calories" value={`${activeGoal.targetCaloriesMin}–${activeGoal.targetCaloriesMax}`} />
-              )}
-              {activeGoal.targetWeightKg && <GoalStat label="Target weight" value={`${activeGoal.targetWeightKg}kg`} />}
-              {activeGoal.deadline && (
-                <GoalStat label="Deadline" value={new Date(activeGoal.deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })} />
-              )}
+              {proteinTarget && <GoalStat label="Protein" value={`${proteinTarget}g/day`} />}
+              {calTarget && <GoalStat label="Min calories" value={`${calTarget} kcal`} />}
+              {client.targetWeightKg && <GoalStat label="Target weight" value={`${client.targetWeightKg}kg`} />}
             </div>
           </div>
         )}
@@ -226,7 +253,7 @@ export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientD
         <MacronutrientSummary
           meals={mealsInRange}
           days={rangeDays}
-          targets={{ protein: activeGoal?.targetProteinG }}
+          targets={{ protein: proteinTarget }}
         />
 
         {/* Weekly / range progress board */}

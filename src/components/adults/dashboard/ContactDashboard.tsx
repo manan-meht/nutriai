@@ -16,11 +16,13 @@ import {
   getDateRangeDayCount,
   type DashboardDateRange,
 } from "@nutriai/dashboard-core";
+import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
+import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 import {
   TrendCardGrid,
   MealTimelineSection,
@@ -32,12 +34,6 @@ import {
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
-
-const GOAL_LABELS: Record<string, string> = {
-  eat_enough: "Eat enough food", enough_protein: "Enough protein", increase_protein: "More protein",
-  reduce_carbs: "Fewer carbs", balanced_meals: "Balanced meals", weight_gain: "Weight gain",
-  hydration: "Hydration", custom: "Custom",
-};
 
 const MEAL_EMOJIS: Record<string, string> = { breakfast: "🌅", lunch: "☀️", dinner: "🌙", snack: "🍎" };
 
@@ -62,13 +58,24 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
-  // Multiple goals can be selected when adding a contact (each becomes its
-  // own row) — numeric targets (protein/calories/meals) are shared across
-  // all of them and only ever read off the first, but the display below
-  // lists every selected goal's title so nothing picked looks dropped.
-  const activeGoals = contact.goals.filter((g) => g.status === "active");
-  const activeGoal = activeGoals[0];
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+
+  // Food Balance Score profile — replaces the old adults_contact_goals
+  // manual targets. Protein/calorie targets below are computed from this
+  // (via @nutriai/health-scoring) rather than typed in by hand.
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = contact.primaryNutritionGoal
+    ? {
+        goal: contact.primaryNutritionGoal as FoodBalanceUserProfile["goal"],
+        dateOfBirth: contact.dateOfBirth,
+        age: contact.age,
+        heightCm: contact.heightCm,
+        currentWeightKg: contact.weightKg,
+        metabolicEquationSex: contact.metabolicEquationSex as FoodBalanceUserProfile["metabolicEquationSex"],
+        activityLevel: contact.activityLevel as FoodBalanceUserProfile["activityLevel"],
+        resistanceTraining: contact.resistanceTrainingStatus as FoodBalanceUserProfile["resistanceTraining"],
+        targetWeightKg: contact.targetWeightKg,
+      }
+    : undefined;
 
   const mealsInRange = filterByDateRange(meals, dateRange);
   const earliestMealAt = meals.length ? new Date(meals[meals.length - 1].loggedAt) : undefined;
@@ -104,9 +111,11 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
     age: contact.age,
     gender: contact.gender,
   });
-  const proteinTarget = activeGoal?.targetProteinG ?? recommendedProteinG;
-  const isRecommendedProtein = !activeGoal?.targetProteinG;
-  const calTarget = activeGoal?.targetCaloriesMin;
+  const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
+  const proteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
+  const isRecommendedProtein = !proteinRange;
+  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goal) : null;
+  const calTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
   const proteinOk = proteinTarget ? avgProtein >= proteinTarget * 0.8 : null;
   const calOk = calTarget ? avgCalories >= calTarget * 0.8 : null;
 
@@ -228,19 +237,13 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
 
         {/* Goal */}
         <div className="bg-[var(--color-dashboard-primary-light)] rounded-2xl p-4">
-          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">
-            {activeGoals.length > 1 ? "Goals" : "Goal"}
-          </p>
+          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Goal</p>
           <p className="font-semibold text-gray-900 mb-0.5">
-            {activeGoals.length > 0
-              ? activeGoals.map((g) => GOAL_LABELS[g.goalType] ?? g.goalType).join(" · ")
-              : "No goal set yet"}
+            {contact.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] ?? contact.primaryNutritionGoal : "No goal set yet"}
           </p>
-          {activeGoal?.description && <p className="text-sm text-gray-500 mb-2">{activeGoal.description}</p>}
           <div className="flex flex-wrap gap-3 text-sm">
             <GoalPill label="Protein" value={`${proteinTarget}g/day${isRecommendedProtein ? " (recommended)" : ""}`} />
-            {activeGoal?.targetCaloriesMin && <GoalPill label="Min calories" value={`${activeGoal.targetCaloriesMin} kcal`} />}
-            {activeGoal?.targetMealsPerDay && <GoalPill label="Meals/day" value={String(activeGoal.targetMealsPerDay)} />}
+            {calTarget && <GoalPill label="Min calories" value={`${calTarget} kcal`} />}
           </div>
           <button
             onClick={() => setShowEdit(true)}

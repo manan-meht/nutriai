@@ -15,6 +15,7 @@ import { FAMILY_LIMIT_ENFORCEMENT_ENABLED, BILLING_AVAILABLE } from "@/lib/billi
 import { FeedbackModal } from "@/components/feedback/FeedbackModal";
 import { FeedbackIcon } from "@/components/feedback/FeedbackIcon";
 import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
+import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 
 interface Props {
   caregiverName: string;
@@ -29,12 +30,6 @@ interface Props {
   pricing: { monthlyLabel: string; annualLabel: string };
   selfPricing: { monthlyLabel: string; annualLabel: string };
 }
-
-const GOAL_LABELS: Record<string, string> = {
-  eat_enough: "Eat enough", enough_protein: "Enough protein", increase_protein: "More protein",
-  reduce_carbs: "Fewer carbs", balanced_meals: "Balanced meals", weight_gain: "Weight gain",
-  hydration: "Hydration", custom: "Custom",
-};
 
 const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
@@ -320,7 +315,6 @@ interface ContactCardProps {
 
 function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-  const activeGoal = contact.goals.find((g) => g.status === "active");
   const isActive = contact.mealCount > 0;
   const inviteAccepted = !!contact.inviteAcceptedAt;
   const invitePending = !!contact.inviteSentAt && !inviteAccepted;
@@ -406,15 +400,11 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
         </div>
       )}
 
-      {activeGoal ? (
+      {contact.primaryNutritionGoal ? (
         <div className="rounded-xl bg-[var(--color-dashboard-primary-light)] px-3 py-2">
-          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] mb-0.5">{GOAL_LABELS[activeGoal.goalType] ?? activeGoal.goalType}</p>
-          {activeGoal.description && <p className="text-xs text-[var(--color-dashboard-primary)]/70 line-clamp-1">{activeGoal.description}</p>}
-          <div className="flex gap-3 mt-1.5 flex-wrap text-xs text-[var(--color-dashboard-primary)]/70">
-            {activeGoal.targetProteinG && <span>{activeGoal.targetProteinG}g protein/day</span>}
-            {activeGoal.targetCaloriesMin && <span>min {activeGoal.targetCaloriesMin} kcal</span>}
-            {activeGoal.targetMealsPerDay && <span>{activeGoal.targetMealsPerDay} meals/day</span>}
-          </div>
+          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] mb-0.5">
+            {NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] ?? contact.primaryNutritionGoal}
+          </p>
         </div>
       ) : (
         <div className="rounded-xl px-3 py-2 bg-gray-50 text-gray-400 text-xs">No goal set</div>

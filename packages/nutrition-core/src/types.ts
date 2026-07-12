@@ -33,7 +33,27 @@ export interface AdultsGoal {
   status: string;
 }
 
-export interface AdultsContact {
+// Food Balance Score profile fields (see supabase/migrations/0027_food_balance_score.sql
+// and packages/health-scoring) — shared shape reused by both AdultsContact and
+// GymClient below rather than duplicated inline.
+export interface FoodBalanceProfileFields {
+  dateOfBirth?: string;
+  metabolicEquationSex?: "male" | "female";
+  activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
+  resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
+  preferredUnits?: "metric" | "imperial";
+  primaryNutritionGoal?:
+    | "reduce_weight"
+    | "reduce_body_fat"
+    | "gain_muscle"
+    | "body_recomposition"
+    | "maintain_weight"
+    | "improve_nutrition"
+    | "healthy_aging";
+  targetWeightKg?: number;
+}
+
+export interface AdultsContact extends FoodBalanceProfileFields {
   id: string;
   workspaceId: string;
   fullName: string;
@@ -98,7 +118,7 @@ export interface GymClientGoal {
   status: string;
 }
 
-export interface GymClient {
+export interface GymClient extends FoodBalanceProfileFields {
   id: string;
   workspaceId: string;
   fullName: string;
