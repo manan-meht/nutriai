@@ -64,13 +64,16 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
   const [result, setResult] = useState<FoodBalanceScoreResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const queryParam = contactId ? `contactId=${contactId}` : `clientId=${clientId}`;
+  // Folded into the existing per-product contact/client route files
+  // instead of a standalone /api/v1/food-balance-score endpoint — see
+  // those routes' own comments on why (Cloudflare Worker bundle size).
+  const path = contactId ? `/api/adults/contacts/${contactId}` : `/api/gym/clients/${clientId}`;
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(false);
-    fetch(`/api/v1/food-balance-score?${queryParam}`)
+    fetch(path)
       .then((res) => {
         if (res.status === 404) return null; // feature flag off — render nothing
         if (!res.ok) throw new Error("failed");
@@ -93,7 +96,7 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
     return () => {
       cancelled = true;
     };
-  }, [queryParam]);
+  }, [path]);
 
   if (loading) return null;
   if (error) {
