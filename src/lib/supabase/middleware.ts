@@ -34,7 +34,14 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresh session without blocking navigation
-  await supabase.auth.getUser();
+  const { error } = await supabase.auth.getUser();
+
+  // Stale/invalid refresh token cookie (e.g. after a DB reset or manual
+  // session revocation): clear it so the client re-auths instead of
+  // erroring on every subsequent request.
+  if (error?.code === "refresh_token_not_found") {
+    await supabase.auth.signOut();
+  }
 
   return supabaseResponse;
 }

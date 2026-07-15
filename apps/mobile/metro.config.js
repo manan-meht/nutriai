@@ -16,14 +16,18 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// Without this, Metro's default hierarchical lookup can still resolve
-// "react" (and other packages exact-pinned to a different version here
-// than in the root app, e.g. react-native's peer requirement) from the
-// workspace root's node_modules for some files even though this app's own
-// node_modules already has the correct nested copy — bundling two
-// distinct React module instances together, which breaks all hooks with
-// "Cannot read property 'useState' of null". Restricting resolution to
-// exactly the ordered nodeModulesPaths above forces a single instance.
-config.resolver.disableHierarchicalLookup = true;
+// NOTE: disableHierarchicalLookup is deliberately NOT set here, unlike the
+// nutriai-fresh Next.js app's original apps/mobile config it was ported
+// from. That setting existed to prevent a dual-React-instance bug when
+// react-native existed in BOTH this app's own nested node_modules AND the
+// workspace root's — but in this app (moved over from the standalone
+// tistra-mobile project), react-native and friends only ever get hoisted
+// to the workspace root, no nested copy exists. Setting
+// disableHierarchicalLookup with no nested copy to fall back to broke
+// Metro's asset/module resolution in ways hierarchical lookup handles
+// fine by default (observed: RN's own InitializeCore polyfills failing to
+// load — "Cannot read property 'default' of undefined" — plus LogBox's
+// icon assets 404ing because Metro assumed they lived under this app's
+// own node_modules instead of walking up to find them at the root).
 
 module.exports = config;

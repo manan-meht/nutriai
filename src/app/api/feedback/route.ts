@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ href: null });
-  const href = await getDashboardHrefForUser(user.id);
+  const lastVisitedProduct = request.cookies.get("tistra_last_product")?.value;
+  const href = await getDashboardHrefForUser(
+    user.id,
+    lastVisitedProduct === "gym" || lastVisitedProduct === "adults" ? lastVisitedProduct : undefined
+  );
   return NextResponse.json({ href });
 }
 

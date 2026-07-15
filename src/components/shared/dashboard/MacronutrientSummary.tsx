@@ -187,36 +187,54 @@ function MacroPill({
   );
 }
 
+// Fixed per-day width rather than stretching every bar to fill the card —
+// at a 30-day range, ResponsiveContainer squeezing 30 bars into one
+// screen-width chart made both the bars and the day-of-week labels
+// illegible. Past this many days, the chart switches to a fixed bar width
+// inside a horizontally scrollable container instead of shrinking further.
+const BAR_COLUMN_WIDTH = 36;
+const SCROLL_THRESHOLD = 10;
+
 function MacroDetailChart({ macroKey, data, target }: { macroKey: MacroKey; data: any[]; target?: number }) {
   const meta = MACRO_META[macroKey];
   const max = Math.max(...data.map((d) => d[macroKey] as number), target ?? 0, 10);
+  const scrollable = data.length > SCROLL_THRESHOLD;
+
+  const chart = (
+    <BarChart data={data} width={scrollable ? data.length * BAR_COLUMN_WIDTH : undefined} height={140} margin={{ top: 4, right: 0, left: -22, bottom: 0 }}>
+      <CartesianGrid vertical={false} stroke="#f0f0f0" />
+      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, max + Math.ceil(max * 0.2)]} />
+      <Tooltip
+        content={({ active, payload }) => {
+          if (!active || !payload?.length) return null;
+          const d = payload[0].payload;
+          return (
+            <div className="bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-lg text-xs">
+              <p className="font-semibold text-gray-900">{d[macroKey]}{meta.unit}</p>
+              <p className="text-gray-400">{d.mealCount} meal{d.mealCount !== 1 ? "s" : ""}</p>
+            </div>
+          );
+        }}
+      />
+      {target && <ReferenceLine y={target} stroke={meta.color} strokeDasharray="4 3" strokeWidth={1.5} />}
+      <Bar dataKey={macroKey} fill={meta.color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+    </BarChart>
+  );
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm font-semibold text-gray-700">{meta.label} ({meta.unit})</p>
         {target && <span className="text-xs font-medium" style={{ color: meta.color }}>Target: {target}{meta.unit}</span>}
       </div>
-      <ResponsiveContainer width="100%" height={140}>
-        <BarChart data={data} margin={{ top: 4, right: 0, left: -22, bottom: 0 }}>
-          <CartesianGrid vertical={false} stroke="#f0f0f0" />
-          <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, max + Math.ceil(max * 0.2)]} />
-          <Tooltip
-            content={({ active, payload }) => {
-              if (!active || !payload?.length) return null;
-              const d = payload[0].payload;
-              return (
-                <div className="bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-lg text-xs">
-                  <p className="font-semibold text-gray-900">{d[macroKey]}{meta.unit}</p>
-                  <p className="text-gray-400">{d.mealCount} meal{d.mealCount !== 1 ? "s" : ""}</p>
-                </div>
-              );
-            }}
-          />
-          {target && <ReferenceLine y={target} stroke={meta.color} strokeDasharray="4 3" strokeWidth={1.5} />}
-          <Bar dataKey={macroKey} fill={meta.color} radius={[4, 4, 0, 0]} maxBarSize={28} />
-        </BarChart>
-      </ResponsiveContainer>
+      {scrollable ? (
+        <div className="overflow-x-auto">{chart}</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={140}>
+          {chart}
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

@@ -37,22 +37,32 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
   const [showSignIn, setShowSignIn] = useState(false);
   const [dashboardHref, setDashboardHref] = useState<string | null>(null);
 
+  const product = variant === "home" ? null : VARIANT_PRODUCT[variant];
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/feedback?resource=dashboard-href")
       .then((res) => res.json())
       .then((data: { href: string | null }) => {
         if (cancelled) return;
-        if (data.href) {
-          setHomeHref(data.href);
-          setDashboardHref(data.href);
-        }
+        if (!data.href) return;
+        // On a product-specific marketing page (/family, /coach, /me) we
+        // already know unambiguously which product the visitor means —
+        // use that instead of the API's answer. getDashboardHrefForUser
+        // just picks whichever workspace the account happens to own
+        // first, which is wrong for anyone whose single login (e.g. one
+        // Google OAuth identity, which isn't scoped per-product the way
+        // password sign-in's scopedEmail() is) owns workspaces in both
+        // products — it would otherwise send a Family-page visitor to
+        // their Gym dashboard. Only the neutral "home" variant has no
+        // such page-level signal, so it still defers to the API.
+        const href = product ? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard") : data.href;
+        setHomeHref(href);
+        setDashboardHref(href);
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
-
-  const product = variant === "home" ? null : VARIANT_PRODUCT[variant];
+  }, [product]);
   const signupUrl = product
     ? getSignupUrl({ product, source: "nav", variant: "standard" }) +
       (variant === "me" ? "&next=" + encodeURIComponent("/adults/dashboard?self=1") : "")

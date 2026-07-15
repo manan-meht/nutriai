@@ -1,26 +1,29 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
+import * as SecureStore from "expo-secure-store";
 
-// Expo inlines EXPO_PUBLIC_-prefixed vars from .env at build time — no
-// app.config indirection needed (see .env.example).
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL as string;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY as string;
+// SecureStore (Keychain/Keystore-backed) rather than AsyncStorage — this
+// holds the refresh token, which is long-lived and should get the same
+// protection a password would, not plain unencrypted storage.
+const SecureStoreAdapter = {
+  getItem: (key: string) => SecureStore.getItemAsync(key),
+  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
+  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+};
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    "Missing Supabase config — set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in apps/mobile/.env (see .env.example)."
-  );
-}
-
-// AsyncStorage-backed session (the standard Expo + Supabase pattern) — no
-// cookies on a mobile client, so the session/JWT persists here instead and
-// gets sent as an Authorization header (see src/lib/api.ts) rather than a
-// cookie, unlike the web app's cookie-based session.
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    auth: {
+      storage: SecureStoreAdapter,
+      autoRefreshToken: true,
+      persistSession: true,
+      // The app has no server-rendered callback route to land a URL-based
+      // session on (unlike the web app's /auth/callback) — OAuth results
+      // are captured from the redirect URL directly in the auth flow code
+      // instead (see src/lib/oauth.ts), so this must stay off.
+      detectSessionInUrl: false,
+    },
+  }
+);

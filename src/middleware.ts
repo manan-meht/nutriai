@@ -45,6 +45,30 @@ export async function middleware(request: NextRequest) {
     });
   }
 
+  // Remember which product's dashboard the visitor actually used most
+  // recently — an account can legitimately own both a gym and an adults
+  // workspace (Google/Facebook OAuth isn't scoped per-product the way
+  // scopedEmail() scopes password sign-in), so getDashboardHrefForUser
+  // can't tell which one "My Dashboard" should mean from the account
+  // alone. This cookie gives it a real signal instead of guessing via
+  // "oldest workspace". Scoped to the dashboard routes themselves (not
+  // login/signup/marketing pages) so it only updates on an actual visit.
+  if (request.nextUrl.pathname.startsWith("/adults/dashboard")) {
+    response.cookies.set("tistra_last_product", "adults", {
+      maxAge: 60 * 60 * 24 * 365,
+      httpOnly: false,
+      sameSite: "lax",
+      path: "/",
+    });
+  } else if (request.nextUrl.pathname.startsWith("/gym/dashboard")) {
+    response.cookies.set("tistra_last_product", "gym", {
+      maxAge: 60 * 60 * 24 * 365,
+      httpOnly: false,
+      sameSite: "lax",
+      path: "/",
+    });
+  }
+
   return response;
 }
 

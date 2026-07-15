@@ -122,7 +122,13 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
   if (!explicitProduct && NEW_MASTER_HOME_ENABLED) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const homeHref = user ? await getDashboardHrefForUser(user.id) : "/";
+    const lastVisitedProduct = (await cookies()).get("tistra_last_product")?.value;
+    const homeHref = user
+      ? await getDashboardHrefForUser(
+          user.id,
+          lastVisitedProduct === "gym" || lastVisitedProduct === "adults" ? lastVisitedProduct : undefined
+        )
+      : "/";
     return <MasterHome homeHref={homeHref} />;
   }
 

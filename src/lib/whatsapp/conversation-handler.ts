@@ -1128,14 +1128,18 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       let analysis: FoodAnalysisResult;
 
       if (msg.type === "image" && mediaBuffer) {
-        // Reuse the photo already attached to a prior correction round
-        // rather than re-uploading it on every correction message. When an
-        // upload IS needed (the common case — a fresh photo), run it in
-        // parallel with the Gemini analysis rather than after it: the two
-        // are independent, and waiting for them sequentially was adding the
+        // A message in this branch always carries a real mediaBuffer, so it
+        // must be uploaded — there's no cheap way to tell "resent the same
+        // photo" apart from "sent a new one" without hashing, and assuming
+        // the former (as a prior version of this code did, to skip
+        // re-uploading during corrections) silently discarded genuinely new
+        // correction photos: the new image was still analyzed by Gemini
+        // (so the estimate looked right) but never saved, leaving the old
+        // pendingMeal.image_url in place. Run the upload in parallel with
+        // the Gemini analysis rather than after it: the two are
+        // independent, and waiting for them sequentially was adding the
         // upload's full round-trip on top of the AI call's latency on
         // every single photo message.
-        const needsUpload = !pendingMeal?.image_url;
         const [analysisResult, imageUrl] = await Promise.all([
           analyzeFood({
             imageBuffer: mediaBuffer,
@@ -1143,18 +1147,21 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
             correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
             text: msg.text,
           }),
-          needsUpload ? uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType) : Promise.resolve(undefined),
+          uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType),
         ]);
         analysis = analysisResult;
-        analysis.image_url = pendingMeal?.image_url ?? imageUrl;
+        analysis.image_url = imageUrl;
       } else if (msg.type === "text" && msg.text) {
         analysis = await analyzeFood({
           text: msg.text,
           correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
         });
         // A text correction to a meal originally logged from a photo should
-        // keep showing that photo rather than losing it.
-        analysis.image_url = pendingMeal?.image_url;
+        // keep showing that photo rather than losing it — but a fresh
+        // text-only meal (state idle, not actually correcting) must not
+        // inherit the previous meal's photo. Mirrors the isCorrecting gate
+        // on the image branch above.
+        analysis.image_url = isCorrecting ? pendingMeal?.image_url : undefined;
       } else {
         const hint = isAdults
           ? "You can send me a photo of your plate or describe what you had 😊"
