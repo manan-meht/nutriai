@@ -87,7 +87,10 @@ export function PersonCard({
               <View
                 style={[
                   styles.progressFill,
-                  { width: `${Math.min(100, Math.round((result.dataCoverage.eligibleMealCount / result.dataCoverage.requiredMealCount) * 100))}%` },
+                  {
+                    width: `${Math.min(100, Math.round((result.dataCoverage.eligibleMealCount / result.dataCoverage.requiredMealCount) * 100))}%`,
+                    backgroundColor: theme.primary,
+                  },
                 ]}
               />
             </View>
@@ -99,7 +102,7 @@ export function PersonCard({
 
         {isScored && (
           <View style={styles.scoreRow}>
-            <ThemedText type="title" style={styles.scoreNumber}>
+            <ThemedText type="title" style={[styles.scoreNumber, { color: theme.primary }]}>
               {result.score ?? '—'}
             </ThemedText>
             <View style={styles.scoreTextBlock}>
@@ -145,10 +148,10 @@ const styles = StyleSheet.create({
   learning: {},
   learningHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.one },
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 3, backgroundColor: '#5715CE' },
+  progressFill: { height: '100%', borderRadius: 3 },
   learningCaption: { marginTop: Spacing.one, fontStyle: 'italic' },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
-  scoreNumber: { fontSize: 32, lineHeight: 36, color: '#5715CE' },
+  scoreNumber: { fontSize: 32, lineHeight: 36 },
   scoreTextBlock: { gap: Spacing.half },
   meta: {},
   tip: { borderRadius: Spacing.two, padding: Spacing.two },
