@@ -836,13 +836,25 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   async function runFreeTextCorrection(
     correctionText: string,
     previous: PendingMeal | null,
-    opts: { isClarificationResolution?: boolean } = {}
+    opts: { isClarificationResolution?: boolean; inheritPhoto?: boolean } = {}
   ) {
+    // Every caller except the idle+recentlySaved shortcut is a genuine
+    // mid-conversation correction to `previous` (answering a
+    // clarification, resolving a contradiction check, replying inside
+    // awaiting_edit_or_undo/awaiting_skip_or_correction/
+    // awaiting_confirmation) — inheriting its photo is correct there. That
+    // one shortcut is ambiguous: recentlySaved just means a meal was
+    // saved a moment ago, not that this new text is about the same meal
+    // (it could be a brand-new, unrelated meal logged by text), so it
+    // opts out via inheritPhoto: false. Mirrors the isCorrecting gate in
+    // the image/text branches below.
+    const inheritPhoto = opts.inheritPhoto ?? true;
+
     if (previous) {
       const conflictBase = isConflictingDrinkCorrection(previous.meal_type, correctionText);
       if (conflictBase) {
         const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous.foods) });
-        analysis.image_url = previous.image_url;
+        analysis.image_url = inheritPhoto ? previous.image_url : undefined;
         await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
         await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
         return;
@@ -850,7 +862,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous?.foods) });
-    analysis.image_url = previous?.image_url;
+    analysis.image_url = inheritPhoto ? previous?.image_url : undefined;
 
     if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
       await sendTextMessage(msg.from, buildClarificationMessage(seed));
@@ -1114,7 +1126,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
   if (state === "idle" && recentlySaved && msg.type === "text" && text && !isGreeting(text)) {
     try {
-      await runFreeTextCorrection(text, pendingMeal);
+      await runFreeTextCorrection(text, pendingMeal, { inheritPhoto: false });
     } catch {
       await sendTextMessage(msg.from, isAdults ? "I couldn't update that — could you rephrase?" : "Couldn't update that — could you rephrase?");
       await setConvState("idle", pendingMeal);
