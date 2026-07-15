@@ -5,6 +5,7 @@ import { MacroBarChart, type DayDatum } from './macro-bar-chart';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 export interface MacroMeal {
   loggedAt: string;
@@ -20,8 +21,13 @@ export interface MacroMeal {
 
 type MacroKey = 'protein' | 'carbs' | 'fat' | 'fiber';
 
-const MACRO_META: Record<MacroKey, { label: string; unit: string; color: string }> = {
-  protein: { label: 'Protein', unit: 'g', color: '#5715CE' },
+// Protein reuses the app's brand purple, which needs the dark-mode-aware
+// theme.primary token (see food-balance-score-card.tsx/person-card.tsx) —
+// looked up per-render below rather than stored here, since this object
+// is module-level and can't react to color scheme. Carbs/fat/fiber are
+// saturated enough to read fine unchanged in both modes.
+const MACRO_META: Record<MacroKey, { label: string; unit: string; color?: string }> = {
+  protein: { label: 'Protein', unit: 'g' },
   carbs: { label: 'Carbs', unit: 'g', color: '#2563eb' },
   fat: { label: 'Fat', unit: 'g', color: '#f97316' },
   fiber: { label: 'Fiber', unit: 'g', color: '#059669' },
@@ -52,10 +58,15 @@ function buildDayData(meals: MacroMeal[], key: MacroKey, days: number): DayDatum
   });
 }
 
-function averagePerDay(meals: MacroMeal[], key: MacroKey, days: number): number {
-  if (!meals.length || days <= 0) return 0;
+// Averages over the days a meal was actually logged, not every day in the
+// selected range — otherwise someone who only logged meals on 5 of the
+// last 90 days would see an average diluted by 85 zero days, making
+// "Last 90 days" look like they're barely eating anything.
+function averagePerDay(meals: MacroMeal[], key: MacroKey): number {
+  if (!meals.length) return 0;
+  const distinctDaysLogged = new Set(meals.map((m) => m.loggedAt.slice(0, 10))).size;
   const total = meals.reduce((s, m) => s + mealAvg(m, key), 0);
-  return Math.round(total / days);
+  return Math.round(total / distinctDaysLogged);
 }
 
 // Ported from nutriai-fresh's
@@ -71,8 +82,10 @@ export function MacronutrientSummary({
   days: number;
   targets?: Partial<Record<MacroKey, number>>;
 }) {
+  const theme = useTheme();
   const [selected, setSelected] = useState<MacroKey>('protein');
   const chartDays = Math.min(Math.max(days, 1), 30);
+  const colorFor = (key: MacroKey) => MACRO_META[key].color ?? theme.primary;
 
   return (
     <ThemedView style={styles.container}>
@@ -82,7 +95,7 @@ export function MacronutrientSummary({
       <ThemedView style={styles.pillRow}>
         {MACRO_KEYS.map((key) => {
           const meta = MACRO_META[key];
-          const average = averagePerDay(meals, key, days);
+          const average = averagePerDay(meals, key);
           const target = targets?.[key];
           const active = key === selected;
           return (
@@ -112,7 +125,7 @@ export function MacronutrientSummary({
         title={`${MACRO_META[selected].label} (${MACRO_META[selected].unit})`}
         data={buildDayData(meals, selected, chartDays)}
         unit={MACRO_META[selected].unit}
-        barColor={MACRO_META[selected].color}
+        barColor={colorFor(selected)}
         target={targets?.[selected]}
       />
     </ThemedView>

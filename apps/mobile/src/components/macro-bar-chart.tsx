@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from './themed-text';
@@ -28,6 +29,7 @@ export function MacroBarChart({
   target?: number;
 }) {
   const theme = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
   const max = Math.max(...data.map((d) => d.value), target ?? 0, 1) * 1.15;
   // Fixed per-day width rather than flex-dividing the container — at a
   // 30-day range, flex-equal columns squeezed bars and day labels down to
@@ -71,7 +73,17 @@ export function MacroBarChart({
         )}
       </View>
       {scrollable ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          // Data is ordered oldest → newest, so today is the rightmost
+          // bar — default there instead of leaving today's data a full
+          // scroll away on longer ranges (30/90 days). Re-fires whenever
+          // the content width changes (date range or macro switch), not
+          // just on mount.
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
+        >
           <View style={[styles.chart, { width: data.length * BAR_COLUMN_WIDTH }]}>{bars}</View>
         </ScrollView>
       ) : (
