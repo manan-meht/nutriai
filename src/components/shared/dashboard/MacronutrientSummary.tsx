@@ -61,10 +61,15 @@ function buildDayData(meals: MacroMeal[], days: number) {
   });
 }
 
-function averagePerDay(meals: MacroMeal[], key: MacroKey, days: number): number {
-  if (!meals.length || days <= 0) return 0;
+// Averages over the days a meal was actually logged, not every day in the
+// selected range — otherwise someone who only logged meals on 5 of the
+// last 90 days would see an average diluted by 85 zero days, making
+// "Last 90 days" look like they're barely eating anything.
+function averagePerDay(meals: MacroMeal[], key: MacroKey): number {
+  if (!meals.length) return 0;
+  const distinctDaysLogged = new Set(meals.map((m) => m.loggedAt.slice(0, 10))).size;
   const total = meals.reduce((s, m) => s + mealAvg(m, key), 0);
-  return Math.round(total / days);
+  return Math.round(total / distinctDaysLogged);
 }
 
 interface Props {
@@ -88,7 +93,7 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
   const dayData = buildDayData(meals, chartDays);
 
   const averages = Object.fromEntries(
-    MACRO_KEYS.map((key) => [key, averagePerDay(meals, key, days)])
+    MACRO_KEYS.map((key) => [key, averagePerDay(meals, key)])
   ) as Record<MacroKey, number>;
 
   return (
