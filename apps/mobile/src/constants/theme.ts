@@ -14,6 +14,11 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Brand purple — #5715CE reads fine on light backgrounds but fails
+    // contrast against backgroundElement/background in dark mode, so this
+    // is the one token that actually differs by scheme rather than
+    // reusing the same hex both ways.
+    primary: '#5715CE',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +26,7 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    primary: '#B794F6',
   },
 } as const;
 

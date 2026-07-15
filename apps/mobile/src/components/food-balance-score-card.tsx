@@ -36,7 +36,7 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
     return (
       <ThemedView type="backgroundElement" style={styles.card}>
         <ThemedText type="smallBold">Food Balance Score</ThemedText>
-        <ThemedText type="small" style={styles.stateLabel}>
+        <ThemedText type="small" style={[styles.stateLabel, { color: theme.primary }]}>
           {result.status === 'refreshing_data' ? 'Refreshing your Food Balance Score' : 'Learning your eating pattern'}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={styles.stateBody}>
@@ -45,7 +45,7 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
             : 'Log a few more meals so Tistra can understand your nutrition and give you useful guidance.'}
         </ThemedText>
         <View style={[styles.progressTrack, { backgroundColor: theme.backgroundSelected }]}>
-          <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+          <View style={[styles.progressFill, { width: `${progressPct}%`, backgroundColor: theme.primary }]} />
         </View>
         <ThemedText type="small" themeColor="textSecondary" style={styles.stateMeta}>
           {eligibleMealCount} of {requiredMealCount} meals logged · Logged across {distinctLoggingDays} of {requiredLoggingDays} days
@@ -70,7 +70,7 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
               cx={50}
               cy={50}
               r={radius}
-              stroke="#5715CE"
+              stroke={theme.primary}
               strokeWidth={10}
               fill="none"
               strokeDasharray={`${progress} ${circumference}`}
@@ -120,10 +120,10 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
 
 const styles = StyleSheet.create({
   card: { borderRadius: Spacing.three, padding: Spacing.three },
-  stateLabel: { color: '#5715CE', fontWeight: '600', marginTop: Spacing.one },
+  stateLabel: { fontWeight: '600', marginTop: Spacing.one },
   stateBody: { marginTop: Spacing.one, lineHeight: 18 },
   progressTrack: { height: 8, borderRadius: 4, overflow: 'hidden', marginTop: Spacing.two },
-  progressFill: { height: '100%', borderRadius: 4, backgroundColor: '#5715CE' },
+  progressFill: { height: '100%', borderRadius: 4 },
   stateMeta: { marginTop: Spacing.one, fontSize: 11 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, marginTop: Spacing.two },
   ringWrap: { width: 100, height: 100, alignItems: 'center', justifyContent: 'center' },
