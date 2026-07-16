@@ -20,6 +20,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@nutriai/dashboard-core": "*",
+    "@nutriai/end-user-core": "*",
     "@nutriai/health-scoring": "*",
     "@nutriai/nutrition-core": "*",
     "@supabase/ssr": "^0.12.0",

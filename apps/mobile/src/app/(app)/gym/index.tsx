@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { api, type GymClient } from '@/lib/api';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
+import { clearLastDashboardChoice } from '@/lib/product-choice';
 
 type State =
   | { status: 'loading' }
@@ -104,7 +105,13 @@ export default function GymClientListScreen() {
           ) : null
         }
       />
-      <Pressable style={styles.signOutButton} onPress={() => supabase.auth.signOut()}>
+      <Pressable
+        style={styles.signOutButton}
+        onPress={() => {
+          clearLastDashboardChoice();
+          supabase.auth.signOut();
+        }}
+      >
         <ThemedText type="small" themeColor="textSecondary">
           Sign out
         </ThemedText>

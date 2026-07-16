@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -28,6 +28,16 @@ export default function SelectProductScreen() {
             router.push({ pathname: '/login', params: { product: selected } });
           }}
         />
+        {/* Not a 4th ProductPicker card — this is a completely different
+            auth flow (OTP session, not Supabase Auth), so it's kept as a
+            separate, lower-emphasis link rather than a fourth illustrated
+            card matching the other three's "which of my own accounts do I
+            sign into" framing. */}
+        <Pressable style={styles.invitedLink} onPress={() => router.push('/end-user/login')}>
+          <ThemedText type="default" themeColor="textSecondary" style={styles.invitedLinkText}>
+            🔒 I was invited — Sign in with WhatsApp
+          </ThemedText>
+        </Pressable>
       </SafeAreaView>
     </ThemedView>
   );
@@ -49,5 +59,13 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  invitedLink: {
+    alignItems: 'center',
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.four,
+  },
+  invitedLinkText: {
+    textDecorationLine: 'underline',
   },
 });

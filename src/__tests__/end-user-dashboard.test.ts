@@ -8,12 +8,24 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
 process.env.END_USER_OTP_PEPPER = "test-pepper";
 process.env.WHATSAPP_OTP_TEMPLATE_NAME = "otp_template";
+process.env.WHATSAPP_ACCESS_TOKEN = "test-access-token";
+process.env.WHATSAPP_PHONE_NUMBER_ID = "test-phone-number-id";
 
-const sendTemplateMessage = jest.fn().mockResolvedValue(undefined);
-jest.mock("@/lib/whatsapp/client", () => ({
-  sendTemplateMessage: (...args: unknown[]) => sendTemplateMessage(...args),
-  normalizePhone: (p: string) => p.replace(/\D/g, ""),
-}));
+// OTP sending now goes through @nutriai/end-user-core's sendWhatsAppTemplate,
+// which calls fetch directly (see packages/end-user-core/src/whatsapp.ts)
+// rather than this app's src/lib/whatsapp/client.ts — mock fetch instead of
+// that module.
+const sendTemplateMessage = jest.fn(() => Promise.resolve());
+function extractOtpSend(call: [string, RequestInit]) {
+  const body = JSON.parse(call[1].body as string);
+  const templateName = body.template.name;
+  const code = body.template.components?.[0]?.parameters?.[0]?.text;
+  return { templateName, code };
+}
+global.fetch = jest.fn(async (...args: any[]) => {
+  sendTemplateMessage(...args);
+  return { ok: true, text: async () => "" } as any;
+}) as any;
 
 interface FakeDb {
   otpCodes: any[];
@@ -150,9 +162,8 @@ describe("issueOtp / verifyOtp", () => {
 
     await issueOtp(contact);
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
-    const [, templateName, , params] = sendTemplateMessage.mock.calls[0];
+    const { templateName, code } = extractOtpSend(sendTemplateMessage.mock.calls[0] as any);
     expect(templateName).toBe("otp_template");
-    const code = params[0];
 
     const result = await verifyOtp(contact, code);
     expect(result).toEqual({ ok: true });
@@ -168,8 +179,8 @@ describe("issueOtp / verifyOtp", () => {
     const wrong = await verifyOtp(contact, "000000");
     expect(wrong).toEqual({ ok: false, reason: "incorrect_code" });
 
-    const [, , , params] = sendTemplateMessage.mock.calls.at(-1)!;
-    const correct = await verifyOtp(contact, params[0]);
+    const { code } = extractOtpSend(sendTemplateMessage.mock.calls.at(-1) as any);
+    const correct = await verifyOtp(contact, code);
     expect(correct).toEqual({ ok: true });
   });
 
@@ -180,9 +191,9 @@ describe("issueOtp / verifyOtp", () => {
     const { issueOtp, verifyOtp } = await import("@/lib/end-user/otp");
 
     await issueOtp(contact);
-    const [, , , params] = sendTemplateMessage.mock.calls.at(-1)!;
-    await verifyOtp(contact, params[0]);
-    const second = await verifyOtp(contact, params[0]);
+    const { code } = extractOtpSend(sendTemplateMessage.mock.calls.at(-1) as any);
+    await verifyOtp(contact, code);
+    const second = await verifyOtp(contact, code);
     expect(second).toEqual({ ok: false, reason: "already_used" });
   });
 
@@ -194,8 +205,8 @@ describe("issueOtp / verifyOtp", () => {
 
     await issueOtp(contact);
     db.otpCodes[0].expires_at = new Date(Date.now() - 1000).toISOString();
-    const [, , , params] = sendTemplateMessage.mock.calls.at(-1)!;
-    const result = await verifyOtp(contact, params[0]);
+    const { code } = extractOtpSend(sendTemplateMessage.mock.calls.at(-1) as any);
+    const result = await verifyOtp(contact, code);
     expect(result).toEqual({ ok: false, reason: "expired" });
   });
 
@@ -209,8 +220,8 @@ describe("issueOtp / verifyOtp", () => {
     for (let i = 0; i < 5; i++) {
       await verifyOtp(contact, "000000");
     }
-    const [, , , params] = sendTemplateMessage.mock.calls.at(-1)!;
-    const result = await verifyOtp(contact, params[0]);
+    const { code } = extractOtpSend(sendTemplateMessage.mock.calls.at(-1) as any);
+    const result = await verifyOtp(contact, code);
     expect(result).toEqual({ ok: false, reason: "too_many_attempts" });
   });
 });

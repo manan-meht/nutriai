@@ -9,12 +9,13 @@ import { ProductPicker } from '@/components/product-picker';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
 import { consumePendingProductSelection } from '@/lib/product-intent';
+import { getLastDashboardChoice, saveLastDashboardChoice, clearLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse };
+  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -27,10 +28,9 @@ export default function ProductRouterScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getMyProducts()
-      .then((products) => {
-        if (!cancelled) setState({ status: 'ready', products });
+    Promise.all([api.getMyProducts(), getLastDashboardChoice()])
+      .then(([products, lastChoice]) => {
+        if (!cancelled) setState({ status: 'ready', products, lastChoice });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -38,6 +38,7 @@ export default function ProductRouterScreen() {
         // root layout's auth gate sends them back to /login, rather than
         // getting stuck on an error screen with no way out.
         if (err instanceof ApiError && err.status === 401) {
+          clearLastDashboardChoice();
           supabase.auth.signOut();
           return;
         }
@@ -63,7 +64,13 @@ export default function ProductRouterScreen() {
           <ThemedText type="default" style={styles.errorText}>
             {state.message}
           </ThemedText>
-          <Pressable style={styles.button} onPress={() => supabase.auth.signOut()}>
+          <Pressable
+            style={styles.button}
+            onPress={() => {
+              clearLastDashboardChoice();
+              supabase.auth.signOut();
+            }}
+          >
             <ThemedText style={styles.buttonText}>Sign out</ThemedText>
           </Pressable>
         </SafeAreaView>
@@ -78,10 +85,22 @@ export default function ProductRouterScreen() {
   if (gym && !adults) return <Redirect href="/gym" />;
 
   // Both, but the user just told select-product.tsx which one they meant —
-  // honor that instead of asking again below.
+  // honor that instead of asking again below, and persist it so the next
+  // cold start (where pendingProduct is always null — it's in-memory only)
+  // skips the picker too.
   if (adults && gym && pendingProduct) {
-    if (pendingProduct === 'coach') return <Redirect href="/gym" />;
-    return <Redirect href="/adults" />;
+    const choice = pendingProduct === 'coach' ? 'gym' : 'adults';
+    saveLastDashboardChoice(choice);
+    return <Redirect href={choice === 'gym' ? '/gym' : '/adults'} />;
+  }
+
+  // Both, no fresh selection this session, but a persisted choice from a
+  // previous one — go straight there instead of showing the picker again.
+  // This is the actual fix for "every time I open the app I'm back on the
+  // dashboard picker": pendingProduct never survives a cold start, but this
+  // does (SecureStore, see lib/product-choice.ts).
+  if (adults && gym && state.lastChoice) {
+    return <Redirect href={state.lastChoice === 'gym' ? '/gym' : '/adults'} />;
   }
 
   // Neither — this account has no workspace on either product yet. Can
@@ -99,7 +118,13 @@ export default function ProductRouterScreen() {
             This account isn't set up on Family or Coach yet. Use tistrahealth.com to get started, then come
             back here.
           </ThemedText>
-          <Pressable style={styles.button} onPress={() => supabase.auth.signOut()}>
+          <Pressable
+            style={styles.button}
+            onPress={() => {
+              clearLastDashboardChoice();
+              supabase.auth.signOut();
+            }}
+          >
             <ThemedText style={styles.buttonText}>Sign out</ThemedText>
           </Pressable>
         </SafeAreaView>
@@ -116,7 +141,11 @@ export default function ProductRouterScreen() {
     <ProductPicker
       headline="Which dashboard?"
       subhead="Choose which one to view. You can switch anytime by signing out."
-      onContinue={(selected) => router.push(selected === 'coach' ? '/gym' : '/adults')}
+      onContinue={(selected) => {
+        const choice = selected === 'coach' ? 'gym' : 'adults';
+        saveLastDashboardChoice(choice);
+        router.push(choice === 'gym' ? '/gym' : '/adults');
+      }}
     />
   );
 }

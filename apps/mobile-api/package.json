@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@nutriai/dashboard-core": "*",
+    "@nutriai/end-user-core": "*",
     "@nutriai/health-scoring": "*",
     "@nutriai/nutrition-core": "*",
     "@supabase/supabase-js": "^2.110.0",

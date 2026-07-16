@@ -45,6 +45,14 @@ function RootNavigator() {
         <Stack.Screen name="select-product" />
         <Stack.Screen name="login" />
         <Stack.Screen name="auth/callback" />
+        {/* Participant/OTP flow — a completely separate session from
+            Supabase Auth (see lib/end-user-session.ts), so it lives under
+            the same "logged-out" bucket rather than (app)'s Supabase-gated
+            stack. A device with no Supabase session at all is the
+            expected case for a tracked family member using this. */}
+        <Stack.Screen name="end-user/login" />
+        <Stack.Screen name="end-user/verify" />
+        <Stack.Screen name="end-user/dashboard" />
       </Stack.Protected>
     </Stack>
   );
