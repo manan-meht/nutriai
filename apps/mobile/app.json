@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "tistra-mobile",
+    "name": "Tistra Health",
     "slug": "tistra-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.tistrahealth.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -36,7 +37,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

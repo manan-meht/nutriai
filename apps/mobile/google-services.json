@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "738237372666",
+    "project_id": "tistra-health",
+    "storage_bucket": "tistra-health.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:738237372666:android:d2af9c5e951cf50cafd143",
+        "android_client_info": {
+          "package_name": "com.tistrahealth.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDCBhOpk7DZLB0XKdRVCCdfWWu2xletgOM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -29,6 +29,16 @@ const USE_CASES: UseCaseCard[] = [
     description: "Track client meals without chasing food logs.",
     cta: "Explore Coach",
   },
+  {
+    // Not a product to "explore" like the other three — this routes
+    // straight to the OTP-verified end-user session (src/lib/end-user/otp.ts)
+    // for someone who's already been added as a tracked contact.
+    href: "/my-progress",
+    icon: "🔒",
+    title: "I was invited",
+    description: "Sign in with WhatsApp to view your private Tistra Health dashboard.",
+    cta: "View my dashboard",
+  },
 ];
 
 const HOW_IT_WORKS = [
@@ -275,6 +285,12 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                   className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
                 >
                   Coach →
+                </Link>
+                <Link
+                  href="/my-progress"
+                  className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
+                >
+                  I was invited →
                 </Link>
               </div>
             </div>

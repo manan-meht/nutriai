@@ -253,4 +253,10 @@ export const api = {
     apiRequest<{ id: string }>("/gym/clients", { method: "POST", body: JSON.stringify(body) }),
   updateGymClient: (clientId: string, body: unknown) =>
     apiRequest<{ id: string }>(`/gym/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  registerPushToken: (expoPushToken: string, platform: "android" | "ios") =>
+    apiRequest<{ ok: true }>("/me/push-token", {
+      method: "POST",
+      body: JSON.stringify({ expoPushToken, platform }),
+    }),
 };

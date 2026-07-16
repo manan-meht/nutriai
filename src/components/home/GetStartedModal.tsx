@@ -66,6 +66,17 @@ const SIGNIN_OPTIONS = [
     description: "See which clients need a nutrition check-in this week.",
     cta: "Sign in as a coach",
   },
+  {
+    // Not a caregiver/coach login at all — this is the OTP-verified
+    // end-user session (src/lib/end-user/otp.ts) for the person whose
+    // meals are actually being tracked. Signin-only: a participant doesn't
+    // "sign up" here, they're already someone else's tracked contact.
+    href: "/my-progress",
+    icon: "🔒",
+    title: "I was invited",
+    description: "Sign in with WhatsApp to view your private Tistra Health dashboard.",
+    cta: "View my dashboard",
+  },
 ];
 
 // Opened by the header's "Get Started" and "Sign in" buttons on the
@@ -96,7 +107,7 @@ export function GetStartedModal({ onClose, mode = "signup" }: GetStartedModalPro
             ×
           </button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className={`grid grid-cols-1 gap-4 ${mode === "signin" ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
           {OPTIONS.map((option) => (
             <div key={option.title} className="border border-gray-200 rounded-2xl p-5 flex flex-col hover:border-[#6750A4] transition-colors">
               <div className="w-12 h-12 rounded-xl bg-[#F3EEFB] flex items-center justify-center text-xl mb-4">

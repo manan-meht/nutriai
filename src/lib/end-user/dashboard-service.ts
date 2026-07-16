@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { ContactType } from "@/lib/end-user/otp";
-import type { HumanCorrectionFields } from "@nutriai/dashboard-core";
 import { fetchHumanCorrectionsByMealLogId } from "@/lib/nutrition/fetch-human-corrections";
+import type { ProfileDashboardData, ProfileDashboardProfile } from "@/lib/dashboard/profile-dashboard-types";
 
 function admin() {
   return createClient(
@@ -10,43 +10,31 @@ function admin() {
   );
 }
 
-export interface EndUserMealSummary {
-  id: string;
-  loggedAt: string;
-  mealType: string | null;
-  foods: Array<{ name: string; quantity?: string }>;
-  proteinGrams: { min: number; max: number };
-  caloriesKcal: { min: number; max: number };
-  aiSummary?: string | null;
-  imageUrl?: string | null;
-  humanCorrection?: HumanCorrectionFields;
-}
-
-export interface EndUserWeeklyStats {
-  mealsLoggedThisWeek: number;
-  daysWithProteinSource: number;
-  daysWithVegOrFruit: number;
-}
-
 export interface EndUserAccessEntry {
   role: "caregiver" | "coach";
   label: string;
 }
 
 export interface EndUserDashboard {
-  contactName: string;
+  contactId: string;
   contactType: ContactType;
-  recentMeals: EndUserMealSummary[];
-  /** Meals from the last 14 days, oldest first — used for week-over-week habit trends. */
-  mealsForTrends: EndUserMealSummary[];
-  weeklyStats: EndUserWeeklyStats;
-  suggestion: string;
+  /** Full profile + meal history, shaped for the shared ProfileDashboard
+   * component (see src/components/dashboard/ProfileDashboard.tsx) — same
+   * data shape the family_admin/coach dashboards render, just fetched via
+   * the OTP-authenticated end-user session instead of an owner check. */
+  data: ProfileDashboardData;
   accessList: EndUserAccessEntry[];
   isPaused: boolean;
 }
 
-const PROTEIN_KEYWORDS = ["chicken", "egg", "paneer", "dal", "lentil", "fish", "meat", "tofu", "yogurt", "curd", "milk", "bean", "nuts"];
-const VEG_FRUIT_KEYWORDS = ["salad", "vegetable", "veggie", "fruit", "spinach", "carrot", "banana", "apple", "greens", "sabzi"];
+/** Selects the same profile-field set as getContactDetails/getClientDetails
+ * (src/app/(adults|gym)/.../actions.ts) so the end-user's own dashboard
+ * renders identically to the caregiver/coach view of the same person —
+ * just gated by a different auth mechanism (OTP session vs. owner check). */
+const ADULTS_PROFILE_COLUMNS =
+  "id, full_name, whatsapp_number, relationship, relationship_type, timezone, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, target_weight_kg, tracked_biomarkers, invite_accepted_at";
+const GYM_PROFILE_COLUMNS =
+  "id, full_name, whatsapp_number, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, target_weight_kg, tracked_biomarkers";
 
 export async function getEndUserDashboard(contactId: string, contactType: ContactType): Promise<EndUserDashboard> {
   const db = admin();
@@ -54,66 +42,66 @@ export async function getEndUserDashboard(contactId: string, contactType: Contac
   const ownerColumn = contactType === "adults" ? "caregiver_id" : "trainer_id";
   const mealColumn = contactType === "adults" ? "adults_contact_id" : "client_id";
 
-  const { data: contact } = await db
+  const selectColumns: string = `${contactType === "adults" ? ADULTS_PROFILE_COLUMNS : GYM_PROFILE_COLUMNS}, ${ownerColumn}`;
+  const { data: row } = (await db
     .from(table)
-    .select(`full_name, ${ownerColumn}`)
+    .select(selectColumns)
     .eq("id", contactId)
-    .single();
+    .single()) as { data: any };
 
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: meals } = await db
+  const { data: mealRows } = await db
     .from("meal_logs")
     .select("*")
     .eq(mealColumn, contactId)
-    .gte("logged_at", twoWeeksAgo)
-    .order("logged_at", { ascending: false })
-    .limit(60);
+    .order("logged_at", { ascending: false });
 
-  const allRows = meals ?? [];
-  const mealRows = allRows.filter((m: any) => m.logged_at >= weekAgo);
+  const allRows = mealRows ?? [];
   const corrections = await fetchHumanCorrectionsByMealLogId(allRows.map((m: any) => m.id));
 
-  const mapSummary = (m: any): EndUserMealSummary => ({
+  const meals: ProfileDashboardData["meals"] = allRows.map((m: any) => ({
     id: m.id,
-    loggedAt: m.logged_at,
+    profileId: contactId,
     mealType: m.meal_type,
+    loggedAt: m.logged_at,
     foods: m.foods ?? [],
-    proteinGrams: { min: m.total_protein_min ?? 0, max: m.total_protein_max ?? 0 },
-    caloriesKcal: { min: m.total_calories_min ?? 0, max: m.total_calories_max ?? 0 },
+    totalCaloriesMin: m.total_calories_min ?? 0,
+    totalCaloriesMax: m.total_calories_max ?? 0,
+    totalProteinMin: m.total_protein_min ?? 0,
+    totalProteinMax: m.total_protein_max ?? 0,
+    totalCarbsMin: m.total_carbs_min ?? 0,
+    totalCarbsMax: m.total_carbs_max ?? 0,
+    totalFatMin: m.total_fat_min ?? 0,
+    totalFatMax: m.total_fat_max ?? 0,
+    totalFiberMin: m.total_fiber_min ?? 0,
+    totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
     imageUrl: m.image_url,
     humanCorrection: corrections[m.id],
-  });
+  }));
 
-  const recentMeals: EndUserMealSummary[] = mealRows.slice(0, 10).map(mapSummary);
-  const mealsForTrends: EndUserMealSummary[] = allRows.map(mapSummary);
-
-  const dayHasKeyword = (keywords: string[]) => {
-    const days = new Set<string>();
-    for (const m of mealRows) {
-      const text = ((m.foods ?? []).map((f: any) => f.name).join(" ") + " " + (m.ai_summary ?? "")).toLowerCase();
-      if (keywords.some((k) => text.includes(k))) {
-        days.add(new Date(m.logged_at).toDateString());
-      }
-    }
-    return days.size;
+  const profile: ProfileDashboardProfile = {
+    id: contactId,
+    fullName: row?.full_name ?? "there",
+    whatsappNumber: row?.whatsapp_number ?? "",
+    age: row?.age,
+    gender: row?.gender,
+    weightKg: row?.weight_kg,
+    heightCm: row?.height_cm,
+    mealCount: allRows.length,
+    trackedBiomarkers: row?.tracked_biomarkers ?? [],
+    relationshipType: contactType === "adults" ? row?.relationship_type : undefined,
+    relationship: contactType === "adults" ? row?.relationship : undefined,
+    timezone: contactType === "adults" ? row?.timezone : undefined,
+    inviteAcceptedAt: contactType === "adults" ? row?.invite_accepted_at : undefined,
+    dateOfBirth: row?.date_of_birth,
+    metabolicEquationSex: row?.metabolic_equation_sex,
+    activityLevel: row?.activity_level,
+    resistanceTrainingStatus: row?.resistance_training_status,
+    primaryNutritionGoal: row?.primary_nutrition_goal,
+    targetWeightKg: row?.target_weight_kg,
   };
 
-  const weeklyStats: EndUserWeeklyStats = {
-    mealsLoggedThisWeek: mealRows.length,
-    daysWithProteinSource: dayHasKeyword(PROTEIN_KEYWORDS),
-    daysWithVegOrFruit: dayHasKeyword(VEG_FRUIT_KEYWORDS),
-  };
-
-  let suggestion = "You're doing great — keep logging your meals to see your trends! 🌟";
-  if (weeklyStats.mealsLoggedThisWeek > 0 && weeklyStats.daysWithVegOrFruit === 0) {
-    suggestion = "Try adding a vegetable or fruit to a meal today — small additions add up! 🥦";
-  } else if (weeklyStats.mealsLoggedThisWeek > 0 && weeklyStats.daysWithProteinSource < 3) {
-    suggestion = "A protein source at more meals can help keep energy steady through the day. 💪";
-  }
-
-  const accessList: EndUserAccessEntry[] = contact?.[ownerColumn as keyof typeof contact]
+  const accessList: EndUserAccessEntry[] = row?.[ownerColumn as keyof typeof row]
     ? [{ role: contactType === "adults" ? "caregiver" : "coach", label: contactType === "adults" ? "Your family contact" : "Your coach" }]
     : [];
 
@@ -124,12 +112,9 @@ export async function getEndUserDashboard(contactId: string, contactType: Contac
     .maybeSingle();
 
   return {
-    contactName: contact?.full_name ?? "there",
+    contactId,
     contactType,
-    recentMeals,
-    mealsForTrends,
-    weeklyStats,
-    suggestion,
+    data: { profile, meals },
     accessList,
     isPaused: !!access?.paused_at,
   };

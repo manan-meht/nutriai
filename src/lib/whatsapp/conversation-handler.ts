@@ -26,6 +26,7 @@ import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-co
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
 import { trackInviteEvent } from "@/lib/invites/analytics";
+import { sendPushNotificationToProfile } from "@/lib/notifications/push";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
@@ -34,6 +35,36 @@ function admin() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+// adults_contacts.relationship stores generic terms (see RELATIONSHIPS in
+// src/components/adults/AddContactModal.tsx: son/daughter/spouse/parent/
+// sibling/friend/other), not gendered ones — "parent"/"spouse"/"sibling"
+// are gender-neutral by design so the same option works regardless of the
+// contact's gender. For push-notification copy ("Your mother just logged
+// a lunch") we want the more natural gendered term where the contact's
+// gender makes one unambiguous; "son"/"daughter"/"friend" are already
+// gendered/neutral as stored and pass through unchanged. Returns null for
+// "other", an unset relationship, or an unrecognized value — callers
+// should fall back to the contact's first name in that case.
+export function relationshipLabelForNotification(
+  relationship: string | null | undefined,
+  gender: string | null | undefined
+): string | null {
+  switch (relationship) {
+    case "son":
+    case "daughter":
+    case "friend":
+      return relationship;
+    case "parent":
+      return gender === "male" ? "father" : gender === "female" ? "mother" : "parent";
+    case "sibling":
+      return gender === "male" ? "brother" : gender === "female" ? "sister" : "sibling";
+    case "spouse":
+      return gender === "male" ? "husband" : gender === "female" ? "wife" : "spouse";
+    default:
+      return null;
+  }
 }
 
 const MEAL_PHOTOS_BUCKET = "meal-photos";
@@ -405,7 +436,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -617,7 +648,44 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     await recordMealSubmissionForReview(analysis, mealRow.id);
+    await notifyCaregiverOfFamilyMeal(resolvedLabel);
     return mealRow.id;
+  }
+
+  /**
+   * Push-notifies the caregiver (trainerId, which for adults contacts is
+   * caregiver_id — see the entity resolution above) when a meal is logged
+   * on a family-plan workspace. Deliberately scoped to workspaces.plan ===
+   * 'family': a 'self' workspace's caregiver *is* the person the meal
+   * belongs to (notifying them about their own upload is redundant), and
+   * gym/coach ('coach' plan / isAdults === false) isn't in scope for this
+   * notification yet — see sendPushNotificationToProfile's docs for how to
+   * extend this later.
+   *
+   * Best-effort and fully swallowed: a push failure must never affect the
+   * WhatsApp save-confirmation flow that calls this.
+   */
+  async function notifyCaregiverOfFamilyMeal(resolvedLabel: MealType): Promise<void> {
+    try {
+      if (!isAdults) return;
+      const { data: workspace } = await db
+        .from("workspaces")
+        .select("plan")
+        .eq("id", workspaceId)
+        .maybeSingle();
+      if (workspace?.plan !== "family") return;
+
+      const who = relationshipLabelForNotification(adultsContact.relationship, adultsContact.gender);
+      const body = who ? `Your ${who} just logged a ${resolvedLabel}.` : `${firstName} just logged a ${resolvedLabel}.`;
+
+      await sendPushNotificationToProfile(trainerId, {
+        title: "Meal logged",
+        body,
+        data: { type: "meal_logged", adultsContactId: entityId, workspaceId },
+      });
+    } catch (err) {
+      console.error("[whatsapp] notifyCaregiverOfFamilyMeal failed:", err instanceof Error ? err.message : err);
+    }
   }
 
   /** Updates an already-saved meal_logs row in place (used when a

@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Redirect, Stack } from 'expo-router';
 
 import { useAuth } from '@/lib/auth-context';
+import { registerForPushNotificationsAsync } from '@/lib/notifications';
 
 export default function AppLayout() {
   // Second auth check, redundant with the root layout's conditional
@@ -12,6 +14,15 @@ export default function AppLayout() {
   // left stuck on its own loading spinner forever with no route back to
   // /select-product.
   const { session } = useAuth();
+
+  // Registers (or refreshes) this device's push token once per session —
+  // cheap no-op server-side on repeat calls (upsert), and swallows all
+  // failures internally (see notifications.ts), so this can never block
+  // rendering the dashboard below.
+  useEffect(() => {
+    if (session) registerForPushNotificationsAsync();
+  }, [session]);
+
   if (!session) return <Redirect href="/select-product" />;
 
   return (

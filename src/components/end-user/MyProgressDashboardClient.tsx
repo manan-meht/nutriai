@@ -12,25 +12,19 @@ import {
   signOutDeviceAction,
   signOutAllDevicesAction,
 } from "@/app/(public)/my-progress/actions";
-import { classifyMeal, applyHumanCorrection, buildHabitDashboard } from "@nutriai/dashboard-core";
-import {
-  TrendCardGrid,
-  MealTimelineSection,
-  WeeklyFocusCard,
-  HabitMomentumCard,
-  FoodPatternSpectrumCard,
-} from "@/components/shared/dashboard/HabitDashboardSections";
+import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
+import { permissionsForRole } from "@/lib/dashboard/permissions";
+import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-dashboard-presets";
 
+// Participant's own view of their tracked profile — the dashboard content
+// itself (insights, key metrics, macro summary, activity heatmap, recent
+// meals) is the shared ProfileDashboard, same as the family_admin/coach
+// views; this component wraps it with the account-management features
+// unique to the tracked person themselves (pause sharing, request removal,
+// trusted devices, sign out) that neither caregiver/coach role has.
 export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDashboard }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
-  const classifiedMeals = dashboard.mealsForTrends.map((m) =>
-    applyHumanCorrection(
-      classifyMeal({ id: m.id, loggedAt: m.loggedAt, mealType: m.mealType, foods: m.foods, aiSummary: m.aiSummary }),
-      m.humanCorrection
-    )
-  );
-  const habitDashboard = buildHabitDashboard(classifiedMeals);
   const [removalRequested, setRemovalRequested] = useState(false);
   const [devices, setDevices] = useState<TrustedDevice[] | null>(null);
   const [showDevices, setShowDevices] = useState(false);
@@ -69,58 +63,26 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
   }
 
   return (
-    <main className="min-h-screen bg-[var(--color-dashboard-surface)] px-4 py-8">
-      <div className="max-w-md mx-auto space-y-6">
-        <header className="flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-neutral-900">Hi {dashboard.contactName.split(" ")[0]} 👋</h1>
-          <button onClick={handleSignOut} className="text-sm text-neutral-400 underline">
-            Sign out
-          </button>
-        </header>
+    <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 flex justify-end">
+        <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
+          Sign out
+        </button>
+      </div>
 
-        <TrendCardGrid
-          cards={[habitDashboard.proteinTrend, habitDashboard.balancedPlateTrend, habitDashboard.healthierDirectionTrend]}
-        />
+      <ProfileDashboard
+        role="participant"
+        // No self-service profile-edit UI exists yet for the end-user OTP
+        // session (unlike EditContactModal/EditClientModal for
+        // caregivers/coaches) — override canManageGoal off until that's
+        // built, rather than showing an Edit button that does nothing.
+        permissions={{ ...permissionsForRole("participant"), canManageGoal: false }}
+        data={dashboard.data}
+        theme={PARTICIPANT_THEME}
+        copy={PARTICIPANT_COPY}
+      />
 
-        <MealTimelineSection meals={classifiedMeals} />
-
-        <WeeklyFocusCard focus={habitDashboard.weeklyFocus} />
-
-        <div className="grid grid-cols-1 gap-4">
-          <HabitMomentumCard momentum={habitDashboard.habitMomentum} />
-          <FoodPatternSpectrumCard spectrum={habitDashboard.patternSpectrum} />
-        </div>
-
-        <section className="bg-white rounded-xl p-5 shadow-sm">
-          <p className="text-sm font-medium text-neutral-900 mb-3">Recent meals</p>
-          {dashboard.recentMeals.length === 0 && (
-            <p className="text-sm text-neutral-400">No meals logged yet this week — just send a photo on WhatsApp anytime.</p>
-          )}
-          <ul className="space-y-3">
-            {dashboard.recentMeals.map((meal) => (
-              <li key={meal.id} className="flex items-start gap-3 text-sm text-neutral-700 border-b border-neutral-100 pb-2 last:border-0">
-                {meal.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
-                  <img
-                    src={meal.imageUrl}
-                    alt={`${meal.mealType ?? "Meal"} photo`}
-                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium capitalize">{meal.mealType ?? "Meal"}</span>{" "}
-                  <span className="text-neutral-400">
-                    {new Date(meal.loggedAt).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}
-                  </span>
-                  <div className="text-neutral-500">
-                    {meal.foods.map((f) => f.name).join(", ") || "—"}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>
           {dashboard.accessList.length === 0 ? (
@@ -194,6 +156,6 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
           healthcare professional, doctor, or registered dietitian.
         </p>
       </div>
-    </main>
+    </div>
   );
 }
