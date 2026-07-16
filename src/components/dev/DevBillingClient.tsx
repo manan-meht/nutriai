@@ -7,7 +7,7 @@ import { devSetEntitlementState, type EntitlementPreset } from "@/app/actions/de
 
 const PRESETS: { preset: EntitlementPreset; label: string }[] = [
   { preset: "not_started", label: "Not started (no trial yet)" },
-  { preset: "trialing_fresh", label: "Trial active — 30 days left" },
+  { preset: "trialing_fresh", label: "Trial active — 14 days left" },
   { preset: "trialing_ending_soon", label: "Trial active — 1 day left" },
   { preset: "trialing_expired", label: "Trial expired (read-only)" },
   { preset: "active_monthly", label: "Active subscription — monthly" },

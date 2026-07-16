@@ -158,7 +158,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
               </div>
             ) : (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-                Your first {clientLimit} clients are free for your first month. After that, Coaching is{" "}
+                Your first {clientLimit} clients are free for your first 14 days. After that, Coaching is{" "}
                 <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
                 <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
                 <Link href="/billing?module=gym" className="underline font-medium text-purple-700">See plans</Link>

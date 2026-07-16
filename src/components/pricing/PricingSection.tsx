@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { foundingMemberPricing, foundingMemberCopy, formatFoundingPrice, type FoundingMemberPlanId } from "@/lib/pricing/founding-member";
+import {
+  foundingMemberPricing,
+  foundingMemberCopy,
+  formatFoundingPrice,
+  displayMonthlyPriceForInterval,
+  displayAdditionalPersonMonthlyPriceForInterval,
+  type FoundingMemberPlanId,
+  type BillingInterval,
+} from "@/lib/pricing/founding-member";
 import { trackPricingEvent } from "@/lib/pricing/analytics";
 import { setIntendedPlan } from "@/app/actions/pricing";
 import { BetaPricingNotice } from "./BetaPricingNotice";
@@ -17,6 +25,7 @@ const PLAN_ORDER: FoundingMemberPlanId[] = ["self", "family", "gym"];
 export function PricingSection({ sourcePage }: PricingSectionProps) {
   const [loggedInHref, setLoggedInHref] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<FoundingMemberPlanId | null>(null);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>("annual");
 
   useEffect(() => {
     trackPricingEvent("pricing_viewed", { sourcePage });
@@ -48,9 +57,38 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
 
       <BetaPricingNotice />
 
+      <div className="flex justify-center" role="group" aria-label="Billing interval">
+        <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
+          <button
+            type="button"
+            onClick={() => setBillingInterval("annual")}
+            aria-pressed={billingInterval === "annual"}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              billingInterval === "annual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+            }`}
+          >
+            {foundingMemberCopy.annualToggleLabel}{" "}
+            <span className="text-xs text-[#6750A4] font-semibold">({foundingMemberCopy.annualSavingsLabel})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingInterval("monthly")}
+            aria-pressed={billingInterval === "monthly"}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              billingInterval === "monthly" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+            }`}
+          >
+            {foundingMemberCopy.monthlyToggleLabel}
+          </button>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6" role="list">
         {PLAN_ORDER.map((planId) => {
           const plan = foundingMemberPricing[planId];
+          const price = displayMonthlyPriceForInterval(plan, billingInterval);
+          const additionalPersonPrice = displayAdditionalPersonMonthlyPriceForInterval(plan, billingInterval);
+          const suffix = billingInterval === "monthly" ? foundingMemberCopy.monthlySuffix : foundingMemberCopy.annualSuffix;
           return (
             <div
               key={planId}
@@ -66,17 +104,22 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
               </div>
 
               <div>
-                <span className="text-3xl font-extrabold text-gray-900">{formatFoundingPrice(plan.monthlyPrice)}</span>
-                <span className="text-sm text-gray-500">/month</span>
+                <div>
+                  <span className="text-3xl font-extrabold text-gray-900">{formatFoundingPrice(price)}</span>
+                  <span className="text-sm text-gray-500">{suffix}</span>
+                </div>
+                {billingInterval === "annual" && (
+                  <p className="text-xs text-gray-400 mt-1">{formatFoundingPrice(plan.annualPrice)} billed annually</p>
+                )}
               </div>
 
               <ul className="text-sm text-gray-600 space-y-1.5">
                 <li>
                   Includes {plan.includedPeople} {plan.includedPeople === 1 ? "person" : "people"}
                 </li>
-                {plan.additionalPersonPrice !== null && (
+                {additionalPersonPrice !== null && (
                   <li>
-                    Additional {planId === "gym" ? "client" : "person"}: {formatFoundingPrice(plan.additionalPersonPrice)}/{planId === "gym" ? "client" : "person"}/month
+                    Additional {planId === "gym" ? "client" : "person"}: {formatFoundingPrice(additionalPersonPrice)}/{planId === "gym" ? "client" : "person"}{suffix}
                   </li>
                 )}
               </ul>

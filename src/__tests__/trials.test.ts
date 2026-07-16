@@ -69,7 +69,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.trialDaysRemaining).toBeNull();
   });
 
-  it("getEntitlementSnapshot: trialing and not read-only when within the 30-day window", async () => {
+  it("getEntitlementSnapshot: trialing and not read-only when within an active trial window", async () => {
     jest.resetModules();
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-01-10T00:00:00.000Z"));
@@ -92,7 +92,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.trialDaysRemaining).toBe(21);
   });
 
-  it("getEntitlementSnapshot: expired and read-only exactly after the 30-day window elapses (billing available)", async () => {
+  it("getEntitlementSnapshot: expired and read-only exactly after a trial window elapses (billing available)", async () => {
     // Trial started 2026-01-01T00:00:00Z, so it ends 2026-01-31T00:00:00Z.
     // One millisecond after that instant, it must read as expired.
     // Read-only enforcement only applies once billing is available (post-Beta).
@@ -119,7 +119,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.trialDaysRemaining).toBe(0);
   });
 
-  it("getEntitlementSnapshot: not yet expired one millisecond before the 30-day window elapses", async () => {
+  it("getEntitlementSnapshot: not yet expired one millisecond before a trial window elapses", async () => {
     jest.resetModules();
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-01-30T23:59:59.999Z"));
@@ -164,7 +164,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.isReadOnly).toBe(true);
   });
 
-  it("startTrialIfNeeded: writes trial_start_at/trial_end_at exactly 30 days apart, in UTC ISO", async () => {
+  it("startTrialIfNeeded: writes trial_start_at/trial_end_at exactly 14 days apart, in UTC ISO", async () => {
     jest.resetModules();
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -183,7 +183,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(written.owner_id).toBe("owner-1");
     expect(written.module).toBe("gym");
     expect(written.trial_start_at).toBe("2026-01-01T00:00:00.000Z");
-    expect(written.trial_end_at).toBe("2026-01-31T00:00:00.000Z");
+    expect(written.trial_end_at).toBe("2026-01-15T00:00:00.000Z");
   });
 });
 

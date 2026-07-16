@@ -13,7 +13,7 @@ import type { EntitlementModule, EntitlementStatus } from "@nutriai/nutrition-co
 
 export type { EntitlementModule, EntitlementStatus };
 
-const TRIAL_LENGTH_DAYS = 30;
+const TRIAL_LENGTH_DAYS = 14;
 const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
 
 export interface EntitlementSnapshot {
@@ -30,7 +30,7 @@ export interface EntitlementSnapshot {
 }
 
 /**
- * Starts a 30-day trial for (workspaceId, module) if one hasn't started yet.
+ * Starts a 14-day trial for (workspaceId, module) if one hasn't started yet.
  * Idempotent and concurrency-safe: relies on the (workspace_id, module)
  * unique constraint from migration 0001 via an upsert with
  * ignoreDuplicates — the first caller wins, every subsequent call for the

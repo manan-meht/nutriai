@@ -58,16 +58,16 @@ export async function devSetEntitlementState(module: EntitlementModule, preset: 
     trialing_fresh: {
       status: "trialing",
       trial_start_at: at.toISOString(),
-      trial_end_at: new Date(at.getTime() + 30 * DAY_MS).toISOString(),
+      trial_end_at: new Date(at.getTime() + 14 * DAY_MS).toISOString(),
     },
     trialing_ending_soon: {
       status: "trialing",
-      trial_start_at: new Date(at.getTime() - 29 * DAY_MS).toISOString(),
+      trial_start_at: new Date(at.getTime() - 13 * DAY_MS).toISOString(),
       trial_end_at: new Date(at.getTime() + 1 * DAY_MS).toISOString(),
     },
     trialing_expired: {
       status: "trialing",
-      trial_start_at: new Date(at.getTime() - 31 * DAY_MS).toISOString(),
+      trial_start_at: new Date(at.getTime() - 15 * DAY_MS).toISOString(),
       trial_end_at: new Date(at.getTime() - 1 * DAY_MS).toISOString(),
     },
     active_monthly: {

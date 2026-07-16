@@ -30,7 +30,7 @@
  * Trial start = FEATURE_ACTIVATION_DATE (UTC), or the instant this script
  * runs if that env var is unset. Set FEATURE_ACTIVATION_DATE to an ISO
  * timestamp *before* running this against production, so every existing
- * user's 30-day clock starts from the same, intentional moment (e.g. your
+ * user's 14-day clock starts from the same, intentional moment (e.g. your
  * announced launch date) rather than silently drifting to "whenever
  * someone happened to run the script."
  *
@@ -46,7 +46,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const TRIAL_LENGTH_MS = 30 * 24 * 60 * 60 * 1000;
+const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000;
 
 function requireEnv(name: string): string {
   const value = process.env[name];

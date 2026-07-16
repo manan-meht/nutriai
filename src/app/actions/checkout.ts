@@ -24,7 +24,7 @@ export interface CheckoutPreview {
  * from the confirmed-country cookie / Cloudflare IP header, and — if the
  * module has an active trial — asking the provider to delay the first
  * charge until the trial ends (see spec §15: "the paid subscription should
- * begin at the end of the existing 30-day trial whenever the selected
+ * begin at the end of the existing 14-day trial whenever the selected
  * provider supports delayed billing"). The browser never supplies a price;
  * getPrice() below is the only source of the amount actually charged.
  */
