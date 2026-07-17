@@ -1,0 +1,19 @@
+name = "nutriai-meal-reminders-cron"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Every 15 minutes — matches docs/meal-reminders-notes.md's recommended
+# interval. Sending is idempotent (meal_reminder_sends' unique index), so
+# pinging more often than strictly necessary just does less-than-useful
+# work, never double-sends.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+TARGET_URL = "https://tistrahealth.com/api/cron/send-meal-reminders"
+
+# CRON_SECRET is a secret, not a var — set via:
+#   npx wrangler secret put CRON_SECRET
+# using the SAME value configured on the main "nutriai" Pages project
+# (CRON_SECRET there), since this Worker's only job is to prove it's
+# authorized to trigger that endpoint.

@@ -1,0 +1,14 @@
+{
+  "name": "nutriai-meal-reminders-cron",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260717.1",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.111.0"
+  }
+}
