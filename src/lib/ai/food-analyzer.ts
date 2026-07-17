@@ -277,15 +277,15 @@ export async function analyzeFood(input: {
   imageMimeType?: string;
   correctionContext?: string;
 }): Promise<FoodAnalysisResult> {
-  // gemini-3.1-flash-lite: ~5x faster than gemini-2.5-flash on this vision
-  // prompt (~4s vs ~18s average across a 14-photo comparison) and, per
-  // manual verification against known real meals, matched or beat 2.5-flash
-  // on portion-size/protein accuracy in 6 of 7 checkable cases — 2.5-flash
-  // had been systematically over-estimating. The one miss was a
-  // paneer-vs-tofu identity call, which the existing high-impact-ambiguity
-  // clarification-question flow exists precisely to catch rather than rely
-  // on either model guessing right.
-  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
+  // Reverted from gemini-3.1-flash-lite back to gemini-2.5-flash: flash-lite
+  // was ~5x faster and did well in a 14-photo image-analysis comparison,
+  // but broke on the text-only meal-description path (e.g. "chicken curry
+  // and karela sabzi" came back as an all-zero-macro result, triggering
+  // the generic "is this tea, coffee, soup?" clarification) and threw an
+  // outright exception on at least one real photo — a failure mode never
+  // exercised by the earlier photo-only testing. Needs a proper text-path
+  // comparison before trying a faster model again.
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   let textPrompt = SYSTEM_PROMPT;
   if (input.correctionContext) {
@@ -597,7 +597,7 @@ export function computeSaveDecision(analysis: FoodAnalysisResult): SaveDecision 
  * generation, not the structured JSON food-analysis prompt. */
 export async function answerNutritionQuestion(question: string, mealContext?: string): Promise<string> {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-  const prompt = `You are Tistra Health, a warm, concise nutrition assistant. Answer the user's question in 2-3 short sentences, using approximate ranges rather than false precision. Do not say you are saving, logging, or updating anything — you are only answering a question.${
+  const prompt = `You are Tistra Health, a warm, concise nutrition assistant. Answer the user's question in 2-3 short sentences, using approximate ranges rather than false precision. Do not say you are saving, logging, or updating anything — you are only answering a question. Give general food-balance and wellness guidance only — never disease-specific advice (e.g. diabetes, kidney disease, hypertension, heart disease, pregnancy, eating disorders, cancer, liver disease, medication interactions, or lab result interpretation). If the question touches one of those, answer only in general food-balance terms; a separate notice already tells the user to involve a doctor or dietitian for anything condition-specific, so you do not need to add that yourself.${
     mealContext ? `\n\nThe meal currently being discussed: ${mealContext}` : ""
   }\n\nUser question: ${question}`;
 
