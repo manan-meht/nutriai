@@ -29,7 +29,7 @@ export function MyProgressEntryForm() {
         type="tel"
         inputMode="tel"
         required
-        placeholder="Your WhatsApp number, e.g. +65 9123 4567"
+        placeholder="Your phone number, e.g. +65 9123 4567"
         value={number}
         onChange={(e) => setNumber(e.target.value)}
         className="w-full rounded-lg border border-neutral-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-neutral-400"
@@ -43,7 +43,7 @@ export function MyProgressEntryForm() {
         {submitting ? "Sending code…" : "Send me a code"}
       </button>
       <p className="text-xs text-neutral-400 text-center">
-        No app install, no signup — just your WhatsApp number.
+        No app install, no signup — just your phone number.
       </p>
     </form>
   );

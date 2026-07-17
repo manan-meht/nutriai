@@ -11,8 +11,8 @@ import { endUserApi, EndUserApiError } from '@/lib/end-user-api';
 
 // Entry point for a participant/tracked contact — not a caregiver/coach
 // Supabase Auth login (see login.tsx for that). Mirrors the web app's
-// /my-progress entry form (MyProgressEntryForm.tsx): enter a WhatsApp
-// number, get a 6-digit code via WhatsApp, verify it on the next screen.
+// /my-progress entry form (MyProgressEntryForm.tsx): enter a phone
+// number, get a 6-digit code via SMS, verify it on the next screen.
 export default function EndUserLoginScreen() {
   const theme = useTheme();
   const [number, setNumber] = useState('');
@@ -39,11 +39,11 @@ export default function EndUserLoginScreen() {
           I was invited
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-          Sign in with WhatsApp to view your private Tistra Health dashboard.
+          Sign in with a text message to view your private Tistra Health dashboard.
         </ThemedText>
         <TextInput
           style={[styles.input, { borderColor: theme.backgroundSelected, color: theme.text }]}
-          placeholder="Your WhatsApp number, e.g. +65 9123 4567"
+          placeholder="Your phone number, e.g. +65 9123 4567"
           placeholderTextColor={theme.textSecondary}
           keyboardType="phone-pad"
           autoComplete="tel"
@@ -63,7 +63,7 @@ export default function EndUserLoginScreen() {
           {submitting ? <ActivityIndicator color="#fff" /> : <ThemedText style={styles.buttonText}>Send me a code</ThemedText>}
         </Pressable>
         <ThemedText type="small" themeColor="textSecondary" style={styles.footnote}>
-          No app account needed — just your WhatsApp number.
+          No app account needed — just your phone number.
         </ThemedText>
       </SafeAreaView>
     </ThemedView>

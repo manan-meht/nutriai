@@ -36,7 +36,7 @@ const USE_CASES: UseCaseCard[] = [
     href: "/my-progress",
     icon: "🔒",
     title: "I was invited",
-    description: "Sign in with WhatsApp to view your private Tistra Health dashboard.",
+    description: "Sign in with a text message to view your private Tistra Health dashboard.",
     cta: "View my dashboard",
   },
 ];

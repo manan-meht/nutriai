@@ -19,7 +19,7 @@ export default async function MyProgressEntryPage() {
           Confirm it&apos;s you to view your private dashboard
         </h1>
         <p className="text-sm text-neutral-500 text-center mb-8">
-          We&apos;ll send a secure code to your WhatsApp.
+          We&apos;ll send a secure code to your phone via text message.
         </p>
         <MyProgressEntryForm />
       </div>

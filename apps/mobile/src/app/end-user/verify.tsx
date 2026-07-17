@@ -47,7 +47,7 @@ export default function EndUserVerifyScreen() {
           Enter the code we sent you
         </ThemedText>
         <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-          Check WhatsApp on {number} for a 6-digit code.
+          Check your phone at {number} for a 6-digit code.
         </ThemedText>
         <TextInput
           style={[styles.input, { borderColor: theme.backgroundSelected, color: theme.text }]}

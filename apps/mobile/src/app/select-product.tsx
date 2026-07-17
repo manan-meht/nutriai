@@ -35,7 +35,7 @@ export default function SelectProductScreen() {
             sign into" framing. */}
         <Pressable style={styles.invitedLink} onPress={() => router.push('/end-user/login')}>
           <ThemedText type="default" themeColor="textSecondary" style={styles.invitedLinkText}>
-            🔒 I was invited — Sign in with WhatsApp
+            🔒 I was invited — Sign in with a text message
           </ThemedText>
         </Pressable>
       </SafeAreaView>

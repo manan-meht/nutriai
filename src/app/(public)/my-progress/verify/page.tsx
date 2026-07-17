@@ -27,7 +27,7 @@ export default async function MyProgressVerifyPage({ searchParams }: VerifyPageP
           Enter the code we sent you
         </h1>
         <p className="text-sm text-neutral-500 text-center mb-8">
-          Check WhatsApp on {number} for a 6-digit code.
+          Check your phone at {number} for a 6-digit code.
         </p>
         <MyProgressVerifyForm whatsappNumber={number} />
       </div>
