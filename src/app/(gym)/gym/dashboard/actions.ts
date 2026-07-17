@@ -316,6 +316,11 @@ export async function addClient(formData: {
   activityLevel?: string;
   resistanceTrainingStatus?: string;
   targetWeightKg?: number;
+  /** Optional at signup — a coach may know some of a client's eating
+   * habits upfront rather than waiting for meals to be logged. Explicit
+   * choices always take priority over anything later inferred from meal
+   * photos (see @/lib/dietary-profile). */
+  dietaryPreferences?: import("@/lib/dietary-profile").FoodPreferenceSelections;
 }): Promise<{ clientId: string; error?: undefined } | { clientId?: undefined; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -395,6 +400,12 @@ export async function addClient(formData: {
     };
   }
 
+  const { applyExplicitPreferences, DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+  const dietaryProfile =
+    formData.dietaryPreferences && Object.keys(formData.dietaryPreferences).length > 0
+      ? applyExplicitPreferences(DEFAULT_DIETARY_PROFILE, formData.dietaryPreferences)
+      : DEFAULT_DIETARY_PROFILE;
+
   const { data: client, error } = await supabase
     .from("gym_clients")
     .insert({
@@ -413,6 +424,7 @@ export async function addClient(formData: {
       activity_level: formData.activityLevel || null,
       resistance_training_status: formData.resistanceTrainingStatus || null,
       target_weight_kg: formData.targetWeightKg || null,
+      dietary_profile: dietaryProfile,
     })
     .select("id")
     .single();
@@ -450,11 +462,20 @@ export async function updateClient(
     activityLevel?: string;
     resistanceTrainingStatus?: string;
     targetWeightKg?: number;
+    dietaryPreferences?: import("@/lib/dietary-profile").FoodPreferenceSelections;
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
+
+  let dietaryProfileUpdate: object = {};
+  if (formData.dietaryPreferences && Object.keys(formData.dietaryPreferences).length > 0) {
+    const { applyExplicitPreferences, DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+    const { data: clientRow } = await supabase.from("gym_clients").select("dietary_profile").eq("id", clientId).single();
+    const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(clientRow?.dietary_profile ?? {}) };
+    dietaryProfileUpdate = { dietary_profile: applyExplicitPreferences(currentProfile, formData.dietaryPreferences) };
+  }
 
   const { error } = await supabase
     .from("gym_clients")
@@ -470,12 +491,45 @@ export async function updateClient(
       activity_level: formData.activityLevel || null,
       resistance_training_status: formData.resistanceTrainingStatus || null,
       target_weight_kg: formData.targetWeightKg || null,
+      ...dietaryProfileUpdate,
     })
     .eq("id", clientId)
     .eq("trainer_id", user.id);
 
   if (error) return { error: error.message };
   return {};
+}
+
+/** Reads a client's current dietary profile, expressed back as the same
+ * FoodPreferenceSelections shape the editor UI uses — lets EditClientModal
+ * pre-fill the three-state toggles from what's already been explicitly
+ * set (observed_* alone, with no explicit avoid, intentionally shows as
+ * "unset" here — this is about the coach's own prior explicit input, not
+ * everything the profile has inferred from meals). */
+export async function getClientDietaryPreferences(clientId: string): Promise<import("@/lib/dietary-profile").FoodPreferenceSelections> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: clientRow } = await supabase
+    .from("gym_clients")
+    .select("dietary_profile")
+    .eq("id", clientId)
+    .eq("trainer_id", user.id)
+    .single();
+
+  const p = clientRow?.dietary_profile ?? {};
+  const selections: import("@/lib/dietary-profile").FoodPreferenceSelections = {};
+  if (p.prefers_plant_based_suggestions) selections.prefersPlantBasedSuggestions = true;
+  if (p.explicit_vegetarian) selections.eatsVegetarian = true;
+  if (p.explicit_avoids_eggs) selections.eatsEggs = false;
+  if (p.explicit_avoids_chicken) selections.eatsChicken = false;
+  if (p.explicit_avoids_fish) selections.eatsFishOrSeafood = false;
+  if (p.explicit_avoids_red_meat) selections.eatsRedMeat = false;
+  if (p.explicit_avoids_dairy) selections.avoidsDairy = true;
+  if (p.explicit_avoids_lactose) selections.avoidsLactose = true;
+  if (p.explicit_avoids_pork) selections.avoidsPork = true;
+  return selections;
 }
 
 // -----------------------------------------------------------------------

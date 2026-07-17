@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { addClient } from "@/app/(gym)/gym/dashboard/actions";
 import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
+import { DietaryPreferencesFields, EMPTY_DIETARY_PREFERENCES_FIELDS, type DietaryPreferencesFieldsValue } from "@/components/shared/dashboard/DietaryPreferencesFields";
 
 interface AddClientModalProps {
   workspaceId: string;
@@ -26,6 +27,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
   const [heightCm, setHeightCm] = useState("");
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(EMPTY_NUTRITION_GOAL_FIELDS);
+  const [dietaryPreferences, setDietaryPreferences] = useState<DietaryPreferencesFieldsValue>(EMPTY_DIETARY_PREFERENCES_FIELDS);
 
   const bmi =
     weightKg && heightCm
@@ -51,6 +53,7 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         activityLevel: goalFields.activityLevel || undefined,
         resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
         targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
+        dietaryPreferences,
       });
       if (result.error) {
         setError(result.error);
@@ -183,6 +186,8 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         </section>
 
         <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+
+        <DietaryPreferencesFields value={dietaryPreferences} onChange={setDietaryPreferences} />
 
         {error && (
           <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>

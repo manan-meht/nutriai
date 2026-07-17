@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { GymClient } from "@nutriai/nutrition-core";
 import { NutritionGoalFields, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
+import { DietaryPreferencesFields, EMPTY_DIETARY_PREFERENCES_FIELDS, type DietaryPreferencesFieldsValue } from "@/components/shared/dashboard/DietaryPreferencesFields";
+import { getClientDietaryPreferences } from "@/app/(gym)/gym/dashboard/actions";
 
 interface Props {
   client: GymClient;
@@ -43,6 +45,16 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
     targetWeightKg: client.targetWeightKg?.toString() ?? "",
   });
 
+  const [dietaryPreferences, setDietaryPreferences] = useState<DietaryPreferencesFieldsValue>(EMPTY_DIETARY_PREFERENCES_FIELDS);
+
+  // Read-only on mount, unlike the save path below — matches AddClientModal
+  // calling addClient directly; only the PATCH save uses the plain-fetch
+  // workaround noted above, since that's the path that was actually
+  // observed failing intermittently as a Server Action.
+  useEffect(() => {
+    getClientDietaryPreferences(client.id).then(setDietaryPreferences).catch(() => {});
+  }, [client.id]);
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -63,6 +75,7 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
           activityLevel: goalFields.activityLevel || undefined,
           resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
           targetWeightKg: goalFields.targetWeightKg ? Number(goalFields.targetWeightKg) : undefined,
+          dietaryPreferences,
         }),
       });
       if (res.error) {
@@ -116,6 +129,10 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
 
           <div className="pt-2 border-t border-gray-100">
             <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <DietaryPreferencesFields value={dietaryPreferences} onChange={setDietaryPreferences} />
           </div>
 
           {error && <p className="text-sm text-[var(--color-status-support-text)]">{error}</p>}
