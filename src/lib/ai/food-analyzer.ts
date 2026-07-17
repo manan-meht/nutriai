@@ -277,7 +277,15 @@ export async function analyzeFood(input: {
   imageMimeType?: string;
   correctionContext?: string;
 }): Promise<FoodAnalysisResult> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  // gemini-3.1-flash-lite: ~5x faster than gemini-2.5-flash on this vision
+  // prompt (~4s vs ~18s average across a 14-photo comparison) and, per
+  // manual verification against known real meals, matched or beat 2.5-flash
+  // on portion-size/protein accuracy in 6 of 7 checkable cases — 2.5-flash
+  // had been systematically over-estimating. The one miss was a
+  // paneer-vs-tofu identity call, which the existing high-impact-ambiguity
+  // clarification-question flow exists precisely to catch rather than rely
+  // on either model guessing right.
+  const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite" });
 
   let textPrompt = SYSTEM_PROMPT;
   if (input.correctionContext) {
