@@ -79,12 +79,16 @@ async function processWebhook(body: any) {
               continue;
             }
 
+            const downloadStart = Date.now();
             const { buffer } = await downloadMedia(mediaId);
+            console.log(`[webhook] media download took ${Date.now() - downloadStart}ms`);
 
+            const handleStart = Date.now();
             await handleIncomingMessage(
               { from, type: "image", text: caption, mediaId, mediaMimeType: mimeType },
               buffer
             );
+            console.log(`[webhook] handleIncomingMessage took ${Date.now() - handleStart}ms`);
           } else {
             await handleIncomingMessage({ from, type: "other" });
           }

@@ -1247,15 +1247,27 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         // independent, and waiting for them sequentially was adding the
         // upload's full round-trip on top of the AI call's latency on
         // every single photo message.
+        const analyzeUploadStart = Date.now();
         const [analysisResult, imageUrl] = await Promise.all([
-          analyzeFood({
-            imageBuffer: mediaBuffer,
-            imageMimeType: msg.mediaMimeType,
-            correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
-            text: msg.text,
-          }),
-          uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType),
+          (async () => {
+            const start = Date.now();
+            const result = await analyzeFood({
+              imageBuffer: mediaBuffer,
+              imageMimeType: msg.mediaMimeType,
+              correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
+              text: msg.text,
+            });
+            console.log(`[whatsapp] analyzeFood took ${Date.now() - start}ms`);
+            return result;
+          })(),
+          (async () => {
+            const start = Date.now();
+            const result = await uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType);
+            console.log(`[whatsapp] uploadMealPhoto took ${Date.now() - start}ms`);
+            return result;
+          })(),
         ]);
+        console.log(`[whatsapp] analyze+upload (parallel) took ${Date.now() - analyzeUploadStart}ms`);
         analysis = analysisResult;
         analysis.image_url = imageUrl;
       } else if (msg.type === "text" && msg.text) {
