@@ -950,6 +950,17 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous?.foods) });
     analysis.image_url = inheritPhoto ? previous?.image_url : undefined;
+    // A text correction to a meal that DID originally have a photo should
+    // always carry it forward — if it silently doesn't, the resulting
+    // meal_logs row loses its photo with no visible error (the case that
+    // prompted this log: a real photo existed in storage matching the
+    // meal exactly, but the saved row's image_url was null). Flagging it
+    // loudly here beats discovering it later via manual DB archaeology.
+    if (inheritPhoto && previous && !previous.image_url) {
+      console.warn(
+        `[whatsapp] correction/clarification resolution has no photo to inherit — previous pending_meal (status: ${previous.status}) already had no image_url`
+      );
+    }
 
     if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
       await sendTextMessage(msg.from, buildClarificationMessage(seed));
