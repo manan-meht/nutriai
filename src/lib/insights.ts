@@ -1,3 +1,5 @@
+import { DEFAULT_DIETARY_PROFILE, DietaryProfile, getProteinFoodSuggestions } from "@/lib/dietary-profile";
+
 export interface MealSnapshot {
   loggedAt: string;
   totalProteinMin: number;
@@ -35,7 +37,7 @@ function avg(meals: MealSnapshot[], field: "protein" | "calories", days: number)
 
 export function computeInsights(
   meals: MealSnapshot[],
-  opts?: { targetProteinG?: number; targetCaloriesMin?: number; product?: "gym" | "adults" }
+  opts?: { targetProteinG?: number; targetCaloriesMin?: number; product?: "gym" | "adults"; dietaryProfile?: DietaryProfile }
 ): TrendInsights | null {
   if (meals.length === 0) return null;
 
@@ -67,6 +69,11 @@ export function computeInsights(
   const isAdults = opts?.product === "adults";
   const targetProtein = opts?.targetProteinG;
   const targetCalMin = opts?.targetCaloriesMin;
+  // Falls back to plant-based suggestions (dal, tofu, ...) for a brand-new
+  // profile, per the "plant-based until observed otherwise" default —
+  // never a hardcoded "egg" suggestion regardless of what this person
+  // actually eats (see @/lib/dietary-profile's module docs).
+  const proteinFoods = getProteinFoodSuggestions(opts?.dietaryProfile ?? DEFAULT_DIETARY_PROFILE);
 
   const bullets: string[] = [];
 
@@ -78,7 +85,7 @@ export function computeInsights(
       bullets.push(
         proteinChangePct > 0
           ? `Protein is up ${pct}% vs last week — the body is getting stronger fuel 💪`
-          : `Protein is down ${pct}% vs last week — try adding an egg or some dal to meals`
+          : `Protein is down ${pct}% vs last week — try adding ${proteinFoods.slice(0, 2).join(" or ")} to meals`
       );
     } else {
       bullets.push(

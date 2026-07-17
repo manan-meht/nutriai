@@ -509,6 +509,57 @@ export async function updateContact(
   return {};
 }
 
+/** Saves the "Food preferences" editor's choices — an explicit user
+ * statement always outranks anything inferred from logged meals (see
+ * @/lib/dietary-profile's applyExplicitPreferences). Only the fields the
+ * caller actually passed are changed, so partial saves from the editor
+ * never clear unrelated preferences. */
+export async function updateFoodPreferences(
+  contactId: string,
+  selections: import("@/lib/dietary-profile").FoodPreferenceSelections
+): Promise<{ error?: string }> {
+  const { applyExplicitPreferences, DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contactRow, error: readError } = await supabase
+    .from("adults_contacts")
+    .select("dietary_profile")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (readError || !contactRow) return { error: readError?.message ?? "Contact not found" };
+
+  const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(contactRow.dietary_profile ?? {}) };
+  const nextProfile = applyExplicitPreferences(currentProfile, selections);
+
+  const { error } = await supabase
+    .from("adults_contacts")
+    .update({ dietary_profile: nextProfile })
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id);
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function getFoodPreferences(contactId: string): Promise<import("@/lib/dietary-profile").DietaryProfile> {
+  const { DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contactRow } = await supabase
+    .from("adults_contacts")
+    .select("dietary_profile")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+
+  return { ...DEFAULT_DIETARY_PROFILE, ...(contactRow?.dietary_profile ?? {}) };
+}
+
 /** Manually resend the WhatsApp invite to an existing family member —
  * e.g. if they never received or missed the original invite. Does not
  * create a new contact or affect the monthly add quota. */

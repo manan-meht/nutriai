@@ -23,6 +23,7 @@ import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
 import { classifyMeal, recommendProteinGrams } from "@nutriai/dashboard-core";
 import { proteinTargetG, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
+import { updateDietaryProfileForSavedMeal, withMedicalHandoffIfNeeded } from "@/lib/dietary-profile";
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
 import { trackInviteEvent } from "@/lib/invites/analytics";
@@ -649,6 +650,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     await recordMealSubmissionForReview(analysis, mealRow.id);
     await notifyCaregiverOfFamilyMeal(resolvedLabel);
+    await updateDietaryProfileForSavedMeal(db, isAdults, entityId, analysis);
     return mealRow.id;
   }
 
@@ -1090,7 +1092,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (isHypotheticalQuestion(text)) {
       try {
         const context = pendingMeal ? `${pendingMeal.summary} (${pendingMeal.foods.map((f) => `${f.name} ${f.quantity}`).join(", ")})` : undefined;
-        const answer = await answerNutritionQuestion(text, context);
+        const answer = withMedicalHandoffIfNeeded(await answerNutritionQuestion(text, context), text);
         await sendTextMessage(msg.from, `${answer}\n\nDo you want me to update the saved meal, or was this just a question?`);
       } catch {
         await sendTextMessage(msg.from, "I couldn't work that out right now — could you ask again in a moment?");
@@ -1100,7 +1102,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
     if (isNutritionQuestion(text)) {
       try {
-        const answer = await answerNutritionQuestion(text);
+        const answer = withMedicalHandoffIfNeeded(await answerNutritionQuestion(text), text);
         await sendTextMessage(msg.from, answer);
       } catch {
         await sendTextMessage(msg.from, "I couldn't work that out right now — could you ask again in a moment?");
