@@ -2,9 +2,9 @@ export const runtime = "edge";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendTextMessage, sendTemplateMessage } from "@/lib/whatsapp/client";
+import { sendTextMessage, sendTemplateMessage, normalizePhone } from "@/lib/whatsapp/client";
 import { isReminderDue, getLocalDateAndTime } from "@/lib/reminders/schedule";
-import { buildReminderMessage } from "@/lib/reminders/messages";
+import { buildReminderMessage, reminderDisplayName } from "@/lib/reminders/messages";
 
 // A reminder is, by definition, a business-initiated message to someone who
 // likely HASN'T messaged recently — so it will usually fall outside
@@ -14,12 +14,12 @@ import { buildReminderMessage } from "@/lib/reminders/messages";
 // sendContactInvite (adults dashboard actions.ts): prefer an approved
 // template once one exists, fall back to free-form (works only within the
 // 24h window) until then.
-async function sendReminder(to: string, firstName: string): Promise<void> {
+async function sendReminder(to: string, displayName: string, reminderTime: string): Promise<void> {
   const templateName = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
   if (templateName) {
-    await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [firstName]);
+    await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [displayName]);
   } else {
-    await sendTextMessage(to, buildReminderMessage(firstName));
+    await sendTextMessage(to, buildReminderMessage(displayName, reminderTime));
   }
 }
 
@@ -39,13 +39,19 @@ interface ReminderTarget {
   timezone: string;
   remindersEnabled: boolean;
   reminderTimes: string[];
+  /** adults-only — gym_clients has no relationship/age/gender fields, so
+   * these stay undefined there and reminderDisplayName() falls back to
+   * first name (the Uncle/Aunty convention doesn't apply to gym clients). */
+  relationship?: string | null;
+  age?: number | null;
+  gender?: string | null;
 }
 
 async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise<ReminderTarget[]> {
   const [{ data: adults }, { data: gym }] = await Promise.all([
     db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times")
+      .select("id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times, relationship, age, gender")
       .eq("reminders_enabled", true)
       .is("deleted_at", null),
     db
@@ -64,6 +70,9 @@ async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise
       timezone: r.timezone ?? "Asia/Kolkata",
       remindersEnabled: r.reminders_enabled,
       reminderTimes: Array.isArray(r.reminder_times) ? r.reminder_times : [],
+      relationship: r.relationship,
+      age: r.age,
+      gender: r.gender,
     }));
 
   return [...map(adults, "adults"), ...map(gym, "gym")];
@@ -108,8 +117,14 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const firstName = target.fullName.split(" ")[0];
-        await sendReminder(target.whatsappNumber, firstName);
+        const displayName = reminderDisplayName({
+          fullName: target.fullName,
+          relationship: target.relationship,
+          age: target.age,
+          gender: target.gender,
+          normalizedWhatsappNumber: normalizePhone(target.whatsappNumber),
+        });
+        await sendReminder(target.whatsappNumber, displayName, reminderTime);
         sent++;
       } catch (err) {
         console.error("[reminders] send failed:", target.contactType, target.id, err instanceof Error ? err.message : err);

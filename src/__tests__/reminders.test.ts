@@ -1,6 +1,6 @@
 import { guessTimezoneFromCountryCode } from "@/lib/reminders/timezone";
 import { getLocalDateAndTime, isReminderDue } from "@/lib/reminders/schedule";
-import { buildReminderMessage } from "@/lib/reminders/messages";
+import { buildReminderMessage, mealSlotForTime, reminderDisplayName } from "@/lib/reminders/messages";
 
 describe("guessTimezoneFromCountryCode", () => {
   it("maps common country codes to their primary timezone", () => {
@@ -69,8 +69,67 @@ describe("isReminderDue", () => {
   });
 });
 
+describe("mealSlotForTime", () => {
+  it("buckets the default 8am/12pm/7pm reminder times correctly", () => {
+    expect(mealSlotForTime("08:00")).toBe("breakfast");
+    expect(mealSlotForTime("12:00")).toBe("lunch");
+    expect(mealSlotForTime("19:00")).toBe("dinner");
+  });
+
+  it("buckets boundary hours consistently", () => {
+    expect(mealSlotForTime("10:59")).toBe("breakfast");
+    expect(mealSlotForTime("11:00")).toBe("lunch");
+    expect(mealSlotForTime("16:59")).toBe("lunch");
+    expect(mealSlotForTime("17:00")).toBe("dinner");
+  });
+});
+
 describe("buildReminderMessage", () => {
-  it("includes the person's first name", () => {
-    expect(buildReminderMessage("Priya")).toContain("Priya");
+  it("includes the person's name, for every meal slot", () => {
+    expect(buildReminderMessage("Priya", "08:00")).toContain("Priya");
+    expect(buildReminderMessage("Priya", "12:00")).toContain("Priya");
+    expect(buildReminderMessage("Priya", "19:00")).toContain("Priya");
+  });
+
+  it("draws from a pool rather than always the same message (rotation)", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 50; i++) seen.add(buildReminderMessage("Priya", "08:00"));
+    // With 7 breakfast variants and 50 draws, seeing only 1 distinct
+    // message would indicate rotation isn't actually happening.
+    expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe("reminderDisplayName", () => {
+  const base = { fullName: "Sunita Sharma", relationship: "parent", age: 65, gender: "female", normalizedWhatsappNumber: "919812345678" };
+
+  it("uses Aunty for an elderly Indian parent, female", () => {
+    expect(reminderDisplayName(base)).toBe("Aunty");
+  });
+
+  it("uses Uncle for an elderly Indian parent, male", () => {
+    expect(reminderDisplayName({ ...base, gender: "male" })).toBe("Uncle");
+  });
+
+  it("falls back to first name when gender is unset/other", () => {
+    expect(reminderDisplayName({ ...base, gender: null })).toBe("Sunita");
+    expect(reminderDisplayName({ ...base, gender: "other" })).toBe("Sunita");
+  });
+
+  it("falls back to first name when relationship isn't 'parent'", () => {
+    expect(reminderDisplayName({ ...base, relationship: "sibling" })).toBe("Sunita");
+  });
+
+  it("falls back to first name when age is 60 or under", () => {
+    expect(reminderDisplayName({ ...base, age: 60 })).toBe("Sunita");
+    expect(reminderDisplayName({ ...base, age: 45 })).toBe("Sunita");
+  });
+
+  it("falls back to first name when age is unknown", () => {
+    expect(reminderDisplayName({ ...base, age: null })).toBe("Sunita");
+  });
+
+  it("falls back to first name for a non-Indian number, even if otherwise eligible", () => {
+    expect(reminderDisplayName({ ...base, normalizedWhatsappNumber: "6597268559" })).toBe("Sunita");
   });
 });
