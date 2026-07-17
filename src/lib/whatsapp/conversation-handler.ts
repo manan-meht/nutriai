@@ -652,6 +652,25 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return mealRow.id;
   }
 
+  /** Force-saves a meal that's been sitting in "awaiting_clarification"
+   * using the AI's original best-guess values, without ever getting the
+   * clarification answered — called when a new photo arrives before the
+   * old question was answered (a new photo always takes priority, and
+   * silently discarding the earlier meal would be worse than logging it
+   * with unresolved ambiguity). The stale-clarification cron sweep (10
+   * minutes of silence — see src/app/api/cron/resolve-stale-clarifications)
+   * does the equivalent for the "nobody sent anything else at all" case,
+   * but as a standalone route it can't reuse this closure. */
+  async function saveBestGuessForClarification(pending: PendingMeal): Promise<void> {
+    const resolvedLabel = resolveMealLabel(pending.meal_type, new Date(), contactTimezone);
+    const savedMealId = await saveMeal(pending, resolvedLabel);
+    await sendTextMessage(
+      msg.from,
+      `Since a new photo came in, I've saved your earlier ${formatMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+    );
+    await setConvState("idle", savedMealId ? { ...toPendingMeal(pending, "saved"), savedMealId } : null);
+  }
+
   /**
    * Push-notifies the caregiver (trainerId, which for adults contacts is
    * caregiver_id — see the entity resolution above) when a meal is logged
@@ -1104,6 +1123,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     (state === "awaiting_confirmation" || state === "awaiting_clarification" || state === "awaiting_correction_confirmation" ||
       state === "awaiting_skip_or_correction" || state === "awaiting_edit_or_undo")) {
     try {
+      // A new photo arriving while the previous meal is still stuck
+      // awaiting an unanswered clarification question — save that one now
+      // with the AI's original best-guess values rather than leaving it
+      // (or losing it) once this new photo takes over the conversation.
+      if (state === "awaiting_clarification" && pendingMeal) {
+        await saveBestGuessForClarification(pendingMeal);
+      }
+
       // The photo upload doesn't depend on the analysis result (or vice
       // versa) — running them in parallel instead of sequentially shaves
       // the upload's full round-trip off the total reply latency.

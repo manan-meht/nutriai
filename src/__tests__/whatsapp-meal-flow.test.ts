@@ -398,8 +398,8 @@ describe("handleIncomingMessage — confidence-based auto-save flow", () => {
     expect(fakeDb._mealLogs.length).toBe(1);
   });
 
-  it("a new photo arriving while a previous ambiguity is still awaiting clarification is analyzed fresh, not silently ignored", async () => {
-    const { fakeDb, foodAnalyzer, handleIncomingMessage } = await setup();
+  it("a new photo arriving while a previous ambiguity is still awaiting clarification saves the earlier meal as a best guess, then analyzes the new photo fresh", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup();
     (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
       summary: "first meal", has_high_impact_ambiguity: true, clarification_question: "Tofu, paneer, or chicken?",
     }));
@@ -415,7 +415,12 @@ describe("handleIncomingMessage — confidence-based auto-save flow", () => {
     await handleIncomingMessage(photoMsg, new Uint8Array([4, 5, 6]));
 
     expect(foodAnalyzer.analyzeFood).toHaveBeenCalledTimes(2);
-    expect(fakeDb._mealLogs.length).toBe(1); // the second (unambiguous) photo auto-saved
+    // the stale first meal is force-saved with its best-guess values, and the
+    // second (unambiguous) photo is also auto-saved — neither is lost.
+    expect(fakeDb._mealLogs.length).toBe(2);
+    expect(fakeDb._mealLogs[0].ai_summary).toBe("first meal");
+    expect(fakeDb._mealLogs[1].ai_summary).toBe("second meal");
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("first meal"));
   });
 
   it("'skip' while awaiting clarification discards the pending (unsaved) meal", async () => {
