@@ -56,6 +56,11 @@ export interface AddContactInput {
   activityLevel?: string;
   resistanceTrainingStatus?: string;
   targetWeightKg?: number;
+  /** WhatsApp meal reminders (migration 0016) — gym_clients has no
+   * equivalent columns, so these are adults-only, same as `relationship`. */
+  timezone?: string;
+  remindersEnabled?: boolean;
+  reminderTimes?: string[];
 }
 
 export async function addContact(
@@ -89,6 +94,9 @@ export async function addContact(
       activity_level: input.activityLevel || null,
       resistance_training_status: input.resistanceTrainingStatus || null,
       target_weight_kg: input.targetWeightKg ?? null,
+      ...(input.timezone ? { timezone: input.timezone } : {}),
+      ...(input.remindersEnabled !== undefined ? { reminders_enabled: input.remindersEnabled } : {}),
+      ...(input.reminderTimes ? { reminder_times: input.reminderTimes } : {}),
     })
     .select("id")
     .single();
@@ -118,6 +126,13 @@ export interface UpdateContactInput {
   activityLevel?: string;
   resistanceTrainingStatus?: string;
   targetWeightKg?: number;
+  /** WhatsApp meal reminders (migration 0016) — adults-only, see
+   * AddContactInput. Omitted (undefined) leaves the existing stored value
+   * untouched rather than clearing it, since the mobile edit form doesn't
+   * expose a timezone picker yet — only remindersEnabled/reminderTimes. */
+  timezone?: string;
+  remindersEnabled?: boolean;
+  reminderTimes?: string[];
 }
 
 export async function updateContact(
@@ -142,6 +157,9 @@ export async function updateContact(
       activity_level: input.activityLevel || null,
       resistance_training_status: input.resistanceTrainingStatus || null,
       target_weight_kg: input.targetWeightKg ?? null,
+      ...(input.timezone ? { timezone: input.timezone } : {}),
+      ...(input.remindersEnabled !== undefined ? { reminders_enabled: input.remindersEnabled } : {}),
+      ...(input.reminderTimes ? { reminder_times: input.reminderTimes } : {}),
     })
     .eq("id", contactId)
     .eq("caregiver_id", caregiverId);

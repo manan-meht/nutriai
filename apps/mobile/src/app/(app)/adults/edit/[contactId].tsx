@@ -45,6 +45,12 @@ export default function EditAdultsContactScreen() {
     gender: contact.gender ?? '',
     weightKg: contact.weightKg != null ? String(contact.weightKg) : '',
     heightCm: contact.heightCm != null ? String(contact.heightCm) : '',
+    remindersEnabled: contact.remindersEnabled,
+    reminderTimes: [
+      contact.reminderTimes[0] ?? '08:00',
+      contact.reminderTimes[1] ?? '12:00',
+      contact.reminderTimes[2] ?? '19:00',
+    ],
     goalFields: {
       ...EMPTY_NUTRITION_GOAL_FIELDS,
       primaryNutritionGoal: contact.primaryNutritionGoal ?? '',

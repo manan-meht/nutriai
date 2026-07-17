@@ -109,6 +109,9 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   lastMealAt?: string;
   goals: Goal[];
   trackedBiomarkers: string[];
+  /** WhatsApp meal reminders (migration 0016) — adults-only. */
+  remindersEnabled: boolean;
+  reminderTimes: string[];
 }
 
 export interface MealLog {

@@ -10,6 +10,8 @@ const RELATIONSHIPS = ['Son', 'Daughter', 'Spouse', 'Parent', 'Sibling', 'Friend
 const PRIMARY = '#5715CE';
 const ERROR_COLOR = '#D92D20';
 
+const DEFAULT_REMINDER_TIMES: [string, string, string] = ['08:00', '12:00', '19:00'];
+
 export interface PersonFormInitialValues {
   fullName?: string;
   relationship?: string;
@@ -18,6 +20,9 @@ export interface PersonFormInitialValues {
   weightKg?: string;
   heightCm?: string;
   goalFields?: NutritionGoalFieldsValue;
+  /** adults-only — gym_clients has no reminders columns. */
+  remindersEnabled?: boolean;
+  reminderTimes?: [string, string, string];
 }
 
 interface PersonFormProps {
@@ -51,6 +56,10 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   const [weightKg, setWeightKg] = useState(initialValues?.weightKg ?? '');
   const [heightCm, setHeightCm] = useState(initialValues?.heightCm ?? '');
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(initialValues?.goalFields ?? EMPTY_NUTRITION_GOAL_FIELDS);
+  const [remindersEnabled, setRemindersEnabled] = useState(initialValues?.remindersEnabled ?? false);
+  const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(
+    initialValues?.reminderTimes ?? DEFAULT_REMINDER_TIMES
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +84,8 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       if (product === 'adults') {
         body.relationship = isSelf ? undefined : relationship || undefined;
         body.relationshipType = isSelf ? 'self' : undefined;
+        body.remindersEnabled = remindersEnabled;
+        body.reminderTimes = remindersEnabled ? reminderTimes : undefined;
       }
 
       if (mode === 'add') {
@@ -214,6 +225,52 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
 
       <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
 
+      {product === 'adults' && (
+        <>
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+          <Text style={[styles.sectionTitle, { color: PRIMARY }]}>WhatsApp reminders</Text>
+          <Pressable
+            style={styles.reminderToggleRow}
+            onPress={() => setRemindersEnabled(!remindersEnabled)}
+          >
+            <View
+              style={[
+                styles.checkbox,
+                { borderColor: theme.backgroundSelected },
+                remindersEnabled && { backgroundColor: PRIMARY, borderColor: PRIMARY },
+              ]}
+            >
+              {remindersEnabled && <Text style={styles.checkboxMark}>✓</Text>}
+            </View>
+            <Text style={{ color: theme.text, fontSize: 14 }}>Send meal reminders on WhatsApp</Text>
+          </Pressable>
+          {remindersEnabled && (
+            <View style={styles.row}>
+              {(['Morning', 'Midday', 'Evening'] as const).map((label, i) => (
+                <View key={label} style={styles.third}>
+                  <Field label={label} color={theme.textSecondary}>
+                    <TextInput
+                      value={reminderTimes[i]}
+                      onChangeText={(t) => {
+                        const next = [...reminderTimes] as [string, string, string];
+                        next[i] = t;
+                        setReminderTimes(next);
+                      }}
+                      placeholder="HH:MM"
+                      placeholderTextColor={theme.textSecondary}
+                      style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                    />
+                  </Field>
+                </View>
+              ))}
+            </View>
+          )}
+          <Text style={[styles.hint, { color: theme.textSecondary }]}>
+            24-hour format (e.g. 08:00), in their local timezone. Defaults to 8am, 12pm, and 7pm.
+          </Text>
+        </>
+      )}
+
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={[styles.submitButton, (loading || !fullName.trim()) && styles.disabled]} onPress={handleSubmit} disabled={loading || !fullName.trim()}>
@@ -264,6 +321,18 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', gap: 12 },
   half: { flex: 1 },
+  third: { flex: 1 },
+  reminderToggleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxMark: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  hint: { fontSize: 12, marginTop: -4, marginBottom: 4 },
   phoneRow: { flexDirection: 'row', gap: 8 },
   countryCodeBox: {
     flexDirection: 'row',
