@@ -7,19 +7,23 @@
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
 process.env.END_USER_OTP_PEPPER = "test-pepper";
-process.env.WHATSAPP_OTP_TEMPLATE_NAME = "otp_template";
-process.env.WHATSAPP_ACCESS_TOKEN = "test-access-token";
-process.env.WHATSAPP_PHONE_NUMBER_ID = "test-phone-number-id";
+process.env.MSG91_AUTH_KEY = "test-msg91-auth-key";
+process.env.MSG91_OTP_TEMPLATE_ID = "test-msg91-template-id";
+process.env.MSG91_SENDER_ID = "TSTRA";
+process.env.TWILIO_ACCOUNT_SID = "test-twilio-sid";
+process.env.TWILIO_AUTH_TOKEN = "test-twilio-token";
+process.env.TWILIO_FROM_NUMBER_OR_MESSAGING_SERVICE_SID = "+15551234567";
 
-// OTP sending now goes through @nutriai/end-user-core's sendWhatsAppTemplate,
-// which calls fetch directly (see packages/end-user-core/src/whatsapp.ts)
-// rather than this app's src/lib/whatsapp/client.ts — mock fetch instead of
-// that module.
+// OTP sending now goes through @nutriai/end-user-core's sendOtpSms, which
+// calls fetch directly (see packages/end-user-core/src/sms.ts) rather than
+// this app's src/lib/whatsapp/client.ts — mock fetch instead of that
+// module. The test contact below is an Indian (+91) number, so this always
+// routes to the MSG91 branch (JSON body), not Twilio (URL-encoded body).
 const sendTemplateMessage = jest.fn(() => Promise.resolve());
 function extractOtpSend(call: [string, RequestInit]) {
   const body = JSON.parse(call[1].body as string);
-  const templateName = body.template.name;
-  const code = body.template.components?.[0]?.parameters?.[0]?.text;
+  const templateName = body.template_id;
+  const code = body.recipients?.[0]?.OTP;
   return { templateName, code };
 }
 global.fetch = jest.fn(async (...args: any[]) => {
@@ -163,7 +167,7 @@ describe("issueOtp / verifyOtp", () => {
     await issueOtp(contact);
     expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
     const { templateName, code } = extractOtpSend(sendTemplateMessage.mock.calls[0] as any);
-    expect(templateName).toBe("otp_template");
+    expect(templateName).toBe("test-msg91-template-id");
 
     const result = await verifyOtp(contact, code);
     expect(result).toEqual({ ok: true });

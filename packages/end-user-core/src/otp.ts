@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone, sendWhatsAppTemplate } from "./whatsapp";
+import { normalizePhone } from "./whatsapp";
+import { sendOtpSms, type OtpSmsCredentials } from "./sms";
 
 export type ContactType = "adults" | "gym";
 
@@ -58,20 +59,15 @@ export async function findContactByWhatsappNumber(db: SupabaseClient, rawNumber:
   return null;
 }
 
-export interface WhatsAppCredentials {
-  accessToken: string;
-  phoneNumberId: string;
-  templateName: string;
-  languageCode: string;
-}
-
-/** Issues a fresh OTP and sends it via the pre-approved WhatsApp template
- * (free-form text can't be the first message to a contact who hasn't
- * messaged the business number yet — same constraint as the invite flow).
- * Same OTP flow regardless of caller (web or mobile) — only the delivery
- * channel (WhatsApp) and storage (end_user_otp_codes) are involved, no
- * platform-specific state. */
-export async function issueOtp(db: SupabaseClient, contact: EndUserContact, pepper: string, whatsapp: WhatsAppCredentials): Promise<void> {
+/** Issues a fresh OTP and sends it via SMS (MSG91 for +91, Twilio
+ * elsewhere — see sms.ts) rather than WhatsApp. SMS doesn't have
+ * WhatsApp's "must have messaged within 24h" restriction, so it works
+ * reliably for a first-time login too, at the cost of needing India's DLT
+ * template registration (regulatory, not provider-specific) and a Twilio
+ * account for the rest of the world. Same OTP flow regardless of caller
+ * (web or mobile) — only the delivery channel and storage
+ * (end_user_otp_codes) are involved, no platform-specific state. */
+export async function issueOtp(db: SupabaseClient, contact: EndUserContact, pepper: string, sms: OtpSmsCredentials): Promise<void> {
   const code = generateSixDigitCode();
   const codeHash = await hashCode(code, contact.whatsappNumber, pepper);
 
@@ -84,14 +80,9 @@ export async function issueOtp(db: SupabaseClient, contact: EndUserContact, pepp
   });
   if (error) throw new Error(`Failed to store OTP: ${error.message}`);
 
-  await sendWhatsAppTemplate({
-    accessToken: whatsapp.accessToken,
-    phoneNumberId: whatsapp.phoneNumberId,
-    to: contact.whatsappNumber,
-    templateName: whatsapp.templateName,
-    languageCode: whatsapp.languageCode,
-    bodyParameters: [code],
-  });
+  // contact.whatsappNumber is normalizePhone()'d (digits only) — SMS
+  // sending needs E.164 ("+" prefix).
+  await sendOtpSms(`+${contact.whatsappNumber}`, code, sms);
 }
 
 export type VerifyOtpResult =

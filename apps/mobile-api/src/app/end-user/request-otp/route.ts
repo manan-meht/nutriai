@@ -22,17 +22,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "We couldn't find that number. Ask whoever added you to double-check it." }, { status: 404 });
   }
 
-  const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
-  if (!templateName) {
-    return NextResponse.json({ error: "Couldn't send a code right now. Please try again in a moment." }, { status: 500 });
-  }
-
   try {
     await issueOtp(db, contact, process.env.END_USER_OTP_PEPPER ?? "", {
-      accessToken: process.env.WHATSAPP_ACCESS_TOKEN!,
-      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID!,
-      templateName,
-      languageCode: process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE ?? "en",
+      msg91: {
+        authKey: process.env.MSG91_AUTH_KEY!,
+        templateId: process.env.MSG91_OTP_TEMPLATE_ID!,
+        senderId: process.env.MSG91_SENDER_ID!,
+      },
+      twilio: {
+        accountSid: process.env.TWILIO_ACCOUNT_SID!,
+        authToken: process.env.TWILIO_AUTH_TOKEN!,
+        fromNumberOrMessagingServiceSid: process.env.TWILIO_FROM_NUMBER_OR_MESSAGING_SERVICE_SID!,
+      },
     });
   } catch (err) {
     console.error("[end-user/request-otp] issueOtp failed:", err instanceof Error ? err.message : err);

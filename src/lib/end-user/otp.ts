@@ -18,22 +18,25 @@ function admin() {
 }
 
 /** Thin wrapper over @nutriai/end-user-core's core logic — reads this app's
- * env vars (service-role client, OTP pepper, WhatsApp credentials) and
- * delegates the actual DB/WhatsApp work to the shared package, which
+ * env vars (service-role client, OTP pepper, SMS provider credentials) and
+ * delegates the actual DB/send work to the shared package, which
  * apps/mobile-api also calls for the mobile OTP login flow. */
 export async function findContactByWhatsappNumber(rawNumber: string): Promise<EndUserContact | null> {
   return findContactByWhatsappNumberCore(admin(), rawNumber);
 }
 
 export async function issueOtp(contact: EndUserContact): Promise<void> {
-  const templateName = process.env.WHATSAPP_OTP_TEMPLATE_NAME;
-  if (!templateName) throw new Error("WHATSAPP_OTP_TEMPLATE_NAME is not configured");
-
   await issueOtpCore(admin(), contact, process.env.END_USER_OTP_PEPPER ?? "", {
-    accessToken: process.env.WHATSAPP_ACCESS_TOKEN!,
-    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID!,
-    templateName,
-    languageCode: process.env.WHATSAPP_OTP_TEMPLATE_LANGUAGE ?? "en",
+    msg91: {
+      authKey: process.env.MSG91_AUTH_KEY!,
+      templateId: process.env.MSG91_OTP_TEMPLATE_ID!,
+      senderId: process.env.MSG91_SENDER_ID!,
+    },
+    twilio: {
+      accountSid: process.env.TWILIO_ACCOUNT_SID!,
+      authToken: process.env.TWILIO_AUTH_TOKEN!,
+      fromNumberOrMessagingServiceSid: process.env.TWILIO_FROM_NUMBER_OR_MESSAGING_SERVICE_SID!,
+    },
   });
 }
 
