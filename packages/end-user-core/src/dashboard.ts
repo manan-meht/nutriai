@@ -159,3 +159,26 @@ export async function getAccessList(db: SupabaseClient, contactId: string, conta
     ? [{ role: contactType === "adults" ? "caregiver" : "coach", label: contactType === "adults" ? "Your family contact" : "Your coach" }]
     : [];
 }
+
+export interface Inviter {
+  name: string;
+  role: "family_owner" | "coach";
+}
+
+/** The caregiver's/coach's own display name, for the consent screen copy
+ * ("[Family member name] invited you..." / "[Coach name] invited you...").
+ * Falls back to a generic role label if the owner has no profile row or
+ * hasn't set a name — the consent screen must still render something
+ * sensible rather than showing a blank. */
+export async function getInviter(db: SupabaseClient, contactId: string, contactType: ContactType): Promise<Inviter | null> {
+  const table = contactType === "adults" ? "adults_contacts" : "gym_clients";
+  const ownerColumn = contactType === "adults" ? "caregiver_id" : "trainer_id";
+  const role: Inviter["role"] = contactType === "adults" ? "family_owner" : "coach";
+
+  const { data: row } = await db.from(table).select(ownerColumn).eq("id", contactId).maybeSingle();
+  const ownerId = row ? (row as any)[ownerColumn] : null;
+  if (!ownerId) return null;
+
+  const { data: profile } = await db.from("profiles").select("full_name").eq("id", ownerId).maybeSingle();
+  return { name: profile?.full_name || (role === "family_owner" ? "Your family member" : "Your coach"), role };
+}

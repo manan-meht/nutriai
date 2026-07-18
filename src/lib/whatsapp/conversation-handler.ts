@@ -983,7 +983,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (END_USER_DASHBOARD_ENABLED && msg.type === "text" && msg.text?.trim().toLowerCase() === "my progress") {
     const { getProductDomain } = await import("@/lib/product/resolve-product");
     const domain = getProductDomain(isAdults ? "adults" : "gym");
-    await sendTextMessage(msg.from, `📊 View your progress here:\nhttps://${domain}/my-progress`);
+    await sendTextMessage(
+      msg.from,
+      `📊 View your progress here:\nhttps://${domain}/my-progress\n\nYou'll need an access code from whoever added you — ask them to generate one and share it with you, then enter it there along with this WhatsApp number.`
+    );
     return;
   }
 

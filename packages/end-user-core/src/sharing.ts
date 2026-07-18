@@ -27,3 +27,24 @@ export async function isSharingPaused(db: SupabaseClient, contactId: string): Pr
     .maybeSingle();
   return !!data?.paused_at;
 }
+
+/** Whether this contact has accepted the "Review your Tistra Health
+ * access" consent screen at least once — shown after code verification
+ * and before any dashboard access (see the participant login flow). */
+export async function hasAcceptedConsent(db: SupabaseClient, contactId: string): Promise<boolean> {
+  const { data } = await db
+    .from("end_user_access_settings")
+    .select("consent_accepted_at")
+    .eq("contact_id", contactId)
+    .maybeSingle();
+  return !!data?.consent_accepted_at;
+}
+
+export async function acceptConsent(db: SupabaseClient, contactId: string, contactType: ContactType): Promise<void> {
+  await db.from("end_user_access_settings").upsert({
+    contact_id: contactId,
+    contact_type: contactType,
+    consent_accepted_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+}

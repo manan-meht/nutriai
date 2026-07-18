@@ -11,7 +11,7 @@ import {
   signOutDevice,
   type TrustedDevice,
 } from "@/lib/end-user/session";
-import { setSharingPaused, requestRemoval as requestRemovalService } from "@/lib/end-user/dashboard-service";
+import { setSharingPaused, requestRemoval as requestRemovalService, hasAcceptedConsent, acceptConsent } from "@/lib/end-user/dashboard-service";
 
 // This flow now serves both the general end-user dashboard and the
 // parent-access flow (spec: WhatsApp-OTP dashboard access for a parent
@@ -42,7 +42,7 @@ export async function requestOtpAction(whatsappNumber: string): Promise<RequestO
   }
 }
 
-export type VerifyResult = { ok: true } | { ok: false; error: string };
+export type VerifyResult = { ok: true; needsConsent: boolean } | { ok: false; error: string };
 
 export async function verifyOtpAction(whatsappNumber: string, code: string): Promise<VerifyResult> {
   if (!FEATURE_ENABLED) return { ok: false, error: "This feature is not available yet." };
@@ -53,17 +53,37 @@ export async function verifyOtpAction(whatsappNumber: string, code: string): Pro
   const result = await verifyOtp(contact, code);
   if (!result.ok) {
     const messages: Record<string, string> = {
-      not_found: "Please request a new code.",
-      expired: "That code has expired — request a new one.",
-      already_used: "That code was already used — request a new one.",
-      too_many_attempts: "Too many incorrect attempts — request a new code.",
-      incorrect_code: "That code isn't right. Please try again.",
+      not_found: "That code didn't work. Please check the number and code, or ask for a new access code.",
+      expired: "This access code has expired. Please ask for a new one.",
+      already_used: "That code was already used — please ask for a new access code.",
+      revoked: "That code is no longer valid — please ask for a new access code.",
+      too_many_attempts: "Too many incorrect attempts — please ask for a new access code.",
+      incorrect_code: "That code didn't work. Please check the number and code, or ask for a new access code.",
     };
     return { ok: false, error: messages[result.reason] };
   }
 
   await createEndUserSession(contact);
+  // Consent screen ("Review your Tistra Health access") is required before
+  // any dashboard access — /my-progress/dashboard itself shows it inline
+  // when needed, so the caller can always redirect there regardless.
+  const needsConsent = !(await hasAcceptedConsent(contact.contactId));
+  return { ok: true, needsConsent };
+}
+
+/** "Accept and continue" — records consent, dashboard access proceeds. */
+export async function acceptConsentAction(): Promise<{ ok: boolean }> {
+  const session = await getEndUserSession();
+  if (!session) return { ok: false };
+  await acceptConsent(session.contactId, session.contactType);
   return { ok: true };
+}
+
+/** "Decline" — per the spec, declining must not grant dashboard access.
+ * Ends the session outright rather than leaving it half-authenticated;
+ * the person can request a fresh code later if they change their mind. */
+export async function declineConsentAction(): Promise<void> {
+  await clearEndUserSession();
 }
 
 export async function pauseSharingAction(paused: boolean): Promise<void> {

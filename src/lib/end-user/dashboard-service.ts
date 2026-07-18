@@ -8,8 +8,14 @@ import {
   setSharingPaused as setSharingPausedCore,
   requestRemoval as requestRemovalCore,
   isSharingPaused,
+  hasAcceptedConsent as hasAcceptedConsentCore,
+  acceptConsent as acceptConsentCore,
+  getInviter as getInviterCore,
   type EndUserAccessEntry,
+  type Inviter,
 } from "@nutriai/end-user-core";
+
+export type { Inviter };
 
 export type { EndUserAccessEntry };
 
@@ -66,4 +72,19 @@ export async function setSharingPaused(contactId: string, contactType: ContactTy
 
 export async function requestRemoval(contactId: string, contactType: ContactType): Promise<void> {
   await requestRemovalCore(admin(), contactId, contactType);
+}
+
+/** Whether this contact has accepted the consent screen at least once —
+ * gates dashboard access after Temporary Access Code / OTP verification
+ * (shown inline on /my-progress/dashboard when needed). */
+export async function hasAcceptedConsent(contactId: string): Promise<boolean> {
+  return hasAcceptedConsentCore(admin(), contactId);
+}
+
+export async function acceptConsent(contactId: string, contactType: ContactType): Promise<void> {
+  await acceptConsentCore(admin(), contactId, contactType);
+}
+
+export async function getInviter(contactId: string, contactType: ContactType): Promise<Inviter | null> {
+  return getInviterCore(admin(), contactId, contactType);
 }

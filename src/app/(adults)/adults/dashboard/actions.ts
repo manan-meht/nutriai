@@ -831,3 +831,76 @@ export async function markSelfInviteLinkOpened(workspaceId: string): Promise<{ o
     return { ok: true } as const;
   });
 }
+
+// -----------------------------------------------------------------------
+// Temporary Access Codes — Beta-safe participant login fallback that
+// doesn't depend on WhatsApp/SMS OTP delivery (see @/lib/end-user/otp's
+// generateAccessCode). A family owner generates a one-time code here and
+// shares it manually (usually over WhatsApp); the participant enters it
+// on /my-progress, the exact same screen used for OTP.
+// -----------------------------------------------------------------------
+
+export interface AccessCodeResult {
+  code: string;
+  formattedCode: string;
+  expiresAt: string;
+  error?: undefined;
+}
+
+function formatAccessCode(code: string): string {
+  // "482913" -> "482 913" (spec's display format) — only meaningful for
+  // 6-digit codes; longer/shorter codes are left unspaced rather than
+  // guessing a grouping.
+  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+}
+
+async function requireOwnedAdultsContact(contactId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contactRow } = await supabase
+    .from("adults_contacts")
+    .select("id, full_name, whatsapp_number")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .maybeSingle();
+  if (!contactRow || !contactRow.whatsapp_number) return { user, contact: null };
+
+  return {
+    user,
+    contact: {
+      contactId: contactRow.id,
+      contactType: "adults" as const,
+      whatsappNumber: contactRow.whatsapp_number as string,
+      fullName: contactRow.full_name as string,
+    },
+  };
+}
+
+export async function generateAccessCodeAction(contactId: string, ttlHours: 1 | 24 = 24): Promise<AccessCodeResult | { error: string }> {
+  const { generateAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedAdultsContact(contactId);
+  if (!contact) return { error: "Contact not found, or missing a WhatsApp number." };
+
+  const { code, expiresAt } = await generateAccessCode(contact, user.id, "family_owner", ttlHours * 60 * 60 * 1000);
+  return { code, formattedCode: formatAccessCode(code), expiresAt };
+}
+
+export async function regenerateAccessCodeAction(contactId: string, ttlHours: 1 | 24 = 24): Promise<AccessCodeResult | { error: string }> {
+  const { regenerateAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedAdultsContact(contactId);
+  if (!contact) return { error: "Contact not found, or missing a WhatsApp number." };
+
+  const { code, expiresAt } = await regenerateAccessCode(contact, user.id, "family_owner", ttlHours * 60 * 60 * 1000);
+  return { code, formattedCode: formatAccessCode(code), expiresAt };
+}
+
+export async function revokeAccessCodeAction(contactId: string): Promise<{ ok: boolean }> {
+  const { revokeAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedAdultsContact(contactId);
+  if (!contact) return { ok: false };
+
+  await revokeAccessCode(contact, user.id);
+  return { ok: true };
+}

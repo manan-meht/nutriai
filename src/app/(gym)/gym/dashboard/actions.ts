@@ -650,3 +650,70 @@ export async function markCoachClientInviteLinkOpened(clientId: string): Promise
     return { ok: true } as const;
   });
 }
+
+// -----------------------------------------------------------------------
+// Temporary Access Codes — gym-side equivalent of the adults product's
+// generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction.
+// -----------------------------------------------------------------------
+
+export interface ClientAccessCodeResult {
+  code: string;
+  formattedCode: string;
+  expiresAt: string;
+  error?: undefined;
+}
+
+function formatClientAccessCode(code: string): string {
+  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+}
+
+async function requireOwnedGymClient(clientId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: clientRow } = await supabase
+    .from("gym_clients")
+    .select("id, full_name, whatsapp_number")
+    .eq("id", clientId)
+    .eq("trainer_id", user.id)
+    .maybeSingle();
+  if (!clientRow || !clientRow.whatsapp_number) return { user, contact: null };
+
+  return {
+    user,
+    contact: {
+      contactId: clientRow.id,
+      contactType: "gym" as const,
+      whatsappNumber: clientRow.whatsapp_number as string,
+      fullName: clientRow.full_name as string,
+    },
+  };
+}
+
+export async function generateClientAccessCodeAction(clientId: string, ttlHours: 1 | 24 = 24): Promise<ClientAccessCodeResult | { error: string }> {
+  const { generateAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedGymClient(clientId);
+  if (!contact) return { error: "Client not found, or missing a WhatsApp number." };
+
+  const { code, expiresAt } = await generateAccessCode(contact, user.id, "coach", ttlHours * 60 * 60 * 1000);
+  return { code, formattedCode: formatClientAccessCode(code), expiresAt };
+}
+
+export async function regenerateClientAccessCodeAction(clientId: string, ttlHours: 1 | 24 = 24): Promise<ClientAccessCodeResult | { error: string }> {
+  const { regenerateAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedGymClient(clientId);
+  if (!contact) return { error: "Client not found, or missing a WhatsApp number." };
+
+  const { code, expiresAt } = await regenerateAccessCode(contact, user.id, "coach", ttlHours * 60 * 60 * 1000);
+  return { code, formattedCode: formatClientAccessCode(code), expiresAt };
+}
+
+export async function revokeClientAccessCodeAction(clientId: string): Promise<{ ok: boolean }> {
+  const { revokeAccessCode } = await import("@/lib/end-user/otp");
+  const { user, contact } = await requireOwnedGymClient(clientId);
+  if (!contact) return { ok: false };
+
+  await revokeAccessCode(contact, user.id);
+  return { ok: true };
+}

@@ -16,10 +16,10 @@ export default async function MyProgressEntryPage() {
     <main className="min-h-screen flex items-center justify-center bg-neutral-50 px-4 py-12">
       <div className="w-full max-w-sm">
         <h1 className="text-xl font-semibold text-neutral-900 text-center mb-2">
-          Confirm it&apos;s you to view your private dashboard
+          I was invited
         </h1>
         <p className="text-sm text-neutral-500 text-center mb-8">
-          We&apos;ll send a secure code to your phone via text message.
+          Enter the access code shared by your family member or coach.
         </p>
         <MyProgressEntryForm />
       </div>
