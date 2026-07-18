@@ -1,6 +1,5 @@
 export interface Env {
   TARGET_URL: string;
-  STALE_CLARIFICATIONS_TARGET_URL: string;
   CRON_SECRET: string;
 }
 
@@ -10,29 +9,28 @@ export interface Env {
 // route on schedule. See docs/meal-reminders-notes.md for the full
 // picture: the actual reminder logic (which contacts are due, dedup,
 // sending) all lives in the main app; this is purely the "wake it up
-// every 15 minutes" mechanism Cloudflare Pages itself can't provide.
+// every 5 minutes" mechanism Cloudflare Pages itself can't provide.
 //
-// It also pings resolve-stale-clarifications on the same schedule — that
-// route auto-saves (as a best guess) any meal that's been sitting on an
-// unanswered clarification question for 10+ minutes and releases the
-// conversation lock. Piggybacking on this Worker's existing 5-minute-or-
-// tighter trigger (rather than standing up a second Worker) is fine since
-// that route is idempotent too (it only acts on rows still stuck in
-// "awaiting_clarification" past the threshold).
+// That single route (src/app/api/cron/send-meal-reminders) also resolves
+// stale WhatsApp clarification questions (auto-saves a meal as a best
+// guess after 10+ minutes of silence) — folded into the same route
+// rather than a second one specifically to keep this Worker's target
+// count at one. A standalone route for that previously pushed the main
+// app's Worker bundle over Cloudflare Pages' 25 MiB limit and failed a
+// deploy (each additional route file costs real fixed overhead); one
+// shared, idempotent route pinged from here avoids that entirely.
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const ping = (url: string, label: string) =>
-      fetch(url, {
+    ctx.waitUntil(
+      fetch(env.TARGET_URL, {
         method: "POST",
         headers: { Authorization: `Bearer ${env.CRON_SECRET}` },
       }).then(async (res) => {
         if (!res.ok) {
-          console.error(`[meal-reminders-cron] ${label} returned ${res.status}: ${await res.text().catch(() => "")}`);
+          console.error(`[meal-reminders-cron] send-meal-reminders returned ${res.status}: ${await res.text().catch(() => "")}`);
         }
-      });
-
-    ctx.waitUntil(ping(env.TARGET_URL, "send-meal-reminders"));
-    ctx.waitUntil(ping(env.STALE_CLARIFICATIONS_TARGET_URL, "resolve-stale-clarifications"));
+      })
+    );
   },
 
   // Workers require a fetch handler even when only used for a Cron

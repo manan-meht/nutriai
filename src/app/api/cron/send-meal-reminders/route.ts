@@ -6,6 +6,36 @@ import { sendTextMessage, sendTemplateMessage, normalizePhone } from "@/lib/what
 import { isReminderDue, getLocalDateAndTime } from "@/lib/reminders/schedule";
 import { buildReminderMessage, reminderDisplayName } from "@/lib/reminders/messages";
 
+// Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
+// in the whole @google/generative-ai SDK at module scope (needed for real
+// photo analysis), which would meaningfully bloat this route's Worker
+// bundle for two trivial helpers this route doesn't otherwise need. See
+// food-analyzer.ts's own resolveMealLabel/formatMealLabel for the
+// canonical versions this mirrors.
+type MealTypeLabel = "breakfast" | "lunch" | "dinner" | "snack" | "drink" | "tea" | "coffee" | "wine" | "juice" | "other";
+const DRINK_TYPES = new Set<MealTypeLabel>(["drink", "tea", "coffee", "wine", "juice"]);
+
+function defaultMealTypeByTime(date: Date, timezone?: string): MealTypeLabel {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: timezone || "Asia/Kolkata" }).format(date)
+  );
+  if (hour >= 5 && hour < 10.5) return "breakfast";
+  if (hour >= 10.5 && hour < 15.5) return "lunch";
+  if (hour >= 15.5 && hour < 18.5) return "snack";
+  if (hour >= 18.5 && hour < 22.5) return "dinner";
+  return "snack";
+}
+
+function resolveStaleMealLabel(mealType: MealTypeLabel, now: Date, timezone?: string): MealTypeLabel {
+  if (DRINK_TYPES.has(mealType)) return mealType;
+  return defaultMealTypeByTime(now, timezone);
+}
+
+function formatStaleMealLabel(mealType: MealTypeLabel): string {
+  if (mealType === "other") return "meal";
+  return mealType.charAt(0).toUpperCase() + mealType.slice(1);
+}
+
 // A reminder is, by definition, a business-initiated message to someone who
 // likely HASN'T messaged recently — so it will usually fall outside
 // WhatsApp's 24-hour free-form-reply window and get silently rejected by
@@ -78,14 +108,7 @@ async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise
   return [...map(adults, "adults"), ...map(gym, "gym")];
 }
 
-export async function POST(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!secret || authHeader !== `Bearer ${secret}`) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  const db = createServiceClient();
+async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
   const now = new Date();
   const targets = await fetchTargets(db);
 
@@ -132,5 +155,126 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ checked: targets.length, sent, skipped });
+  return { checked: targets.length, sent, skipped };
+}
+
+// If a clarification question (e.g. "is this an omelette, a dosa, or a
+// pancake?") goes unanswered for 10+ minutes, the meal previously just sat
+// in whatsapp_conversations.pending_meal forever, never logged — and the
+// conversation lock could get stuck at state: "processing" if a later
+// message hit it (see conversation-handler.ts's saveBestGuessForClarification
+// for the "a new photo arrives before the old question is answered" case,
+// handled inline there since it has the full message-handling closures
+// available). This handles the other case: nobody replied at all.
+//
+// Folded into this same route (rather than its own
+// /api/cron/resolve-stale-clarifications file) purely for Worker bundle
+// size — see this file's git history: a standalone route here previously
+// pushed the Worker over Cloudflare Pages' 25 MiB bundle limit and failed
+// a deploy. Both tasks are cron-triggered, share the same CRON_SECRET
+// check, and are idempotent, so sharing one route/one ping is safe.
+const STALE_CLARIFICATION_MS = 10 * 60 * 1000;
+
+async function runResolveStaleClarifications(db: ReturnType<typeof createServiceClient>) {
+  const cutoff = new Date(Date.now() - STALE_CLARIFICATION_MS).toISOString();
+
+  const { data: stale } = await db
+    .from("whatsapp_conversations")
+    .select("*")
+    .eq("state", "awaiting_clarification")
+    .lt("last_message_at", cutoff);
+
+  let resolved = 0;
+  let skipped = 0;
+
+  for (const conv of stale ?? []) {
+    const pending = conv.pending_meal;
+    if (!pending) {
+      skipped++;
+      continue;
+    }
+
+    const isAdults = !!conv.adults_contact_id;
+    const entityId = isAdults ? conv.adults_contact_id : conv.client_id;
+
+    let timezone: string | undefined;
+    if (isAdults) {
+      const { data: contact } = await db.from("adults_contacts").select("timezone").eq("id", entityId).maybeSingle();
+      timezone = contact?.timezone;
+    }
+
+    const resolvedLabel = resolveStaleMealLabel(pending.meal_type, new Date(), timezone);
+
+    const { data: mealRow, error: mealError } = await db
+      .from("meal_logs")
+      .insert({
+        ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+        workspace_id: conv.workspace_id,
+        trainer_id: conv.trainer_id,
+        meal_type: resolvedLabel,
+        logged_at: new Date().toISOString(),
+        foods: pending.foods,
+        total_calories_min: pending.total_calories_min,
+        total_calories_max: pending.total_calories_max,
+        total_protein_min: pending.total_protein_min,
+        total_protein_max: pending.total_protein_max,
+        total_carbs_min: pending.total_carbs_min,
+        total_carbs_max: pending.total_carbs_max,
+        total_fat_min: pending.total_fat_min,
+        total_fat_max: pending.total_fat_max,
+        total_fiber_min: pending.total_fiber_min,
+        total_fiber_max: pending.total_fiber_max,
+        ai_summary: pending.summary,
+        image_url: pending.image_url ?? null,
+        source: "whatsapp",
+      })
+      .select("id")
+      .single();
+
+    if (mealError || !mealRow) {
+      console.error("[resolve-stale-clarifications] meal_logs insert failed:", conv.id, mealError?.message);
+      skipped++;
+      continue;
+    }
+
+    try {
+      if (conv.whatsapp_number) {
+        await sendTextMessage(
+          conv.whatsapp_number,
+          `Since I didn't hear back, I've saved your ${formatStaleMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+        );
+      }
+    } catch (err) {
+      console.error("[resolve-stale-clarifications] notification send failed:", conv.id, err instanceof Error ? err.message : err);
+    }
+
+    await db
+      .from("whatsapp_conversations")
+      .update({
+        state: "idle",
+        pending_meal: { ...pending, status: "saved", savedMealId: mealRow.id, updatedAt: new Date().toISOString() },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", conv.id);
+
+    resolved++;
+  }
+
+  return { checked: (stale ?? []).length, resolved, skipped };
+}
+
+export async function POST(request: NextRequest) {
+  const secret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+  if (!secret || authHeader !== `Bearer ${secret}`) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+
+  const db = createServiceClient();
+  const [reminders, staleClarifications] = await Promise.all([
+    runMealReminders(db),
+    runResolveStaleClarifications(db),
+  ]);
+
+  return NextResponse.json({ reminders, staleClarifications });
 }

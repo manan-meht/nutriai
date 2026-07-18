@@ -1,5 +1,16 @@
+// Covers the stale-clarification half of this merged cron route (see
+// send-meal-reminders/route.ts's module doc — resolve-stale-clarifications
+// was folded in here to avoid a second standalone route file, which
+// previously pushed the Worker bundle over Cloudflare Pages' 25 MiB limit).
+// The meal-reminders half isn't covered here since it predates this file
+// and isn't what changed.
+
 jest.mock("@/lib/supabase/server", () => ({ createServiceClient: jest.fn() }));
-jest.mock("@/lib/whatsapp/client", () => ({ sendTextMessage: jest.fn() }));
+jest.mock("@/lib/whatsapp/client", () => ({
+  sendTextMessage: jest.fn(),
+  sendTemplateMessage: jest.fn(),
+  normalizePhone: jest.fn((n: string) => n),
+}));
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
@@ -29,6 +40,14 @@ function fakeDb(staleConversations: any[]) {
 
   const db = {
     from(table: string) {
+      if (table === "adults_contacts" || table === "gym_clients") {
+        const chain: any = {
+          eq: () => chain,
+          is: () => Promise.resolve({ data: [] }),
+          maybeSingle: async () => ({ data: { timezone: "Asia/Kolkata" } }),
+        };
+        return { select: () => chain };
+      }
       if (table === "whatsapp_conversations") {
         return {
           select: () => ({
@@ -57,9 +76,6 @@ function fakeDb(staleConversations: any[]) {
           }),
         };
       }
-      if (table === "adults_contacts") {
-        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { timezone: "Asia/Kolkata" } }) }) }) };
-      }
       throw new Error(`unexpected table ${table}`);
     },
   };
@@ -67,15 +83,16 @@ function fakeDb(staleConversations: any[]) {
   return { db, mealLogs, updatedConversations };
 }
 
-describe("POST /api/cron/resolve-stale-clarifications", () => {
+describe("POST /api/cron/send-meal-reminders — stale clarification resolution", () => {
   beforeEach(() => {
     process.env.CRON_SECRET = "test-secret";
     jest.clearAllMocks();
   });
 
   it("rejects requests without the correct bearer secret", async () => {
-    const { route } = await loadRoute(fakeDb([]).db);
-    const res = await route(new NextRequest("https://x/api/cron/resolve-stale-clarifications", { method: "POST" }));
+    (createServiceClient as jest.Mock).mockReturnValue(fakeDb([]).db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
+    const res = await mod.POST(new NextRequest("https://x/api/cron/send-meal-reminders", { method: "POST" }));
     expect(res.status).toBe(401);
   });
 
@@ -90,10 +107,11 @@ describe("POST /api/cron/resolve-stale-clarifications", () => {
       pending_meal: pendingMeal,
     };
     const { db, mealLogs, updatedConversations } = fakeDb([conv]);
-    const { route } = await loadRoute(db);
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
 
-    const res = await route(
-      new NextRequest("https://x/api/cron/resolve-stale-clarifications", {
+    const res = await mod.POST(
+      new NextRequest("https://x/api/cron/send-meal-reminders", {
         method: "POST",
         headers: { Authorization: "Bearer test-secret" },
       })
@@ -101,12 +119,11 @@ describe("POST /api/cron/resolve-stale-clarifications", () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ checked: 1, resolved: 1, skipped: 0 });
+    expect(body.staleClarifications).toEqual({ checked: 1, resolved: 1, skipped: 0 });
 
     expect(mealLogs).toHaveLength(1);
     expect(mealLogs[0].adults_contact_id).toBe("contact-1");
     expect(mealLogs[0].ai_summary).toBe("rice and dal");
-
     expect(sendTextMessage).toHaveBeenCalledWith("919999999999", expect.stringContaining("rice and dal"));
 
     expect(updatedConversations).toHaveLength(1);
@@ -117,23 +134,18 @@ describe("POST /api/cron/resolve-stale-clarifications", () => {
   it("skips conversations with no pending_meal without erroring", async () => {
     const conv = { id: "conv-2", adults_contact_id: "contact-2", pending_meal: null };
     const { db, mealLogs } = fakeDb([conv]);
-    const { route } = await loadRoute(db);
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
 
-    const res = await route(
-      new NextRequest("https://x/api/cron/resolve-stale-clarifications", {
+    const res = await mod.POST(
+      new NextRequest("https://x/api/cron/send-meal-reminders", {
         method: "POST",
         headers: { Authorization: "Bearer test-secret" },
       })
     );
 
     const body = await res.json();
-    expect(body).toEqual({ checked: 1, resolved: 0, skipped: 1 });
+    expect(body.staleClarifications).toEqual({ checked: 1, resolved: 0, skipped: 1 });
     expect(mealLogs).toHaveLength(0);
   });
 });
-
-async function loadRoute(db: unknown) {
-  (createServiceClient as jest.Mock).mockReturnValue(db);
-  const mod = await import("@/app/api/cron/resolve-stale-clarifications/route");
-  return { route: mod.POST };
-}

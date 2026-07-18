@@ -2,17 +2,16 @@ name = "nutriai-meal-reminders-cron"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 
-# Every 5 minutes — tight enough that resolve-stale-clarifications' 10-minute
-# staleness threshold isn't overshot by much. (Meal reminders themselves only
-# need ~15 min per docs/meal-reminders-notes.md, but both routes are
-# idempotent, so sharing the tighter interval just does a bit of
+# Every 5 minutes — tight enough that the route's stale-clarification
+# 10-minute threshold isn't overshot by much. (Meal reminders themselves
+# only need ~15 min per docs/meal-reminders-notes.md, but the route is
+# idempotent for both tasks, so the tighter interval just does a bit of
 # less-than-useful extra work for reminders, never double-sends.)
 [triggers]
 crons = ["*/5 * * * *"]
 
 [vars]
 TARGET_URL = "https://tistrahealth.com/api/cron/send-meal-reminders"
-STALE_CLARIFICATIONS_TARGET_URL = "https://tistrahealth.com/api/cron/resolve-stale-clarifications"
 
 # CRON_SECRET is a secret, not a var — set via:
 #   npx wrangler secret put CRON_SECRET
