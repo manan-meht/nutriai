@@ -49,6 +49,11 @@ export default function GymClientDetailScreen() {
         workouts={workouts}
         biomarkers={biomarkers}
         foodBalanceQuery={{ clientId }}
+        accessCode={{
+          onGenerate: (ttlHours) => api.generateGymAccessCode(clientId, ttlHours),
+          onRegenerate: (ttlHours) => api.regenerateGymAccessCode(clientId, ttlHours),
+          onRevoke: () => api.revokeGymAccessCode(clientId),
+        }}
       />
     </>
   );

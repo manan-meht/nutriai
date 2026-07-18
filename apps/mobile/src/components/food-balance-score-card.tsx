@@ -1,4 +1,5 @@
-import { StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { ThemedText } from './themed-text';
@@ -6,6 +7,16 @@ import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { useTheme } from '@/hooks/use-theme';
+import { api, type FoodBalanceScoreResult, type RecommendationFeedback } from '@/lib/api';
+
+const FEEDBACK_OPTIONS: Array<{ value: RecommendationFeedback; label: string }> = [
+  { value: 'helpful', label: 'Helpful' },
+  { value: 'not_useful', label: 'Not useful' },
+  { value: 'already_eat', label: 'I already eat this' },
+  { value: 'dont_like', label: "I don't like this food" },
+  { value: 'not_available', label: 'Not available where I live' },
+  { value: 'too_hard', label: 'Too hard' },
+];
 
 const SCORE_BAND_LABEL = [
   { max: 39, label: 'Learning and building' },
@@ -104,9 +115,28 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
             Top ways to improve
           </ThemedText>
           {result.recommendations.map((rec, i) => (
-            <ThemedText key={rec.id} type="small" themeColor="textSecondary" style={styles.recItem}>
-              {i + 1}. {rec.title}
-            </ThemedText>
+            <View key={rec.id} style={styles.recItem}>
+              <ThemedText type="small" style={styles.recItemTitle}>
+                {i + 1}. {rec.title}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.recItemDescription}>
+                {rec.description}
+              </ThemedText>
+              {rec.action && (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.recItemAction}>
+                  <ThemedText type="small" style={styles.recItemActionLabel}>
+                    Try this:{' '}
+                  </ThemedText>
+                  {rec.action}
+                </ThemedText>
+              )}
+              {rec.whyThisHelps && (
+                <ThemedText type="small" themeColor="textSecondary" style={styles.recItemWhy}>
+                  {rec.whyThisHelps}
+                </ThemedText>
+              )}
+              <RecommendationFeedbackButtons rec={rec} params={params} />
+            </View>
           ))}
         </View>
       )}
@@ -115,6 +145,60 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
         This is not a medical assessment and may not capture everything you eat.
       </ThemedText>
     </ThemedView>
+  );
+}
+
+/** Feedback buttons for one recommendation's shown foods
+ * (rec.exampleFoodIds) — mirrors the web app's RecommendationFeedbackButtons
+ * (see src/lib/food-balance/feedback.ts for how each choice affects future
+ * recommendations). Hidden once submitted (shows a brief confirmation
+ * instead) rather than allowing repeated conflicting feedback. */
+function RecommendationFeedbackButtons({
+  rec,
+  params,
+}: {
+  rec: FoodBalanceScoreResult['recommendations'][number];
+  params: { contactId: string } | { clientId: string };
+}) {
+  const theme = useTheme();
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!rec.exampleFoodIds || rec.exampleFoodIds.length === 0) return null;
+
+  async function handleFeedback(value: RecommendationFeedback, label: string) {
+    setSubmitting(true);
+    try {
+      await api.recordFoodBalanceFeedback(params, value, rec.exampleFoodIds!);
+      setSubmitted(label);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <ThemedText type="small" themeColor="textSecondary" style={styles.feedbackConfirmation}>
+        Thanks — noted &ldquo;{submitted}.&rdquo;
+      </ThemedText>
+    );
+  }
+
+  return (
+    <View style={styles.feedbackRow}>
+      {FEEDBACK_OPTIONS.map((opt) => (
+        <TouchableOpacity
+          key={opt.value}
+          disabled={submitting}
+          onPress={() => handleFeedback(opt.value, opt.label)}
+          style={[styles.feedbackPill, { borderColor: theme.backgroundSelected, opacity: submitting ? 0.5 : 1 }]}
+        >
+          <ThemedText type="small" themeColor="textSecondary" style={styles.feedbackPillLabel}>
+            {opt.label}
+          </ThemedText>
+        </TouchableOpacity>
+      ))}
+    </View>
   );
 }
 
@@ -132,6 +216,15 @@ const styles = StyleSheet.create({
   bandLabel: { fontWeight: '600' },
   recommendations: { marginTop: Spacing.three, paddingTop: Spacing.three, borderTopWidth: 1 },
   recTitle: { textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', fontSize: 11, marginBottom: Spacing.one },
-  recItem: { marginBottom: Spacing.one },
+  recItem: { marginBottom: Spacing.three },
+  recItemTitle: { fontWeight: '600' },
+  recItemDescription: { marginTop: 2 },
+  recItemAction: { marginTop: Spacing.one },
+  recItemActionLabel: { fontWeight: '600' },
+  recItemWhy: { fontSize: 11, marginTop: Spacing.one },
   disclaimer: { fontSize: 10, marginTop: Spacing.two },
+  feedbackRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one, marginTop: Spacing.one },
+  feedbackPill: { paddingHorizontal: Spacing.two, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  feedbackPillLabel: { fontSize: 11 },
+  feedbackConfirmation: { fontSize: 11, marginTop: Spacing.one },
 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getUserFromBearerToken } from "@/lib/supabase";
+import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
 import { getOrCreateAdultsWorkspace, getContacts, getContactDetails, addContact, updateContact } from "@/lib/adults";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 
@@ -12,6 +12,37 @@ export const runtime = "edge";
 //   GET /adults/contacts/:contactId
 //   POST /adults/contacts
 //   PATCH /adults/contacts/:contactId
+//   POST /adults/contacts/:contactId/access-code    (generate)
+//   PATCH /adults/contacts/:contactId/access-code   (regenerate)
+//   DELETE /adults/contacts/:contactId/access-code  (revoke)
+//
+// Temporary Access Codes (mobile equivalent of the web app's
+// generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction
+// — see src/app/(adults)/adults/dashboard/actions.ts and
+// @nutriai/end-user-core's otp.ts). Folded into this existing catch-all
+// route rather than a new file — see this app's own README/comments
+// elsewhere on why: each additional route file costs real fixed Worker
+// bundle overhead, and this app has its own independent size budget.
+async function requireOwnedAdultsContactForAccessCode(auth: NonNullable<Awaited<ReturnType<typeof getUserFromBearerToken>>>, contactId: string) {
+  const { data: contactRow } = await auth.supabase
+    .from("adults_contacts")
+    .select("id, full_name, whatsapp_number")
+    .eq("id", contactId)
+    .eq("caregiver_id", auth.user.id)
+    .maybeSingle();
+  if (!contactRow || !contactRow.whatsapp_number) return null;
+
+  return {
+    contactId: contactRow.id as string,
+    contactType: "adults" as const,
+    whatsappNumber: contactRow.whatsapp_number as string,
+    fullName: contactRow.full_name as string,
+  };
+}
+
+function formatAccessCode(code: string): string {
+  return code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : code;
+}
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const auth = await getUserFromBearerToken(request);
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
@@ -56,6 +87,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "access-code") {
+    const contact = await requireOwnedAdultsContactForAccessCode(auth, path[1]);
+    if (!contact) return NextResponse.json({ error: "Contact not found, or missing a WhatsApp number." }, { status: 404 });
+
+    const { generateAccessCode, recordAuditEvent } = await import("@nutriai/end-user-core");
+    const db = createServiceClient();
+    const ttlHours = (await request.json().catch(() => ({})))?.ttlHours === 1 ? 1 : 24;
+    const { code, expiresAt } = await generateAccessCode(db, contact, auth.user.id, "family_owner", process.env.END_USER_OTP_PEPPER ?? "", ttlHours * 60 * 60 * 1000);
+    await recordAuditEvent(db, "code_generated", contact.contactId, contact.contactType, { actorUserId: auth.user.id });
+    return NextResponse.json({ code, formattedCode: formatAccessCode(code), expiresAt });
+  }
+
   if (path.length !== 1 || path[0] !== "contacts") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -75,6 +119,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "access-code") {
+    const contact = await requireOwnedAdultsContactForAccessCode(auth, path[1]);
+    if (!contact) return NextResponse.json({ error: "Contact not found, or missing a WhatsApp number." }, { status: 404 });
+
+    // No separate "regenerate" function exists in @nutriai/end-user-core —
+    // generateAccessCode itself already revokes any prior active code, so
+    // regenerating is just calling it again; only the audit event label
+    // differs (code_regenerated vs code_generated), same as the web app's
+    // src/lib/end-user/otp.ts wrapper.
+    const { generateAccessCode, recordAuditEvent } = await import("@nutriai/end-user-core");
+    const db = createServiceClient();
+    const ttlHours = (await request.json().catch(() => ({})))?.ttlHours === 1 ? 1 : 24;
+    const { code, expiresAt } = await generateAccessCode(db, contact, auth.user.id, "family_owner", process.env.END_USER_OTP_PEPPER ?? "", ttlHours * 60 * 60 * 1000);
+    await recordAuditEvent(db, "code_regenerated", contact.contactId, contact.contactType, { actorUserId: auth.user.id });
+    return NextResponse.json({ code, formattedCode: formatAccessCode(code), expiresAt });
+  }
+
   if (path.length !== 2 || path[0] !== "contacts") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -86,4 +148,24 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (result.error) return NextResponse.json(result, { status: 400 });
 
   return NextResponse.json({});
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
+  const auth = await getUserFromBearerToken(request);
+  if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const { path } = await params;
+  if (path.length !== 3 || path[0] !== "contacts" || path[2] !== "access-code") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const contact = await requireOwnedAdultsContactForAccessCode(auth, path[1]);
+  if (!contact) return NextResponse.json({ error: "Contact not found." }, { status: 404 });
+
+  const { revokeActiveAccessCodes, recordAuditEvent } = await import("@nutriai/end-user-core");
+  const db = createServiceClient();
+  await revokeActiveAccessCodes(db, contact);
+  await recordAuditEvent(db, "code_revoked", contact.contactId, contact.contactType, { actorUserId: auth.user.id });
+
+  return NextResponse.json({ ok: true });
 }

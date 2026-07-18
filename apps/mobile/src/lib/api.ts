@@ -18,6 +18,10 @@ async function apiFetch<T>(path: string): Promise<T> {
   return apiRequest<T>(path, { method: "GET" });
 }
 
+async function apiDelete<T>(path: string): Promise<T> {
+  return apiRequest<T>(path, { method: "DELETE" });
+}
+
 async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new ApiError(401, "Not authenticated");
@@ -196,6 +200,17 @@ export interface GymClientDetails {
   biomarkers: BiomarkerLog[];
 }
 
+// Temporary Access Codes — mirrors the web app's AccessCodeCard/
+// generateAccessCodeAction family (see @nutriai/end-user-core's otp.ts
+// and src/app/(adults)/adults/dashboard/actions.ts on the web side). The
+// plaintext code only ever lives in this response and the caller's own
+// component state — never persisted or logged.
+export interface AccessCodeResult {
+  code: string;
+  formattedCode: string;
+  expiresAt: string;
+}
+
 export interface MyProductsResponse {
   adults: { workspaceId: string } | null;
   gym: { workspaceId: string } | null;
@@ -216,8 +231,17 @@ export interface FoodBalanceScoreResult {
     distinctLoggingDays: number;
     requiredLoggingDays: number;
   };
-  recommendations: Array<{ id: string; title: string }>;
+  recommendations: Array<{
+    id: string;
+    title: string;
+    description: string;
+    action?: string;
+    whyThisHelps?: string;
+    exampleFoodIds?: string[];
+  }>;
 }
+
+export type RecommendationFeedback = "helpful" | "not_useful" | "already_eat" | "dont_like" | "not_available" | "too_hard";
 
 // ---- API calls ----
 
@@ -248,6 +272,17 @@ export const api = {
       `/food-balance-score?${"contactId" in params ? `contactId=${params.contactId}` : `clientId=${params.clientId}`}`
     ),
 
+  // Records feedback on a recommendation's shown foods (Helpful/Not
+  // useful/Already eat/Don't like/Not available/Too hard) — mirrors the
+  // web app's server actions that call applyRecommendationFeedback,
+  // folded into the same POST /food-balance-score route (see that
+  // route's own comment on why: fixed Worker bundle overhead per route).
+  recordFoodBalanceFeedback: (
+    params: { contactId: string } | { clientId: string },
+    feedback: RecommendationFeedback,
+    foodIds: string[]
+  ) => apiRequest<{ ok: boolean }>("/food-balance-score", { method: "POST", body: JSON.stringify({ ...params, feedback, foodIds }) }),
+
   createAdultsContact: (body: unknown) =>
     apiRequest<{ id: string }>("/adults/contacts", { method: "POST", body: JSON.stringify(body) }),
   updateAdultsContact: (contactId: string, body: unknown) =>
@@ -256,6 +291,20 @@ export const api = {
     apiRequest<{ id: string }>("/gym/clients", { method: "POST", body: JSON.stringify(body) }),
   updateGymClient: (clientId: string, body: unknown) =>
     apiRequest<{ id: string }>(`/gym/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  generateAdultsAccessCode: (contactId: string, ttlHours: 1 | 24 = 24) =>
+    apiRequest<AccessCodeResult>(`/adults/contacts/${contactId}/access-code`, { method: "POST", body: JSON.stringify({ ttlHours }) }),
+  regenerateAdultsAccessCode: (contactId: string, ttlHours: 1 | 24 = 24) =>
+    apiRequest<AccessCodeResult>(`/adults/contacts/${contactId}/access-code`, { method: "PATCH", body: JSON.stringify({ ttlHours }) }),
+  revokeAdultsAccessCode: (contactId: string) =>
+    apiDelete<{ ok: boolean }>(`/adults/contacts/${contactId}/access-code`),
+
+  generateGymAccessCode: (clientId: string, ttlHours: 1 | 24 = 24) =>
+    apiRequest<AccessCodeResult>(`/gym/clients/${clientId}/access-code`, { method: "POST", body: JSON.stringify({ ttlHours }) }),
+  regenerateGymAccessCode: (clientId: string, ttlHours: 1 | 24 = 24) =>
+    apiRequest<AccessCodeResult>(`/gym/clients/${clientId}/access-code`, { method: "PATCH", body: JSON.stringify({ ttlHours }) }),
+  revokeGymAccessCode: (clientId: string) =>
+    apiDelete<{ ok: boolean }>(`/gym/clients/${clientId}/access-code`),
 
   registerPushToken: (expoPushToken: string, platform: "android" | "ios") =>
     apiRequest<{ ok: true }>("/me/push-token", {

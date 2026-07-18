@@ -46,7 +46,16 @@ export default function AdultsContactDetailScreen() {
           ),
         }}
       />
-      <PersonDetail person={contact} meals={meals} foodBalanceQuery={{ contactId }} />
+      <PersonDetail
+        person={contact}
+        meals={meals}
+        foodBalanceQuery={{ contactId }}
+        accessCode={{
+          onGenerate: (ttlHours) => api.generateAdultsAccessCode(contactId, ttlHours),
+          onRegenerate: (ttlHours) => api.regenerateAdultsAccessCode(contactId, ttlHours),
+          onRevoke: () => api.revokeAdultsAccessCode(contactId),
+        }}
+      />
     </>
   );
 }

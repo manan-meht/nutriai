@@ -3,16 +3,27 @@ import { getUserFromBearerToken } from "@/lib/supabase";
 import { getContactDetails } from "@/lib/adults";
 import { getClientDetails } from "@/lib/gym";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile } from "@/lib/food-balance";
+import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance-personalize";
+import { applyRecommendationFeedback, type RecommendationFeedback } from "@/lib/food-balance-feedback";
+import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
 import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
 
 export const runtime = "edge";
 
 // Mirrors src/app/api/v1/food-balance-score/route.ts in the main web app —
 // same mutually-exclusive ?contactId=/?clientId= convention, same
-// snapshot persistence. Duplicated rather than shared for now (see
+// snapshot persistence, and now the same Food Profile personalization
+// (see src/lib/food-balance/personalize.ts on the web side —
+// @/lib/food-balance-personalize here is that logic's local mirror, see
+// its own header comment). Duplicated rather than shared for now (see
 // src/lib/food-balance.ts's own comment).
 //
 //   GET /food-balance-score?contactId=... or ?clientId=...
+//   POST /food-balance-score  { contactId|clientId, feedback, foodIds }
+//     — records feedback on a recommendation's shown foods (Helpful/Not
+//     useful/Already eat/Don't like/Not available/Too hard), folded into
+//     this same route rather than a new file (see this app's own
+//     comments elsewhere on why: fixed Worker bundle overhead per route).
 export async function GET(request: NextRequest) {
   // Same flag as the main web app's NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1 (see
   // src/lib/billing/feature-flags.ts there) — set independently in this
@@ -42,7 +53,7 @@ export async function GET(request: NextRequest) {
   const { data: profileRow } = await auth.supabase
     .from(table)
     .select(
-      "date_of_birth, age, weight_kg, height_cm, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg"
+      "date_of_birth, age, weight_kg, height_cm, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg, dietary_profile"
     )
     .eq("id", id)
     .eq(ownerColumn, auth.user.id)
@@ -66,6 +77,11 @@ export async function GET(request: NextRequest) {
     previousDisplayedScore: previousSnapshot?.displayed_score ?? null,
   });
 
+  const dietaryProfile = { ...DEFAULT_DIETARY_PROFILE, ...(profileRow?.dietary_profile ?? {}) };
+  result.recommendations = personalizeFoodBalanceRecommendations(result.recommendations, dietaryProfile, {
+    goal: profileRow?.primary_nutrition_goal ?? undefined,
+  });
+
   if (result.calculatedAt) {
     await auth.supabase.from("food_balance_score_snapshots").insert({
       contact_id: id,
@@ -85,4 +101,44 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(result);
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await getUserFromBearerToken(request);
+  if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  const contactId: string | undefined = body?.contactId;
+  const clientId: string | undefined = body?.clientId;
+  const feedback: RecommendationFeedback | undefined = body?.feedback;
+  const foodIds: string[] = Array.isArray(body?.foodIds) ? body.foodIds : [];
+
+  if ((!contactId && !clientId) || !feedback) {
+    return NextResponse.json({ error: "contactId or clientId, and feedback, are required" }, { status: 400 });
+  }
+
+  const isGym = Boolean(clientId);
+  const id = (contactId ?? clientId)!;
+  const table = isGym ? "gym_clients" : "adults_contacts";
+  const ownerColumn = isGym ? "trainer_id" : "caregiver_id";
+
+  const { data: row, error: readError } = await auth.supabase
+    .from(table)
+    .select("dietary_profile")
+    .eq("id", id)
+    .eq(ownerColumn, auth.user.id)
+    .maybeSingle();
+  if (readError || !row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(row.dietary_profile ?? {}) };
+  const nextProfile = applyRecommendationFeedback(currentProfile, feedback, foodIds);
+
+  const { error: writeError } = await auth.supabase
+    .from(table)
+    .update({ dietary_profile: nextProfile })
+    .eq("id", id)
+    .eq(ownerColumn, auth.user.id);
+  if (writeError) return NextResponse.json({ error: writeError.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true });
 }

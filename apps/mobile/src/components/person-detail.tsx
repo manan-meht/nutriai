@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 
+import { AccessCodeCard } from './access-code-card';
 import { ActivityHeatmap } from './activity-heatmap';
 import { DateRangeSelector } from './date-range-selector';
 import { FoodBalanceScoreCard } from './food-balance-score-card';
@@ -10,7 +11,7 @@ import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { BiomarkerLog, FoodBalanceProfileFields, MealLog, WorkoutLog } from '@/lib/api';
+import type { AccessCodeResult, BiomarkerLog, FoodBalanceProfileFields, MealLog, WorkoutLog } from '@/lib/api';
 import { filterByDateRange, getDateRangeDayCount, DEFAULT_DASHBOARD_DATE_RANGE, recommendProteinGrams, type DashboardDateRange } from '@nutriai/dashboard-core';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { calculateEnergyTargetRange, proteinTargetG, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
@@ -37,12 +38,21 @@ export function PersonDetail({
   workouts,
   biomarkers,
   foodBalanceQuery,
+  accessCode,
 }: {
   person: PersonLike;
   meals: MealLog[];
   workouts?: WorkoutLog[];
   biomarkers?: BiomarkerLog[];
   foodBalanceQuery: { contactId: string } | { clientId: string };
+  /** Temporary Access Code generation — omitted entirely (no card shown)
+   * if the caller doesn't pass this, rather than defaulting to a no-op,
+   * since every current caller (adults/gym detail screens) does pass it. */
+  accessCode?: {
+    onGenerate: (ttlHours: 1 | 24) => Promise<AccessCodeResult>;
+    onRegenerate: (ttlHours: 1 | 24) => Promise<AccessCodeResult>;
+    onRevoke: () => Promise<{ ok: boolean }>;
+  };
 }) {
   const theme = useTheme();
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
@@ -109,6 +119,8 @@ export function PersonDetail({
                 </ThemedText>
               </ThemedView>
             </View>
+
+            {accessCode && <AccessCodeCard personName={person.fullName} {...accessCode} />}
 
             <FoodBalanceScoreCard {...foodBalanceQuery} />
 
