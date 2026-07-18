@@ -156,3 +156,35 @@ describe("applyPortionConsistencyCaps — the estimate must match its own portio
     expect(capped.portion_confidence).toBeFalsy();
   });
 });
+
+describe("computeItemNutrition — beef/pork/shellfish/paneer/tofu split categories", () => {
+  it("computes beef and red_meat (mutton/lamb/goat) from separate density tables", () => {
+    const beef = makeItem({ food_category: "beef", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const muttonEtc = makeItem({ food_category: "red_meat", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const beefResult = computeItemNutrition(beef)!;
+    const redMeatResult = computeItemNutrition(muttonEtc)!;
+    expect(beefResult).not.toBeNull();
+    expect(redMeatResult).not.toBeNull();
+    // Different density tables — not required to differ by much, but they
+    // must be independently computed rather than one falling back to "other".
+    expect(beefResult.protein_min).toBeGreaterThan(0);
+    expect(redMeatResult.protein_min).toBeGreaterThan(0);
+  });
+
+  it("computes pork and shellfish from their own density tables, shellfish notably leaner", () => {
+    const pork = makeItem({ food_category: "pork", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const shellfish = makeItem({ food_category: "shellfish", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const porkResult = computeItemNutrition(pork)!;
+    const shellfishResult = computeItemNutrition(shellfish)!;
+    expect(shellfishResult.calories_min).toBeLessThan(porkResult.calories_min);
+  });
+
+  it("computes paneer and tofu separately, tofu notably leaner than paneer for the same weight", () => {
+    const paneer = makeItem({ food_category: "paneer", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const tofu = makeItem({ food_category: "tofu", estimated_edible_weight_grams_min: 100, estimated_edible_weight_grams_max: 100 });
+    const paneerResult = computeItemNutrition(paneer)!;
+    const tofuResult = computeItemNutrition(tofu)!;
+    expect(tofuResult.protein_min).toBeLessThan(paneerResult.protein_min);
+    expect(tofuResult.calories_min).toBeLessThan(paneerResult.calories_min);
+  });
+});

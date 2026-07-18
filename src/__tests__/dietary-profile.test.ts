@@ -3,6 +3,8 @@ import { updateDietaryProfile as update } from "@/lib/dietary-profile/update";
 import { applyExplicitPreferences } from "@/lib/dietary-profile/preferences";
 import { buildProteinSuggestion } from "@/lib/dietary-profile/recommend";
 import { mentionsMedicalCondition, withMedicalHandoffIfNeeded, MEDICAL_HANDOFF_MESSAGE } from "@/lib/dietary-profile/medical-handoff";
+import { buildMealObservation } from "@/lib/dietary-profile/classify-meal";
+import type { FoodAnalysisResult, FoodItem } from "@/lib/ai/food-analyzer";
 
 function profile(overrides: Partial<DietaryProfile> = {}): DietaryProfile {
   return { ...DEFAULT_DIETARY_PROFILE, ...overrides };
@@ -178,5 +180,61 @@ describe("dietary profile — preference editor", () => {
     p = applyExplicitPreferences(p, { avoidsPork: true });
     expect(p.explicit_avoids_dairy).toBe(true);
     expect(p.explicit_avoids_pork).toBe(true);
+  });
+});
+
+describe("dietary profile — beef tracked separately from red meat generally", () => {
+  function foodItem(overrides: Partial<FoodItem>): FoodItem {
+    return {
+      name: "item", quantity: "1 serving",
+      calories_min: 100, calories_max: 150, protein_min: 10, protein_max: 15,
+      carbs_min: 0, carbs_max: 0, fat_min: 0, fat_max: 0, fiber_min: 0, fiber_max: 0,
+      ...overrides,
+    };
+  }
+  function analysisWith(foods: FoodItem[], overrides: Partial<FoodAnalysisResult> = {}): FoodAnalysisResult {
+    return {
+      foods, meal_type: "dinner",
+      total_calories_min: 0, total_calories_max: 0, total_protein_min: 0, total_protein_max: 0,
+      total_carbs_min: 0, total_carbs_max: 0, total_fat_min: 0, total_fat_max: 0, total_fiber_min: 0, total_fiber_max: 0,
+      summary: "test", confidence: "high", is_zero_calorie_item: false,
+      ...overrides,
+    };
+  }
+
+  it("classifies a beef item as 'beef', not 'red_meat'", () => {
+    const analysis = analysisWith([foodItem({ name: "Beef steak", food_category: "beef" })]);
+    const observation = buildMealObservation(analysis);
+    expect(observation.categories).toContain("beef");
+    expect(observation.categories).not.toContain("red_meat");
+  });
+
+  it("classifies mutton/lamb/goat as 'red_meat', not 'beef'", () => {
+    const analysis = analysisWith([foodItem({ name: "Mutton curry", food_category: "red_meat" })]);
+    const observation = buildMealObservation(analysis);
+    expect(observation.categories).toContain("red_meat");
+    expect(observation.categories).not.toContain("beef");
+  });
+
+  it("beef requires a second high-confidence sighting or explicit confirmation before being recorded (sensitive category)", () => {
+    const analysis = analysisWith([foodItem({ name: "Beef steak", food_category: "beef" })]);
+    const observation = buildMealObservation(analysis);
+
+    const firstPass = update(DEFAULT_DIETARY_PROFILE, observation);
+    expect(firstPass.observed_beef).toBe(false);
+
+    const secondPass = update(firstPass, observation, { beef: 1 });
+    expect(secondPass.observed_beef).toBe(true);
+
+    const viaCorrection = update(DEFAULT_DIETARY_PROFILE, { ...observation, isUserCorrection: true });
+    expect(viaCorrection.observed_beef).toBe(true);
+  });
+
+  it("classifies paneer as dairy, tofu as neither dairy nor meat", () => {
+    const paneerObservation = buildMealObservation(analysisWith([foodItem({ name: "Paneer tikka", food_category: "paneer" })]));
+    expect(paneerObservation.categories).toContain("dairy");
+
+    const tofuObservation = buildMealObservation(analysisWith([foodItem({ name: "Tofu stir-fry", food_category: "tofu" })]));
+    expect(tofuObservation.categories).toEqual([]);
   });
 });

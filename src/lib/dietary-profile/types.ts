@@ -21,6 +21,11 @@ export interface DietaryProfile {
   observed_fish: boolean;
   observed_shellfish: boolean;
   observed_red_meat: boolean;
+  /** Tracked separately from observed_red_meat — many people who eat red
+   * meat generally still don't eat beef specifically, often for religious
+   * reasons (rule 9 still applies: this only records what's been observed
+   * or explicitly said, never why). */
+  observed_beef: boolean;
   observed_pork: boolean;
   observed_other_meat: boolean;
   inferred_pattern: InferredPattern;
@@ -32,8 +37,25 @@ export interface DietaryProfile {
   explicit_avoids_chicken: boolean;
   explicit_avoids_fish: boolean;
   explicit_avoids_red_meat: boolean;
+  explicit_avoids_beef: boolean;
   explicit_avoids_pork: boolean;
   prefers_plant_based_suggestions: boolean;
+  /** Recommendation-feedback fields (Food Balance Recommendations feature)
+   * — reusing this same per-person profile rather than a parallel
+   * "recommendation preferences" object, since these are still explicit
+   * user signals about food, same category as the explicit_avoids_ fields
+   * and prefers_plant_based_suggestions above. IDs reference FOOD_LIBRARY
+   * item ids (see src/lib/food-balance/food-library.ts). */
+  liked_suggestion_ids: string[];
+  /** "I don't like this food" feedback — excluded from future suggestions
+   * (see src/lib/food-balance/personalize.ts's isAllowed). Distinct from
+   * explicit_avoids_* (which are whole-category safety rules); this is a
+   * single-item preference, e.g. disliking Greek yogurt specifically
+   * doesn't mean avoiding all dairy. */
+  disliked_suggestion_ids: string[];
+  /** "Not available where I live" feedback — deprioritized (not excluded
+   * outright) in future ranking, see personalize.ts. */
+  unavailable_suggestion_ids: string[];
   /** ISO timestamp, null until the profile has ever been updated. */
   last_updated_at: string | null;
 }
@@ -47,6 +69,7 @@ export const DEFAULT_DIETARY_PROFILE: DietaryProfile = {
   observed_fish: false,
   observed_shellfish: false,
   observed_red_meat: false,
+  observed_beef: false,
   observed_pork: false,
   observed_other_meat: false,
   inferred_pattern: "unknown",
@@ -58,8 +81,12 @@ export const DEFAULT_DIETARY_PROFILE: DietaryProfile = {
   explicit_avoids_chicken: false,
   explicit_avoids_fish: false,
   explicit_avoids_red_meat: false,
+  explicit_avoids_beef: false,
   explicit_avoids_pork: false,
   prefers_plant_based_suggestions: false,
+  liked_suggestion_ids: [],
+  disliked_suggestion_ids: [],
+  unavailable_suggestion_ids: [],
   last_updated_at: null,
 };
 
@@ -94,14 +121,20 @@ export type DietCategory =
   | "fish"
   | "shellfish"
   | "red_meat"
+  | "beef"
   | "pork"
   | "other_meat";
 
 /** Categories sensitive enough (rule 12) that a single high-confidence AI
- * observation isn't enough on its own to flip them — see update.ts. */
+ * observation isn't enough on its own to flip them — see update.ts. Beef
+ * is included here even though it's already a fairly unambiguous visual
+ * identification, because the cost of a false positive (recommending beef
+ * to someone who doesn't eat it) is high enough to warrant the same
+ * extra-confirmation bar as pork/shellfish. */
 export const SENSITIVE_CATEGORIES: ReadonlySet<DietCategory> = new Set([
   "pork",
   "red_meat",
+  "beef",
   "shellfish",
   "other_meat",
 ]);

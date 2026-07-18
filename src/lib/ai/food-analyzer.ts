@@ -27,8 +27,17 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
  * roti, mixed curries, etc.) still use the model's own calorie/protein
  * numbers — they aren't the source of the protein-overestimation problem
  * this guards against. */
+// "red_meat" here means mutton/lamb/goat specifically — beef and pork are
+// their own categories, not folded into it. This split exists for the
+// dietary-profile feature (@/lib/dietary-profile): plenty of people in
+// India who eat red meat generally still don't eat beef for religious
+// reasons, and conflating the two would make that impossible to respect.
+// Paneer and tofu are similarly split (were one "paneer_tofu" category) —
+// paneer is dairy, tofu is plant, and their nutrition density differs a
+// lot (tofu is much leaner) so combining them also hurt macro accuracy.
 export type FoodCategory =
-  | "chicken" | "fish" | "red_meat" | "egg" | "paneer_tofu"
+  | "chicken" | "fish" | "beef" | "pork" | "shellfish" | "red_meat" | "egg"
+  | "paneer" | "tofu"
   | "avocado" | "seeds_nuts" | "legume_dal" | "other";
 
 export interface FoodItem {
@@ -170,15 +179,17 @@ PORTION ESTIMATION — go from what is visible to a weight, never from the food'
 - When portion size is genuinely uncertain, use a wider range and lower confidence rather than picking a confident midpoint.
 - You must estimate EDIBLE cooked weight conservatively from visible food only — exclude bone, char, marinade coating, and air gaps between pieces. Do not use default restaurant serving sizes.
 - Your protein estimate must be consistent with your own portion description. If you describe the portion as small, do not output a high-protein estimate unless the image clearly shows enough food to justify it.
-- For each food item, fill visible_quantity (what you actually counted/saw, e.g. "3-4 small pieces"), portion_size (tiny/small/medium/large/very_large), estimated_cooked_weight_grams (display string), and — for chicken/fish/red_meat/egg/paneer_tofu/avocado/seeds_nuts/legume_dal items — the structured fields below (food_category, estimated_edible_weight_grams_min/max, egg_count_min/max) so the app can calculate protein/calories from the portion instead of you inventing a final number.
+- For each food item, fill visible_quantity (what you actually counted/saw, e.g. "3-4 small pieces"), portion_size (tiny/small/medium/large/very_large), estimated_cooked_weight_grams (display string), and — for chicken/fish/beef/pork/shellfish/red_meat/egg/paneer/tofu/avocado/seeds_nuts/legume_dal items — the structured fields below (food_category, estimated_edible_weight_grams_min/max, egg_count_min/max) so the app can calculate protein/calories from the portion instead of you inventing a final number.
+- Identify the specific meat correctly, not just "meat" generically — this matters beyond nutrition: many people who eat red meat generally still don't eat beef specifically (often for religious reasons), so confusing beef with mutton/lamb/goat (food_category: red_meat) or pork is a meaningfully different mistake from a portion-size error. If you cannot tell which red meat it is, treat that as a high-impact identity ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below) rather than guessing.
 
 Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use these instead of a flat "typical serving"):
-- Chicken/meat/fish: tiny 20-40g, small 40-80g, medium 90-130g, large 150-220g, very_large 220g+. Only use large/very_large if the image clearly shows that much food or the user says so.
+- Chicken/beef/pork/mutton/lamb/goat/fish/shellfish: tiny 20-40g, small 40-80g, medium 90-130g, large 150-220g, very_large 220g+. Only use large/very_large if the image clearly shows that much food or the user says so.
 - Chicken piece sizing specifically: 1 small visible piece ~10-20g edible cooked chicken, 1 medium visible piece ~20-35g, 1 large visible piece ~40-60g. 3-4 small pieces is ~45-75g edible cooked chicken — never assume 5-6 pieces when only 3-4 are visible, and do not estimate 120g+ unless the pieces are clearly medium/large, or 180g+ unless the plate clearly shows a large serving.
 - Eggs/omelette: a small omelette is likely 1 egg, medium is likely 2 eggs, large/thick is likely 3 eggs. If unsure, say "likely 1-2 eggs" (egg_count_min: 1, egg_count_max: 2) rather than defaulting to the higher count. Only use 3 eggs if the omelette is clearly large/thick or the user says so.
 - Avocado: 1/4 ~40-60g, 1/2 ~75-100g, 3/4 ~120-150g, whole ~150-200g. Avocado is low-protein (~2g/100g) — never assign it meaningful protein grams; half an avocado is usually only 1-2g protein.
 - Seeds/garnish: 1 tsp ~2-4g, 1 tbsp ~8-12g, a light sprinkle is near-negligible calories/protein (0-1g protein) — do not scale a few visible seeds into a real serving.
-- Paneer/tofu: small 40-70g, medium 80-120g, large 150-200g — do not assume large unless clearly visible.
+- Paneer: small 40-70g, medium 80-120g, large 150-200g — do not assume large unless clearly visible.
+- Tofu: small 50-90g, medium 100-150g, large 180-250g — tofu is much leaner than paneer (roughly a third of the protein and calories per gram), so do not treat the two as interchangeable just because they can look similar in a curry.
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
 
@@ -209,7 +220,7 @@ Worked example — a plate showing 3-4 small pieces of grilled/tikka chicken, ha
   Wrong: "5-6 medium chicken pieces", "180-250g chicken", or 49g+ total protein — that overstates what 3-4 small pieces actually are.
 
 AUTO-SAVE AND HIGH-IMPACT AMBIGUITY — your job is to help log meals with LOW friction. Most meals should be logged automatically, not held up waiting for confirmation. But a small set of ambiguities change the nutrition enough that guessing would actively mislead the user, so those must pause for one specific question instead of being guessed.
-- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, fried vs grilled preparation, 1 egg vs 3 eggs, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
+- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, beef vs mutton/lamb/goat vs pork (a real-meat identity question, not just a portion one — see the food_category note above), fried vs grilled preparation, 1 egg vs 3 eggs, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
 - When has_high_impact_ambiguity is true, set food_identity_confidence to "low", write a short high_impact_ambiguity_reason (e.g. "tofu vs paneer vs chicken changes protein significantly"), and write a SPECIFIC clarification_question naming exactly what's ambiguous and the plausible options — e.g. "Is the top-left cubed item tofu, paneer, or chicken?" or "Was the omelette 1 egg or 2 eggs?". Never ask a vague question like "What should I change?". Mark the specific food item this concerns with is_ambiguous: true so the app can list the other items separately.
 - Still fill in your best-guess foods/macros even when has_high_impact_ambiguity is true — the app won't use them to save until the user answers, but they're a useful fallback.
 - When there is no high-impact ambiguity, do not invent one — leave has_high_impact_ambiguity false and clarification_question unset, and let the meal be logged normally.
@@ -227,7 +238,7 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
       "visible_quantity": "string — what you actually counted/saw, e.g. '3-4 small pieces'",
       "portion_size": "tiny|small|medium|large|very_large",
       "estimated_cooked_weight_grams": "string, e.g. '45-75g'",
-      "food_category": "chicken|fish|red_meat|egg|paneer_tofu|avocado|seeds_nuts|legume_dal|other (set this for any protein-relevant item so the app can compute its macros from the portion; use \\"other\\" for rice/roti/vegetables/mixed curries)",
+      "food_category": "chicken|fish|beef|pork|shellfish|red_meat|egg|paneer|tofu|avocado|seeds_nuts|legume_dal|other (set this for any protein-relevant item so the app can compute its macros from the portion; \\"red_meat\\" means mutton/lamb/goat specifically, NOT beef — beef is its own category; use \\"other\\" for rice/roti/vegetables/mixed curries)",
       "estimated_edible_weight_grams_min": "number — edible cooked weight, excluding bone/char/marinade (omit for egg/other items)",
       "estimated_edible_weight_grams_max": "number",
       "count_visible_pieces": "number, optional",
@@ -366,8 +377,20 @@ interface CategoryDensity {
 const CATEGORY_DENSITY: Record<Exclude<FoodCategory, "egg" | "other">, CategoryDensity> = {
   chicken: { proteinPerGramMin: 0.27, proteinPerGramMax: 0.31, caloriesPerGramMin: 1.7, caloriesPerGramMax: 2.3 },
   fish: { proteinPerGramMin: 0.22, proteinPerGramMax: 0.30, caloriesPerGramMin: 1.5, caloriesPerGramMax: 2.0 },
-  red_meat: { proteinPerGramMin: 0.22, proteinPerGramMax: 0.30, caloriesPerGramMin: 2.0, caloriesPerGramMax: 2.8 },
-  paneer_tofu: { proteinPerGramMin: 0.15, proteinPerGramMax: 0.20, caloriesPerGramMin: 1.5, caloriesPerGramMax: 3.0 },
+  // "red_meat" is mutton/lamb/goat specifically now — beef and pork split
+  // out below (see FoodCategory's doc comment). Densities are close to the
+  // old combined red_meat value, kept for continuity with existing saved
+  // meals that still carry that category.
+  red_meat: { proteinPerGramMin: 0.22, proteinPerGramMax: 0.28, caloriesPerGramMin: 2.2, caloriesPerGramMax: 3.0 },
+  beef: { proteinPerGramMin: 0.24, proteinPerGramMax: 0.29, caloriesPerGramMin: 2.2, caloriesPerGramMax: 2.8 },
+  pork: { proteinPerGramMin: 0.21, proteinPerGramMax: 0.27, caloriesPerGramMin: 2.4, caloriesPerGramMax: 3.3 },
+  // Shrimp/prawn/crab-type shellfish — notably leaner than red meat/pork.
+  shellfish: { proteinPerGramMin: 0.18, proteinPerGramMax: 0.22, caloriesPerGramMin: 0.9, caloriesPerGramMax: 1.2 },
+  // Paneer and tofu were one combined "paneer_tofu" category — split since
+  // tofu is roughly a third of paneer's protein/calorie density per gram;
+  // combining them meant tofu-heavy meals were getting overestimated.
+  paneer: { proteinPerGramMin: 0.16, proteinPerGramMax: 0.20, caloriesPerGramMin: 2.3, caloriesPerGramMax: 2.9 },
+  tofu: { proteinPerGramMin: 0.07, proteinPerGramMax: 0.09, caloriesPerGramMin: 0.7, caloriesPerGramMax: 0.9 },
   avocado: { proteinPerGramMin: 0.018, proteinPerGramMax: 0.022, caloriesPerGramMin: 1.5, caloriesPerGramMax: 1.7 },
   seeds_nuts: { proteinPerGramMin: 0.15, proteinPerGramMax: 0.25, caloriesPerGramMin: 5.0, caloriesPerGramMax: 6.5 },
   legume_dal: { proteinPerGramMin: 0.07, proteinPerGramMax: 0.09, caloriesPerGramMin: 1.0, caloriesPerGramMax: 1.3 },
@@ -431,7 +454,7 @@ export function recalculateNutritionFromPortions(analysis: FoodAnalysisResult): 
 }
 
 const SMALL_PORTIONS: Array<FoodItem["portion_size"]> = ["tiny", "small"];
-const MEAT_CATEGORIES: FoodCategory[] = ["chicken", "fish", "red_meat"];
+const MEAT_CATEGORIES: FoodCategory[] = ["chicken", "fish", "red_meat", "beef", "pork", "shellfish"];
 
 /** Item- and meal-level "does the wording match the numbers?" check. A
  * small/tiny meat portion, a 1-2 egg omelette, or avocado shouldn't be
@@ -468,7 +491,7 @@ export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodA
   // to back it up (150g+ meat/fish, a large paneer/tofu portion, or 3+
   // eggs) — otherwise the estimate is scaled down rather than trusted.
   const hasLargeProteinSupport = foods.some((f) => {
-    if (MEAT_CATEGORIES.includes(f.food_category as FoodCategory) || f.food_category === "paneer_tofu") {
+    if (MEAT_CATEGORIES.includes(f.food_category as FoodCategory) || f.food_category === "paneer" || f.food_category === "tofu") {
       return f.portion_size === "large" || f.portion_size === "very_large" || (f.estimated_edible_weight_grams_min ?? 0) >= 150;
     }
     if (f.food_category === "egg") return (f.egg_count_min ?? 0) >= 3;

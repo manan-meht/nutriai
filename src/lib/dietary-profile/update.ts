@@ -24,6 +24,7 @@ const CATEGORY_TO_FIELD: Record<DietCategory, keyof DietaryProfile> = {
   fish: "observed_fish",
   shellfish: "observed_shellfish",
   red_meat: "observed_red_meat",
+  beef: "observed_beef",
   pork: "observed_pork",
   other_meat: "observed_other_meat",
 };
@@ -34,7 +35,7 @@ const CATEGORY_TO_FIELD: Record<DietCategory, keyof DietaryProfile> = {
  * from most to least restrictive so e.g. someone with both dairy and fish
  * observed lands on pescatarian_observed, not vegetarian_observed. */
 export function deriveInferredPatternFromProfile(profile: DietaryProfile): DietaryProfile["inferred_pattern"] {
-  const otherMeatObserved = profile.observed_red_meat || profile.observed_pork || profile.observed_shellfish || profile.observed_other_meat;
+  const otherMeatObserved = profile.observed_red_meat || profile.observed_beef || profile.observed_pork || profile.observed_shellfish || profile.observed_other_meat;
   const anyDairyObserved = profile.observed_dairy || profile.observed_lactose_dairy || profile.observed_lactose_free_dairy;
 
   if (otherMeatObserved && profile.observed_fish) return "mixed_diet_observed";
