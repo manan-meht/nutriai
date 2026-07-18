@@ -24,9 +24,9 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
           buildWhatsAppMessage={(formattedCode) =>
             `Hi ${details.client.fullName}! Here's your Tistra Health access code: ${formattedCode}. Go to tistrahealth.com/my-progress, enter your WhatsApp number and this code to view your dashboard. It works once and expires soon.`
           }
-          onGenerate={(ttlHours) => generateClientAccessCodeAction(clientId, ttlHours)}
-          onRegenerate={(ttlHours) => regenerateClientAccessCodeAction(clientId, ttlHours)}
-          onRevoke={() => revokeClientAccessCodeAction(clientId)}
+          onGenerate={generateClientAccessCodeAction.bind(null, clientId)}
+          onRegenerate={regenerateClientAccessCodeAction.bind(null, clientId)}
+          onRevoke={revokeClientAccessCodeAction.bind(null, clientId)}
         />
       </div>
     </>

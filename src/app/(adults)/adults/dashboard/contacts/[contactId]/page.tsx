@@ -26,9 +26,9 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
           buildWhatsAppMessage={(formattedCode) =>
             `Hi ${details.contact.fullName}! Here's your Tistra Health access code: ${formattedCode}. Go to tistrahealth.com/my-progress, enter your WhatsApp number and this code to view your dashboard. It works once and expires soon.`
           }
-          onGenerate={(ttlHours) => generateAccessCodeAction(contactId, ttlHours)}
-          onRegenerate={(ttlHours) => regenerateAccessCodeAction(contactId, ttlHours)}
-          onRevoke={() => revokeAccessCodeAction(contactId)}
+          onGenerate={generateAccessCodeAction.bind(null, contactId)}
+          onRegenerate={regenerateAccessCodeAction.bind(null, contactId)}
+          onRevoke={revokeAccessCodeAction.bind(null, contactId)}
         />
         <FoodPreferencesEditor contactId={contactId} initialProfile={dietaryProfile} />
       </div>
