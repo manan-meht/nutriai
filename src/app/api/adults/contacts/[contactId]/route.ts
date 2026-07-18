@@ -10,6 +10,8 @@ import {
 } from "@/app/(adults)/adults/dashboard/actions";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile } from "@/lib/food-balance/adapter";
+import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
+import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
 import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
 
 export const runtime = "edge";
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: profileRow } = await supabase
     .from("adults_contacts")
     .select(
-      "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg"
+      "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg, dietary_profile"
     )
     .eq("id", contactId)
     .eq("caregiver_id", user.id)
@@ -125,6 +127,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     allMeals: meals,
     profile,
     previousDisplayedScore: previousSnapshot?.displayed_score ?? null,
+  });
+
+  // Turns generic recommendation copy ("Add one protein source") into
+  // Food-Profile-personalized examples ("Try Greek yogurt with fruit, or
+  // paneer, tofu, eggs...") — see src/lib/food-balance/personalize.ts.
+  const dietaryProfile = { ...DEFAULT_DIETARY_PROFILE, ...(profileRow?.dietary_profile ?? {}) };
+  result.recommendations = personalizeFoodBalanceRecommendations(result.recommendations, dietaryProfile, {
+    goal: profileRow?.primary_nutrition_goal ?? undefined,
   });
 
   if (result.calculatedAt) {

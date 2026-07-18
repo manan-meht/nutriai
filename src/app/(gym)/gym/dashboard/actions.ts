@@ -532,6 +532,40 @@ export async function getClientDietaryPreferences(clientId: string): Promise<imp
   return selections;
 }
 
+/** Gym-side equivalent of the adults product's recordFoodSuggestionFeedback
+ * — see src/lib/food-balance/feedback.ts. */
+export async function recordClientFoodSuggestionFeedback(
+  clientId: string,
+  feedback: import("@/lib/food-balance/feedback").RecommendationFeedback,
+  foodIds: string[]
+): Promise<{ error?: string }> {
+  const { applyRecommendationFeedback } = await import("@/lib/food-balance/feedback");
+  const { DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: clientRow, error: readError } = await supabase
+    .from("gym_clients")
+    .select("dietary_profile")
+    .eq("id", clientId)
+    .eq("trainer_id", user.id)
+    .single();
+  if (readError || !clientRow) return { error: readError?.message ?? "Client not found" };
+
+  const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(clientRow.dietary_profile ?? {}) };
+  const nextProfile = applyRecommendationFeedback(currentProfile, feedback, foodIds);
+
+  const { error } = await supabase
+    .from("gym_clients")
+    .update({ dietary_profile: nextProfile })
+    .eq("id", clientId)
+    .eq("trainer_id", user.id);
+
+  if (error) return { error: error.message };
+  return {};
+}
+
 // -----------------------------------------------------------------------
 // WhatsApp-first invites (see src/lib/invites) — the coach shares a wa.me
 // link themselves; the bot never sends the first message, so this doesn't

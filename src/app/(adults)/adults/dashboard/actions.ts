@@ -560,6 +560,42 @@ export async function getFoodPreferences(contactId: string): Promise<import("@/l
   return { ...DEFAULT_DIETARY_PROFILE, ...(contactRow?.dietary_profile ?? {}) };
 }
 
+/** Records feedback on a Food Balance Recommendation's shown foods
+ * ("Helpful", "I don't like this food", "Not available where I live",
+ * etc. — see src/lib/food-balance/feedback.ts) so future recommendations
+ * respect it. */
+export async function recordFoodSuggestionFeedback(
+  contactId: string,
+  feedback: import("@/lib/food-balance/feedback").RecommendationFeedback,
+  foodIds: string[]
+): Promise<{ error?: string }> {
+  const { applyRecommendationFeedback } = await import("@/lib/food-balance/feedback");
+  const { DEFAULT_DIETARY_PROFILE } = await import("@/lib/dietary-profile");
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { data: contactRow, error: readError } = await supabase
+    .from("adults_contacts")
+    .select("dietary_profile")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (readError || !contactRow) return { error: readError?.message ?? "Contact not found" };
+
+  const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(contactRow.dietary_profile ?? {}) };
+  const nextProfile = applyRecommendationFeedback(currentProfile, feedback, foodIds);
+
+  const { error } = await supabase
+    .from("adults_contacts")
+    .update({ dietary_profile: nextProfile })
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id);
+
+  if (error) return { error: error.message };
+  return {};
+}
+
 /** Manually resend the WhatsApp invite to an existing family member —
  * e.g. if they never received or missed the original invite. Does not
  * create a new contact or affect the monthly add quota. */

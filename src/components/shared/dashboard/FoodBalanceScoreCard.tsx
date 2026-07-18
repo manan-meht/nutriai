@@ -1,8 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { FoodBalanceScoreResult } from "@nutriai/health-scoring";
+import type { FoodBalanceScoreResult, FoodBalanceRecommendation } from "@nutriai/health-scoring";
 import { trackFoodBalanceEvent } from "@/lib/food-balance/analytics";
+import type { RecommendationFeedback } from "@/lib/food-balance/feedback";
+import { recordFoodSuggestionFeedback } from "@/app/(adults)/adults/dashboard/actions";
+import { recordClientFoodSuggestionFeedback } from "@/app/(gym)/gym/dashboard/actions";
+
+const FEEDBACK_OPTIONS: Array<{ value: RecommendationFeedback; label: string }> = [
+  { value: "helpful", label: "Helpful" },
+  { value: "not_useful", label: "Not useful" },
+  { value: "already_eat", label: "I already eat this" },
+  { value: "dont_like", label: "I don't like this food" },
+  { value: "not_available", label: "Not available where I live" },
+  { value: "too_hard", label: "Too hard" },
+];
 
 interface FoodBalanceScoreCardProps {
   /** Exactly one of these is provided — adults product passes contactId,
@@ -164,11 +176,15 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
 
       {result.recommendations.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Top ways to improve</p>
-          <ol className="space-y-1.5">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Top ways to improve</p>
+          <ol className="space-y-3">
             {result.recommendations.map((rec, i) => (
               <li key={rec.id} className="text-sm text-gray-700">
-                {i + 1}. {rec.title}
+                <p className="font-semibold text-gray-900">{i + 1}. {rec.title}</p>
+                <p className="text-gray-600 mt-0.5">{rec.description}</p>
+                {rec.action && <p className="text-gray-500 mt-1"><span className="font-medium text-gray-600">Try this: </span>{rec.action}</p>}
+                {rec.whyThisHelps && <p className="text-xs text-gray-400 mt-1">{rec.whyThisHelps}</p>}
+                <RecommendationFeedbackButtons rec={rec} contactId={contactId} clientId={clientId} />
               </li>
             ))}
           </ol>
@@ -178,6 +194,57 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
       <p className="text-[11px] text-gray-400 mt-3">
         This is not a medical assessment and may not capture everything you eat.
       </p>
+    </div>
+  );
+}
+
+/** Feedback buttons for one recommendation's shown foods
+ * (rec.exampleFoodIds) — see src/lib/food-balance/feedback.ts for how
+ * each choice affects future recommendations. Hidden once submitted
+ * (shows a brief confirmation instead) rather than allowing repeated
+ * conflicting feedback on the same card render. */
+function RecommendationFeedbackButtons({
+  rec,
+  contactId,
+  clientId,
+}: {
+  rec: FoodBalanceRecommendation;
+  contactId?: string;
+  clientId?: string;
+}) {
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!rec.exampleFoodIds || rec.exampleFoodIds.length === 0) return null;
+
+  async function handleFeedback(value: RecommendationFeedback, label: string) {
+    setSubmitting(true);
+    try {
+      if (contactId) await recordFoodSuggestionFeedback(contactId, value, rec.exampleFoodIds!);
+      else if (clientId) await recordClientFoodSuggestionFeedback(clientId, value, rec.exampleFoodIds!);
+      setSubmitted(label);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return <p className="text-xs text-gray-400 mt-2">Thanks — noted &ldquo;{submitted}.&rdquo;</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {FEEDBACK_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          disabled={submitting}
+          onClick={() => handleFeedback(opt.value, opt.label)}
+          className="text-[11px] px-2 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-[#6750A4] hover:text-[#6750A4] transition-colors disabled:opacity-50"
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   );
 }

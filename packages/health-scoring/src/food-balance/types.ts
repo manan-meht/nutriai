@@ -191,6 +191,21 @@ export interface FoodBalanceRecommendation {
   priority: number;
   confidence: number;
   estimatedScoreImpact?: number;
+  /** One small, concrete next step — added by the app layer's Food
+   * Profile personalization (src/lib/food-balance/personalize.ts), which
+   * has no place in this package since it depends on app-specific
+   * per-person data this pure scoring package deliberately never touches.
+   * Undefined for a recommendation that hasn't been personalized. */
+  action?: string;
+  /** General-wellness "why this helps" framing — same personalization
+   * source as `action`, and same reason it's optional/app-layer-only. */
+  whyThisHelps?: string;
+  /** FOOD_LIBRARY item ids actually shown in this recommendation's copy
+   * (src/lib/food-balance/food-library.ts) — lets the feedback loop
+   * ("I don't like this food", "not available where I live") target the
+   * specific foods that were suggested, not just the recommendation as a
+   * whole. Same app-layer-only caveat as action/whyThisHelps. */
+  exampleFoodIds?: string[];
 }
 
 export interface EnergyTargetRange {
