@@ -46,3 +46,12 @@ create table if not exists end_user_audit_events (
 
 create index if not exists end_user_audit_events_contact_idx
   on end_user_audit_events (contact_id, contact_type, created_at desc);
+
+-- Service-role-only table — every write goes through recordAuditEvent()
+-- (@nutriai/end-user-core), called from server actions using the
+-- service-role client (SUPABASE_SERVICE_ROLE_KEY), never the
+-- anon/authenticated-key client. No policies needed (service-role bypasses
+-- RLS entirely); enabling RLS with zero policies just blocks anon/
+-- authenticated-key access outright, same pattern as this schema's other
+-- service-role-only tables (meal_reminder_sends, whatsapp_processed_media).
+alter table end_user_audit_events enable row level security;
