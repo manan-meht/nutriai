@@ -12,13 +12,20 @@ type ActionResult = AccessCodeResult | { error: string };
 
 interface AccessCodeCardProps {
   personName: string;
-  /** WhatsApp message text prefilled into the "Copy WhatsApp message"
-   * button — includes the code, so this is only ever built client-side
-   * right after generation, never persisted. */
-  buildWhatsAppMessage: (formattedCode: string) => string;
   onGenerate: (ttlHours: 1 | 24) => Promise<ActionResult>;
   onRegenerate: (ttlHours: 1 | 24) => Promise<ActionResult>;
   onRevoke: () => Promise<{ ok: boolean }>;
+}
+
+/** Built from `personName` alone (never passed in as a function prop) —
+ * a Server Component can only pass an actual Server Action reference (or
+ * a .bind() of one) to a "use client" component; an inline closure like
+ * `(code) => \`Hi ${name}...\`` throws during RSC serialization. That bug
+ * previously broke this exact page (see git history) for onGenerate/
+ * onRegenerate/onRevoke, which were fixed with .bind() — this was the
+ * same bug hiding in what used to be a `buildWhatsAppMessage` prop. */
+function buildWhatsAppMessage(personName: string, formattedCode: string): string {
+  return `Hi ${personName}! Here's your Tistra Health access code: ${formattedCode}. Go to tistrahealth.com/my-progress, enter your WhatsApp number and this code to view your dashboard. It works once and expires soon.`;
 }
 
 /** "Generate access code" — shared by the adults and gym dashboards (see
@@ -28,7 +35,7 @@ interface AccessCodeCardProps {
  * sent anywhere except the copy-to-clipboard/WhatsApp-message actions the
  * person explicitly clicks — never logged (see the server actions this
  * calls, which only ever return it once at generation time). */
-export function AccessCodeCard({ personName, buildWhatsAppMessage, onGenerate, onRegenerate, onRevoke }: AccessCodeCardProps) {
+export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke }: AccessCodeCardProps) {
   const [result, setResult] = useState<AccessCodeResult | null>(null);
   const [ttlHours, setTtlHours] = useState<1 | 24>(24);
   const [loading, setLoading] = useState(false);
@@ -107,7 +114,7 @@ export function AccessCodeCard({ personName, buildWhatsAppMessage, onGenerate, o
               {copied === "code" ? "Copied!" : "Copy code"}
             </button>
             <button
-              onClick={() => copyText(buildWhatsAppMessage(result.formattedCode), "message")}
+              onClick={() => copyText(buildWhatsAppMessage(personName, result.formattedCode), "message")}
               className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               {copied === "message" ? "Copied!" : "Copy WhatsApp message"}
