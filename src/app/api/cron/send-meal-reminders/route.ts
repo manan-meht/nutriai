@@ -5,6 +5,9 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { sendTextMessage, sendTemplateMessage, normalizePhone } from "@/lib/whatsapp/client";
 import { isReminderDue, getLocalDateAndTime } from "@/lib/reminders/schedule";
 import { buildReminderMessage, reminderDisplayName } from "@/lib/reminders/messages";
+import { pickWeeklyWhatsAppWin, buildWeeklyWinsWhatsAppLine } from "@/lib/share-cards/weekly-summary";
+import { getProductDomain } from "@/lib/product/resolve-product";
+import type { ShareCardMealInput } from "@/lib/share-cards/triggers";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -263,6 +266,106 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
   return { checked: (stale ?? []).length, resolved, skipped };
 }
 
+// Weekly WhatsApp share-card mention (see this feature's spec: "You
+// earned a share card this week: ..."). Folded into this same cron route
+// rather than a new one — same Worker bundle-size reasoning as
+// runResolveStaleClarifications above, and this route is already pinged
+// periodically and already loops every contact/client. Gated to at most
+// once every 6 days per contact via last_weekly_wins_sent_at (migration
+// 0033) so a route pinged every ~15 min doesn't resend constantly.
+//
+// Deliberately does NOT compute the full Food Balance Score here (that
+// would require importing @nutriai/health-scoring's calculateFoodBalanceScore,
+// meaningfully growing this route's bundle) — only picks from the
+// meal-count-based concepts (streaks, comeback, etc.), same trade-off as
+// src/lib/share-cards/weekly-summary.ts documents. TODO: once this cron
+// (or a real weekly-digest job) already computes the Food Balance Score
+// for another reason, wire componentScores through so balanced/protein/
+// fiber-all-week and the improvement cards can be featured here too.
+const WEEKLY_WINS_MIN_GAP_MS = 6 * 24 * 60 * 60 * 1000;
+
+interface WeeklyWinsTarget {
+  id: string;
+  contactType: "adults" | "gym";
+  whatsappNumber: string | null;
+  lastWeeklyWinsSentAt: string | null;
+}
+
+async function fetchWeeklyWinsTargets(db: ReturnType<typeof createServiceClient>): Promise<WeeklyWinsTarget[]> {
+  const [{ data: adults }, { data: gym }] = await Promise.all([
+    db.from("adults_contacts").select("id, whatsapp_number, last_weekly_wins_sent_at").is("deleted_at", null),
+    db.from("gym_clients").select("id, whatsapp_number, last_weekly_wins_sent_at").is("deleted_at", null),
+  ]);
+
+  const map = (rows: any[] | null, contactType: "adults" | "gym"): WeeklyWinsTarget[] =>
+    (rows ?? []).map((r) => ({
+      id: r.id,
+      contactType,
+      whatsappNumber: r.whatsapp_number,
+      lastWeeklyWinsSentAt: r.last_weekly_wins_sent_at,
+    }));
+
+  return [...map(adults, "adults"), ...map(gym, "gym")];
+}
+
+async function runWeeklyWinsShareCards(db: ReturnType<typeof createServiceClient>) {
+  const now = new Date();
+  const targets = await fetchWeeklyWinsTargets(db);
+
+  let sent = 0;
+  let skipped = 0;
+
+  for (const target of targets) {
+    if (!target.whatsappNumber) continue;
+    if (target.lastWeeklyWinsSentAt && now.getTime() - new Date(target.lastWeeklyWinsSentAt).getTime() < WEEKLY_WINS_MIN_GAP_MS) {
+      continue;
+    }
+
+    try {
+      const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      const { data: meals } = await db
+        .from("meal_logs")
+        .select("logged_at, meal_type, total_protein_min, total_protein_max, total_fiber_min, total_fiber_max")
+        .eq(target.contactType === "adults" ? "adults_contact_id" : "client_id", target.id)
+        .gte("logged_at", fourteenDaysAgo.toISOString());
+
+      const mealInputs: ShareCardMealInput[] = (meals ?? []).map((m: any) => ({
+        loggedAt: m.logged_at,
+        mealType: m.meal_type,
+        totalProteinMin: m.total_protein_min ?? 0,
+        totalProteinMax: m.total_protein_max ?? 0,
+        totalFiberMin: m.total_fiber_min ?? 0,
+        totalFiberMax: m.total_fiber_max ?? 0,
+      }));
+      const distinctLoggingDaysThisWeek = new Set(
+        mealInputs
+          .filter((m) => (now.getTime() - new Date(m.loggedAt).getTime()) / 86400000 <= 7)
+          .map((m) => m.loggedAt.slice(0, 10))
+      ).size;
+
+      const card = pickWeeklyWhatsAppWin(mealInputs, distinctLoggingDaysThisWeek, now);
+      if (!card) {
+        skipped++;
+        continue;
+      }
+
+      const domain = getProductDomain(target.contactType === "adults" ? "adults" : "gym");
+      await sendTextMessage(target.whatsappNumber, buildWeeklyWinsWhatsAppLine(card, `https://${domain}/my-progress`));
+
+      await db
+        .from(target.contactType === "adults" ? "adults_contacts" : "gym_clients")
+        .update({ last_weekly_wins_sent_at: now.toISOString() })
+        .eq("id", target.id);
+      sent++;
+    } catch (err) {
+      console.error("[weekly-wins] send failed:", target.contactType, target.id, err instanceof Error ? err.message : err);
+      skipped++;
+    }
+  }
+
+  return { checked: targets.length, sent, skipped };
+}
+
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
@@ -271,10 +374,11 @@ export async function POST(request: NextRequest) {
   }
 
   const db = createServiceClient();
-  const [reminders, staleClarifications] = await Promise.all([
+  const [reminders, staleClarifications, weeklyWins] = await Promise.all([
     runMealReminders(db),
     runResolveStaleClarifications(db),
+    runWeeklyWinsShareCards(db),
   ]);
 
-  return NextResponse.json({ reminders, staleClarifications });
+  return NextResponse.json({ reminders, staleClarifications, weeklyWins });
 }

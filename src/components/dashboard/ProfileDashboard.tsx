@@ -15,6 +15,7 @@ import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
+import { ShareCardsDashboardSection } from "@/components/shared/dashboard/ShareCardsDashboardSection";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 import { MealPhotoModal } from "@/components/shared/dashboard/MealPhotoModal";
@@ -231,6 +232,11 @@ export function ProfileDashboard({
         {/* Section 2 — Food Balance Score / insights. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
           <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} />
+        )}
+
+        {/* Section 2b — "Your wins" shareable accomplishment cards. */}
+        {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
+          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} />
         )}
 
         {/* Section 3 — macronutrient summary. */}

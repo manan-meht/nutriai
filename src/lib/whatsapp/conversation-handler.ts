@@ -28,6 +28,9 @@ import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/l
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { sendPushNotificationToProfile } from "@/lib/notifications/push";
+import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
+import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
+import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
@@ -425,7 +428,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Look up in gym_clients first
   const { data: gymClients } = await db
     .from("gym_clients")
-    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
+    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
     .order("created_at", { ascending: false });
 
   const gymClient = (gymClients ?? []).find((c: any) =>
@@ -437,7 +440,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -613,6 +616,55 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     } catch (err) {
       console.error("[whatsapp] getDailyTotals failed:", err instanceof Error ? err.message : err);
       return null;
+    }
+  }
+
+  /** "End of day achievement moment" (see share-cards feature spec) —
+   * after a meal save completes a daily win (protein goal, balanced day,
+   * etc.), append a short unlock line to the confirmation message. Rate-
+   * limited to 1/day per contact across any surface via
+   * last_share_card_prompt_at (see migration 0033 and
+   * src/lib/share-cards/selector.ts's canShowImmediatePrompt) — WhatsApp
+   * has no browser to keep that state in, so it's a DB column instead of
+   * localStorage. Never throws — a failure here should degrade to no
+   * bonus line, not break the meal-save confirmation. */
+  async function checkDailyWinShareCardLine(targetProteinG: number): Promise<string> {
+    try {
+      if (!canShowImmediatePrompt({ lastImmediatePromptAt: entity.last_share_card_prompt_at ?? null })) return "";
+
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { data: todaysMeals, error } = await db
+        .from("meal_logs")
+        .select("logged_at, meal_type, total_protein_min, total_protein_max, total_fiber_min, total_fiber_max")
+        .eq(isAdults ? "adults_contact_id" : "client_id", entityId)
+        .gte("logged_at", startOfDay.toISOString());
+      if (error || !todaysMeals || todaysMeals.length === 0) return "";
+
+      const meals: ShareCardMealInput[] = (todaysMeals as any[]).map((m) => ({
+        loggedAt: m.logged_at,
+        mealType: m.meal_type,
+        totalProteinMin: m.total_protein_min ?? 0,
+        totalProteinMax: m.total_protein_max ?? 0,
+        totalFiberMin: m.total_fiber_min ?? 0,
+        totalFiberMax: m.total_fiber_max ?? 0,
+      }));
+
+      const dismissed = new Set<string>(entity.dismissed_share_card_ids ?? []);
+      const earned = getEarnedCards(SHARE_CARD_CONCEPTS, { meals, dailyProteinTargetG: targetProteinG }).filter(
+        (c) => c.concept.category === "daily_win" && !dismissed.has(c.concept.id)
+      );
+      if (earned.length === 0) return "";
+
+      await db
+        .from(isAdults ? "adults_contacts" : "gym_clients")
+        .update({ last_share_card_prompt_at: new Date().toISOString() })
+        .eq("id", entityId);
+
+      return `\n\n🎉 Share card unlocked: ${earned[0].headline} View it in My Progress.`;
+    } catch (err) {
+      console.error("[whatsapp] checkDailyWinShareCardLine failed:", err instanceof Error ? err.message : err);
+      return "";
     }
   }
 
@@ -909,7 +961,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
       isClarificationResolution: opts.isClarificationResolution,
     });
-    await sendTextMessage(msg.from, autoSaveMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+    const shareCardLine = await checkDailyWinShareCardLine(targetProtein);
+    await sendTextMessage(msg.from, autoSaveMsg + shareCardLine + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
     await setConvState("idle", savedMealId ? { ...toPendingMeal(analysis, "saved"), savedMealId } : null);
   }
 

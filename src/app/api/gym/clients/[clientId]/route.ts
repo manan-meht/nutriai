@@ -6,6 +6,8 @@ import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile } from "@/lib/
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
 import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
+import { getEarnedCards, type ShareCardComponentScores } from "@/lib/share-cards/triggers";
+import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 
 export const runtime = "edge";
 
@@ -16,6 +18,36 @@ export const runtime = "edge";
 // previously only supported add.
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ clientId: string }> }) {
   const { clientId } = await params;
+
+  // "Don't show this one again" for a share card — see the identical
+  // handler in src/app/api/adults/contacts/[contactId]/route.ts.
+  if (new URL(request.url).searchParams.get("resource") === "share-card-dismiss") {
+    const body = await request.json().catch(() => null);
+    const conceptId: string | undefined = body?.conceptId;
+    if (!conceptId) return NextResponse.json({ error: "conceptId is required" }, { status: 400 });
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const { data: row } = await supabase
+      .from("gym_clients")
+      .select("dismissed_share_card_ids")
+      .eq("id", clientId)
+      .eq("trainer_id", user.id)
+      .maybeSingle();
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const next = Array.from(new Set([...(row.dismissed_share_card_ids ?? []), conceptId]));
+    const { error } = await supabase
+      .from("gym_clients")
+      .update({ dismissed_share_card_ids: next })
+      .eq("id", clientId)
+      .eq("trainer_id", user.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true });
+  }
+
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
@@ -54,7 +86,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: profileRow } = await supabase
     .from("gym_clients")
     .select(
-      "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg, dietary_profile"
+      "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg, dietary_profile, dismissed_share_card_ids"
     )
     .eq("id", clientId)
     .eq("trainer_id", user.id)
@@ -65,6 +97,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .select("displayed_score")
     .eq("contact_id", clientId)
     .eq("contact_type", "gym_client")
+    .order("calculated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // See src/app/api/adults/contacts/[contactId]/route.ts's identical
+  // comment — approximates "last week's" component scores for the
+  // improvement share-card concepts without a dedicated weekly-digest job.
+  const fiveDaysAgo = new Date();
+  fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+  const { data: priorWeekSnapshot } = await supabase
+    .from("food_balance_score_snapshots")
+    .select("component_scores_json")
+    .eq("contact_id", clientId)
+    .eq("contact_type", "gym_client")
+    .lte("calculated_at", fiveDaysAgo.toISOString())
     .order("calculated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -101,5 +148,45 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
   }
 
-  return NextResponse.json(result);
+  // Share cards ("Your wins") — see the identical block in
+  // src/app/api/adults/contacts/[contactId]/route.ts for the full
+  // rationale (folded in rather than a new route).
+  const componentScores: ShareCardComponentScores = {
+    macroAndFibreBalance: result.componentScores?.foodFoundation.macroAndFibreBalance.score ?? null,
+    fruitAndVegetableIntake: result.componentScores?.foodFoundation.fruitAndVegetableIntake.score ?? null,
+    homePreparedMealShare: result.componentScores?.foodFoundation.homePreparedMealShare.score ?? null,
+    minimallyProcessedFoodBalance: result.componentScores?.foodFoundation.minimallyProcessedFoodBalance.score ?? null,
+    proteinAdequacy: result.componentScores?.goalAlignment.proteinAdequacy?.score ?? null,
+    fibreAdequacy: result.componentScores?.goalAlignment.fibreAdequacy?.score ?? null,
+    goalAlignmentScore: result.goalAlignmentScore,
+  };
+  const priorComponentScores = priorWeekSnapshot?.component_scores_json as
+    | { foodFoundation?: Record<string, { score: number | null }>; goalAlignment?: Record<string, { score: number | null }> }
+    | undefined;
+  const previousWeekComponentScores: ShareCardComponentScores | undefined = priorComponentScores
+    ? {
+        macroAndFibreBalance: priorComponentScores.foodFoundation?.macroAndFibreBalance?.score ?? null,
+        fruitAndVegetableIntake: priorComponentScores.foodFoundation?.fruitAndVegetableIntake?.score ?? null,
+        homePreparedMealShare: priorComponentScores.foodFoundation?.homePreparedMealShare?.score ?? null,
+        minimallyProcessedFoodBalance: priorComponentScores.foodFoundation?.minimallyProcessedFoodBalance?.score ?? null,
+      }
+    : undefined;
+
+  const dismissedIds = new Set(profileRow?.dismissed_share_card_ids ?? []);
+  const earnedShareCards = getEarnedCards(SHARE_CARD_CONCEPTS, {
+    meals: details.meals.map((m) => ({
+      loggedAt: m.loggedAt,
+      mealType: m.mealType,
+      totalProteinMin: m.totalProteinMin,
+      totalProteinMax: m.totalProteinMax,
+      totalFiberMin: m.totalFiberMin,
+      totalFiberMax: m.totalFiberMax,
+    })),
+    componentScores,
+    previousWeekComponentScores,
+    distinctLoggingDaysThisWeek: result.dataCoverage.distinctLoggingDays,
+    totalMealsAllTime: details.meals.length,
+  }).filter((c) => !dismissedIds.has(c.concept.id));
+
+  return NextResponse.json({ ...result, earnedShareCards });
 }
