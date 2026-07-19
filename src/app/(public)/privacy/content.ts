@@ -1,7 +1,16 @@
+// Bump this whenever PRIVACY_SECTIONS changes — Play/App Store reviewers
+// and users both rely on this to know the policy is current, not stale.
+export const PRIVACY_LAST_UPDATED = "July 19, 2026";
+
 export interface PrivacyBlock {
-  type: "p" | "ul";
+  type: "p" | "ul" | "p-link";
   text?: string;
   items?: string[];
+  /** "p-link" only — an inline link appended after `text`, e.g. the
+   * dedicated account-deletion page (see Google Play's Data Deletion
+   * requirement, which expects this reachable outside the app too). */
+  linkHref?: string;
+  linkLabel?: string;
 }
 
 export interface PrivacySection {
@@ -12,6 +21,12 @@ export interface PrivacySection {
 
 const p = (text: string): PrivacyBlock => ({ type: "p", text });
 const ul = (items: string[]): PrivacyBlock => ({ type: "ul", items });
+const pLink = (text: string, linkHref: string, linkLabel: string): PrivacyBlock => ({
+  type: "p-link",
+  text,
+  linkHref,
+  linkLabel,
+});
 
 // Plain-language privacy policy, written to be clear and responsible rather
 // than exhaustive legal drafting — intended for legal review before launch,
@@ -93,6 +108,7 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
     heading: "Data deletion and export",
     blocks: [
       p("You can request deletion of your data, or request access to / export of the data Tistra holds about you, by contacting us using the details in the Contact section below. We will respond within a reasonable timeframe and explain any limits (for example, data we're required to retain for legal or accounting reasons)."),
+      pLink("For step-by-step instructions on requesting account deletion, see our", "/delete-account", "Delete Your Account page"),
     ],
   },
   {

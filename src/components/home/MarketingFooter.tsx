@@ -59,6 +59,10 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
               Privacy Policy
             </Link>
             <span aria-hidden="true">·</span>
+            <Link href="/delete-account" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Delete Account
+            </Link>
+            <span aria-hidden="true">·</span>
             <Link href="/feedback" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
               Feedback
             </Link>

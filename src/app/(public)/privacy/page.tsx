@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { PRIVACY_SECTIONS } from "./content";
+import { PRIVACY_SECTIONS, PRIVACY_LAST_UPDATED } from "./content";
 
 export function generateMetadata(): Metadata {
   return {
@@ -22,9 +22,10 @@ export default function PrivacyPage() {
 
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-10">
+        <p className="text-sm text-gray-500 mb-1">
           This policy explains, in plain language, what data Tistra Health collects and how it&apos;s used.
         </p>
+        <p className="text-sm text-gray-500 mb-10">Last updated: {PRIVACY_LAST_UPDATED}</p>
 
         <div className="space-y-6 text-gray-700 leading-relaxed">
           <p>
@@ -46,8 +47,19 @@ export default function PrivacyPage() {
                 {section.number}. {section.heading}
               </h2>
               <div className="space-y-4 text-gray-700 leading-relaxed">
-                {section.blocks.map((block, i) =>
-                  block.type === "p" ? (
+                {section.blocks.map((block, i) => {
+                  if (block.type === "p-link") {
+                    return (
+                      <p key={i}>
+                        {block.text}{" "}
+                        <a href={block.linkHref} className="text-[#6750A4] hover:underline">
+                          {block.linkLabel}
+                        </a>
+                        .
+                      </p>
+                    );
+                  }
+                  return block.type === "p" ? (
                     <p key={i}>{block.text}</p>
                   ) : (
                     <ul key={i} className="list-disc pl-6 space-y-2">
@@ -55,8 +67,8 @@ export default function PrivacyPage() {
                         <li key={j}>{item}</li>
                       ))}
                     </ul>
-                  )
-                )}
+                  );
+                })}
               </div>
             </section>
           ))}
@@ -73,11 +85,8 @@ export default function PrivacyPage() {
                 Singapore 068914
                 <br />
                 Email:{" "}
-                {/* TODO: privacy@tistrahealth.com is not yet a configured mailbox — swap for
-                    the real privacy contact address once one exists, or keep routing to
-                    the existing support inbox below if that's the intended long-term setup. */}
-                <a href="mailto:privacy@tistrahealth.com" className="text-[#6750A4] hover:underline">
-                  privacy@tistrahealth.com
+                <a href="mailto:tistrahealth@gmail.com" className="text-[#6750A4] hover:underline">
+                  tistrahealth@gmail.com
                 </a>
               </p>
             </div>
