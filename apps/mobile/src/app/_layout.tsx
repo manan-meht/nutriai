@@ -1,9 +1,11 @@
+import { useEffect, useRef } from 'react';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { configurePurchases, logOutPurchases } from '@/lib/purchases';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,6 +31,24 @@ export default function RootLayout() {
 // anchor route" instead of leaving orphaned state around.
 function RootNavigator() {
   const { session, loading } = useAuth();
+  const configuredUserId = useRef<string | null>(null);
+
+  // Configures RevenueCat's SDK identity to the Supabase auth user id (see
+  // lib/purchases.ts) as soon as a session exists, and tears it down on
+  // sign-out — keyed on user id rather than session object identity since
+  // a token refresh produces a new Session but the same user.
+  useEffect(() => {
+    const userId = session?.user.id ?? null;
+    if (userId) {
+      if (configuredUserId.current !== userId) {
+        configuredUserId.current = userId;
+        configurePurchases(userId);
+      }
+    } else if (configuredUserId.current) {
+      configuredUserId.current = null;
+      logOutPurchases();
+    }
+  }, [session?.user.id]);
 
   // Keep the native splash screen up (see AnimatedSplashOverlay) rather
   // than flashing the login screen for a moment while the stored session

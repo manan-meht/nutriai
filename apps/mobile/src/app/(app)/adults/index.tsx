@@ -16,7 +16,12 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; contacts: AdultsContact[] };
+  | { status: 'ready'; contacts: AdultsContact[] }
+  // Trial/subscription lapsed and no active RevenueCat entitlement — see
+  // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
+  // enforcement rule (mobile-api's lib/entitlements.ts), same computation
+  // the web dashboard uses.
+  | { status: 'subscription_required' };
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
   self: 'You',
@@ -40,9 +45,14 @@ export default function AdultsContactListScreen() {
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
-    return api
-      .getAdultsContacts()
-      .then(({ contacts }) => setState({ status: 'ready', contacts }))
+    return Promise.all([api.getAdultsContacts(), api.getAdultsWorkspace()])
+      .then(([{ contacts }, { entitlement }]) => {
+        if (entitlement.isReadOnly) {
+          setState({ status: 'subscription_required' });
+        } else {
+          setState({ status: 'ready', contacts });
+        }
+      })
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contacts.' })
       );
@@ -60,6 +70,15 @@ export default function AdultsContactListScreen() {
 
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
+  if (state.status === 'subscription_required') {
+    return (
+      <EmptyState
+        title="Subscription needed"
+        message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
+        action={{ label: 'Subscribe', onPress: () => router.push('/adults/paywall') }}
+      />
+    );
+  }
 
   const firstName = session?.user.user_metadata?.full_name?.split(' ')[0] ?? firstNameFromSession(session?.user.email);
 

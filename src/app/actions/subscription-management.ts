@@ -4,8 +4,11 @@ import { headers } from "next/headers";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { EntitlementModule } from "@/lib/entitlements/entitlements";
 import { applyProviderSubscriptionSnapshot } from "@/lib/entitlements/entitlements";
-import { getProviderByName } from "@/lib/billing/provider-registry";
+import { getProviderByName, isStoreManagedProvider } from "@/lib/billing/provider-registry";
 import type { PaymentProviderName } from "@/lib/billing/provider";
+
+const STORE_MANAGED_MESSAGE =
+  "This subscription was purchased through the App Store/Play Store — manage or cancel it from your phone's subscription settings, not here.";
 
 async function getOwnedEntitlementRow(module: EntitlementModule) {
   const supabase = await createClient();
@@ -30,6 +33,10 @@ async function getOwnedEntitlementRow(module: EntitlementModule) {
 export async function refreshPaymentStatus(module: EntitlementModule): Promise<void> {
   const entitlement = await getOwnedEntitlementRow(module);
   if (!entitlement.payment_provider || !entitlement.provider_subscription_id) return;
+  // Store subscriptions are only ever refreshed by the RevenueCat webhook
+  // (it's the authoritative source, see revenuecat.ts) — there's no
+  // provider.retrieveSubscription() equivalent to call here.
+  if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) return;
 
   const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const snapshot = await provider.retrieveSubscription(entitlement.provider_subscription_id);
@@ -50,6 +57,9 @@ export async function cancelSubscription(module: EntitlementModule, atPeriodEnd 
   if (!entitlement.payment_provider || !entitlement.provider_subscription_id) {
     throw new Error("No active subscription to cancel");
   }
+  if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) {
+    throw new Error(STORE_MANAGED_MESSAGE);
+  }
   const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
   await provider.cancelSubscription(entitlement.provider_subscription_id, atPeriodEnd);
   await refreshPaymentStatus(module);
@@ -59,6 +69,9 @@ export async function reactivateSubscription(module: EntitlementModule): Promise
   const entitlement = await getOwnedEntitlementRow(module);
   if (!entitlement.payment_provider || !entitlement.provider_subscription_id) {
     throw new Error("No subscription to reactivate");
+  }
+  if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) {
+    throw new Error(STORE_MANAGED_MESSAGE);
   }
   const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const reactivated = await provider.reactivateSubscription(entitlement.provider_subscription_id);
@@ -72,6 +85,10 @@ export async function reactivateSubscription(module: EntitlementModule): Promise
 export async function openBillingPortal(module: EntitlementModule): Promise<string | null> {
   const entitlement = await getOwnedEntitlementRow(module);
   if (!entitlement.payment_provider || !entitlement.provider_customer_id) return null;
+  // No hosted billing portal equivalent for store subscriptions — callers
+  // should fall back to in-app management, same as the existing Razorpay
+  // (null) case this function's own doc comment already describes.
+  if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) return null;
 
   const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const headerStore = await headers();

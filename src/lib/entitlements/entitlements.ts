@@ -177,6 +177,29 @@ export async function findEntitlementByProviderCustomerId(
 }
 
 /**
+ * Resolves an entitlement row by owner — used by the RevenueCat webhook
+ * (see src/lib/billing/revenuecat.ts), which identifies a subscriber by
+ * `app_user_id`, configured client-side (mobile app) to always be the
+ * Supabase auth user id. That's exactly `entitlements.owner_id`, so unlike
+ * Stripe/Razorpay this needs no provider_subscription_id/provider_customer_id
+ * resolution step — the identity is already known at purchase time.
+ */
+export async function findEntitlementByOwner(
+  ownerId: string,
+  module: EntitlementModule
+): Promise<{ workspaceId: string; module: EntitlementModule } | null> {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("entitlements")
+    .select("workspace_id, module")
+    .eq("owner_id", ownerId)
+    .eq("module", module)
+    .maybeSingle();
+  if (!data) return null;
+  return { workspaceId: data.workspace_id, module: data.module };
+}
+
+/**
  * Applies a verified provider subscription snapshot (from a webhook) to the
  * entitlement row. This is the ONLY path that activates/updates paid
  * status — never a browser redirect. Idempotent: applying the same

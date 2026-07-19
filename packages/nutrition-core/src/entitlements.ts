@@ -9,7 +9,13 @@ export type EntitlementStatus =
   | "past_due"
   | "cancel_at_period_end"
   | "expired"
-  | "cancelled";
+  | "cancelled"
+  // Apple/Google Play billing-retry state (via RevenueCat) — the store is
+  // still retrying a failed payment and the subscriber keeps access in the
+  // meantime. Same "still active despite a payment problem" semantics as
+  // past_due; kept as its own value (rather than reusing past_due) so
+  // in-app copy can name the store-billing-retry concept accurately.
+  | "grace_period";
 
 interface EntitlementRow {
   status: EntitlementStatus;

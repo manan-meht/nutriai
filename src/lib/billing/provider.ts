@@ -1,7 +1,15 @@
 import type { BillingModule, BillingInterval, BillingMarket } from "./pricing";
 import type { EntitlementStatus } from "@/lib/entitlements/entitlements";
 
-export type PaymentProviderName = "stripe" | "razorpay";
+// "apple"/"google_play" are store-billing providers reached only via
+// RevenueCat (see src/lib/billing/revenuecat.ts) — purchases happen
+// in-app through the RevenueCat SDK, never a hosted checkout redirect, so
+// these two never implement the PaymentProvider interface below
+// (createCheckoutSession etc. don't apply). They exist here purely as
+// values for the entitlements.payment_provider column and
+// ProviderSubscriptionSnapshot's provider tag, reusing the same
+// apply/lookup pipeline stripe/razorpay use.
+export type PaymentProviderName = "stripe" | "razorpay" | "apple" | "google_play";
 
 export interface CheckoutParams {
   workspaceId: string;
