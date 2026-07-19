@@ -294,6 +294,17 @@ interface PendingMeal extends FoodAnalysisResult {
 
 const RECENT_SAVE_WINDOW_MS = 60 * 60 * 1000; // a correction after this long is treated as a new meal, not an edit
 
+// A follow-up text within this long of the save is assumed to be about
+// the same photographed meal (e.g. "that was papaya and pomegranate," "boiled
+// egg also") and inherits its photo — see the "idle + recentlySaved"
+// free-text-correction branch below. Deliberately narrower than
+// RECENT_SAVE_WINDOW_MS (which only decides "edit vs. new meal" and stays
+// at an hour): losing a real photo on a same-meal correction (the
+// previous, safer default) turned out to be the more common and more
+// costly failure than the rare case of a genuinely new, unrelated
+// text-only meal arriving within 30 minutes of the last save.
+const PHOTO_INHERIT_WINDOW_MS = 30 * 60 * 1000;
+
 // A lock this old is treated as abandoned (e.g. the function that claimed it
 // crashed or timed out mid-analysis) rather than a genuinely in-flight
 // message, so a new message isn't locked out forever.
@@ -985,11 +996,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     // clarification, resolving a contradiction check, replying inside
     // awaiting_edit_or_undo/awaiting_skip_or_correction/
     // awaiting_confirmation) — inheriting its photo is correct there. That
-    // one shortcut is ambiguous: recentlySaved just means a meal was
-    // saved a moment ago, not that this new text is about the same meal
-    // (it could be a brand-new, unrelated meal logged by text), so it
-    // opts out via inheritPhoto: false. Mirrors the isCorrecting gate in
-    // the image/text branches below.
+    // shortcut is the ambiguous one (recentlySaved just means a meal was
+    // saved a moment ago, not that this new text is necessarily about the
+    // same meal) — its caller passes an explicit inheritPhoto based on
+    // PHOTO_INHERIT_WINDOW_MS: within ~30 minutes of the save, a follow-up
+    // text is assumed to be about the same photographed meal and inherits
+    // it; past that window it's treated as a likely-unrelated new meal and
+    // doesn't. Mirrors the isCorrecting gate in the image/text branches
+    // below.
     const inheritPhoto = opts.inheritPhoto ?? true;
 
     if (previous) {
@@ -1290,7 +1304,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
   if (state === "idle" && recentlySaved && msg.type === "text" && text && !isGreeting(text)) {
     try {
-      await runFreeTextCorrection(text, pendingMeal, { inheritPhoto: false });
+      const withinPhotoInheritWindow =
+        !!pendingMeal && Date.now() - new Date(pendingMeal.updatedAt).getTime() < PHOTO_INHERIT_WINDOW_MS;
+      await runFreeTextCorrection(text, pendingMeal, { inheritPhoto: withinPhotoInheritWindow });
     } catch {
       await sendTextMessage(msg.from, isAdults ? "I couldn't update that — could you rephrase?" : "Couldn't update that — could you rephrase?");
       await setConvState("idle", pendingMeal);

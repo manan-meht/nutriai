@@ -1,19 +1,27 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import type { MealShareData } from "@/lib/meal-share/types";
+import { MealShareModal } from "./MealShareModal";
 
 interface MealPhotoModalProps {
   url: string;
   label: string;
   onClose: () => void;
+  /** When present, shows a "Share this meal" action that opens
+   * MealShareModal — omitted by callers that don't have macro data handy
+   * for this photo, in which case the modal is just a plain lightbox. */
+  shareData?: MealShareData | null;
 }
 
 /** Full-screen lightbox for a meal photo — shared by the adults and gym
  * dashboards' "Recent meals" section (see ContactDashboard.tsx/
  * ClientDashboard.tsx). Tapping the small thumbnail in the list opens this
  * instead of navigating away. */
-export function MealPhotoModal({ url, label, onClose }: MealPhotoModalProps) {
+export function MealPhotoModal({ url, label, onClose, shareData }: MealPhotoModalProps) {
+  const [sharing, setSharing] = useState(false);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -23,7 +31,7 @@ export function MealPhotoModal({ url, label, onClose }: MealPhotoModalProps) {
   }, [onClose]);
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <button
         onClick={onClose}
         className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl leading-none"
@@ -36,8 +44,20 @@ export function MealPhotoModal({ url, label, onClose }: MealPhotoModalProps) {
         src={url}
         alt={`${label} photo`}
         onClick={(e) => e.stopPropagation()}
-        className="max-w-full max-h-full rounded-2xl object-contain"
+        className="max-w-full max-h-[80vh] rounded-2xl object-contain"
       />
+      {shareData && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setSharing(true);
+          }}
+          className="mt-4 rounded-lg bg-[#6750A4] text-white px-5 py-2 text-sm font-semibold hover:opacity-90"
+        >
+          Share this meal
+        </button>
+      )}
+      {sharing && shareData && <MealShareModal meal={shareData} onClose={() => setSharing(false)} />}
     </div>,
     document.body
   );

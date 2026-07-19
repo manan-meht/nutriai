@@ -19,6 +19,7 @@ import { ShareCardsDashboardSection } from "@/components/shared/dashboard/ShareC
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 import { MealPhotoModal } from "@/components/shared/dashboard/MealPhotoModal";
+import { buildMealShareData, type MealShareData } from "@/lib/meal-share/types";
 import { ProgressInsights } from "@/components/shared/ProgressInsights";
 import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
@@ -105,7 +106,7 @@ export function ProfileDashboard({
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
-  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string } | null>(null);
+  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; shareData: MealShareData | null } | null>(null);
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
@@ -305,7 +306,7 @@ export function ProfileDashboard({
                       <img
                         src={meal.imageUrl}
                         alt={`${meal.mealType} photo`}
-                        onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType })}
+                        onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType, shareData: buildMealShareData(meal) })}
                         className="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
                       />
                     ) : (
@@ -354,7 +355,12 @@ export function ProfileDashboard({
       </main>
 
       {modalPhoto && permissions.canViewMealPhotos && (
-        <MealPhotoModal url={modalPhoto.url} label={modalPhoto.label} onClose={() => setModalPhoto(null)} />
+        <MealPhotoModal
+          url={modalPhoto.url}
+          label={modalPhoto.label}
+          shareData={modalPhoto.shareData}
+          onClose={() => setModalPhoto(null)}
+        />
       )}
     </div>
   );
