@@ -789,10 +789,16 @@ function foodLines(analysis: FoodAnalysisResult): string {
     .join("\n");
 }
 
-function avgProtein(a: FoodAnalysisResult) {
+// Exported so the WhatsApp conversation handler can add a just-saved meal's
+// own macros onto a pre-fetch of the day's prior totals (see
+// conversation-handler.ts's saveMeal call sites) — a Supabase read
+// immediately after a write isn't guaranteed to observe that write (pooled
+// connections/read replicas), so "Today so far" is computed by adding this
+// meal's numbers in-memory rather than re-querying meal_logs after insert.
+export function avgProtein(a: FoodAnalysisResult) {
   return Math.round((a.total_protein_min + a.total_protein_max) / 2);
 }
-function avgCal(a: FoodAnalysisResult) {
+export function avgCal(a: FoodAnalysisResult) {
   return Math.round((a.total_calories_min + a.total_calories_max) / 2);
 }
 

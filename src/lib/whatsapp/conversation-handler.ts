@@ -15,6 +15,8 @@ import {
   pickUndoAck,
   resolveMealLabel,
   formatMealLabel,
+  avgProtein,
+  avgCal,
   FoodAnalysisResult,
   MealType,
 } from "@/lib/ai/food-analyzer";
@@ -628,6 +630,21 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
   }
 
+  /** Adds a just-saved meal's own macros onto a totals snapshot fetched
+   * *before* that meal was inserted — used instead of re-querying
+   * meal_logs right after an insert, since a Supabase read immediately
+   * following a write on this connection isn't guaranteed to observe it
+   * (pooled connections/read replicas can lag by a request or two). That
+   * lag was showing up as "Today so far" staying frozen at the previous
+   * meal's totals right after saving a new one. */
+  function addMealToTotals(
+    totals: { protein: number; calories: number } | null,
+    analysis: FoodAnalysisResult
+  ): { protein: number; calories: number } | null {
+    if (!totals) return null;
+    return { protein: totals.protein + avgProtein(analysis), calories: totals.calories + avgCal(analysis) };
+  }
+
   /** "End of day achievement moment" (see share-cards feature spec) —
    * after a meal save completes a daily win (protein goal, balanced day,
    * etc.), append a short unlock line to the confirmation message. Rate-
@@ -963,8 +980,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
 
+    const priorTotals = await getDailyTotals();
     const savedMealId = await saveMeal(analysis, resolvedLabel);
-    const dailyTotals = await getDailyTotals();
+    const dailyTotals = addMealToTotals(priorTotals, analysis);
     const autoSaveMsg = buildAutoSaveMessage(analysis, resolvedLabel, decision, {
       seed,
       dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
@@ -1441,8 +1459,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (state === "awaiting_correction_confirmation") {
     if (isAffirmative(text) && pendingMeal) {
       const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
+      const priorTotals = await getDailyTotals();
       const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
-      const dailyTotals = await getDailyTotals();
+      const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
       const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
         seed,
         dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
@@ -1509,8 +1528,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (isAffirmative(text)) {
       if (pendingMeal) {
         const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
+        const priorTotals = await getDailyTotals();
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
-        const dailyTotals = await getDailyTotals();
+        const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
           seed,
           dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
@@ -1545,8 +1565,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (intent === "confirm") {
       if (pendingMeal) {
         const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
+        const priorTotals = await getDailyTotals();
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
-        const dailyTotals = await getDailyTotals();
+        const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
           seed,
           dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,

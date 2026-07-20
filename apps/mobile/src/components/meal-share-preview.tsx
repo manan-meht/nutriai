@@ -41,7 +41,11 @@ export const MealSharePreview = forwardRef<View, { meal: MealShareData; enhanced
           boxed sticker, so it reads as editorial type on the photo. */}
       {captionText ? (
         <View style={styles.captionWrap} pointerEvents="none">
-          <Text style={styles.captionText} numberOfLines={2}>
+          {/* adjustsFontSizeToFit shrinks the caption rather than clipping
+              it — numberOfLines alone could silently drop a wrapped word
+              (e.g. "Main character meal" losing "meal") if the text needed
+              a 3rd line at the base font size. */}
+          <Text style={styles.captionText} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
             {captionText}
           </Text>
         </View>

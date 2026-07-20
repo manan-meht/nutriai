@@ -52,28 +52,37 @@ export function MealShareModal({
     : 'unknown';
   const derivedCategories = useMemo(() => (meal ? deriveMealShareCategories(meal) : []), [meal]);
 
-  const [suggestions, setSuggestions] = useState(() =>
-    meal ? suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship }, 8) : []
-  );
+  const [suggestions, setSuggestions] = useState<ReturnType<typeof suggestOverlayTexts>>([]);
+  const [selected, setSelected] = useState<{ id: string; text: string } | null>(null);
 
-  // The single highest-relevance suggestion is applied immediately — "Show
-  // other captions" below reveals the full tab/shuffle/custom picker.
-  const topSuggestion = suggestions[0] ?? null;
-  const [selected, setSelected] = useState<{ id: string; text: string } | null>(
-    topSuggestion ? { id: topSuggestion.id, text: topSuggestion.text } : null
-  );
-
+  // This modal stays mounted across opens (the caller toggles `visible`
+  // rather than conditionally rendering it), so a plain useState lazy
+  // initializer would only ever run once — against the first `meal` value
+  // (often null, before anything was ever shared) — and never again. That
+  // was why "Suggested" showed no caption at all: the top suggestion was
+  // computed once against a null meal and then never recomputed. Recompute
+  // whenever a genuinely different meal is being shared instead, keyed off
+  // a stable identity (loggedAt+imageUrl) rather than the `meal` object
+  // itself, since the caller rebuilds that object on every render.
   useEffect(() => {
-    if (topSuggestion) {
+    if (!meal) return;
+    setPickerExpanded(false);
+    setActiveTab('suggested');
+    setCustomText('');
+    const initial = suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship }, 8);
+    setSuggestions(initial);
+    const top = initial[0] ?? null;
+    setSelected(top ? { id: top.id, text: top.text } : null);
+    if (top) {
       trackShareOverlayTextEvent('share_overlay_text_selected', {
-        text_id: topSuggestion.id,
-        category: topSuggestion.category,
+        text_id: top.id,
+        category: top.category,
         meal_type: mealType,
         audience,
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once for the auto-applied top suggestion, not on every re-render
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on meal identity, not the whole (re-created-per-render) meal/derivedCategories objects
+  }, [meal?.loggedAt, meal?.imageUrl]);
 
   if (!meal) return null;
 
@@ -234,7 +243,12 @@ export function MealShareModal({
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  scrollContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  // No justifyContent: 'center' here — on a ScrollView, centering content
+  // that's taller than the viewport (e.g. once a category tab's full list
+  // of suggestions expands the picker) pushes the top out of view and can
+  // visually collide with content behind the modal. Top-aligned content
+  // stays properly stacked and reachable via scroll regardless of height.
+  scrollContent: { flexGrow: 1, alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   cardWrap: { alignItems: 'center', marginBottom: 16 },
   enhanceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 14 },
   enhanceLabel: { color: '#ffffff', fontSize: 12, fontWeight: '500' },
