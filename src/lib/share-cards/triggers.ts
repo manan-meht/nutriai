@@ -16,12 +16,21 @@ import type { EarnedShareCard, ShareCardConcept, ShareCardFormat } from "./types
 // the relevant optional input; nothing throws or crashes for them.
 
 export interface ShareCardMealInput {
+  id?: string;
   loggedAt: string;
   mealType?: string;
   totalProteinMin: number;
   totalProteinMax: number;
   totalFiberMin: number;
   totalFiberMax: number;
+  /** The following are optional, additive fields used only for picking
+   * relevant background photos for an earned card (see
+   * selectSharePhotos below) — every existing trigger evaluation above
+   * ignores them entirely, so passing them is never required for a
+   * concept to earn. */
+  imageUrl?: string;
+  homeCookedLikelihood?: "high" | "medium" | "low" | "unknown";
+  hasVegetableOrFruit?: boolean;
 }
 
 /** Subset of FoodBalanceComponentScores actually used for triggers — all
@@ -307,6 +316,70 @@ export function evaluateTrigger(triggerKey: string, input: ShareCardEvaluationIn
   }
 }
 
+/** Category-specific relevance filters, keyed by triggerKey — only used to
+ * narrow down which of the in-window meals are shown as a card's
+ * background photos (see selectSharePhotos below). Concepts with no entry
+ * here just use every in-window meal with a photo (no narrower signal
+ * makes sense for them, e.g. "logged all meals today" or the weekly
+ * streak concepts). Thresholds are intentionally loose "does this meal
+ * look like the achievement" heuristics, not exact score computations. */
+const PHOTO_RELEVANCE_FILTERS: Partial<Record<string, (m: ShareCardMealInput) => boolean>> = {
+  home_cooked_win: (m) => m.homeCookedLikelihood === "high",
+  home_cooked_momentum: (m) => m.homeCookedLikelihood === "high",
+  protein_goal_hit_today: (m) => estimate(m.totalProteinMin, m.totalProteinMax) >= 15,
+  protein_all_week: (m) => estimate(m.totalProteinMin, m.totalProteinMax) >= 15,
+  more_protein_than_last_week: (m) => estimate(m.totalProteinMin, m.totalProteinMax) >= 15,
+  fiber_win_today: (m) => Boolean(m.hasVegetableOrFruit) || estimate(m.totalFiberMin, m.totalFiberMax) >= 5,
+  fiber_friend_week: (m) => Boolean(m.hasVegetableOrFruit) || estimate(m.totalFiberMin, m.totalFiberMax) >= 5,
+  more_fiber_than_last_week: (m) => Boolean(m.hasVegetableOrFruit) || estimate(m.totalFiberMin, m.totalFiberMax) >= 5,
+  fruit_veg_win_today: (m) => Boolean(m.hasVegetableOrFruit),
+  more_color_this_week: (m) => Boolean(m.hasVegetableOrFruit),
+};
+
+const MAX_SHARE_PHOTOS = 4;
+
+/** Picks up to `maxPhotos` real meal-photo URLs relevant to an earned
+ * card, most recent first. Window is "today" for daily_win concepts and
+ * the trailing 7 days for everything else (personality_badge concepts are
+ * multi-week aggregates with no natural "which meals" answer, so they
+ * never get photos). Falls back from the category-specific relevance
+ * filter to "any in-window meal with a photo" when the filter would
+ * otherwise leave zero photos, so a card is never left bare just because
+ * e.g. home-cooked detection missed a meal — better a loosely-relevant
+ * photo than none. At most one photo per distinct day for weekly
+ * concepts, so a 4-photo grid shows variety across the week rather than
+ * four meals from the same day. */
+export function selectSharePhotos(
+  concept: Pick<ShareCardConcept, "category" | "triggerKey">,
+  meals: ShareCardMealInput[],
+  now: Date = new Date(),
+  maxPhotos: number = MAX_SHARE_PHOTOS
+): string[] {
+  if (concept.category === "personality_badge") return [];
+
+  const windowDays = concept.category === "daily_win" ? 1 : 7;
+  const cutoff = startOfDay(now) - (windowDays - 1) * 86400000;
+  const inWindow = meals.filter((m) => new Date(m.loggedAt).getTime() >= cutoff && Boolean(m.imageUrl));
+  if (inWindow.length === 0) return [];
+
+  const relevanceFilter = PHOTO_RELEVANCE_FILTERS[concept.triggerKey];
+  const filtered = relevanceFilter ? inWindow.filter(relevanceFilter) : inWindow;
+  const candidates = filtered.length > 0 ? filtered : inWindow;
+
+  const sorted = [...candidates].sort((a, b) => new Date(b.loggedAt).getTime() - new Date(a.loggedAt).getTime());
+
+  const seenDays = new Set<string>();
+  const picked: string[] = [];
+  for (const meal of sorted) {
+    const dayKey = meal.loggedAt.slice(0, 10);
+    if (seenDays.has(dayKey)) continue;
+    seenDays.add(dayKey);
+    picked.push(meal.imageUrl!);
+    if (picked.length >= maxPhotos) break;
+  }
+  return picked;
+}
+
 /** Deterministic-but-rotating copy pick so the same card doesn't show
  * identical text every time it's earned (spec: "Do not repeatedly show
  * the same card every day"). Seeded off the calendar day so it's stable
@@ -338,6 +411,8 @@ export function getEarnedCards(
       ? concept.lowConfidenceFallback
       : pickCardCopy(concept.supportingTextOptions, seed);
 
+    const photoUrls = selectSharePhotos(concept, input.meals, now);
+
     earned.push({
       concept,
       earnedAt: now.toISOString(),
@@ -346,6 +421,7 @@ export function getEarnedCards(
       stat: result.stat,
       isLowConfidence: Boolean(result.isLowConfidence),
       format: options?.format ?? concept.defaultFormat,
+      photoUrls: photoUrls.length > 0 ? photoUrls : undefined,
     });
   }
 

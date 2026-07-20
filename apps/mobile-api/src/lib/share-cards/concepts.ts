@@ -46,7 +46,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Protein Goal Hit Today",
     headlineOptions: ["Protein? Handled.", "You understood the assignment: protein.", "Today's meals said: we lift."],
     supportingTextOptions: [
-      "You hit your protein goal today.",
+      "Protein goal hit today.",
       "Protein showed up in a big way today.",
       "Today's meals kept protein in the picture.",
     ],
@@ -72,7 +72,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
       "Today's meals were suspiciously responsible.",
     ],
     supportingTextOptions: [
-      "Your meals today had real balance.",
+      "Today's meals had real balance.",
       "Today's plate covered all the bases.",
       "A well-rounded day of eating, logged and all.",
     ],
@@ -99,7 +99,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     ],
     supportingTextOptions: [
       "Every meal today, logged.",
-      "You kept track of the whole day.",
+      "Kept track of the whole day.",
       "Full daily log, no meals skipped.",
     ],
     triggerDescription: "User logs their target number of meals for the day.",
@@ -112,7 +112,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     visualDirection: "Small stack of receipt-like cards/tickets with a checkmark, playful clipboard motif.",
     nanoBananaPrompt: nanoBananaPrompt("a fully logged day of meals", "a notepad, checkmarks, breakfast, lunch and dinner plates"),
     shareCta: "Share this win",
-    lowConfidenceFallback: "You logged meals consistently today.",
+    lowConfidenceFallback: "Logged meals consistently today.",
   },
   {
     id: "fiber-win-today",
@@ -121,7 +121,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     headlineOptions: ["Fiber entered the chat.", "Your gut would probably send a thank-you note.", "A fiber moment. We love to see it."],
     supportingTextOptions: [
       "Today's meals brought the fiber.",
-      "You added real fiber today.",
+      "Added real fiber today.",
       "Fiber had a good day today.",
     ],
     triggerDescription: "User reaches their fiber target for today or logs enough fiber-rich foods.",
@@ -144,7 +144,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     supportingTextOptions: [
       "Fruits and vegetables showed up today.",
       "Today's meals had real color.",
-      "You brought the produce today.",
+      "Brought the produce today.",
     ],
     // TODO: precise per-meal fruit/vegetable detection needs food-group
     // tagging on each logged meal (see FoodBalanceMealInput.foodGroups in
@@ -170,7 +170,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Home-Cooked Win",
     headlineOptions: ["Chef energy: activated.", "Home-cooked and quietly powerful.", "Kitchen: used. Balance: improved."],
     supportingTextOptions: [
-      "You cooked at home today.",
+      "Cooked at home today.",
       "Today's meals came from your own kitchen.",
       "Home-cooked meals showed up today.",
     ],
@@ -224,8 +224,8 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Meal Correction Hero",
     headlineOptions: ["Corrected the AI like a pro.", "Nutrition accuracy department: you.", "The bot guessed. You knew better."],
     supportingTextOptions: [
-      "You corrected a meal today — thanks for the accuracy assist.",
-      "You helped Tistra get a meal right today.",
+      "Corrected a meal today — accuracy assist, unlocked.",
+      "Helped Tistra get a meal right today.",
       "A quick correction, a more accurate log.",
     ],
     // TODO: needs an event feed of correction actions (a "meal corrected"
@@ -249,9 +249,9 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "First Meal Logged",
     headlineOptions: ["First meal logged. Tiny win, real momentum.", "And so the food story begins.", "One meal down. We're officially doing this."],
     supportingTextOptions: [
-      "Your very first meal is logged.",
+      "The very first meal is logged.",
       "The first entry in your food story.",
-      "You just logged your first meal ever.",
+      "First meal ever, logged.",
     ],
     triggerDescription: "User logs their first meal ever (all-time meal count reaches 1).",
     triggerKey: "first_meal_logged",
@@ -270,7 +270,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "First Balanced Meal",
     headlineOptions: ["First balanced meal unlocked.", "Protein, carbs, fats, fiber: assembled.", "Your plate formed a functional team."],
     supportingTextOptions: [
-      "Your first balanced meal, logged.",
+      "First balanced meal, logged.",
       "A meal with everything it needed.",
       "First balanced plate in the books.",
     ],
@@ -296,9 +296,9 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "5-Day Logging Week",
     headlineOptions: ["5 days of showing up.", "Not perfect. Very real. Very useful.", "Consistency has entered the building."],
     supportingTextOptions: [
-      "You logged meals on 5 days this week.",
+      "Logged meals on 5 days this week.",
       "5 days of consistency this week.",
-      "You showed up 5 days this week.",
+      "Showed up 5 days this week.",
     ],
     triggerDescription: "User logs meals on at least 5 distinct days in the trailing 7-day window.",
     triggerKey: "five_day_logging_week",
@@ -317,7 +317,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "7-Day Logging Streak",
     headlineOptions: ["7 days. Still showing up.", "One full week of consistency. Slightly iconic.", "A week of receipts. Respect."],
     supportingTextOptions: [
-      "You logged meals every day this week.",
+      "Logged meals every day this week.",
       "7 for 7 this week.",
       "A full week of consistent logging.",
     ],
@@ -360,7 +360,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Balanced Meals All Week",
     headlineOptions: ["This week's meals had structure.", "Balanced meals all week. Very grown-up of you.", "Protein, carbs, fats, fiber: weekly attendance complete."],
     supportingTextOptions: [
-      "Your meals were balanced all week.",
+      "Meals were balanced all week.",
       "A full week of balanced eating.",
       "This week's plates had real structure.",
     ],
@@ -425,7 +425,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     headlineOptions: ["Home-cooked meals were on a roll.", "Chef energy showed up this week.", "Your kitchen deserves a small applause."],
     supportingTextOptions: [
       "Home-cooked meals had a strong week.",
-      "Your kitchen was busy this week.",
+      "The kitchen was busy this week.",
       "Home cooking built some real momentum.",
     ],
     triggerDescription: "Home-cooked meal frequency improved or exceeded threshold this week (homePreparedMealShare component strong).",
@@ -445,7 +445,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Best Week So Far",
     headlineOptions: ["Best week so far. Quietly iconic.", "This was your strongest week yet.", "Progress called. It has receipts."],
     supportingTextOptions: [
-      "Your strongest week yet.",
+      "Strongest week yet.",
       "This week beat all your previous weeks.",
       "A new personal best this week.",
     ],
@@ -470,7 +470,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Weekend Didn't Break the Streak",
     headlineOptions: ["The weekend tried. You stayed in rhythm.", "Weekend consistency? Rare behavior.", "Saturday and Sunday met the plan."],
     supportingTextOptions: [
-      "You kept logging through the weekend.",
+      "Kept logging through the weekend.",
       "The weekend didn't slow you down.",
       "Saturday and Sunday stayed on track.",
     ],
@@ -491,9 +491,9 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Comeback Week",
     headlineOptions: ["Back in the game.", "Consistency returned. Plot twist.", "After a quiet stretch, you showed up again."],
     supportingTextOptions: [
-      "You're back, and it's showing in your meals.",
+      "Back, and it's showing in the meals.",
       "A quiet stretch, then a real return.",
-      "You picked it back up this week.",
+      "Picked it back up this week.",
     ],
     triggerDescription: "User returns after a period of inactivity (no meals logged for 7+ days) and logs meals for 2-3 days since returning.",
     triggerKey: "comeback_week",
@@ -515,7 +515,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "More Balanced Than Last Week",
     headlineOptions: ["More balanced than last week. We noticed.", "Small upgrade. Big energy.", "Your meals got more organized."],
     supportingTextOptions: [
-      "Your meals were more balanced than last week.",
+      "Meals were more balanced than last week.",
       "An upgrade from last week's balance.",
       "This week beat last week on balance.",
     ],
@@ -536,7 +536,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "More Protein Than Last Week",
     headlineOptions: ["Protein is no longer a side character.", "Protein got more screen time this week.", "Your meals found their protein arc."],
     supportingTextOptions: [
-      "You added more protein than last week.",
+      "Added more protein than last week.",
       "Protein had a bigger role this week.",
       "An upgrade in protein vs last week.",
     ],
@@ -557,7 +557,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "More Fiber Than Last Week",
     headlineOptions: ["Fiber made a comeback.", "Your meals got more texture.", "A quiet win for future you."],
     supportingTextOptions: [
-      "You added more fiber than last week.",
+      "Added more fiber than last week.",
       "Fiber improved vs last week.",
       "An upgrade in fiber-rich foods this week.",
     ],
@@ -629,7 +629,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     title: "Carb Balance Win",
     headlineOptions: ["Carbs stayed. Balance joined.", "Rice/roti/noodles plus backup.", "The carbs brought friends."],
     supportingTextOptions: [
-      "Your carb-heavy meals brought balance along.",
+      "Carb-heavy meals brought balance along.",
       "Carbs showed up with protein and veg this week.",
       "A more complete plate around your favorite carbs.",
     ],
@@ -675,7 +675,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     headlineOptions: ["Your meals matched the mission.", "Goal support: visible.", "The plan and the plate got along."],
     supportingTextOptions: [
       "This week's meals supported your goal.",
-      "Your eating pattern matched your goal this week.",
+      "Eating pattern matched the goal this week.",
       "The plate and the plan agreed this week.",
     ],
     triggerDescription: "Meal patterns align with the user's selected nutrition goal (goalAlignmentScore is strong for the period).",
@@ -688,7 +688,7 @@ export const SHARE_CARD_CONCEPTS: ShareCardConcept[] = [
     visualDirection: "A small target/compass icon aligned with a plate icon, no numbers.",
     nanoBananaPrompt: nanoBananaPrompt("meals aligned with a personal nutrition goal", "a small compass, a plate, and a soft glow"),
     shareCta: "Share this win",
-    lowConfidenceFallback: "Your meals supported your goal nicely this week.",
+    lowConfidenceFallback: "Meals supported the goal nicely this week.",
   },
 
   // ---- Personality / playful badges ----

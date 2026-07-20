@@ -155,13 +155,20 @@ export async function GET(request: NextRequest) {
 
   const dismissedIds = new Set(profileRow?.dismissed_share_card_ids ?? []);
   const earnedShareCards = getEarnedCards(SHARE_CARD_CONCEPTS, {
-    meals: details.meals.map((m: any) => ({
+    // Mirrors the main web app's contact/client routes — reuses the
+    // already-classified `meals` for home-cooked/vegetable signals used to
+    // pick relevant background photos (see selectSharePhotos).
+    meals: details.meals.map((m: any, i: number) => ({
+      id: m.id,
       loggedAt: m.loggedAt,
       mealType: m.mealType,
       totalProteinMin: m.totalProteinMin,
       totalProteinMax: m.totalProteinMax,
       totalFiberMin: m.totalFiberMin,
       totalFiberMax: m.totalFiberMax,
+      imageUrl: m.imageUrl,
+      homeCookedLikelihood: meals[i].preparationSource === "home_prepared" ? "high" as const : meals[i].preparationSource === "restaurant_prepared" ? "low" as const : "unknown" as const,
+      hasVegetableOrFruit: meals[i].foodGroups?.includes("vegetables") || (meals[i].vegetableServings ?? 0) > 0,
     })),
     componentScores,
     previousWeekComponentScores,

@@ -103,7 +103,6 @@ function MiniCard({
       }`}
     >
       <p className={`font-semibold text-[#3B2A63] ${featured ? "text-sm" : "text-xs"}`}>{card.headline}</p>
-      {featured && <p className="text-xs text-[#4B3A73] mt-1 line-clamp-2">{card.supportingText}</p>}
       {card.stat && <p className="text-[10px] font-semibold text-[#6750A4] mt-2 uppercase tracking-wide">{card.stat}</p>}
     </button>
   );

@@ -73,4 +73,10 @@ export interface EarnedShareCard {
    * normal option list. */
   isLowConfidence: boolean;
   format: ShareCardFormat;
+  /** Up to 4 real meal-photo URLs relevant to this earned card (e.g. the
+   * user's own home-cooked meals for a "home cooked win" card), most
+   * recent first — see triggers.ts#selectSharePhotos. Undefined/empty
+   * means "no good photo match," in which case the card falls back to its
+   * plain gradient background rather than showing unrelated photos. */
+  photoUrls?: string[];
 }
