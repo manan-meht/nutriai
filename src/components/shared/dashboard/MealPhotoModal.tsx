@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MealShareData } from "@/lib/meal-share/types";
+import type { ShareOverlayAudience } from "@/lib/meal-share/overlay-text";
 import { MealShareModal } from "./MealShareModal";
 
 interface MealPhotoModalProps {
@@ -13,13 +14,19 @@ interface MealPhotoModalProps {
    * MealShareModal — omitted by callers that don't have macro data handy
    * for this photo, in which case the modal is just a plain lightbox. */
   shareData?: MealShareData | null;
+  /** Who's sharing — drives caption grammar (self/family/coach), see
+   * @/lib/meal-share/overlay-text.ts. Defaults to "self" since most
+   * callers are a person viewing their own dashboard. */
+  audience?: ShareOverlayAudience;
+  /** e.g. "mom"/"dad"/"client" — only used when audience is "family". */
+  relationship?: string;
 }
 
 /** Full-screen lightbox for a meal photo — shared by the adults and gym
  * dashboards' "Recent meals" section (see ContactDashboard.tsx/
  * ClientDashboard.tsx). Tapping the small thumbnail in the list opens this
  * instead of navigating away. */
-export function MealPhotoModal({ url, label, onClose, shareData }: MealPhotoModalProps) {
+export function MealPhotoModal({ url, label, onClose, shareData, audience = "self", relationship }: MealPhotoModalProps) {
   const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
@@ -57,7 +64,9 @@ export function MealPhotoModal({ url, label, onClose, shareData }: MealPhotoModa
           Share this meal
         </button>
       )}
-      {sharing && shareData && <MealShareModal meal={shareData} onClose={() => setSharing(false)} />}
+      {sharing && shareData && (
+        <MealShareModal meal={shareData} onClose={() => setSharing(false)} audience={audience} relationship={relationship} />
+      )}
     </div>,
     document.body
   );

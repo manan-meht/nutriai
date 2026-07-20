@@ -129,9 +129,9 @@ export function calculateFoodBalanceScore(input: CalculateFoodBalanceScoreInput)
   const mealCoverageConfidence = calculateMealCoverageConfidence(eligibleWindowMeals);
   const portionEstimationConfidence = calculatePortionEstimationConfidence(eligibleWindowMeals);
 
-  const goal = input.profile?.goal ?? "improve_nutrition";
+  const goals = input.profile?.goals ?? ["improve_nutrition"];
   const goalAlignmentFull =
-    input.profile && goal !== "improve_nutrition"
+    input.profile && goals.some((g) => g !== "improve_nutrition")
       ? calculateGoalAlignmentScore(eligibleWindowMeals, input.profile, mealCoverageConfidence, portionEstimationConfidence)
       : null;
 
@@ -152,9 +152,9 @@ export function calculateFoodBalanceScore(input: CalculateFoodBalanceScoreInput)
   let rawScore: number;
   let status: FoodBalanceScoreResult["status"];
 
-  if (goal === "improve_nutrition" || goalAlignmentScore == null) {
+  if (goalAlignmentFull == null || goalAlignmentScore == null) {
     rawScore = foodFoundationScore ?? 0;
-    status = goal === "improve_nutrition" ? "foundation_only" : "foundation_only";
+    status = "foundation_only";
   } else {
     rawScore = FOOD_FOUNDATION_TO_TOTAL_WEIGHT * (foodFoundationScore ?? 0) + GOAL_ALIGNMENT_TO_TOTAL_WEIGHT * goalAlignmentScore;
     const missingCount = goalAlignmentFull?.missingInputs.length ?? 0;

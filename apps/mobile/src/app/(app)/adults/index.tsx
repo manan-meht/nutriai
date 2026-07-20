@@ -30,7 +30,7 @@ const RELATIONSHIP_LABELS: Record<string, string> = {
 
 function subtitleFor(contact: AdultsContact): string {
   const relationship = contact.relationship || RELATIONSHIP_LABELS[contact.relationshipType] || 'Family member';
-  const goal = contact.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] : undefined;
+  const goal = contact.nutritionGoals?.length ? contact.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
   return goal ? `${relationship} · ${goal}` : relationship;
 }
 

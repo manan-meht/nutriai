@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
 import { getOrCreateAdultsWorkspace, getContacts, getContactDetails, addContact, updateContact } from "@/lib/adults";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
+import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
+import { applyExplicitPreferences, type FoodPreferenceSelections } from "@/lib/food-preferences";
 
 export const runtime = "edge";
 
@@ -15,6 +17,8 @@ export const runtime = "edge";
 //   POST /adults/contacts/:contactId/access-code    (generate)
 //   PATCH /adults/contacts/:contactId/access-code   (regenerate)
 //   DELETE /adults/contacts/:contactId/access-code  (revoke)
+//   GET /adults/contacts/:contactId/food-preferences
+//   PATCH /adults/contacts/:contactId/food-preferences
 //
 // Temporary Access Codes (mobile equivalent of the web app's
 // generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction
@@ -79,6 +83,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json(details);
   }
 
+  // Mirrors the main web app's getFoodPreferences (see
+  // src/app/(adults)/adults/dashboard/actions.ts) — reads the
+  // dietary_profile JSON column, merged over defaults.
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "food-preferences") {
+    const { data: row } = await auth.supabase
+      .from("adults_contacts")
+      .select("dietary_profile")
+      .eq("id", path[1])
+      .eq("caregiver_id", auth.user.id)
+      .maybeSingle();
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ ...DEFAULT_DIETARY_PROFILE, ...(row.dietary_profile ?? {}) });
+  }
+
   return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
@@ -135,6 +153,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { code, expiresAt } = await generateAccessCode(db, contact, auth.user.id, "family_owner", process.env.END_USER_OTP_PEPPER ?? "", ttlHours * 60 * 60 * 1000);
     await recordAuditEvent(db, "code_regenerated", contact.contactId, contact.contactType, { actorUserId: auth.user.id });
     return NextResponse.json({ code, formattedCode: formatAccessCode(code), expiresAt });
+  }
+
+  // Mirrors the main web app's updateFoodPreferences (see
+  // src/app/(adults)/adults/dashboard/actions.ts) — applies only the
+  // fields present in the request body via applyExplicitPreferences, so a
+  // partial save never resets unrelated preferences.
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "food-preferences") {
+    const selections: FoodPreferenceSelections = (await request.json().catch(() => null)) ?? {};
+
+    const { data: row } = await auth.supabase
+      .from("adults_contacts")
+      .select("dietary_profile")
+      .eq("id", path[1])
+      .eq("caregiver_id", auth.user.id)
+      .maybeSingle();
+    if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const currentProfile = { ...DEFAULT_DIETARY_PROFILE, ...(row.dietary_profile ?? {}) };
+    const nextProfile = applyExplicitPreferences(currentProfile, selections);
+
+    const { error } = await auth.supabase
+      .from("adults_contacts")
+      .update({ dietary_profile: nextProfile })
+      .eq("id", path[1])
+      .eq("caregiver_id", auth.user.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+    return NextResponse.json({});
   }
 
   if (path.length !== 2 || path[0] !== "contacts") {

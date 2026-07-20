@@ -87,10 +87,10 @@ export function ClientCard({ client, onOpen, onRemove }: ClientCardProps) {
       </div>
 
       {/* Goal */}
-      {client.primaryNutritionGoal ? (
+      {client.nutritionGoals && client.nutritionGoals.length > 0 ? (
         <div className="rounded-xl px-3 py-2 bg-purple-50 text-purple-700">
           <p className="text-xs font-semibold mb-0.5">
-            {NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] ?? client.primaryNutritionGoal}
+            {client.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")}
           </p>
         </div>
       ) : (

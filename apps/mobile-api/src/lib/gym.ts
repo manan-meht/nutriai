@@ -41,9 +41,7 @@ export interface AddClientInput {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
-  primaryNutritionGoal?: string;
-  dateOfBirth?: string;
-  metabolicEquationSex?: string;
+  nutritionGoals?: string[];
   activityLevel?: string;
   resistanceTrainingStatus?: string;
   targetWeightKg?: number;
@@ -71,9 +69,7 @@ export async function addClient(
       weight_kg: input.weightKg ?? null,
       height_cm: input.heightCm ?? null,
       invite_sent_at: new Date().toISOString(),
-      primary_nutrition_goal: input.primaryNutritionGoal || null,
-      date_of_birth: input.dateOfBirth || null,
-      metabolic_equation_sex: input.metabolicEquationSex || null,
+      nutrition_goals: input.nutritionGoals ?? [],
       activity_level: input.activityLevel || null,
       resistance_training_status: input.resistanceTrainingStatus || null,
       target_weight_kg: input.targetWeightKg ?? null,
@@ -98,9 +94,7 @@ export interface UpdateClientInput {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
-  primaryNutritionGoal?: string;
-  dateOfBirth?: string;
-  metabolicEquationSex?: string;
+  nutritionGoals?: string[];
   activityLevel?: string;
   resistanceTrainingStatus?: string;
   targetWeightKg?: number;
@@ -120,9 +114,7 @@ export async function updateClient(
       gender: input.gender || null,
       weight_kg: input.weightKg ?? null,
       height_cm: input.heightCm ?? null,
-      primary_nutrition_goal: input.primaryNutritionGoal || null,
-      date_of_birth: input.dateOfBirth || null,
-      metabolic_equation_sex: input.metabolicEquationSex || null,
+      nutrition_goals: input.nutritionGoals ?? [],
       activity_level: input.activityLevel || null,
       resistance_training_status: input.resistanceTrainingStatus || null,
       target_weight_kg: input.targetWeightKg ?? null,

@@ -44,9 +44,7 @@ export default function EditGymClientScreen() {
     heightCm: client.heightCm != null ? String(client.heightCm) : '',
     goalFields: {
       ...EMPTY_NUTRITION_GOAL_FIELDS,
-      primaryNutritionGoal: client.primaryNutritionGoal ?? '',
-      dateOfBirth: client.dateOfBirth ?? '',
-      metabolicEquationSex: client.metabolicEquationSex ?? '',
+      nutritionGoals: client.nutritionGoals ?? [],
       activityLevel: client.activityLevel ?? 'unknown',
       resistanceTrainingStatus: client.resistanceTrainingStatus ?? 'unknown',
       targetWeightKg: client.targetWeightKg != null ? String(client.targetWeightKg) : '',

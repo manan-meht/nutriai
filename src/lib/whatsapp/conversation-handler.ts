@@ -396,9 +396,7 @@ async function handleInviteClaim(
         // Food Balance Score profile fields (see saveSelfDetailsAndCreateInvite
         // / SelfSetupCard.tsx) — replaces the old adults_contact_goals write
         // below entirely.
-        primary_nutrition_goal: typeof meta.primaryNutritionGoal === "string" ? meta.primaryNutritionGoal : null,
-        date_of_birth: typeof meta.dateOfBirth === "string" ? meta.dateOfBirth : null,
-        metabolic_equation_sex: typeof meta.metabolicEquationSex === "string" ? meta.metabolicEquationSex : null,
+        nutrition_goals: Array.isArray(meta.nutritionGoals) ? meta.nutritionGoals : [],
         activity_level: typeof meta.activityLevel === "string" ? meta.activityLevel : null,
         resistance_training_status: typeof meta.resistanceTrainingStatus === "string" ? meta.resistanceTrainingStatus : null,
         target_weight_kg: typeof meta.targetWeightKg === "number" ? meta.targetWeightKg : null,
@@ -439,7 +437,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Look up in gym_clients first
   const { data: gymClients } = await db
     .from("gym_clients")
-    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
+    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, nutrition_goals, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
     .order("created_at", { ascending: false });
 
   const gymClient = (gymClients ?? []).find((c: any) =>
@@ -451,7 +449,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, nutrition_goals, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -1102,18 +1100,21 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   // Protein target for meal-feedback text — computed from the Food Balance
-  // Score profile (primary_nutrition_goal + weight/goal-specific range) when
-  // a goal has been set, same as the web dashboards; falls back to the
-  // general age/weight/gender recommendation otherwise (replaces the old
-  // adults_contact_goals/gym_client_goals-based target_protein_g).
-  const foodBalanceProfile: FoodBalanceUserProfile | undefined = entity.primary_nutrition_goal
+  // Score profile (nutrition_goals + weight/goal-specific range) when at
+  // least one goal has been set, same as the web dashboards; falls back
+  // to the general age/weight/gender recommendation otherwise (replaces
+  // the old adults_contact_goals/gym_client_goals-based target_protein_g).
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = entity.nutrition_goals?.length
     ? {
-        goal: entity.primary_nutrition_goal,
-        dateOfBirth: entity.date_of_birth ?? undefined,
+        goals: entity.nutrition_goals,
         age: entity.age ?? undefined,
         heightCm: entity.height_cm ?? undefined,
         currentWeightKg: entity.weight_kg ?? undefined,
-        metabolicEquationSex: entity.metabolic_equation_sex ?? undefined,
+        // No separate "sex for metabolic estimate" question anymore —
+        // gender is used directly (see src/lib/food-balance/adapter.ts's
+        // metabolicSexFromGender, mirrored here inline since this file
+        // doesn't otherwise import from that module).
+        metabolicEquationSex: entity.gender === "male" || entity.gender === "female" ? entity.gender : undefined,
         activityLevel: entity.activity_level ?? undefined,
         resistanceTraining: entity.resistance_training_status ?? undefined,
       }

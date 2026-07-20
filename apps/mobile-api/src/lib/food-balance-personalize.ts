@@ -134,8 +134,20 @@ function formatExamples(labels: string[]): string {
   return `${labels.slice(0, -1).join(", ")}, or ${labels[labels.length - 1]}`;
 }
 
+interface MacroActualVsTarget {
+  averageG: number;
+  targetG: number;
+}
+
 interface PersonalizeOptions {
   goal?: string;
+  /** See the main web app's src/lib/food-balance/personalize.ts — same
+   * "state the real numbers when available" behavior. */
+  macroTargets?: {
+    protein?: MacroActualVsTarget;
+    fiber?: MacroActualVsTarget;
+    carbs?: MacroActualVsTarget;
+  };
 }
 
 /** Maps a recommendation's id (from packages/health-scoring's TEMPLATES)
@@ -190,7 +202,7 @@ function buildPersonalizedRecommendation(
   const exampleText = formatExamples(examples);
   const exampleFoodIds = pickedFoods.map((f) => f.id);
 
-  const result = buildPersonalizedRecommendationFields(rec, mapping, examples, exampleText);
+  const result = buildPersonalizedRecommendationFields(rec, mapping, examples, exampleText, opts.macroTargets);
   return exampleFoodIds.length > 0 ? { ...result, exampleFoodIds } : result;
 }
 
@@ -198,11 +210,16 @@ function buildPersonalizedRecommendationFields(
   rec: FoodBalanceRecommendation,
   mapping: { category: FoodSuggestionCategory; meal?: "breakfast" | "lunch" | "dinner" | "snack" },
   examples: string[],
-  exampleText: string
+  exampleText: string,
+  macroTargets?: PersonalizeOptions["macroTargets"]
 ): FoodBalanceRecommendation {
   switch (mapping.category) {
     case "protein": {
-      const mealPhrase = mapping.meal === "breakfast" ? "Breakfast has been lighter on protein this week." : "Protein has been a little low this week.";
+      const mealPhrase = macroTargets?.protein
+        ? `You're averaging ${Math.round(macroTargets.protein.averageG)}g protein against a target of ${Math.round(macroTargets.protein.targetG)}g.`
+        : mapping.meal === "breakfast"
+        ? "Breakfast has been lighter on protein this week."
+        : "Protein has been a little low this week.";
       // Only says "your Food Profile includes dairy" (or eggs/chicken/
       // fish) when the actual top example is one of those — otherwise
       // this stays a plain "based on meals you've logged" framing, so a
@@ -221,7 +238,7 @@ function buildPersonalizedRecommendationFields(
       return {
         ...rec,
         title: mapping.meal === "breakfast" ? "Add protein to breakfast" : "Spread protein across more meals",
-        description: `${mealPhrase} ${profileNote}try ${exampleText}${mapping.meal ? ` at ${mapping.meal}` : ""} this week.`,
+        description: `${mealPhrase} Try adding a protein anchor${mapping.meal ? ` at ${mapping.meal}` : ""}, such as ${exampleText}, depending on your Food Profile.`,
         action: `Pick one meal and add one of these: ${exampleText}.`,
         whyThisHelps: "Protein can make meals more filling and helps support your goal.",
       };
@@ -234,22 +251,30 @@ function buildPersonalizedRecommendationFields(
         action: `Add ${examples[0]} to your next lunch or dinner.`,
         whyThisHelps: "More fruit and vegetables adds fibre and variety without changing the rest of your plate.",
       };
-    case "fiber":
+    case "fiber": {
+      const trendPhrase = macroTargets?.fiber
+        ? `Fiber is trending below your target (averaging ${Math.round(macroTargets.fiber.averageG)}g against ${Math.round(macroTargets.fiber.targetG)}g).`
+        : "Fibre has room to grow in recent meals.";
       return {
         ...rec,
         title: "Add a fibre-rich food",
-        description: `Fibre has room to grow in recent meals. Try adding ${exampleText} to one meal this week.`,
+        description: `${trendPhrase} Try adding ${exampleText} tomorrow.`,
         action: `Add ${examples[0]} to your next meal.`,
         whyThisHelps: "Fibre supports digestion and helps meals feel more satisfying.",
       };
-    case "balanced_carb":
+    }
+    case "balanced_carb": {
+      const carbPhrase = macroTargets?.carbs && macroTargets.carbs.averageG > macroTargets.carbs.targetG
+        ? "Carbs are above your target mostly at dinner."
+        : "Recent meals lean toward rice, roti, or noodles with less alongside them.";
       return {
         ...rec,
         title: "Balance out carb-heavy meals",
-        description: `Recent meals lean toward rice, roti, or noodles with less alongside them. Keep the carbs, but try ${exampleText}.`,
+        description: `${carbPhrase} Keep the rice or roti, but try ${exampleText} first so the meal becomes more balanced.`,
         action: `On your next carb-heavy meal, try ${examples[0]}.`,
         whyThisHelps: "Pairing carbs with protein and vegetables makes meals more balanced without cutting anything out.",
       };
+    }
     case "home_cooked":
       return {
         ...rec,

@@ -42,15 +42,30 @@ export interface FoodBalanceProfileFields {
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
   preferredUnits?: "metric" | "imperial";
-  primaryNutritionGoal?:
+  /** One or more simultaneous goals — see packages/health-scoring's
+   * FoodBalanceUserProfile.goals doc comment for how multiple goals are
+   * blended into a single energy/protein target rather than picking one
+   * "primary" winner. */
+  nutritionGoals?: Array<
     | "reduce_weight"
     | "reduce_body_fat"
     | "gain_muscle"
     | "body_recomposition"
     | "maintain_weight"
     | "improve_nutrition"
-    | "healthy_aging";
+    | "healthy_aging"
+  >;
   targetWeightKg?: number;
+  /** A user's (or coach's) manual override of one or more of Tistra's
+   * recommended macro targets — see @nutriai/health-scoring's
+   * calculateMacroTargets, which always computes the *recommendation*
+   * live from goals + profile data and is never itself persisted. Only
+   * present when the user has actually edited a target; absent/undefined
+   * means "use Tistra's recommendation for every macro". Keyed by macro,
+   * each value matching @nutriai/health-scoring's MacroTargetValue shape
+   * (min/target/max only — unit/source are re-derived by the caller). */
+  customMacroTargets?: Partial<Record<"calories" | "protein" | "carbs" | "fat" | "fiber", { min: number | null; target: number; max: number | null }>>;
+  macroTargetsCustomizedAt?: string;
 }
 
 export interface AdultsContact extends FoodBalanceProfileFields {

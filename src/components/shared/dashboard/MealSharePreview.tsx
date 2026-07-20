@@ -19,8 +19,8 @@ export const FOOD_ENHANCE_FILTER = "saturate(1.35) brightness(1.08) contrast(1.0
  * branded frame. Deliberately shows exact macro values — see
  * meal-share/types.ts's header comment on why this differs from
  * share-cards' "hide exact metrics by default" rule. */
-export const MealSharePreview = forwardRef<HTMLDivElement, { meal: MealShareData; enhanced?: boolean }>(
-  function MealSharePreview({ meal, enhanced = true }, ref) {
+export const MealSharePreview = forwardRef<HTMLDivElement, { meal: MealShareData; enhanced?: boolean; captionText?: string | null }>(
+  function MealSharePreview({ meal, enhanced = true, captionText }, ref) {
     return (
       <div
         ref={ref}
@@ -37,11 +37,38 @@ export const MealSharePreview = forwardRef<HTMLDivElement, { meal: MealShareData
         />
 
         {/* Soft vignette for legibility only — the photo itself stays the
-            hero, not darkened wholesale like a typical scrim overlay. */}
-        <div className="absolute inset-x-0 top-0 h-[22%] bg-gradient-to-b from-black/35 to-transparent" />
+            hero, not darkened wholesale like a typical scrim overlay.
+            Taller at the top when a caption is present, since that's now
+            a two-line italic accent plus the Protein/Calories row. */}
+        <div className={`absolute inset-x-0 top-0 bg-gradient-to-b from-black/35 to-transparent ${captionText ? "h-[30%]" : "h-[22%]"}`} />
         <div className="absolute inset-x-0 bottom-0 h-[22%] bg-gradient-to-t from-black/35 to-transparent" />
 
-        <div className="absolute inset-x-0 top-6 flex justify-around px-8">
+        {/* Caption overlay — kept short (see meal-share/overlay-text.ts),
+            an italic display accent sitting above the macro stats rather
+            than a boxed sticker, so it reads as editorial type layered on
+            the photo. line-clamp-2 + a max-width prevent overflow rather
+            than trusting caption length alone. */}
+        {captionText && (
+          <div className="absolute inset-x-0 top-5 flex justify-center px-8 pointer-events-none">
+            <p
+              className="text-center italic font-serif text-white leading-tight max-w-[90%]"
+              style={{
+                fontSize: "1.75rem",
+                fontWeight: 600,
+                letterSpacing: "-0.01em",
+                textShadow: "0 3px 14px rgba(0,0,0,0.6)",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {captionText}
+            </p>
+          </div>
+        )}
+
+        <div className={`absolute inset-x-0 flex justify-around px-8 ${captionText ? "top-28" : "top-6"}`}>
           <MacroStat value={meal.proteinG} unit="g" label="Protein" />
           <MacroStat value={meal.caloriesKcal} unit="" label="Calories" />
         </div>

@@ -1,10 +1,13 @@
 import { classifyMeal, applyHumanCorrection, type ClassifiedMeal } from "@nutriai/dashboard-core";
-import type {
-  FoodBalanceMealInput,
-  FoodBalanceUserProfile,
-  ProcessingLevel,
-  MealPreparationSource,
-  DiversityFoodGroup,
+import {
+  calculateMacroTargets,
+  type FoodBalanceMealInput,
+  type FoodBalanceUserProfile,
+  type ProcessingLevel,
+  type MealPreparationSource,
+  type DiversityFoodGroup,
+  type MacroTargets,
+  type MacroTargetValue,
 } from "@nutriai/health-scoring";
 
 // Mirrors src/lib/food-balance/adapter.ts in the main web app — duplicated
@@ -96,24 +99,59 @@ interface RawFoodBalanceProfileRow {
   age?: number | null;
   weight_kg?: number | null;
   height_cm?: number | null;
-  metabolic_equation_sex?: string | null;
+  gender?: string | null;
   activity_level?: string | null;
   resistance_training_status?: string | null;
   preferred_units?: string | null;
-  primary_nutrition_goal?: string | null;
+  nutrition_goals?: string[] | null;
   target_weight_kg?: number | null;
 }
 
+/** Mirrors the main web app's resolveMacroTargets (src/lib/food-balance/
+ * adapter.ts) — same "recommended is always computed live, active is
+ * recommended with any user_custom overrides layered on" split. */
+function toCustomMacroTargetValue(
+  raw: { min: number | null; target: number; max: number | null } | undefined,
+  unit: MacroTargetValue["unit"]
+): MacroTargetValue | undefined {
+  if (!raw) return undefined;
+  return { min: raw.min, target: raw.target, max: raw.max, unit, source: "user_custom" };
+}
+
+export function resolveMacroTargets(
+  profile: FoodBalanceUserProfile,
+  customMacroTargets: Partial<Record<"calories" | "protein" | "carbs" | "fat" | "fiber", { min: number | null; target: number; max: number | null }>> | undefined
+): { recommendedMacroTargets: MacroTargets; activeMacroTargets: MacroTargets } {
+  const recommendedMacroTargets = calculateMacroTargets(profile);
+  const activeMacroTargets: MacroTargets = {
+    ...recommendedMacroTargets,
+    calories: toCustomMacroTargetValue(customMacroTargets?.calories, "kcal") ?? recommendedMacroTargets.calories,
+    protein: toCustomMacroTargetValue(customMacroTargets?.protein, "g") ?? recommendedMacroTargets.protein,
+    carbs: toCustomMacroTargetValue(customMacroTargets?.carbs, "g") ?? recommendedMacroTargets.carbs,
+    fat: toCustomMacroTargetValue(customMacroTargets?.fat, "g") ?? recommendedMacroTargets.fat,
+    fiber: toCustomMacroTargetValue(customMacroTargets?.fiber, "g") ?? recommendedMacroTargets.fiber,
+  };
+  return { recommendedMacroTargets, activeMacroTargets };
+}
+
+function metabolicSexFromGender(gender?: string | null): FoodBalanceUserProfile["metabolicEquationSex"] {
+  // Mirrors the main web app's src/lib/food-balance/adapter.ts — no
+  // separate "sex for metabolic estimate" question anymore, gender is
+  // used directly for the BMR equation.
+  return gender === "male" || gender === "female" ? gender : undefined;
+}
+
 export function mapRowToFoodBalanceProfile(row: RawFoodBalanceProfileRow): FoodBalanceUserProfile | undefined {
-  if (!row.primary_nutrition_goal) return undefined;
+  const goals = (row.nutrition_goals ?? []) as FoodBalanceUserProfile["goals"];
+  if (!goals || goals.length === 0) return undefined;
 
   return {
-    goal: row.primary_nutrition_goal as FoodBalanceUserProfile["goal"],
+    goals,
     dateOfBirth: row.date_of_birth ?? undefined,
     age: row.age ?? undefined,
     heightCm: row.height_cm ?? undefined,
     currentWeightKg: row.weight_kg ?? undefined,
-    metabolicEquationSex: (row.metabolic_equation_sex as FoodBalanceUserProfile["metabolicEquationSex"]) ?? undefined,
+    metabolicEquationSex: metabolicSexFromGender(row.gender),
     activityLevel: (row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined,
     targetWeightKg: row.target_weight_kg ?? undefined,
     resistanceTraining: (row.resistance_training_status as FoodBalanceUserProfile["resistanceTraining"]) ?? undefined,

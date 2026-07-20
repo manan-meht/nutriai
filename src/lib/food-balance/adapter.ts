@@ -1,12 +1,15 @@
 import { classifyMeal, applyHumanCorrection, type ClassifiedMeal } from "@nutriai/dashboard-core";
-import type {
-  FoodBalanceMealInput,
-  FoodBalanceUserProfile,
-  ProcessingLevel,
-  MealPreparationSource,
-  DiversityFoodGroup,
+import {
+  calculateMacroTargets,
+  type FoodBalanceMealInput,
+  type FoodBalanceUserProfile,
+  type ProcessingLevel,
+  type MealPreparationSource,
+  type DiversityFoodGroup,
+  type MacroTargets,
+  type MacroTargetValue,
 } from "@nutriai/health-scoring";
-import type { AdultsMealLog, MealLog } from "@nutriai/nutrition-core";
+import type { AdultsMealLog, MealLog, FoodBalanceProfileFields } from "@nutriai/nutrition-core";
 
 /** Structural subset shared by AdultsMealLog and (gym) MealLog — this
  * mapper only reads these fields, so one function serves both products
@@ -125,32 +128,75 @@ export interface RawFoodBalanceProfileRow {
   weight_kg?: number | null;
   height_cm?: number | null;
   gender?: string | null;
-  metabolic_equation_sex?: string | null;
   activity_level?: string | null;
   resistance_training_status?: string | null;
   preferred_units?: string | null;
-  primary_nutrition_goal?: string | null;
+  nutrition_goals?: string[] | null;
   target_weight_kg?: number | null;
 }
 
-/** Maps the new profile columns (see
- * supabase/migrations/0027_food_balance_score.sql) plus the pre-existing
- * age/weight/height/gender fields already on adults_contacts/gym_clients
- * into the scoring package's profile input. Returns undefined when no
- * primary goal has been selected — Food Foundation is still calculated in
- * that case (see calculate.ts), just without Goal Alignment. */
+/** Wraps a stored min/target/max override (as read straight off the
+ * `custom_macro_targets` jsonb column) with the display unit/source, since
+ * only the numbers are persisted. */
+function toCustomMacroTargetValue(
+  raw: { min: number | null; target: number; max: number | null } | undefined,
+  unit: MacroTargetValue["unit"]
+): MacroTargetValue | undefined {
+  if (!raw) return undefined;
+  return { min: raw.min, target: raw.target, max: raw.max, unit, source: "user_custom" };
+}
+
+/** Tistra's recommended macro targets are always computed live from the
+ * profile (never persisted) — `activeMacroTargets` is what the dashboard
+ * and recommendations actually use: any macro the user has customized
+ * (`customMacroTargets`) overrides that one macro's recommendation, all
+ * others still come from the live calculation. Resetting a macro is just
+ * clearing its entry in `customMacroTargets`, never a separate stored
+ * "reset" value. */
+export function resolveMacroTargets(
+  profile: FoodBalanceUserProfile,
+  customMacroTargets: FoodBalanceProfileFields["customMacroTargets"] | undefined
+): { recommendedMacroTargets: MacroTargets; activeMacroTargets: MacroTargets } {
+  const recommendedMacroTargets = calculateMacroTargets(profile);
+  const activeMacroTargets: MacroTargets = {
+    ...recommendedMacroTargets,
+    calories: toCustomMacroTargetValue(customMacroTargets?.calories, "kcal") ?? recommendedMacroTargets.calories,
+    protein: toCustomMacroTargetValue(customMacroTargets?.protein, "g") ?? recommendedMacroTargets.protein,
+    carbs: toCustomMacroTargetValue(customMacroTargets?.carbs, "g") ?? recommendedMacroTargets.carbs,
+    fat: toCustomMacroTargetValue(customMacroTargets?.fat, "g") ?? recommendedMacroTargets.fat,
+    fiber: toCustomMacroTargetValue(customMacroTargets?.fiber, "g") ?? recommendedMacroTargets.fiber,
+  };
+  return { recommendedMacroTargets, activeMacroTargets };
+}
+
+export function metabolicSexFromGender(gender?: string | null): FoodBalanceUserProfile["metabolicEquationSex"] {
+  // The form no longer asks a separate "sex for metabolic estimate"
+  // question (see NutritionGoalFields.tsx's git history) — gender is used
+  // directly for the BMR equation. "male"/"female" map 1:1; any other
+  // value (or none set) leaves this undefined, same as before when the
+  // separate question went unanswered — the energy/calorie component is
+  // simply omitted, never guessed.
+  return gender === "male" || gender === "female" ? gender : undefined;
+}
+
+/** Maps the profile columns (see
+ * supabase/migrations/0027_food_balance_score.sql,
+ * 0035_multi_nutrition_goals.sql) plus the pre-existing age/weight/height/
+ * gender fields already on adults_contacts/gym_clients into the scoring
+ * package's profile input. Returns undefined when no goal has been
+ * selected — Food Foundation is still calculated in that case (see
+ * calculate.ts), just without Goal Alignment. */
 export function mapRowToFoodBalanceProfile(row: RawFoodBalanceProfileRow): FoodBalanceUserProfile | undefined {
-  if (!row.primary_nutrition_goal) return undefined;
+  const goals = (row.nutrition_goals ?? []) as FoodBalanceUserProfile["goals"];
+  if (!goals || goals.length === 0) return undefined;
 
   return {
-    goal: row.primary_nutrition_goal as FoodBalanceUserProfile["goal"],
+    goals,
     dateOfBirth: row.date_of_birth ?? undefined,
     age: row.age ?? undefined,
     heightCm: row.height_cm ?? undefined,
     currentWeightKg: row.weight_kg ?? undefined,
-    // Deliberately from metabolic_equation_sex only, never from "gender" —
-    // see energy.ts's comment on why these are kept distinct.
-    metabolicEquationSex: (row.metabolic_equation_sex as FoodBalanceUserProfile["metabolicEquationSex"]) ?? undefined,
+    metabolicEquationSex: metabolicSexFromGender(row.gender),
     activityLevel: (row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined,
     targetWeightKg: row.target_weight_kg ?? undefined,
     resistanceTraining: (row.resistance_training_status as FoodBalanceUserProfile["resistanceTraining"]) ?? undefined,

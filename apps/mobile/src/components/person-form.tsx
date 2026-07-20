@@ -5,6 +5,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from './nutrition-goal-fields';
+import { NutritionTargetsCard } from './nutrition-targets-card';
+import { FoodPreferencesEditor } from './food-preferences-editor';
 
 const RELATIONSHIPS = ['Son', 'Daughter', 'Spouse', 'Parent', 'Sibling', 'Friend', 'Other'];
 const PRIMARY = '#5715CE';
@@ -62,6 +64,8 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [targetsExpanded, setTargetsExpanded] = useState(false);
+  const [foodPrefsExpanded, setFoodPrefsExpanded] = useState(false);
 
   async function handleSubmit() {
     setError(null);
@@ -74,9 +78,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         gender: gender || undefined,
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
-        primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
-        dateOfBirth: goalFields.dateOfBirth || undefined,
-        metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
+        nutritionGoals: goalFields.nutritionGoals,
         activityLevel: goalFields.activityLevel || undefined,
         resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
         targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
@@ -124,7 +126,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       {product === 'adults' && (
         <Field label="Relationship" color={theme.textSecondary}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {!hasSelfContact && mode === 'add' && (
+            {(!hasSelfContact || relationship === 'self') && (
               <Chip label="Myself" active={relationship === 'self'} onPress={() => setRelationship('self')} theme={theme} />
             )}
             {RELATIONSHIPS.map((r) => (
@@ -221,10 +223,6 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         </View>
       </View>
 
-      <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
-
-      <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
-
       {product === 'adults' && (
         <>
           <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
@@ -271,6 +269,43 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         </>
       )}
 
+      <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+
+      <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+
+      {mode === 'edit' && personId && (
+        <>
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+          <Pressable style={styles.targetsToggleRow} onPress={() => setTargetsExpanded((v) => !v)}>
+            <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Nutrition targets</Text>
+            <Text style={{ color: theme.textSecondary }}>{targetsExpanded ? '▲' : '▼'}</Text>
+          </Pressable>
+          {targetsExpanded && (
+            <View style={styles.targetsContent}>
+              <NutritionTargetsCard {...(product === 'gym' ? { clientId: personId } : { contactId: personId })} />
+            </View>
+          )}
+
+          {/* Adults-only, mirrors the web app's EditContactModal — Food
+              preferences' permanent home once the user has interacted
+              with it once (see person-detail.tsx's own comment). */}
+          {product === 'adults' && (
+            <>
+              <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+              <Pressable style={styles.targetsToggleRow} onPress={() => setFoodPrefsExpanded((v) => !v)}>
+                <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Food preferences</Text>
+                <Text style={{ color: theme.textSecondary }}>{foodPrefsExpanded ? '▲' : '▼'}</Text>
+              </Pressable>
+              {foodPrefsExpanded && (
+                <View style={styles.targetsContent}>
+                  <FoodPreferencesEditor contactId={personId} />
+                </View>
+              )}
+            </>
+          )}
+        </>
+      )}
+
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={[styles.submitButton, (loading || !fullName.trim()) && styles.disabled]} onPress={handleSubmit} disabled={loading || !fullName.trim()}>
@@ -311,6 +346,8 @@ function Chip({
 const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 48 },
   sectionTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
+  targetsToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  targetsContent: { marginTop: 12 },
   field: { marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
   input: {

@@ -55,6 +55,7 @@ export default function AdultsContactDetailScreen() {
           onRegenerate: (ttlHours) => api.regenerateAdultsAccessCode(contactId, ttlHours),
           onRevoke: () => api.revokeAdultsAccessCode(contactId),
         }}
+        foodPreferencesContactId={contactId}
       />
     </>
   );

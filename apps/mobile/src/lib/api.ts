@@ -87,14 +87,15 @@ export interface FoodBalanceProfileFields {
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
   preferredUnits?: "metric" | "imperial";
-  primaryNutritionGoal?:
+  nutritionGoals?: Array<
     | "reduce_weight"
     | "reduce_body_fat"
     | "gain_muscle"
     | "body_recomposition"
     | "maintain_weight"
     | "improve_nutrition"
-    | "healthy_aging";
+    | "healthy_aging"
+  >;
   targetWeightKg?: number;
 }
 
@@ -239,9 +240,79 @@ export interface FoodBalanceScoreResult {
     whyThisHelps?: string;
     exampleFoodIds?: string[];
   }>;
+  /** Share cards ("Your wins") earned as of this response — see
+   * lib/share-cards/ (mirrors src/lib/share-cards/ on the main web app). */
+  earnedShareCards: import("./share-cards/types").EarnedShareCard[];
+  recommendedMacroTargets?: MacroTargets;
+  activeMacroTargets?: MacroTargets;
 }
 
 export type RecommendationFeedback = "helpful" | "not_useful" | "already_eat" | "dont_like" | "not_available" | "too_hard";
+
+// Mirrors @nutriai/health-scoring's MacroTargetValue/MacroTargets (see
+// packages/health-scoring/src/food-balance/macro-targets.ts) — a plain
+// local type rather than importing the package directly, same reasoning
+// as FoodBalanceScoreResult above (this app doesn't otherwise depend on
+// @nutriai/health-scoring's types at the UI layer).
+export interface MacroTargetValue {
+  min: number | null;
+  target: number;
+  max: number | null;
+  unit: "kcal" | "g";
+  source: "tistra_recommended" | "user_custom" | "coach_custom";
+}
+
+export interface MacroTargets {
+  calories: MacroTargetValue;
+  protein: MacroTargetValue;
+  carbs: MacroTargetValue;
+  fat: MacroTargetValue;
+  fiber: MacroTargetValue;
+  selectedGoals: string[];
+  strategy: string;
+  explanation: string;
+  isProfileIncomplete: boolean;
+  calculatedAt: string;
+}
+
+export type MacroKey = "calories" | "protein" | "carbs" | "fat" | "fiber";
+
+// Only the fields the mobile "Food preferences" editor actually reads/
+// writes — mirrors the main web app's DietaryProfile
+// (src/lib/dietary-profile/types.ts), not the full shape (observed_*/
+// inferred_pattern/suggestion-feedback arrays aren't shown or edited here).
+export interface DietaryProfile {
+  explicit_vegetarian: boolean;
+  explicit_avoids_dairy: boolean;
+  explicit_avoids_lactose: boolean;
+  explicit_avoids_eggs: boolean;
+  explicit_avoids_chicken: boolean;
+  explicit_avoids_fish: boolean;
+  explicit_avoids_red_meat: boolean;
+  explicit_avoids_pork: boolean;
+  observed_eggs: boolean;
+  observed_chicken: boolean;
+  observed_fish: boolean;
+  observed_red_meat: boolean;
+  prefers_plant_based_suggestions: boolean;
+  /** Null until the user has explicitly saved a preference at least once
+   * (see applyExplicitPreferences on the mobile-api side) — used to decide
+   * whether the editor still needs prominent dashboard placement or has
+   * moved into the edit-contact screen for good. */
+  last_updated_at: string | null;
+}
+
+export interface FoodPreferenceSelections {
+  prefersPlantBasedSuggestions?: boolean;
+  eatsVegetarian?: boolean;
+  eatsEggs?: boolean;
+  eatsChicken?: boolean;
+  eatsFishOrSeafood?: boolean;
+  eatsRedMeat?: boolean;
+  avoidsDairy?: boolean;
+  avoidsLactose?: boolean;
+  avoidsPork?: boolean;
+}
 
 // ---- API calls ----
 
@@ -282,6 +353,39 @@ export const api = {
     feedback: RecommendationFeedback,
     foodIds: string[]
   ) => apiRequest<{ ok: boolean }>("/food-balance-score", { method: "POST", body: JSON.stringify({ ...params, feedback, foodIds }) }),
+
+  // "Don't show this one again" for a share card — folded into the same
+  // route, same reasoning as recordFoodBalanceFeedback above.
+  dismissShareCardForever: (params: { contactId: string } | { clientId: string }, conceptId: string) =>
+    apiRequest<{ ok: boolean }>("/food-balance-score?resource=share-card-dismiss", {
+      method: "PATCH",
+      body: JSON.stringify({ ...params, conceptId }),
+    }),
+
+  // Macro target edit/reset — mirrors the main web app's contact/client
+  // route PATCH handler (see those routes' own comments), folded into
+  // this same /food-balance-score route rather than a new one.
+  saveMacroTargets: (
+    params: { contactId: string } | { clientId: string },
+    targets: Partial<Record<MacroKey, { min: number | null; target: number; max: number | null }>>
+  ) =>
+    apiRequest<{ ok: boolean }>("/food-balance-score?resource=macro-targets", {
+      method: "PATCH",
+      body: JSON.stringify({ ...params, targets }),
+    }),
+  resetMacroTargets: (params: { contactId: string } | { clientId: string }) =>
+    apiRequest<{ ok: boolean }>("/food-balance-score?resource=macro-targets", {
+      method: "PATCH",
+      body: JSON.stringify({ ...params, reset: true }),
+    }),
+
+  // Adults-only, mirrors the web app's getFoodPreferences/updateFoodPreferences
+  // (see src/app/(adults)/adults/dashboard/actions.ts) — no gym equivalent
+  // exists on web either.
+  getAdultsFoodPreferences: (contactId: string) =>
+    apiFetch<DietaryProfile>(`/adults/contacts/${contactId}/food-preferences`),
+  updateAdultsFoodPreferences: (contactId: string, selections: FoodPreferenceSelections) =>
+    apiRequest<{}>(`/adults/contacts/${contactId}/food-preferences`, { method: "PATCH", body: JSON.stringify(selections) }),
 
   createAdultsContact: (body: unknown) =>
     apiRequest<{ id: string }>("/adults/contacts", { method: "POST", body: JSON.stringify(body) }),

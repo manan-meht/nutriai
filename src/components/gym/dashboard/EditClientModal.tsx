@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { GymClient } from "@nutriai/nutrition-core";
 import { NutritionGoalFields, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
+import { NutritionTargetsCard } from "@/components/shared/dashboard/NutritionTargetsCard";
 import { DietaryPreferencesFields, EMPTY_DIETARY_PREFERENCES_FIELDS, type DietaryPreferencesFieldsValue } from "@/components/shared/dashboard/DietaryPreferencesFields";
 import { getClientDietaryPreferences } from "@/app/(gym)/gym/dashboard/actions";
 
@@ -29,6 +30,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ error?: str
 export function EditClientModal({ client, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [targetsExpanded, setTargetsExpanded] = useState(false);
 
   const [fullName, setFullName] = useState(client.fullName);
   const [age, setAge] = useState(client.age?.toString() ?? "");
@@ -37,9 +39,7 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
   const [heightCm, setHeightCm] = useState(client.heightCm?.toString() ?? "");
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>({
-    primaryNutritionGoal: (client.primaryNutritionGoal as NutritionGoalFieldsValue["primaryNutritionGoal"]) ?? "",
-    dateOfBirth: client.dateOfBirth ?? "",
-    metabolicEquationSex: client.metabolicEquationSex ?? "",
+    nutritionGoals: client.nutritionGoals ?? [],
     activityLevel: client.activityLevel ?? "unknown",
     resistanceTrainingStatus: client.resistanceTrainingStatus ?? "unknown",
     targetWeightKg: client.targetWeightKg?.toString() ?? "",
@@ -69,9 +69,7 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
           gender: gender || undefined,
           weightKg: weightKg ? Number(weightKg) : undefined,
           heightCm: heightCm ? Number(heightCm) : undefined,
-          primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
-          dateOfBirth: goalFields.dateOfBirth || undefined,
-          metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
+          nutritionGoals: goalFields.nutritionGoals,
           activityLevel: goalFields.activityLevel || undefined,
           resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
           targetWeightKg: goalFields.targetWeightKg ? Number(goalFields.targetWeightKg) : undefined,
@@ -133,6 +131,22 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
 
           <div className="pt-2 border-t border-gray-100">
             <DietaryPreferencesFields value={dietaryPreferences} onChange={setDietaryPreferences} />
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setTargetsExpanded((v) => !v)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <p className="text-xs font-semibold text-purple-600 uppercase tracking-widest">Nutrition targets</p>
+              <span className="text-gray-400 text-sm">{targetsExpanded ? "▲" : "▼"}</span>
+            </button>
+            {targetsExpanded && (
+              <div className="mt-3">
+                <NutritionTargetsCard clientId={client.id} />
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-[var(--color-status-support-text)]">{error}</p>}

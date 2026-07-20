@@ -100,8 +100,12 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
     <div className="bg-white rounded-2xl border border-gray-100 p-4">
       <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Macronutrient summary</p>
 
-      {/* Desktop / tablet: four compact cards, each with its own mini chart */}
-      <div className="hidden sm:grid grid-cols-4 gap-3">
+      {/* Desktop / tablet: two cards per row (rather than cramming all four
+          into one row) so each mini chart has enough width to stay legible
+          at typical desktop sizes — four-across only kicked in readable
+          once the viewport narrowed enough to switch to the mobile layout
+          below, which defeated the point of a "desktop" layout. */}
+      <div className="hidden sm:grid grid-cols-2 xl:grid-cols-4 gap-3">
         {MACRO_KEYS.map((key) => (
           <MacroCard key={key} macroKey={key} average={averages[key]} target={targets?.[key]} data={dayData} />
         ))}
@@ -136,9 +140,9 @@ function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; av
   const meta = MACRO_META[macroKey];
   const ok = actualVsTargetOk(average, target);
   return (
-    <div className="rounded-xl border border-gray-100 p-3">
+    <div className="rounded-xl border border-gray-100 p-4">
       <div className="flex items-center justify-between mb-1">
-        <p className="text-xs font-semibold text-gray-600">{meta.label}</p>
+        <p className="text-sm font-semibold text-gray-600">{meta.label}</p>
         {ok !== null && (
           <span
             className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-[var(--color-status-good-dot)]" : "bg-[var(--color-status-steady-dot)]"}`}
@@ -146,19 +150,25 @@ function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; av
           />
         )}
       </div>
-      <p className="text-lg font-bold text-gray-900 leading-tight">
+      <p className="text-2xl font-bold text-gray-900 leading-tight">
         {average}
-        <span className="text-xs font-medium text-gray-400">{meta.unit}/day</span>
+        <span className="text-sm font-medium text-gray-400">{meta.unit}/day</span>
       </p>
       {target ? (
-        <p className="text-xs text-gray-400 mb-1.5">target {target}{meta.unit}</p>
+        <p className="text-xs text-gray-400 mb-2">target {target}{meta.unit}</p>
       ) : (
-        <p className="text-xs text-gray-400 mb-1.5">&nbsp;</p>
+        <p className="text-xs text-gray-400 mb-2">&nbsp;</p>
       )}
-      <div className="h-10 -mx-1">
+      <div className="h-20 -mx-1">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-            <Bar dataKey={macroKey} fill={meta.color} radius={[2, 2, 0, 0]} maxBarSize={6} />
+          <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+            {/* Without an explicit YAxis, Recharts scales the domain from
+                the Bar values alone — a target above the tallest bar would
+                place the ReferenceLine outside the chart entirely. Hidden
+                axis, but its domain still has to include the target. */}
+            <YAxis hide domain={[0, (dataMax: number) => Math.max(dataMax, target ?? 0) * 1.15]} />
+            {target && <ReferenceLine y={target} stroke={meta.color} strokeDasharray="4 3" strokeWidth={1.5} />}
+            <Bar dataKey={macroKey} fill={meta.color} radius={[3, 3, 0, 0]} maxBarSize={14} />
           </BarChart>
         </ResponsiveContainer>
       </div>

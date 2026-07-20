@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -18,6 +18,7 @@ import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceS
 import { ShareCardsDashboardSection } from "@/components/shared/dashboard/ShareCardsDashboardSection";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
+import { metabolicSexFromGender } from "@/lib/food-balance/adapter";
 import { MealPhotoModal } from "@/components/shared/dashboard/MealPhotoModal";
 import { buildMealShareData, type MealShareData } from "@/lib/meal-share/types";
 import { ProgressInsights } from "@/components/shared/ProgressInsights";
@@ -25,6 +26,7 @@ import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
+import type { MacroTargets } from "@nutriai/health-scoring";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -107,17 +109,21 @@ export function ProfileDashboard({
   const [showEdit, setShowEdit] = useState(false);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; shareData: MealShareData | null } | null>(null);
+  const MEALS_PAGE_SIZE = 10;
+  const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
+  const [activeMacroTargets, setActiveMacroTargets] = useState<MacroTargets | null>(null);
+  const [macroTargetsRefreshKey, setMacroTargetsRefreshKey] = useState(0);
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 
-  const foodBalanceProfile: FoodBalanceUserProfile | undefined = profile.primaryNutritionGoal
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = profile.nutritionGoals && profile.nutritionGoals.length > 0
     ? {
-        goal: profile.primaryNutritionGoal as FoodBalanceUserProfile["goal"],
+        goals: profile.nutritionGoals as FoodBalanceUserProfile["goals"],
         dateOfBirth: profile.dateOfBirth,
         age: profile.age,
         heightCm: profile.heightCm,
         currentWeightKg: profile.weightKg,
-        metabolicEquationSex: profile.metabolicEquationSex as FoodBalanceUserProfile["metabolicEquationSex"],
+        metabolicEquationSex: metabolicSexFromGender(profile.gender),
         activityLevel: profile.activityLevel as FoodBalanceUserProfile["activityLevel"],
         resistanceTraining: profile.resistanceTrainingStatus as FoodBalanceUserProfile["resistanceTraining"],
         targetWeightKg: profile.targetWeightKg,
@@ -136,6 +142,27 @@ export function ProfileDashboard({
     ? Math.round(mealsInRange.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / rangeDays)
     : 0;
 
+  // Active macro targets (calories/protein/carbs/fat/fiber) — fetched from
+  // the same contact/client route FoodBalanceScoreCard reads, since that's
+  // where Tistra's recommendation vs. a user's saved override is resolved
+  // (see resolveMacroTargets in src/lib/food-balance/adapter.ts). Falls
+  // back to the older protein/calorie-only heuristics while loading or if
+  // the feature flag is off, so this dashboard never regresses to "no
+  // target at all".
+  useEffect(() => {
+    let cancelled = false;
+    const path = role === "coach" ? `/api/gym/clients/${profile.id}` : `/api/adults/contacts/${profile.id}`;
+    fetch(path)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { activeMacroTargets?: MacroTargets } | null) => {
+        if (!cancelled && data?.activeMacroTargets) setActiveMacroTargets(data.activeMacroTargets);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.id, role, macroTargetsRefreshKey]);
+
   const recommendedProteinG = recommendProteinGrams({
     weightKg: profile.weightKg,
     heightCm: profile.heightCm,
@@ -143,10 +170,16 @@ export function ProfileDashboard({
     gender: profile.gender,
   });
   const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
-  const proteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
-  const isRecommendedProtein = !proteinRange;
-  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goal) : null;
-  const calTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
+  const fallbackProteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
+  const isRecommendedProtein = !proteinRange && !activeMacroTargets;
+  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goals) : null;
+  const fallbackCalTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
+
+  const proteinTarget = activeMacroTargets ? activeMacroTargets.protein.target : fallbackProteinTarget;
+  const calTarget = activeMacroTargets ? activeMacroTargets.calories.target : fallbackCalTarget;
+  const carbTarget = activeMacroTargets?.carbs.target;
+  const fatTarget = activeMacroTargets?.fat.target;
+  const fiberTarget = activeMacroTargets?.fiber.target;
   const proteinOk = proteinTarget ? avgProtein >= proteinTarget * 0.8 : null;
   const calOk = calTarget ? avgCalories >= calTarget * 0.8 : null;
 
@@ -157,6 +190,18 @@ export function ProfileDashboard({
   const insights = computeInsights(meals, { targetProteinG: proteinTarget, targetCaloriesMin: calTarget, product: role === "coach" ? "gym" : "adults" });
 
   const showInvite = !!invite && profile.relationshipType !== "self" && profile.mealCount === 0 && !profile.inviteAcceptedAt;
+
+  // Health-markers completeness nudge — these are the fields Food Balance
+  // Score / macro targets actually use to personalize (see
+  // @nutriai/health-scoring's FoodBalanceUserProfile); missing any of them
+  // means those features fall back to broader, less personalized ranges.
+  const missingHealthFields = [
+    !profile.age && "age",
+    !profile.gender && "gender",
+    !profile.weightKg && "weight",
+    !profile.heightCm && "height",
+    (!profile.activityLevel || profile.activityLevel === "unknown") && "activity level",
+  ].filter((f): f is string => Boolean(f));
 
   return (
     <div className={`min-h-screen ${theme.pageBgClassName}`}>
@@ -191,10 +236,30 @@ export function ProfileDashboard({
 
       {showEdit && renderEditModal?.({
         onClose: () => setShowEdit(false),
-        onSaved: () => setShowEdit(false),
+        onSaved: () => {
+          setShowEdit(false);
+          setMacroTargetsRefreshKey((k) => k + 1);
+        },
       })}
 
       <main className={`${theme.containerMaxWidthClassName} mx-auto px-4 sm:px-6 py-6 space-y-6`}>
+
+        {/* Health-markers completeness nudge — shown above everything else
+            so it's the first thing a caregiver/participant sees when
+            something's missing. */}
+        {missingHealthFields.length > 0 && permissions.canManageGoal && (
+          <div className="flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-sm text-amber-800">
+              Add {joinWithAnd(missingHealthFields)} so Tistra can give more accurate insights.
+            </p>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="shrink-0 text-xs font-semibold text-amber-800 underline whitespace-nowrap"
+            >
+              Add details
+            </button>
+          </div>
+        )}
 
         {/* WhatsApp-first invite — omitted entirely for roles that pass no
             `invite` prop (e.g. the participant's own view). */}
@@ -220,7 +285,9 @@ export function ProfileDashboard({
           </div>
           <div className="flex items-center gap-2 mt-3">
             <span className={`text-xs font-semibold ${theme.goalBadgeClassName} rounded-full px-3 py-1`}>
-              🎯 {profile.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[profile.primaryNutritionGoal] ?? profile.primaryNutritionGoal : "No goal set yet"}
+              🎯 {profile.nutritionGoals && profile.nutritionGoals.length > 0
+                ? profile.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")
+                : "No goal set yet"}
             </span>
             {permissions.canManageGoal && (
               <button onClick={() => setShowEdit(true)} className="text-xs font-medium text-gray-400 underline">
@@ -242,7 +309,11 @@ export function ProfileDashboard({
 
         {/* Section 3 — macronutrient summary. */}
         {permissions.canViewDetailedNutrition && (
-          <MacronutrientSummary meals={mealsInRange} days={rangeDays} targets={{ protein: proteinTarget }} />
+          <MacronutrientSummary
+            meals={mealsInRange}
+            days={rangeDays}
+            targets={{ protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+          />
         )}
 
         {/* Section 4 — key metric cards. */}
@@ -291,7 +362,7 @@ export function ProfileDashboard({
             </div>
           ) : (
             <div className="space-y-3">
-              {meals.slice(0, 10).map((meal) => {
+              {meals.slice(0, visibleMealCount).map((meal) => {
                 const avgProt = Math.round((meal.totalProteinMin + meal.totalProteinMax) / 2);
                 const avgCal = Math.round((meal.totalCaloriesMin + meal.totalCaloriesMax) / 2);
                 const time = new Date(meal.loggedAt).toLocaleString("en-IN", {
@@ -328,6 +399,14 @@ export function ProfileDashboard({
               })}
             </div>
           )}
+          {visibleMealCount < meals.length && (
+            <button
+              onClick={() => setVisibleMealCount((c) => c + MEALS_PAGE_SIZE)}
+              className="w-full mt-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+            >
+              Show more
+            </button>
+          )}
         </div>
 
         {/* Workouts — gym-only, present only when the caller supplies them. */}
@@ -360,10 +439,24 @@ export function ProfileDashboard({
           label={modalPhoto.label}
           shareData={modalPhoto.shareData}
           onClose={() => setModalPhoto(null)}
+          // Self vs. family must be derived from *this contact's*
+          // relationshipType, not the generic viewer `role` — role is
+          // fixed per-route ("family_admin" for the whole adults
+          // dashboard, including a caregiver's own self-tracked contact),
+          // so using it here mislabeled a caregiver's own meals as
+          // "My family member ..." instead of a pronoun-free self caption.
+          audience={role === "coach" ? "coach" : profile.relationshipType === "self" ? "self" : "family"}
+          relationship={profile.relationship}
         />
       )}
     </div>
   );
+}
+
+function joinWithAnd(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
 const ICON_BADGE_CLASSES: Record<"purple" | "green" | "orange" | "blue", string> = {

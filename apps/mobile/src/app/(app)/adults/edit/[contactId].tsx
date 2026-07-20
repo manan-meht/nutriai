@@ -53,9 +53,7 @@ export default function EditAdultsContactScreen() {
     ],
     goalFields: {
       ...EMPTY_NUTRITION_GOAL_FIELDS,
-      primaryNutritionGoal: contact.primaryNutritionGoal ?? '',
-      dateOfBirth: contact.dateOfBirth ?? '',
-      metabolicEquationSex: contact.metabolicEquationSex ?? '',
+      nutritionGoals: contact.nutritionGoals ?? [],
       activityLevel: contact.activityLevel ?? 'unknown',
       resistanceTrainingStatus: contact.resistanceTrainingStatus ?? 'unknown',
       targetWeightKg: contact.targetWeightKg != null ? String(contact.targetWeightKg) : '',

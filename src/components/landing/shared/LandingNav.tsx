@@ -18,7 +18,7 @@ const NAV_COPY: Record<ProductType, { logoLabel: string; logoSrc: string; signup
   },
   adults: {
     logoLabel: "Tistra Health",
-    logoSrc: "/logos/logo-red.png",
+    logoSrc: "/logos/logo-purple.png",
     signupLabel: "Get started",
   },
 };

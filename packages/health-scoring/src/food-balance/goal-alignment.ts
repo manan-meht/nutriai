@@ -26,6 +26,41 @@ function weightedAverage(parts: Array<{ value: number | null; weight: number }>)
   return known.reduce((s, p) => s + p.value * p.weight, 0) / totalWeight;
 }
 
+type GoalWeightMap = Record<string, number>;
+
+/** Blends GOAL_ALIGNMENT_WEIGHTS across every selected goal that has one
+ * (improve_nutrition never does — same "no goal-alignment component at
+ * all" behavior as a single improve_nutrition goal, per calculate.ts).
+ * Different goals weight entirely different component keys (e.g.
+ * gain_muscle's carbohydrateSupport/proteinDistribution vs
+ * reduce_weight's fibreAndMealVolume/intakeConsistency) — this takes the
+ * union of every key any selected goal weights, averages each key's
+ * weight across the goals that define it (goals that don't mention a key
+ * contribute 0 for it), then renormalizes so the blended weights still
+ * sum to 1. Returns null only when none of the selected goals weight
+ * anything (i.e. every goal is improve_nutrition). */
+function blendGoalAlignmentWeights(goals: NutritionGoal[]): GoalWeightMap | null {
+  const weightMaps = goals
+    .map((g) => GOAL_ALIGNMENT_WEIGHTS[g] as GoalWeightMap | null)
+    .filter((w): w is GoalWeightMap => w != null);
+  if (weightMaps.length === 0) return null;
+
+  const keys = new Set<string>();
+  for (const w of weightMaps) for (const k of Object.keys(w)) keys.add(k);
+
+  const summed: GoalWeightMap = {};
+  for (const key of keys) {
+    summed[key] = weightMaps.reduce((s, w) => s + (w[key] ?? 0), 0) / weightMaps.length;
+  }
+
+  const total = Object.values(summed).reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+
+  const normalized: GoalWeightMap = {};
+  for (const key of Object.keys(summed)) normalized[key] = summed[key] / total;
+  return normalized;
+}
+
 /** Whether the day-to-day calorie/protein pattern is reasonably stable
  * across the window — a coefficient-of-variation-style measure that doesn't
  * penalize one-off higher or lower days heavily. */
@@ -84,14 +119,14 @@ function calculateFibreAndMealVolumeScore(meals: FoodBalanceMealInput[]): { scor
 
 function calculateProteinAdequacyScore(
   meals: FoodBalanceMealInput[],
-  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goal" | "resistanceTraining">
+  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goals" | "resistanceTraining">
 ): { score: number | null; confidence: number } {
   const avgProtein = average(meals.filter((m) => m.proteinG != null).map((m) => m.proteinG!));
   if (avgProtein == null) return { score: null, confidence: 0 };
   const withData = meals.filter((m) => m.proteinG != null).length;
   const confidence = clamp(withData / meals.length, 0, 1);
 
-  if (profile?.goal === "healthy_aging") {
+  if (profile?.goals?.includes("healthy_aging")) {
     const gramsPerKg = avgProtein / weightOrDefault(profile.currentWeightKg);
     return { score: calculateHealthyAgingProteinScore(gramsPerKg), confidence };
   }
@@ -115,15 +150,16 @@ export function calculateGoalAlignmentScore(
   portionEstimationConfidence: number
 ): GoalAlignmentResult {
   const missingInputs: string[] = [];
-  const weights = GOAL_ALIGNMENT_WEIGHTS[profile.goal];
+  const weights = blendGoalAlignmentWeights(profile.goals);
 
   if (!weights) {
-    // improve_nutrition: Food Foundation carries the full score (see
-    // calculate.ts) — Goal Alignment is intentionally absent, not zero.
+    // Every selected goal is improve_nutrition: Food Foundation carries
+    // the full score (see calculate.ts) — Goal Alignment is intentionally
+    // absent, not zero.
     return { score: null, confidence: 0, components: {}, missingInputs: [], needsResistanceTrainingNote: false };
   }
 
-  const isHealthyAging = profile.goal === "healthy_aging";
+  const isHealthyAging = profile.goals.includes("healthy_aging");
 
   const proteinAdequacy = "proteinAdequacy" in weights ? calculateProteinAdequacyScore(meals, profile) : null;
   const intakeConsistency = "intakeConsistency" in weights ? calculateIntakeConsistencyScore(meals) : null;
@@ -144,7 +180,7 @@ export function calculateGoalAlignmentScore(
   let energyScore: number | null = null;
   let energyConfidence = 0;
   if ("energyAlignment" in weights) {
-    const energyRange = calculateEnergyTargetRange(profile, profile.goal);
+    const energyRange = calculateEnergyTargetRange(profile, profile.goals);
     const sufficientConfidence = hasSufficientEnergyConfidence(profile, mealCoverageConfidence, portionEstimationConfidence);
     if (!energyRange || !sufficientConfidence) {
       missingInputs.push("energy");
@@ -203,11 +239,14 @@ export function calculateGoalAlignmentScore(
   const confidence = knownParts.length > 0 ? knownParts.reduce((s, p) => s + p.confidence, 0) / knownParts.length : 0;
 
   const needsResistanceTrainingNote =
-    profile.goal === "gain_muscle" && profile.resistanceTraining !== "regularly" && profile.resistanceTraining !== "sometimes";
+    profile.goals.includes("gain_muscle") && profile.resistanceTraining !== "regularly" && profile.resistanceTraining !== "sometimes";
 
   return { score, confidence, components, missingInputs, needsResistanceTrainingNote };
 }
 
-export function goalRequiresCalorieComponent(goal: NutritionGoal): boolean {
-  return goal !== "improve_nutrition";
+/** True if ANY selected goal has a calorie target — the calorie component
+ * is shown as long as at least one goal calls for it, even if others
+ * (e.g. improve_nutrition) don't. */
+export function goalsRequireCalorieComponent(goals: NutritionGoal[]): boolean {
+  return goals.some((g) => g !== "improve_nutrition");
 }

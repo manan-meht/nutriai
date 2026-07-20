@@ -9,3 +9,4 @@ export * from "./energy";
 export * from "./confidence";
 export * from "./recommendations";
 export * from "./calculate";
+export * from "./macro-targets";

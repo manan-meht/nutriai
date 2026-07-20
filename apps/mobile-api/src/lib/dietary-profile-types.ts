@@ -1,8 +1,11 @@
-// Read-only mirror of the main web app's src/lib/dietary-profile/types.ts
-// (DietaryProfile/DEFAULT_DIETARY_PROFILE only — this app never observes/
-// updates the profile itself, that only happens via the WhatsApp bot in
-// the main app, so update.ts/preferences.ts/classify-meal.ts aren't
-// needed here). Duplicated rather than shared, matching this app's
+// Mirror of the main web app's src/lib/dietary-profile/types.ts
+// (DietaryProfile/DEFAULT_DIETARY_PROFILE only — this app never *observes*
+// a profile from meal content itself, that only happens via the WhatsApp
+// bot in the main app, so classify-meal.ts/sync.ts aren't needed here).
+// It does now support the user *explicitly* editing preferences (see
+// lib/food-preferences.ts, mirroring src/lib/dietary-profile/preferences.ts
+// and update.ts's deriveInferredPatternFromProfile) for the mobile "Food
+// preferences" editor. Duplicated rather than shared, matching this app's
 // existing pattern (see lib/food-balance.ts's own comment on why) — keep
 // in sync manually if the web app's DietaryProfile shape changes.
 export type InferredPattern =

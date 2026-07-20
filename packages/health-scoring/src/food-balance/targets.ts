@@ -14,16 +14,21 @@ export interface NutrientTargetRange {
 const DEFAULT_WEIGHT_KG = 70;
 const DEFAULT_HEIGHT_CM = 165;
 
-export function proteinTargetG(profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goal" | "resistanceTraining">): NutrientTargetRange {
+export function proteinTargetG(profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goals" | "resistanceTraining">): NutrientTargetRange {
   const weightKg = profile?.currentWeightKg ?? DEFAULT_WEIGHT_KG;
+  const goals = profile?.goals ?? [];
   // Higher-protein goals (muscle gain, recomposition, fat loss with lean
   // mass preservation) use a broader, higher range; general goals use RDA+.
-  const perKgLower =
-    profile?.goal === "gain_muscle" || profile?.goal === "body_recomposition"
-      ? 1.6
-      : profile?.goal === "reduce_weight" || profile?.goal === "reduce_body_fat"
-        ? 1.2
-        : 0.8;
+  // Multiple simultaneous goals: take the highest-protein tier that
+  // applies to ANY selected goal — more protein never hurts a
+  // lower-protein-tier goal also selected alongside it, so there's no
+  // real tradeoff to average away here (unlike calorie targets, which
+  // pull in opposite directions).
+  const perKgLower = goals.some((g) => g === "gain_muscle" || g === "body_recomposition")
+    ? 1.6
+    : goals.some((g) => g === "reduce_weight" || g === "reduce_body_fat")
+      ? 1.2
+      : 0.8;
   const perKgUpper = perKgLower + 0.6;
   return {
     lower: Math.round(weightKg * perKgLower),

@@ -175,7 +175,7 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     activityLevel: c.activity_level ?? undefined,
     resistanceTrainingStatus: c.resistance_training_status ?? undefined,
     preferredUnits: c.preferred_units ?? undefined,
-    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    nutritionGoals: c.nutrition_goals ?? [],
     targetWeightKg: c.target_weight_kg ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
@@ -310,7 +310,7 @@ export async function addClient(formData: {
    * gym_client_goals checklist entirely; protein/calorie targets shown on
    * the dashboard are now computed from these via @nutriai/health-scoring
    * instead of being typed in by hand. */
-  primaryNutritionGoal?: string;
+  nutritionGoals?: string[];
   dateOfBirth?: string;
   metabolicEquationSex?: string;
   activityLevel?: string;
@@ -418,7 +418,7 @@ export async function addClient(formData: {
       weight_kg: formData.weightKg || null,
       height_cm: formData.heightCm || null,
       invite_sent_at: new Date().toISOString(),
-      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
       activity_level: formData.activityLevel || null,
@@ -456,7 +456,7 @@ export async function updateClient(
     gender?: string;
     weightKg?: number;
     heightCm?: number;
-    primaryNutritionGoal?: string;
+    nutritionGoals?: string[];
     dateOfBirth?: string;
     metabolicEquationSex?: string;
     activityLevel?: string;
@@ -485,7 +485,7 @@ export async function updateClient(
       gender: formData.gender || null,
       weight_kg: formData.weightKg || null,
       height_cm: formData.heightCm || null,
-      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
       activity_level: formData.activityLevel || null,

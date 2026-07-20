@@ -2,14 +2,23 @@
 
 import { useState } from "react";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
+import { getFoodPreferences } from "@/app/(adults)/adults/dashboard/actions";
 import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 import { NutritionGoalFields, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
+import { NutritionTargetsCard } from "@/components/shared/dashboard/NutritionTargetsCard";
+import { FoodPreferencesEditor } from "@/components/adults/FoodPreferencesEditor";
+import type { DietaryProfile } from "@/lib/dietary-profile";
 
 interface Props {
   contact: AdultsContact;
   onClose: () => void;
   onSaved: () => void;
 }
+
+// Mirrors AddContactModal's RELATIONSHIPS list — kept as two separate
+// consts rather than a shared import since the two modals otherwise share
+// no other state and this is one line.
+const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Friend", "Other"];
 
 /** Plain fetch instead of a Server Action — Server Actions on this
  * deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
@@ -27,9 +36,31 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ error?: str
 export function EditContactModal({ contact, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [targetsExpanded, setTargetsExpanded] = useState(false);
+  const [foodPrefsExpanded, setFoodPrefsExpanded] = useState(false);
+  const [dietaryProfile, setDietaryProfile] = useState<DietaryProfile | null>(null);
+  const [loadingDietaryProfile, setLoadingDietaryProfile] = useState(false);
+
+  async function toggleFoodPrefs() {
+    const next = !foodPrefsExpanded;
+    setFoodPrefsExpanded(next);
+    if (next && !dietaryProfile) {
+      setLoadingDietaryProfile(true);
+      try {
+        setDietaryProfile(await getFoodPreferences(contact.id));
+      } finally {
+        setLoadingDietaryProfile(false);
+      }
+    }
+  }
 
   const [fullName, setFullName] = useState(contact.fullName);
-  const [relationship, setRelationship] = useState(contact.relationship ?? "");
+  // A self contact never has a free-text `relationship` (see
+  // AddContactModal's isSelf handling — "self" drives relationshipType
+  // instead), so this must seed from relationshipType, not relationship,
+  // or the edit form shows an empty box with no way to see/confirm this
+  // is the "Myself" entry.
+  const [relationship, setRelationship] = useState(contact.relationshipType === "self" ? "self" : contact.relationship ?? "");
   const [age, setAge] = useState(contact.age?.toString() ?? "");
   const [gender, setGender] = useState(contact.gender ?? "");
   const [weightKg, setWeightKg] = useState(contact.weightKg?.toString() ?? "");
@@ -43,9 +74,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
   );
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>({
-    primaryNutritionGoal: (contact.primaryNutritionGoal as NutritionGoalFieldsValue["primaryNutritionGoal"]) ?? "",
-    dateOfBirth: contact.dateOfBirth ?? "",
-    metabolicEquationSex: contact.metabolicEquationSex ?? "",
+    nutritionGoals: contact.nutritionGoals ?? [],
     activityLevel: contact.activityLevel ?? "unknown",
     resistanceTrainingStatus: contact.resistanceTrainingStatus ?? "unknown",
     targetWeightKg: contact.targetWeightKg?.toString() ?? "",
@@ -61,7 +90,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName,
-          relationship: relationship || undefined,
+          relationship: relationship === "self" ? undefined : relationship || undefined,
           age: age ? Number(age) : undefined,
           gender: gender || undefined,
           weightKg: weightKg ? Number(weightKg) : undefined,
@@ -70,9 +99,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           timezone,
           remindersEnabled,
           reminderTimes,
-          primaryNutritionGoal: goalFields.primaryNutritionGoal || undefined,
-          dateOfBirth: goalFields.dateOfBirth || undefined,
-          metabolicEquationSex: goalFields.metabolicEquationSex || undefined,
+          nutritionGoals: goalFields.nutritionGoals,
           activityLevel: goalFields.activityLevel || undefined,
           resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
           targetWeightKg: goalFields.targetWeightKg ? Number(goalFields.targetWeightKg) : undefined,
@@ -106,7 +133,13 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
             <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} />
           </Field>
           <Field label="Relationship">
-            <input value={relationship} onChange={(e) => setRelationship(e.target.value)} placeholder="e.g. Mother" className={inputClass} />
+            <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inputClass}>
+              <option value="">Select</option>
+              {contact.relationshipType === "self" && <option value="self">Myself</option>}
+              {RELATIONSHIPS.map((r) => (
+                <option key={r} value={r.toLowerCase()}>{r}</option>
+              ))}
+            </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Age">
@@ -171,6 +204,45 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
 
           <div className="pt-2 border-t border-gray-100">
             <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+          </div>
+
+          <div className="pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setTargetsExpanded((v) => !v)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest">
+                Nutrition targets
+              </p>
+              <span className="text-gray-400 text-sm">{targetsExpanded ? "▲" : "▼"}</span>
+            </button>
+            {targetsExpanded && (
+              <div className="mt-3">
+                <NutritionTargetsCard contactId={contact.id} />
+              </div>
+            )}
+          </div>
+
+          {/* Food preferences moves in here once the user has interacted
+              with it once (see the dashboard page's own comment) — this
+              modal is its permanent home going forward. */}
+          <div className="pt-2 border-t border-gray-100">
+            <button type="button" onClick={toggleFoodPrefs} className="w-full flex items-center justify-between text-left">
+              <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest">
+                Food preferences
+              </p>
+              <span className="text-gray-400 text-sm">{foodPrefsExpanded ? "▲" : "▼"}</span>
+            </button>
+            {foodPrefsExpanded && (
+              <div className="mt-3">
+                {loadingDietaryProfile || !dietaryProfile ? (
+                  <p className="text-xs text-gray-400">Loading…</p>
+                ) : (
+                  <FoodPreferencesEditor contactId={contact.id} initialProfile={dietaryProfile} />
+                )}
+              </div>
+            )}
           </div>
 
           {error && <p className="text-sm text-[var(--color-status-support-text)]">{error}</p>}

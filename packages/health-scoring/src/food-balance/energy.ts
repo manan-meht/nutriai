@@ -54,25 +54,30 @@ export function calculateMaintenanceEstimate(
   return { rmr, lowerKcal: lower, upperKcal: upper, midpointKcal: (lower + upper) / 2, isActivityBased: false };
 }
 
-/** Personalized calorie target range for the user's goal, derived from the
- * maintenance estimate — these are starting estimates, never guarantees or
- * medical prescriptions (see GOAL_ENERGY_OFFSETS). Returns null for
- * "improve_nutrition" (no calorie component for that goal) or when goal
- * offsets aren't defined. */
+/** Personalized calorie target range for the user's goal(s), derived from
+ * the maintenance estimate — these are starting estimates, never
+ * guarantees or medical prescriptions (see GOAL_ENERGY_OFFSETS). Returns
+ * null when none of the given goals have a calorie offset defined (e.g.
+ * only "improve_nutrition" selected).
+ *
+ * Multiple simultaneous goals: if "healthy_aging" is among them, its
+ * maintenance-range formula wins outright (not blended) — the other
+ * goals' offsets are simple ± percentages off the midpoint, while Healthy
+ * Aging deliberately returns the maintenance estimate's own wider range
+ * rather than collapsing to a point, and mixing the two formulas has no
+ * sensible combination. Otherwise, every selected goal that has a defined
+ * offset contributes to a simple average of lowerPct/upperPct — e.g.
+ * reduce_weight (deficit) + gain_muscle (surplus) averages to a small net
+ * offset near zero, which reads sensibly as a recomposition-like target
+ * rather than an arbitrary tie-break between contradictory goals. */
 export function calculateEnergyTargetRange(
   profile: Pick<FoodBalanceUserProfile, "currentWeightKg" | "heightCm" | "age" | "dateOfBirth" | "metabolicEquationSex" | "activityLevel">,
-  goal: NutritionGoal
+  goals: NutritionGoal[]
 ): EnergyTargetRange | null {
   const maintenance = calculateMaintenanceEstimate(profile);
   if (!maintenance) return null;
 
-  const offsets = GOAL_ENERGY_OFFSETS[goal];
-  if (!offsets) return null;
-
-  // Healthy Aging targets maintenance itself — use the maintenance
-  // estimate's own range directly rather than collapsing it to a single
-  // point via zero-offset multiplication.
-  if (goal === "healthy_aging") {
+  if (goals.includes("healthy_aging")) {
     return {
       lowerKcal: maintenance.lowerKcal,
       upperKcal: maintenance.upperKcal,
@@ -81,8 +86,16 @@ export function calculateEnergyTargetRange(
     };
   }
 
-  const lowerKcal = maintenance.midpointKcal * (1 + offsets.lowerPct);
-  const upperKcal = maintenance.midpointKcal * (1 + offsets.upperPct);
+  const offsets = goals
+    .map((g): { lowerPct: number; upperPct: number } | null => GOAL_ENERGY_OFFSETS[g])
+    .filter((o): o is { lowerPct: number; upperPct: number } => o != null);
+  if (offsets.length === 0) return null;
+
+  const avgLowerPct = offsets.reduce((s, o) => s + o.lowerPct, 0) / offsets.length;
+  const avgUpperPct = offsets.reduce((s, o) => s + o.upperPct, 0) / offsets.length;
+
+  const lowerKcal = maintenance.midpointKcal * (1 + avgLowerPct);
+  const upperKcal = maintenance.midpointKcal * (1 + avgUpperPct);
   const [orderedLower, orderedUpper] = lowerKcal <= upperKcal ? [lowerKcal, upperKcal] : [upperKcal, lowerKcal];
 
   return {

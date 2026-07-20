@@ -1,20 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 
 import { AccessCodeCard } from './access-code-card';
 import { ActivityHeatmap } from './activity-heatmap';
 import { DateRangeSelector } from './date-range-selector';
 import { FoodBalanceScoreCard } from './food-balance-score-card';
+import { FoodPreferencesEditor } from './food-preferences-editor';
 import { MacronutrientSummary } from './macronutrient-summary';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
+import { YourWinsSection } from './your-wins-section';
+import { MealShareModal } from './meal-share-modal';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import type { AccessCodeResult, BiomarkerLog, FoodBalanceProfileFields, MealLog, WorkoutLog } from '@/lib/api';
+import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
+import { api, type AccessCodeResult, type BiomarkerLog, type FoodBalanceProfileFields, type MealLog, type WorkoutLog } from '@/lib/api';
 import { filterByDateRange, getDateRangeDayCount, DEFAULT_DASHBOARD_DATE_RANGE, recommendProteinGrams, type DashboardDateRange } from '@nutriai/dashboard-core';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { calculateEnergyTargetRange, proteinTargetG, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
+import { buildMealShareData } from '@/lib/meal-share/types';
 
 interface PersonLike extends FoodBalanceProfileFields {
   fullName: string;
@@ -22,6 +28,10 @@ interface PersonLike extends FoodBalanceProfileFields {
   gender?: string;
   weightKg?: number;
   heightCm?: number;
+  /** adults-only — used to determine meal-share caption audience (self
+   * vs. family), see @/lib/meal-share/overlay-text.ts. */
+  relationshipType?: 'self' | 'family_caregiver';
+  relationship?: string;
 }
 
 // Shared by (app)/adults/[contactId].tsx and (app)/gym/[clientId].tsx —
@@ -39,6 +49,7 @@ export function PersonDetail({
   biomarkers,
   foodBalanceQuery,
   accessCode,
+  foodPreferencesContactId,
 }: {
   person: PersonLike;
   meals: MealLog[];
@@ -53,29 +64,45 @@ export function PersonDetail({
     onRegenerate: (ttlHours: 1 | 24) => Promise<AccessCodeResult>;
     onRevoke: () => Promise<{ ok: boolean }>;
   };
+  /** Adults-only "Food preferences" editor (no gym equivalent on web
+   * either) — only the adults detail screen passes this. */
+  foodPreferencesContactId?: string;
 }) {
   const theme = useTheme();
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
-  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string } | null>(null);
+  const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; meal: MealLog } | null>(null);
+  const [sharingMeal, setSharingMeal] = useState<MealLog | null>(null);
+  const MEALS_PAGE_SIZE = 10;
+  const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
 
   const latestBiomarker = biomarkers?.[biomarkers.length - 1];
 
   // Food Balance Score profile — same computation as the web dashboards, so
   // the displayed protein/calorie targets match exactly regardless of
   // platform.
-  const foodBalanceProfile: FoodBalanceUserProfile | undefined = person.primaryNutritionGoal
+  const foodBalanceProfile: FoodBalanceUserProfile | undefined = person.nutritionGoals && person.nutritionGoals.length > 0
     ? {
-        goal: person.primaryNutritionGoal,
-        dateOfBirth: person.dateOfBirth,
+        goals: person.nutritionGoals,
         age: person.age,
         heightCm: person.heightCm,
         currentWeightKg: person.weightKg,
-        metabolicEquationSex: person.metabolicEquationSex,
+        // No separate "sex for metabolic estimate" field anymore — gender
+        // (already collected) is used directly, mirroring the main web
+        // app's src/lib/food-balance/adapter.ts#metabolicSexFromGender.
+        metabolicEquationSex: person.gender === 'male' || person.gender === 'female' ? person.gender : undefined,
         activityLevel: person.activityLevel,
         resistanceTraining: person.resistanceTrainingStatus,
         targetWeightKg: person.targetWeightKg,
       }
     : undefined;
+
+  // Active macro targets (calories/protein/carbs/fat/fiber) — same
+  // /food-balance-score response FoodBalanceScoreCard reads, so this
+  // dashboard's targets always match whatever the user has customized
+  // (see resolveMacroTargets on the mobile-api side). Falls back to the
+  // older protein/calorie-only heuristics while loading.
+  const { result: foodBalanceResult } = useFoodBalanceScore(foodBalanceQuery);
+  const activeMacroTargets = foodBalanceResult?.activeMacroTargets;
 
   const recommendedProteinG = recommendProteinGrams({
     weightKg: person.weightKg,
@@ -84,10 +111,16 @@ export function PersonDetail({
     gender: person.gender,
   });
   const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;
-  const proteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
-  const isRecommendedProtein = !proteinRange;
-  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goal) : null;
-  const calTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
+  const fallbackProteinTarget = proteinRange ? Math.round((proteinRange.lower + proteinRange.upper) / 2) : recommendedProteinG;
+  const isRecommendedProtein = !proteinRange && !activeMacroTargets;
+  const energyRange = foodBalanceProfile ? calculateEnergyTargetRange(foodBalanceProfile, foodBalanceProfile.goals) : null;
+  const fallbackCalTarget = energyRange ? Math.round(energyRange.lowerKcal) : undefined;
+
+  const proteinTarget = activeMacroTargets ? activeMacroTargets.protein.target : fallbackProteinTarget;
+  const calTarget = activeMacroTargets ? activeMacroTargets.calories.target : fallbackCalTarget;
+  const carbTarget = activeMacroTargets?.carbs.target;
+  const fatTarget = activeMacroTargets?.fat.target;
+  const fiberTarget = activeMacroTargets?.fiber.target;
 
   const mealsInRange = filterByDateRange(meals, dateRange);
   const daysLogged = new Set(mealsInRange.map((m) => m.loggedAt.slice(0, 10))).size;
@@ -96,10 +129,39 @@ export function PersonDetail({
   const avgProtein = Math.round(mealsInRange.reduce((s, m) => s + (m.totalProteinMin + m.totalProteinMax) / 2, 0) / rangeDays);
   const avgCalories = Math.round(mealsInRange.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / rangeDays);
 
+  // Health-markers completeness nudge — see the identical check in the web
+  // app's ProfileDashboard.tsx.
+  const missingHealthFields = [
+    !person.age && 'age',
+    !person.gender && 'gender',
+    !person.weightKg && 'weight',
+    !person.heightCm && 'height',
+    (!person.activityLevel || person.activityLevel === 'unknown') && 'activity level',
+  ].filter((f): f is string => Boolean(f));
+  const editHref = 'clientId' in foodBalanceQuery ? `/gym/edit/${foodBalanceQuery.clientId}` : `/adults/edit/${foodBalanceQuery.contactId}`;
+
+  // Once the user has interacted with (saved) a food preference at least
+  // once, the editor moves into the edit-contact screen instead — see the
+  // identical dashboard-vs-edit-modal split in the web app's ContactPage/
+  // EditContactModal. `null` (not yet loaded) hides the editor, same as
+  // this component's other self-fetching cards.
+  const [hasInteractedWithFoodPreferences, setHasInteractedWithFoodPreferences] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!foodPreferencesContactId) return;
+    let cancelled = false;
+    api
+      .getAdultsFoodPreferences(foodPreferencesContactId)
+      .then((profile) => !cancelled && setHasInteractedWithFoodPreferences(profile.last_updated_at != null))
+      .catch(() => !cancelled && setHasInteractedWithFoodPreferences(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [foodPreferencesContactId]);
+
   return (
     <>
       <FlatList
-        data={meals}
+        data={meals.slice(0, visibleMealCount)}
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
@@ -112,19 +174,36 @@ export function PersonDetail({
                 {[person.age && `${person.age}y`, person.gender].filter(Boolean).join(' · ') || 'No profile details yet'}
               </ThemedText>
 
+              {missingHealthFields.length > 0 && (
+                <Pressable style={styles.healthNudge} onPress={() => router.push(editHref as any)}>
+                  <ThemedText type="small" style={styles.healthNudgeText}>
+                    Add {missingHealthFields.join(', ')} so Tistra can give more accurate insights.
+                  </ThemedText>
+                  <ThemedText type="small" style={styles.healthNudgeLink}>
+                    Add details
+                  </ThemedText>
+                </Pressable>
+              )}
+
               <DateRangeSelector value={dateRange} onChange={setDateRange} />
               <ThemedView type="backgroundSelected" style={styles.goalPill}>
                 <ThemedText type="small" style={styles.goalPillText}>
-                  🎯 {person.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[person.primaryNutritionGoal] ?? person.primaryNutritionGoal : 'No goal set yet'}
+                  🎯 {person.nutritionGoals && person.nutritionGoals.length > 0
+                    ? person.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ')
+                    : 'No goal set yet'}
                 </ThemedText>
               </ThemedView>
             </View>
 
-            {accessCode && <AccessCodeCard personName={person.fullName} {...accessCode} />}
-
             <FoodBalanceScoreCard {...foodBalanceQuery} />
 
-            <MacronutrientSummary meals={mealsInRange} days={rangeDays} targets={{ protein: proteinTarget }} />
+            <YourWinsSection {...foodBalanceQuery} />
+
+            <MacronutrientSummary
+              meals={mealsInRange}
+              days={rangeDays}
+              targets={{ protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+            />
 
             <View style={styles.healthRow}>
               <HealthCard
@@ -198,6 +277,26 @@ export function PersonDetail({
             </ThemedText>
           </View>
         }
+        ListFooterComponent={
+          <View style={styles.sections}>
+            {visibleMealCount < meals.length && (
+              <Pressable
+                onPress={() => setVisibleMealCount((c) => c + MEALS_PAGE_SIZE)}
+                style={[styles.showMoreButton, { borderColor: theme.backgroundSelected }]}
+              >
+                <ThemedText type="small" themeColor="textSecondary" style={styles.showMoreButtonText}>
+                  Show more
+                </ThemedText>
+              </Pressable>
+            )}
+
+            {accessCode && <AccessCodeCard personName={person.fullName} {...accessCode} />}
+
+            {foodPreferencesContactId && hasInteractedWithFoodPreferences === false && (
+              <FoodPreferencesEditor contactId={foodPreferencesContactId} />
+            )}
+          </View>
+        }
         ListEmptyComponent={
           <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
             No meals logged yet.
@@ -212,7 +311,7 @@ export function PersonDetail({
               </ThemedText>
             </View>
             {item.imageUrl && (
-              <Pressable onPress={() => setModalPhoto({ url: item.imageUrl!, label: item.mealType })}>
+              <Pressable onPress={() => setModalPhoto({ url: item.imageUrl!, label: item.mealType, meal: item })}>
                 <Image source={{ uri: item.imageUrl }} style={styles.mealPhoto} contentFit="cover" />
               </Pressable>
             )}
@@ -231,8 +330,29 @@ export function PersonDetail({
       <Modal visible={!!modalPhoto} transparent animationType="fade" onRequestClose={() => setModalPhoto(null)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setModalPhoto(null)}>
           {modalPhoto && <Image source={{ uri: modalPhoto.url }} style={styles.modalImage} contentFit="contain" />}
+          {modalPhoto && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                setSharingMeal(modalPhoto.meal);
+              }}
+              style={[styles.shareMealButton, { backgroundColor: theme.primary }]}
+            >
+              <ThemedText type="small" style={styles.shareMealButtonText}>
+                Share this meal
+              </ThemedText>
+            </Pressable>
+          )}
         </Pressable>
       </Modal>
+
+      <MealShareModal
+        meal={sharingMeal ? buildMealShareData(sharingMeal) : null}
+        visible={!!sharingMeal}
+        onClose={() => setSharingMeal(null)}
+        audience={'clientId' in foodBalanceQuery ? 'coach' : person.relationshipType === 'self' ? 'self' : 'family'}
+        relationship={person.relationship}
+      />
     </>
   );
 }
@@ -281,7 +401,12 @@ const styles = StyleSheet.create({
   name: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
   subtitle: { marginBottom: Spacing.three },
   goalPill: { alignSelf: 'flex-start', borderRadius: Spacing.four, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one, marginTop: Spacing.two },
+  healthNudge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.two, backgroundColor: '#FEF3C7', borderRadius: Spacing.two, padding: Spacing.two, marginTop: Spacing.two },
+  healthNudgeText: { flex: 1, color: '#92400E' },
+  healthNudgeLink: { color: '#92400E', fontWeight: '700' },
   goalPillText: { fontWeight: '700' },
+  showMoreButton: { width: '100%', paddingVertical: Spacing.two, borderRadius: Spacing.two, borderWidth: 1, alignItems: 'center' },
+  showMoreButtonText: { fontWeight: '600' },
   healthRow: { flexDirection: 'row', gap: Spacing.two },
   sectionLabel: { textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', marginBottom: Spacing.two },
   workoutRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.one },
@@ -291,6 +416,8 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: Spacing.four },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', alignItems: 'center', justifyContent: 'center' },
   modalImage: { width: '100%', height: '80%' },
+  shareMealButton: { marginTop: Spacing.three, borderRadius: Spacing.two, paddingVertical: Spacing.two, paddingHorizontal: Spacing.four },
+  shareMealButtonText: { color: '#ffffff', fontWeight: '700' },
 });
 
 const healthCardStyles = StyleSheet.create({

@@ -1,5 +1,5 @@
 import { View, Text, Pressable, TextInput, ScrollView, StyleSheet } from 'react-native';
-import type { NutritionGoal } from '@nutriai/health-scoring';
+import { resolveMacroStrategy, STRATEGY_EXPLANATIONS, type NutritionGoal } from '@nutriai/health-scoring';
 
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
@@ -11,18 +11,18 @@ import {
 } from '@/lib/goals';
 
 export interface NutritionGoalFieldsValue {
-  primaryNutritionGoal: NutritionGoal | '';
-  dateOfBirth: string;
-  metabolicEquationSex: string;
+  /** One or more simultaneous goals — see packages/health-scoring's
+   * FoodBalanceUserProfile.goals doc comment for how multiple goals blend
+   * into a single energy/protein target rather than picking a "primary"
+   * winner. */
+  nutritionGoals: NutritionGoal[];
   activityLevel: string;
   resistanceTrainingStatus: string;
   targetWeightKg: string;
 }
 
 export const EMPTY_NUTRITION_GOAL_FIELDS: NutritionGoalFieldsValue = {
-  primaryNutritionGoal: '',
-  dateOfBirth: '',
-  metabolicEquationSex: '',
+  nutritionGoals: [],
   activityLevel: 'unknown',
   resistanceTrainingStatus: 'unknown',
   targetWeightKg: '',
@@ -36,36 +36,52 @@ interface NutritionGoalFieldsProps {
 // Ported from nutriai-fresh's old apps/mobile/src/components/NutritionGoalFields.tsx
 // (see git history) — same Food Balance Score goal + profile inputs, shared
 // by the add/edit person and add/edit client screens instead of
-// duplicating four times. Sex/activity/resistance-training use horizontal
-// chip rows since RN has no native <select>.
+// duplicating four times. Activity/resistance-training use horizontal chip
+// rows since RN has no native <select>.
+//
+// Goals are multi-select (checkboxes, not the old single-choice radio) —
+// packages/health-scoring blends multiple simultaneous goals into one
+// energy/protein target rather than forcing a single "primary" choice.
+//
+// No separate "date of birth"/"sex for metabolic estimate" fields here —
+// those used to duplicate the age/gender fields already collected earlier
+// in the same form. Age and gender (already on the person) are used
+// directly for all calculations now.
 export function NutritionGoalFields({ value, onChange }: NutritionGoalFieldsProps) {
   const theme = useTheme();
-  const showResistanceTraining = value.primaryNutritionGoal
-    ? goalUsesResistanceTraining(value.primaryNutritionGoal)
-    : false;
+  const showResistanceTraining = value.nutritionGoals.some((g) => goalUsesResistanceTraining(g));
+  const hasAnyGoal = value.nutritionGoals.length > 0;
 
   function set<K extends keyof NutritionGoalFieldsValue>(key: K, v: NutritionGoalFieldsValue[K]) {
     onChange({ ...value, [key]: v });
   }
 
+  function toggleGoal(goal: NutritionGoal) {
+    const selected = value.nutritionGoals.includes(goal);
+    set('nutritionGoals', selected ? value.nutritionGoals.filter((g) => g !== goal) : [...value.nutritionGoals, goal]);
+  }
+
   return (
     <View>
-      <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Nutrition goal — optional, powers the Food Balance Score</Text>
+      <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Nutrition goals — optional, powers the Food Balance Score. Pick as many as apply.</Text>
+      <Text style={[styles.subHint, { color: theme.textSecondary }]}>
+        Choose one or more goals. Tistra will use these to suggest your starting nutrition targets.
+      </Text>
 
       {NUTRITION_GOAL_OPTIONS.map((option) => {
-        const selected = value.primaryNutritionGoal === option.value;
+        const selected = value.nutritionGoals.includes(option.value);
         return (
           <Pressable
             key={option.value}
-            onPress={() => set('primaryNutritionGoal', selected ? '' : option.value)}
+            onPress={() => toggleGoal(option.value)}
             style={[
               styles.goalCard,
               { borderColor: theme.backgroundSelected },
               selected && { borderColor: PRIMARY, backgroundColor: theme.backgroundElement },
             ]}
           >
-            <View style={[styles.radio, { borderColor: theme.backgroundSelected }, selected && { borderColor: PRIMARY }]}>
-              {selected && <View style={[styles.radioDot, { backgroundColor: PRIMARY }]} />}
+            <View style={[styles.checkbox, { borderColor: theme.backgroundSelected }, selected && { borderColor: PRIMARY, backgroundColor: PRIMARY }]}>
+              {selected && <Text style={styles.checkmark}>✓</Text>}
             </View>
             <View style={styles.goalCardText}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>{option.label}</Text>
@@ -75,24 +91,16 @@ export function NutritionGoalFields({ value, onChange }: NutritionGoalFieldsProp
         );
       })}
 
-      {value.primaryNutritionGoal && (
+      {hasAnyGoal && (
+        <View style={[styles.strategyBox, { backgroundColor: theme.backgroundElement }]}>
+          <Text style={{ color: PRIMARY, fontSize: 12, lineHeight: 17 }}>
+            {STRATEGY_EXPLANATIONS[resolveMacroStrategy(value.nutritionGoals)]}
+          </Text>
+        </View>
+      )}
+
+      {hasAnyGoal && (
         <View style={[styles.detailsSection, { borderTopColor: theme.backgroundSelected }]}>
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Date of birth (YYYY-MM-DD)</Text>
-          <TextInput
-            value={value.dateOfBirth}
-            onChangeText={(t) => set('dateOfBirth', t)}
-            placeholder="1990-01-01"
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-          />
-
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Sex (for metabolic estimate)</Text>
-          <ChipRow
-            options={[{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }]}
-            selected={value.metabolicEquationSex}
-            onSelect={(v) => set('metabolicEquationSex', v)}
-          />
-
           <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Activity level</Text>
           <ChipRow options={ACTIVITY_LEVEL_OPTIONS} selected={value.activityLevel} onSelect={(v) => set('activityLevel', v)} />
 
@@ -118,8 +126,8 @@ export function NutritionGoalFields({ value, onChange }: NutritionGoalFieldsProp
           />
 
           <Text style={[styles.hint, { color: theme.textSecondary }]}>
-            These personalize the Food Balance Score's energy/protein targets. Skipping them still shows a general
-            score based on food quality alone.
+            These personalize the Food Balance Score&apos;s energy/protein targets, using the age/gender already entered
+            above. Skipping them still shows a general score based on food quality alone.
           </Text>
         </View>
       )}
@@ -166,7 +174,9 @@ function ChipRow({
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  subHint: { fontSize: 12, marginBottom: 12, lineHeight: 16 },
+  strategyBox: { borderRadius: Spacing.two, padding: 12, marginBottom: 8 },
   goalCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -176,16 +186,16 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
   },
-  radio: {
+  checkbox: {
     marginTop: 2,
     width: 18,
     height: 18,
-    borderRadius: 999,
+    borderRadius: 4,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioDot: { width: 8, height: 8, borderRadius: 999 },
+  checkmark: { color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 },
   goalCardText: { flex: 1 },
   detailsSection: { marginTop: 8, paddingTop: 16, borderTopWidth: 1 },
   fieldLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6, marginTop: 12 },

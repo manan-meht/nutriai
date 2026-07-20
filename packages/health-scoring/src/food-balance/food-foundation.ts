@@ -46,7 +46,7 @@ function toComponent(score: number | null, weight: number, label: string, confid
 
 export function calculateMacroAndFibreBalance(
   meals: FoodBalanceMealInput[],
-  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goal" | "resistanceTraining">
+  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goals" | "resistanceTraining">
 ): { score: number | null; confidence: number } {
   const days = windowDays(meals);
   const avgProtein = average(meals.filter((m) => m.proteinG != null).map((m) => m.proteinG!));
@@ -171,7 +171,7 @@ export interface FoodFoundationResult {
 
 export function calculateFoodFoundationScore(
   meals: FoodBalanceMealInput[],
-  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goal" | "resistanceTraining">
+  profile?: Pick<FoodBalanceUserProfile, "currentWeightKg" | "goals" | "resistanceTraining">
 ): FoodFoundationResult {
   const macro = calculateMacroAndFibreBalance(meals, profile);
   const processed = calculateMinimallyProcessedScore(meals);

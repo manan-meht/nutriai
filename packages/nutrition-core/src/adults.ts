@@ -30,8 +30,10 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
     activityLevel: c.activity_level ?? undefined,
     resistanceTrainingStatus: c.resistance_training_status ?? undefined,
     preferredUnits: c.preferred_units ?? undefined,
-    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    nutritionGoals: c.nutrition_goals ?? [],
     targetWeightKg: c.target_weight_kg ?? undefined,
+    customMacroTargets: c.custom_macro_targets ?? undefined,
+    macroTargetsCustomizedAt: c.macro_targets_customized_at ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
       goalType: g.goal_type,

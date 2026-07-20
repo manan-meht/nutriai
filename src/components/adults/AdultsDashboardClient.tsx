@@ -400,10 +400,10 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
         </div>
       )}
 
-      {contact.primaryNutritionGoal ? (
+      {contact.nutritionGoals && contact.nutritionGoals.length > 0 ? (
         <div className="rounded-xl bg-[var(--color-dashboard-primary-light)] px-3 py-2">
           <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] mb-0.5">
-            {NUTRITION_GOAL_LABELS[contact.primaryNutritionGoal] ?? contact.primaryNutritionGoal}
+            {contact.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")}
           </p>
         </div>
       ) : (

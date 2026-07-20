@@ -27,7 +27,13 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
           onRegenerate={regenerateAccessCodeAction.bind(null, contactId)}
           onRevoke={revokeAccessCodeAction.bind(null, contactId)}
         />
-        <FoodPreferencesEditor contactId={contactId} initialProfile={dietaryProfile} />
+        {/* Once the user has interacted with (saved) a food preference at
+            least once, this moves into the Edit Contact modal instead —
+            it no longer needs prominent dashboard placement once it's set
+            up, and the modal is where the rest of the profile fields live. */}
+        {!dietaryProfile.last_updated_at && (
+          <FoodPreferencesEditor contactId={contactId} initialProfile={dietaryProfile} />
+        )}
       </div>
     </>
   );

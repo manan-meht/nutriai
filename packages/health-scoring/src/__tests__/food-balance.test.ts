@@ -166,7 +166,7 @@ describe("calculateFoodFoundationScore", () => {
 
 describe("goal alignment per goal", () => {
   const baseProfile: FoodBalanceUserProfile = {
-    goal: "reduce_weight",
+    goals: ["reduce_weight"],
     currentWeightKg: 70,
     heightCm: 170,
     age: 30,
@@ -174,7 +174,7 @@ describe("goal alignment per goal", () => {
     activityLevel: "moderately_active",
   };
 
-  const goals: FoodBalanceUserProfile["goal"][] = [
+  const goalsToTest: FoodBalanceUserProfile["goals"][number][] = [
     "reduce_weight",
     "reduce_body_fat",
     "gain_muscle",
@@ -182,10 +182,10 @@ describe("goal alignment per goal", () => {
     "maintain_weight",
   ];
 
-  for (const goal of goals) {
+  for (const goal of goalsToTest) {
     it(`computes a result for goal "${goal}"`, () => {
       const meals = mealsAcrossDays(15);
-      const result = calculateGoalAlignmentScore(meals, { ...baseProfile, goal }, 1, 1);
+      const result = calculateGoalAlignmentScore(meals, { ...baseProfile, goals: [goal] }, 1, 1);
       expect(result.score).not.toBeNull();
       expect(result.score!).toBeGreaterThanOrEqual(0);
       expect(result.score!).toBeLessThanOrEqual(100);
@@ -194,7 +194,7 @@ describe("goal alignment per goal", () => {
 
   it("improve_nutrition returns null (Food Foundation carries the score)", () => {
     const meals = mealsAcrossDays(15);
-    const result = calculateGoalAlignmentScore(meals, { ...baseProfile, goal: "improve_nutrition" }, 1, 1);
+    const result = calculateGoalAlignmentScore(meals, { ...baseProfile, goals: ["improve_nutrition"] }, 1, 1);
     expect(result.score).toBeNull();
   });
 
@@ -202,7 +202,7 @@ describe("goal alignment per goal", () => {
     const meals = mealsAcrossDays(15);
     const result = calculateGoalAlignmentScore(
       meals,
-      { ...baseProfile, goal: "gain_muscle", resistanceTraining: "not_currently" },
+      { ...baseProfile, goals: ["gain_muscle"], resistanceTraining: "not_currently" },
       1,
       1
     );
@@ -213,7 +213,7 @@ describe("goal alignment per goal", () => {
     const meals = mealsAcrossDays(15);
     const result = calculateGoalAlignmentScore(
       meals,
-      { ...baseProfile, goal: "gain_muscle", resistanceTraining: "regularly" },
+      { ...baseProfile, goals: ["gain_muscle"], resistanceTraining: "regularly" },
       1,
       1
     );
@@ -222,7 +222,7 @@ describe("goal alignment per goal", () => {
 
   it("omits energy alignment and lists it as missing when profile data is absent", () => {
     const meals = mealsAcrossDays(15);
-    const result = calculateGoalAlignmentScore(meals, { goal: "reduce_weight" }, 1, 1);
+    const result = calculateGoalAlignmentScore(meals, { goals: ["reduce_weight"] }, 1, 1);
     expect(result.missingInputs).toContain("energy");
     expect(result.components.energyAlignment).toBeUndefined();
   });
@@ -269,7 +269,7 @@ describe("energy estimation", () => {
   it("returns null energy target range for improve_nutrition", () => {
     const range = calculateEnergyTargetRange(
       { currentWeightKg: 70, heightCm: 170, age: 30, metabolicEquationSex: "male", activityLevel: "moderately_active" },
-      "improve_nutrition"
+      ["improve_nutrition"]
     );
     expect(range).toBeNull();
   });
@@ -306,7 +306,7 @@ describe("confidence", () => {
   it("increases with more meals and a more complete profile", () => {
     const fewMeals = calculateFoodBalanceConfidence(mealsAcrossDays(5), undefined);
     const fullProfile: FoodBalanceUserProfile = {
-      goal: "maintain_weight",
+      goals: ["maintain_weight"],
       currentWeightKg: 70,
       heightCm: 170,
       age: 30,
@@ -394,7 +394,7 @@ describe("calculateFoodBalanceScore (end-to-end)", () => {
   it("returns fully_personalized with a complete profile and enough confidence", () => {
     const meals = mealsAcrossDays(21, { isUserCorrected: true });
     const profile: FoodBalanceUserProfile = {
-      goal: "maintain_weight",
+      goals: ["maintain_weight"],
       currentWeightKg: 70,
       heightCm: 170,
       age: 30,
@@ -410,7 +410,7 @@ describe("calculateFoodBalanceScore (end-to-end)", () => {
   it("caps the calorie component's influence — swapping only energy score should shift the total by at most ~18%", () => {
     const meals = mealsAcrossDays(21, { isUserCorrected: true });
     const profile: FoodBalanceUserProfile = {
-      goal: "reduce_weight",
+      goals: ["reduce_weight"],
       currentWeightKg: 70,
       heightCm: 170,
       age: 30,
@@ -478,7 +478,7 @@ describe("calculateFoodBalanceScore (end-to-end)", () => {
 
 describe("healthy_aging goal", () => {
   const healthyAgingProfile: FoodBalanceUserProfile = {
-    goal: "healthy_aging",
+    goals: ["healthy_aging"],
     currentWeightKg: 70,
     heightCm: 165,
     age: 68,
@@ -531,7 +531,7 @@ describe("healthy_aging goal", () => {
 
     it("uses the maintenance estimate as the target range (no deficit/surplus offset)", () => {
       const maintenance = calculateMaintenanceEstimate(healthyAgingProfile);
-      const target = calculateEnergyTargetRange(healthyAgingProfile, "healthy_aging");
+      const target = calculateEnergyTargetRange(healthyAgingProfile, ["healthy_aging"]);
       expect(target!.lowerKcal).toBeCloseTo(maintenance!.lowerKcal);
       expect(target!.upperKcal).toBeCloseTo(maintenance!.upperKcal);
     });
@@ -685,7 +685,7 @@ describe("existing goals are unaffected by the healthy_aging addition", () => {
   it("reduce_weight still produces the same shape of result", () => {
     const meals = mealsAcrossDays(15);
     const profile: FoodBalanceUserProfile = {
-      goal: "reduce_weight",
+      goals: ["reduce_weight"],
       currentWeightKg: 70,
       heightCm: 170,
       age: 30,

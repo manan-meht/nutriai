@@ -100,7 +100,13 @@ export interface FoodBalanceWeightEntry {
 }
 
 export interface FoodBalanceUserProfile {
-  goal: NutritionGoal;
+  /** One or more simultaneous goals (see energy.ts/targets.ts/
+   * goal-alignment.ts for how multiple goals are blended into a single
+   * energy/protein target and component-weight set — never a single
+   * "primary" goal winner-takes-all). Always non-empty in practice;
+   * callers without an explicit goal yet should pass ["improve_nutrition"]
+   * (the same default the DB/adapters use for a contact with no goal set). */
+  goals: NutritionGoal[];
   dateOfBirth?: string;
   age?: number;
   heightCm?: number;

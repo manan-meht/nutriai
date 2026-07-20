@@ -9,7 +9,7 @@ import {
   markFamilyInviteLinkOpened,
 } from "@/app/(adults)/adults/dashboard/actions";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
-import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile } from "@/lib/food-balance/adapter";
+import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile, resolveMacroTargets } from "@/lib/food-balance/adapter";
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
 import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
@@ -70,6 +70,30 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { error } = await supabase
       .from("adults_contacts")
       .update({ dismissed_share_card_ids: next })
+      .eq("id", contactId)
+      .eq("caregiver_id", user.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ ok: true });
+  }
+
+  // Macro target edit/reset — folded in here rather than a new route, same
+  // bundle-size reasoning as everywhere else in this file. `body.targets`
+  // present (even partially, e.g. only `{ protein: {...} }`) means "save
+  // these as user_custom overrides"; `body.reset === true` clears
+  // custom_macro_targets entirely so activeMacroTargets falls back to
+  // Tistra's live recommendation for every macro.
+  if (new URL(request.url).searchParams.get("resource") === "macro-targets") {
+    const body = await request.json().catch(() => null);
+    if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const nextCustomMacroTargets = body.reset === true ? null : (body.targets ?? null);
+    const { error } = await supabase
+      .from("adults_contacts")
+      .update({ custom_macro_targets: nextCustomMacroTargets, macro_targets_customized_at: new Date().toISOString() })
       .eq("id", contactId)
       .eq("caregiver_id", user.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -138,7 +162,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: profileRow } = await supabase
     .from("adults_contacts")
     .select(
-      "date_of_birth, age, weight_kg, height_cm, gender, metabolic_equation_sex, activity_level, resistance_training_status, preferred_units, primary_nutrition_goal, target_weight_kg, dietary_profile, dismissed_share_card_ids"
+      "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, dismissed_share_card_ids, custom_macro_targets"
     )
     .eq("id", contactId)
     .eq("caregiver_id", user.id)
@@ -178,12 +202,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     previousDisplayedScore: previousSnapshot?.displayed_score ?? null,
   });
 
+  // Macro targets (calories/protein/carbs/fat/fiber) — a profile always
+  // gets a macro-targets recommendation (defaulting to ["improve_nutrition"]
+  // when no goal is selected yet), unlike the Food Balance Score's Goal
+  // Alignment component, which is simply omitted without a goal.
+  const macroProfile = profile ?? { ...mapRowToFoodBalanceProfile({ ...profileRow, nutrition_goals: ["improve_nutrition"] })! };
+  const { recommendedMacroTargets, activeMacroTargets } = resolveMacroTargets(macroProfile, profileRow?.custom_macro_targets ?? undefined);
+
+  // Recent-days actual-vs-target averages, fed into the recommendation
+  // copy below (e.g. "You're averaging 82g protein against a target of
+  // 125g") — a plain per-logged-day average over the same recent meal
+  // history already fetched, not a new query.
+  const distinctDays = new Set(details.meals.map((m) => m.loggedAt.slice(0, 10))).size || 1;
+  const avgOf = (min: keyof (typeof details.meals)[number], max: keyof (typeof details.meals)[number]) =>
+    details.meals.reduce((s, m) => s + ((m[min] as number) + (m[max] as number)) / 2, 0) / distinctDays;
+
   // Turns generic recommendation copy ("Add one protein source") into
   // Food-Profile-personalized examples ("Try Greek yogurt with fruit, or
   // paneer, tofu, eggs...") — see src/lib/food-balance/personalize.ts.
   const dietaryProfile = { ...DEFAULT_DIETARY_PROFILE, ...(profileRow?.dietary_profile ?? {}) };
   result.recommendations = personalizeFoodBalanceRecommendations(result.recommendations, dietaryProfile, {
-    goal: profileRow?.primary_nutrition_goal ?? undefined,
+    goal: profileRow?.nutrition_goals?.[0] ?? undefined,
+    macroTargets: {
+      protein: { averageG: avgOf("totalProteinMin", "totalProteinMax"), targetG: activeMacroTargets.protein.target },
+      fiber: { averageG: avgOf("totalFiberMin", "totalFiberMax"), targetG: activeMacroTargets.fiber.target },
+      carbs: { averageG: avgOf("totalCarbsMin", "totalCarbsMax"), targetG: activeMacroTargets.carbs.target },
+    },
   });
 
   if (result.calculatedAt) {
@@ -244,5 +288,5 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     totalMealsAllTime: details.meals.length,
   }).filter((c) => !dismissedIds.has(c.concept.id));
 
-  return NextResponse.json({ ...result, earnedShareCards });
+  return NextResponse.json({ ...result, earnedShareCards, recommendedMacroTargets, activeMacroTargets });
 }

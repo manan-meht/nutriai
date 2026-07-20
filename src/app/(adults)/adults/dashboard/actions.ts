@@ -175,7 +175,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     activityLevel: c.activity_level ?? undefined,
     resistanceTrainingStatus: c.resistance_training_status ?? undefined,
     preferredUnits: c.preferred_units ?? undefined,
-    primaryNutritionGoal: c.primary_nutrition_goal ?? undefined,
+    nutritionGoals: c.nutrition_goals ?? [],
     targetWeightKg: c.target_weight_kg ?? undefined,
     goals: (c.goals ?? []).map((g: any) => ({
       id: g.id,
@@ -236,7 +236,7 @@ export async function addContact(formData: {
    * adults_contact_goals checklist entirely; protein/calorie targets shown
    * on the dashboard are now computed from these via @nutriai/health-scoring
    * instead of being typed in by hand. */
-  primaryNutritionGoal?: string;
+  nutritionGoals?: string[];
   dateOfBirth?: string;
   metabolicEquationSex?: string;
   activityLevel?: string;
@@ -345,7 +345,7 @@ export async function addContact(formData: {
       ...(formData.timezone ? { timezone: formData.timezone } : {}),
       reminders_enabled: formData.remindersEnabled ?? false,
       ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
-      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
       activity_level: formData.activityLevel || null,
@@ -470,7 +470,7 @@ export async function updateContact(
     /** Food Balance Score profile fields — see addContact's own comment on
      * these; replaces the old adults_contact_goals-based upsertContactGoal
      * entirely (targets are now computed, not typed in). */
-    primaryNutritionGoal?: string;
+    nutritionGoals?: string[];
     dateOfBirth?: string;
     metabolicEquationSex?: string;
     activityLevel?: string;
@@ -495,7 +495,7 @@ export async function updateContact(
       ...(formData.timezone ? { timezone: formData.timezone } : {}),
       ...(formData.remindersEnabled !== undefined ? { reminders_enabled: formData.remindersEnabled } : {}),
       ...(formData.reminderTimes ? { reminder_times: formData.reminderTimes } : {}),
-      primary_nutrition_goal: formData.primaryNutritionGoal || null,
+      nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
       activity_level: formData.activityLevel || null,
@@ -742,7 +742,7 @@ export interface SelfDetails {
    * materialized into adults_contacts columns at claim time (see
    * handleInviteClaim in conversation-handler.ts), same as the rest of
    * SelfDetails. */
-  primaryNutritionGoal?: string;
+  nutritionGoals?: string[];
   dateOfBirth?: string;
   metabolicEquationSex?: string;
   activityLevel?: string;

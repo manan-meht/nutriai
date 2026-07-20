@@ -11,6 +11,6 @@ import type { ProductType } from "@/types";
  */
 export function faviconForProduct(product: ProductType | null): string {
   if (product === "gym") return "/logos/logo-purple.png";
-  if (product === "adults") return "/logos/logo-red.png";
+  if (product === "adults") return "/logos/logo-purple.png";
   return "/logos/logo-black.png";
 }

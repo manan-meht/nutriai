@@ -80,14 +80,15 @@ export interface ProfileDashboardProfile {
   metabolicEquationSex?: "male" | "female";
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
-  primaryNutritionGoal?:
+  nutritionGoals?: Array<
     | "reduce_weight"
     | "reduce_body_fat"
     | "gain_muscle"
     | "body_recomposition"
     | "maintain_weight"
     | "improve_nutrition"
-    | "healthy_aging";
+    | "healthy_aging"
+  >;
   targetWeightKg?: number;
 }
 
@@ -143,7 +144,7 @@ export function adaptAdultsContactDetails({ contact, meals }: AdultsContactDetai
       metabolicEquationSex: contact.metabolicEquationSex,
       activityLevel: contact.activityLevel,
       resistanceTrainingStatus: contact.resistanceTrainingStatus,
-      primaryNutritionGoal: contact.primaryNutritionGoal,
+      nutritionGoals: contact.nutritionGoals,
       targetWeightKg: contact.targetWeightKg,
     },
     meals: meals.map((m) => adaptMeal(m, contact.id)),
@@ -166,7 +167,7 @@ export function adaptClientDetails({ client, meals, workouts, biomarkers }: Clie
       metabolicEquationSex: client.metabolicEquationSex,
       activityLevel: client.activityLevel,
       resistanceTrainingStatus: client.resistanceTrainingStatus,
-      primaryNutritionGoal: client.primaryNutritionGoal,
+      nutritionGoals: client.nutritionGoals,
       targetWeightKg: client.targetWeightKg,
     },
     meals: meals.map((m) => adaptMeal(m, client.id)),

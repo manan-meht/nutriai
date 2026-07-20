@@ -7,7 +7,7 @@ export type DashboardDateRange =
   | "this_year"
   | "all_time";
 
-export const DEFAULT_DASHBOARD_DATE_RANGE: DashboardDateRange = "this_week";
+export const DEFAULT_DASHBOARD_DATE_RANGE: DashboardDateRange = "last_7_days";
 
 export const DATE_RANGE_OPTIONS: Array<{ value: DashboardDateRange; label: string }> = [
   { value: "today", label: "Today" },

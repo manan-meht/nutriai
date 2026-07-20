@@ -19,7 +19,7 @@ type State =
   | { status: 'ready'; clients: GymClient[] };
 
 function subtitleFor(client: GymClient): string | undefined {
-  return client.primaryNutritionGoal ? NUTRITION_GOAL_LABELS[client.primaryNutritionGoal] : undefined;
+  return client.nutritionGoals?.length ? client.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
 }
 
 function firstNameFromSession(email?: string | null): string {
