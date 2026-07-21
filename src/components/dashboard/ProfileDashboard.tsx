@@ -312,7 +312,7 @@ export function ProfileDashboard({
           <MacronutrientSummary
             meals={mealsInRange}
             days={rangeDays}
-            targets={{ protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+            targets={{ calories: calTarget, protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
           />
         )}
 
@@ -350,7 +350,7 @@ export function ProfileDashboard({
         {/* Section 6 — meal activity heatmap (fixed 30-day window). */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Meal activity – last 30 days</p>
-          <ActivityHeatmap meals={heatmapMeals as any} workouts={(workouts as any) ?? []} days={30} />
+          <ActivityHeatmap meals={heatmapMeals as any} days={30} />
         </div>
 
         {/* Section 7 — recent meals. */}

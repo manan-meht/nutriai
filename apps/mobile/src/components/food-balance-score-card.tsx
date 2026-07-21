@@ -115,21 +115,19 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
             Top ways to improve
           </ThemedText>
           {result.recommendations.map((rec, i) => (
-            <View key={rec.id} style={styles.recItem}>
+            <View
+              key={rec.id}
+              style={[
+                styles.recItem,
+                { backgroundColor: i % 2 === 0 ? theme.background : theme.backgroundSelected },
+              ]}
+            >
               <ThemedText type="small" style={styles.recItemTitle}>
                 {i + 1}. {rec.title}
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.recItemDescription}>
                 {rec.description}
               </ThemedText>
-              {rec.action && (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.recItemAction}>
-                  <ThemedText type="small" style={styles.recItemActionLabel}>
-                    Try this:{' '}
-                  </ThemedText>
-                  {rec.action}
-                </ThemedText>
-              )}
               {rec.whyThisHelps && (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.recItemWhy}>
                   {rec.whyThisHelps}
@@ -141,9 +139,11 @@ export function FoodBalanceScoreCard(params: { contactId: string } | { clientId:
         </View>
       )}
 
-      <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
-        This is not a medical assessment and may not capture everything you eat.
-      </ThemedText>
+      <View style={[styles.disclaimerBand, { backgroundColor: theme.backgroundSelected }]}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
+          This is not a medical assessment and may not capture everything you eat.
+        </ThemedText>
+      </View>
     </ThemedView>
   );
 }
@@ -216,13 +216,20 @@ const styles = StyleSheet.create({
   bandLabel: { fontWeight: '600' },
   recommendations: { marginTop: Spacing.three, paddingTop: Spacing.three, borderTopWidth: 1 },
   recTitle: { textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', fontSize: 11, marginBottom: Spacing.one },
-  recItem: { marginBottom: Spacing.three },
+  recItem: { marginBottom: Spacing.two, padding: Spacing.two, borderRadius: Spacing.two },
   recItemTitle: { fontWeight: '600' },
   recItemDescription: { marginTop: 2 },
-  recItemAction: { marginTop: Spacing.one },
-  recItemActionLabel: { fontWeight: '600' },
   recItemWhy: { fontSize: 11, marginTop: Spacing.one },
-  disclaimer: { fontSize: 10, marginTop: Spacing.two },
+  disclaimerBand: {
+    marginTop: Spacing.three,
+    marginHorizontal: -Spacing.three,
+    marginBottom: -Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderBottomLeftRadius: Spacing.three,
+    borderBottomRightRadius: Spacing.three,
+  },
+  disclaimer: { fontSize: 10 },
   feedbackRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.one, marginTop: Spacing.one },
   feedbackPill: { paddingHorizontal: Spacing.two, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
   feedbackPillLabel: { fontSize: 11 },

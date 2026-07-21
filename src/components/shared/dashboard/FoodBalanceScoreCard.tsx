@@ -177,12 +177,14 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
       {result.recommendations.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Top ways to improve</p>
-          <ol className="space-y-3">
+          <ol className="space-y-2">
             {result.recommendations.map((rec, i) => (
-              <li key={rec.id} className="text-sm text-gray-700">
+              <li
+                key={rec.id}
+                className={`text-sm text-gray-700 rounded-xl p-3 ${i % 2 === 0 ? "bg-[var(--color-dashboard-primary-light)]" : "bg-gray-50"}`}
+              >
                 <p className="font-semibold text-gray-900">{i + 1}. {rec.title}</p>
                 <p className="text-gray-600 mt-0.5">{rec.description}</p>
-                {rec.action && <p className="text-gray-500 mt-1"><span className="font-medium text-gray-600">Try this: </span>{rec.action}</p>}
                 {rec.whyThisHelps && <p className="text-xs text-gray-400 mt-1">{rec.whyThisHelps}</p>}
                 <RecommendationFeedbackButtons rec={rec} contactId={contactId} clientId={clientId} />
               </li>
@@ -191,7 +193,7 @@ export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCa
         </div>
       )}
 
-      <p className="text-[11px] text-gray-400 mt-3">
+      <p className="text-[11px] text-gray-400 -mx-5 -mb-5 mt-4 px-5 py-3 bg-gray-50 rounded-b-2xl border-t border-gray-100">
         This is not a medical assessment and may not capture everything you eat.
       </p>
     </div>

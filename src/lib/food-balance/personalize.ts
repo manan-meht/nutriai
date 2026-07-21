@@ -240,30 +240,40 @@ function buildPersonalizedRecommendationFields(
         : topFood?.dietTags?.includes("contains_chicken") || topFood?.dietTags?.includes("contains_fish")
         ? "Based on what you usually eat, "
         : "Based on meals you've logged, ";
+      // A single consolidated sentence, not a separate "description" +
+      // "action" that both told the user to do the same thing in slightly
+      // different words (e.g. "Try adding a protein anchor..." immediately
+      // followed by a "Try this: Pick one meal and add one of these..."
+      // line) — action is still populated (some callers/tests expect it to
+      // be defined) but is no longer rendered as its own line in the UI.
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: mapping.meal === "breakfast" ? "Add protein to breakfast" : "Spread protein across more meals",
-        description: `${mealPhrase} Try adding a protein anchor${mapping.meal ? ` at ${mapping.meal}` : ""}, such as ${exampleText}, depending on your Food Profile.`,
+        description: `${mealPhrase} Try adding ${examples[0]}${mapping.meal ? ` at ${mapping.meal}` : ""}${altExamples ? ` — ${altExamples} also work well` : ""}, depending on your Food Profile.`,
         action: `Pick one meal and add one of these: ${exampleText}.`,
         whyThisHelps: "Protein can make meals more filling and helps support your goal.",
       };
     }
-    case "fruit_veg":
+    case "fruit_veg": {
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: "Add a vegetable or fruit serving",
-        description: `Recent meals show room to grow in fruit and vegetables. Try adding ${exampleText} to one meal this week.`,
+        description: `Recent meals show room to grow in fruit and vegetables. Try adding ${examples[0]} to your next lunch or dinner${altExamples ? ` — ${altExamples} also work well` : ""}.`,
         action: `Add ${examples[0]} to your next lunch or dinner.`,
         whyThisHelps: "More fruit and vegetables adds fibre and variety without changing the rest of your plate.",
       };
+    }
     case "fiber": {
       const trendPhrase = macroTargets?.fiber
         ? `Fiber is trending below your target (averaging ${Math.round(macroTargets.fiber.averageG)}g against ${Math.round(macroTargets.fiber.targetG)}g).`
         : "Fibre has room to grow in recent meals.";
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: "Add a fibre-rich food",
-        description: `${trendPhrase} Try adding ${exampleText} tomorrow.`,
+        description: `${trendPhrase} Try adding ${examples[0]} to your next meal${altExamples ? ` — ${altExamples} also work well` : ""}.`,
         action: `Add ${examples[0]} to your next meal.`,
         whyThisHelps: "Fibre supports digestion and helps meals feel more satisfying.",
       };
@@ -272,30 +282,35 @@ function buildPersonalizedRecommendationFields(
       const carbPhrase = macroTargets?.carbs && macroTargets.carbs.averageG > macroTargets.carbs.targetG
         ? "Carbs are above your target mostly at dinner."
         : "Recent meals lean toward rice, roti, or noodles with less alongside them.";
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: "Balance out carb-heavy meals",
-        description: `${carbPhrase} Keep the rice or roti, but try ${exampleText} first so the meal becomes more balanced.`,
+        description: `${carbPhrase} Keep the rice or roti, but add ${examples[0]} first so the meal becomes more balanced${altExamples ? ` — ${altExamples} also work well` : ""}.`,
         action: `On your next carb-heavy meal, try ${examples[0]}.`,
         whyThisHelps: "Pairing carbs with protein and vegetables makes meals more balanced without cutting anything out.",
       };
     }
-    case "home_cooked":
+    case "home_cooked": {
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: "Try one more home-cooked meal",
-        description: `Recent meals lean toward restaurant or packaged sources. Try ${exampleText} in place of one takeout meal this week.`,
+        description: `Recent meals lean toward restaurant or packaged sources. Try swapping one upcoming takeout meal for ${examples[0]}${altExamples ? ` — ${altExamples} also work well` : ""}.`,
         action: `Swap one upcoming takeout meal for ${examples[0]}.`,
         whyThisHelps: "Home-cooked meals make it easier to control what's actually in them.",
       };
-    case "snack_swap":
+    }
+    case "snack_swap": {
+      const altExamples = formatExamples(examples.slice(1));
       return {
         ...rec,
         title: "Try a less processed snack",
-        description: `A portion of recent meals were estimated as more processed. Try ${exampleText} for one snack this week.`,
+        description: `A portion of recent meals were estimated as more processed. Next time you reach for a packaged snack, try ${examples[0]} instead${altExamples ? ` — ${altExamples} also work well` : ""}.`,
         action: `Next time you reach for a packaged snack, try ${examples[0]} instead.`,
         whyThisHelps: "Small, minimally processed swaps add up without requiring a whole new routine.",
       };
+    }
     default:
       return rec;
   }

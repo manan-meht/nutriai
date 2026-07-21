@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -42,7 +42,19 @@ export function NutritionTargetsCard(params: { contactId: string } | { clientId:
   const { result, loading, refetch } = useFoodBalanceScore(params);
   const [editing, setEditing] = useState(false);
 
-  if (loading || !result?.activeMacroTargets || !result.recommendedMacroTargets) return null;
+  if (loading) {
+    return (
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <ThemedText type="small" themeColor="textSecondary">
+            Loading your nutrition targets…
+          </ThemedText>
+        </View>
+      </ThemedView>
+    );
+  }
+  if (!result?.activeMacroTargets || !result.recommendedMacroTargets) return null;
 
   const { activeMacroTargets: active, recommendedMacroTargets: recommended } = result;
   const isCustomized = MACRO_ORDER.some((key) => active[key].source !== 'tistra_recommended');
@@ -238,6 +250,7 @@ function EditTargetsModal({
 
 const styles = StyleSheet.create({
   card: { borderRadius: Spacing.three, padding: Spacing.three },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   subtitle: { marginTop: Spacing.one, marginBottom: Spacing.two },
   noticeBox: { borderRadius: Spacing.two, padding: Spacing.two, marginBottom: Spacing.two },
   explanation: { marginBottom: Spacing.two },

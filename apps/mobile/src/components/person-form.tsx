@@ -280,11 +280,14 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
             <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Nutrition targets</Text>
             <Text style={{ color: theme.textSecondary }}>{targetsExpanded ? '▲' : '▼'}</Text>
           </Pressable>
-          {targetsExpanded && (
-            <View style={styles.targetsContent}>
-              <NutritionTargetsCard {...(product === 'gym' ? { clientId: personId } : { contactId: personId })} />
-            </View>
-          )}
+          {/* Always mounted (not gated behind targetsExpanded) so its fetch
+              — a live Food Balance Score + macro-target computation, not a
+              simple read — starts as soon as this screen opens rather than
+              only once the user taps to expand it. See the web app's
+              EditContactModal for the same change. */}
+          <View style={[styles.targetsContent, !targetsExpanded && styles.hidden]}>
+            <NutritionTargetsCard {...(product === 'gym' ? { clientId: personId } : { contactId: personId })} />
+          </View>
 
           {/* Adults-only, mirrors the web app's EditContactModal — Food
               preferences' permanent home once the user has interacted
@@ -348,6 +351,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
   targetsToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   targetsContent: { marginTop: 12 },
+  hidden: { height: 0, opacity: 0, overflow: 'hidden' },
   field: { marginBottom: 16 },
   fieldLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
   input: {

@@ -9,6 +9,8 @@ import { useTheme } from '@/hooks/use-theme';
 
 export interface MacroMeal {
   loggedAt: string;
+  totalCaloriesMin: number;
+  totalCaloriesMax: number;
   totalProteinMin: number;
   totalProteinMax: number;
   totalCarbsMin: number;
@@ -19,14 +21,17 @@ export interface MacroMeal {
   totalFiberMax: number;
 }
 
-type MacroKey = 'protein' | 'carbs' | 'fat' | 'fiber';
+type MacroKey = 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber';
 
 // Protein reuses the app's brand purple, which needs the dark-mode-aware
 // theme.primary token (see food-balance-score-card.tsx/person-card.tsx) —
 // looked up per-render below rather than stored here, since this object
 // is module-level and can't react to color scheme. Carbs/fat/fiber are
-// saturated enough to read fine unchanged in both modes.
+// saturated enough to read fine unchanged in both modes. Calories gets its
+// own fixed brand-purple shade (not theme.primary) since it's rendered in
+// its own always-visible card, not a selectable pill.
 const MACRO_META: Record<MacroKey, { label: string; unit: string; color?: string }> = {
+  calories: { label: 'Calories', unit: 'kcal', color: '#6750A4' },
   protein: { label: 'Protein', unit: 'g' },
   carbs: { label: 'Carbs', unit: 'g', color: '#2563eb' },
   fat: { label: 'Fat', unit: 'g', color: '#f97316' },
@@ -36,6 +41,8 @@ const MACRO_KEYS: MacroKey[] = ['protein', 'carbs', 'fat', 'fiber'];
 
 function mealAvg(m: MacroMeal, key: MacroKey): number {
   switch (key) {
+    case 'calories':
+      return (m.totalCaloriesMin + m.totalCaloriesMax) / 2;
     case 'protein':
       return (m.totalProteinMin + m.totalProteinMax) / 2;
     case 'carbs':
@@ -86,9 +93,38 @@ export function MacronutrientSummary({
   const [selected, setSelected] = useState<MacroKey>('protein');
   const chartDays = Math.min(Math.max(days, 1), 30);
   const colorFor = (key: MacroKey) => MACRO_META[key].color ?? theme.primary;
+  const caloriesAverage = averagePerDay(meals, 'calories');
+  const caloriesTarget = targets?.calories;
 
   return (
-    <ThemedView style={styles.container}>
+    <>
+      {/* Total calories gets its own card above the macro grid, matching the
+          same average/target/chart treatment as each macro below — kept
+          separate rather than a fifth pill so it reads as the headline
+          number, not one more equal-weight macro. */}
+      <ThemedView style={styles.container}>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.title}>
+          Total calories
+        </ThemedText>
+        <MacroBarChart
+          title={`Calories (${MACRO_META.calories.unit})`}
+          data={buildDayData(meals, 'calories', chartDays)}
+          unit={MACRO_META.calories.unit}
+          barColor={MACRO_META.calories.color!}
+          target={caloriesTarget}
+        />
+        {caloriesTarget ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {caloriesAverage} {MACRO_META.calories.unit}/day · target {caloriesTarget}{MACRO_META.calories.unit}
+          </ThemedText>
+        ) : (
+          <ThemedText type="small" themeColor="textSecondary">
+            {caloriesAverage} {MACRO_META.calories.unit}/day
+          </ThemedText>
+        )}
+      </ThemedView>
+
+      <ThemedView style={styles.container}>
       <ThemedText type="small" themeColor="textSecondary" style={styles.title}>
         Macronutrient summary
       </ThemedText>
@@ -128,7 +164,8 @@ export function MacronutrientSummary({
         barColor={colorFor(selected)}
         target={targets?.[selected]}
       />
-    </ThemedView>
+      </ThemedView>
+    </>
   );
 }
 

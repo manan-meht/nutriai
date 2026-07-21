@@ -60,9 +60,9 @@ describe("dietary profile — explicit preferences override inference", () => {
     expect(msg).not.toContain("fish");
   });
 
-  it("7. explicit vegan preference blocks dairy, eggs, fish, and meat recommendations", () => {
+  it("7. explicit vegan preference (\"I am vegan\") blocks dairy, eggs, fish, and meat recommendations", () => {
     let p = update(DEFAULT_DIETARY_PROFILE, { categories: ["dairy", "eggs", "fish", "chicken"], confidence: "high" });
-    p = applyExplicitPreferences(p, { prefersPlantBasedSuggestions: true });
+    p = applyExplicitPreferences(p, { isVegan: true });
     expect(p.explicit_vegan).toBe(true);
     const msg = buildProteinSuggestion(p);
     expect(msg).not.toContain("paneer");
@@ -70,6 +70,15 @@ describe("dietary profile — explicit preferences override inference", () => {
     expect(msg).not.toContain("fish");
     expect(msg.toLowerCase()).not.toContain("egg");
     expect(msg).toContain("dal");
+  });
+
+  it("7b. \"I am vegan\" and \"I eat chicken\" are independent toggles — checking one after the other reflects the most recent explicit choice", () => {
+    let p = applyExplicitPreferences(DEFAULT_DIETARY_PROFILE, { isVegan: true });
+    expect(p.explicit_vegan).toBe(true);
+    p = applyExplicitPreferences(p, { eatsChicken: true });
+    expect(p.explicit_vegan).toBe(false);
+    const msg = buildProteinSuggestion(p);
+    expect(msg).toContain("chicken");
   });
 });
 

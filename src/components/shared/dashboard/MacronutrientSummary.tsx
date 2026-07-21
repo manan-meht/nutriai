@@ -17,6 +17,8 @@ import {
  * cast, as long as the caller maps totals onto these field names. */
 export interface MacroMeal {
   loggedAt: string;
+  totalCaloriesMin: number;
+  totalCaloriesMax: number;
   totalProteinMin: number;
   totalProteinMax: number;
   totalCarbsMin: number;
@@ -27,18 +29,24 @@ export interface MacroMeal {
   totalFiberMax: number;
 }
 
-type MacroKey = "protein" | "carbs" | "fat" | "fiber";
+type MacroKey = "calories" | "protein" | "carbs" | "fat" | "fiber";
 
 const MACRO_META: Record<MacroKey, { label: string; short: string; unit: string; color: string }> = {
+  calories: { label: "Calories", short: "Calories", unit: "kcal", color: "#6750A4" },
   protein: { label: "Protein", short: "Protein", unit: "g", color: "#9333ea" },
   carbs: { label: "Carbs", short: "Carbs", unit: "g", color: "#2563eb" },
   fat: { label: "Fat", short: "Fat", unit: "g", color: "#f97316" },
   fiber: { label: "Fiber", short: "Fiber", unit: "g", color: "#059669" },
 };
 const MACRO_KEYS: MacroKey[] = ["protein", "carbs", "fat", "fiber"];
+// Calories gets its own card above the four-macro grid (see
+// MacronutrientSummary's render), but shares the same day-data/averaging
+// helpers below, so it's included here for those, not in MACRO_KEYS.
+const ALL_KEYS: MacroKey[] = ["calories", ...MACRO_KEYS];
 
 function mealAvg(m: MacroMeal, key: MacroKey): number {
   switch (key) {
+    case "calories": return (m.totalCaloriesMin + m.totalCaloriesMax) / 2;
     case "protein": return (m.totalProteinMin + m.totalProteinMax) / 2;
     case "carbs": return (m.totalCarbsMin + m.totalCarbsMax) / 2;
     case "fat": return (m.totalFatMin + m.totalFatMax) / 2;
@@ -54,7 +62,7 @@ function buildDayData(meals: MacroMeal[], days: number) {
     const label = d.toLocaleDateString("en-IN", { weekday: "short" });
     const dayMeals = meals.filter((m) => m.loggedAt.slice(0, 10) === key);
     const entry: Record<string, number | string> = { label, mealCount: dayMeals.length };
-    for (const macroKey of MACRO_KEYS) {
+    for (const macroKey of ALL_KEYS) {
       entry[macroKey] = dayMeals.length ? Math.round(dayMeals.reduce((s, m) => s + mealAvg(m, macroKey), 0)) : 0;
     }
     return entry;
@@ -93,12 +101,23 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
   const dayData = buildDayData(meals, chartDays);
 
   const averages = Object.fromEntries(
-    MACRO_KEYS.map((key) => [key, averagePerDay(meals, key)])
+    ALL_KEYS.map((key) => [key, averagePerDay(meals, key)])
   ) as Record<MacroKey, number>;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-4">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Macronutrient summary</p>
+    <>
+      {/* Total calories gets its own card, matching the macro cards' style
+          (average, target reference line, mini chart) — kept separate from
+          the four-macro grid below rather than a fifth grid column, so it
+          reads as the headline number rather than one more equal-weight
+          macro. */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Total calories</p>
+        <MacroCard macroKey="calories" average={averages.calories} target={targets?.calories} data={dayData} />
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 p-4">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Macronutrient summary</p>
 
       {/* Desktop / tablet: two cards per row (rather than cramming all four
           into one row) so each mini chart has enough width to stay legible
@@ -127,7 +146,8 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
         </div>
         <MacroDetailChart macroKey={selected} data={dayData} target={targets?.[selected]} />
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -90,7 +90,16 @@ export function NutritionTargetsCard({ contactId, clientId, refreshKey, onChange
     onChanged?.();
   }
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <div className="bg-white border border-gray-100 rounded-2xl p-5">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <span className="w-4 h-4 rounded-full border-2 border-gray-200 border-t-[var(--color-dashboard-primary)] animate-spin" aria-hidden="true" />
+          Loading your nutrition targets…
+        </div>
+      </div>
+    );
+  }
   if (!active || !recommended) return null;
 
   const isCustomized = MACRO_ORDER.some((key) => active[key].source !== "tistra_recommended");

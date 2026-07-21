@@ -7,8 +7,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { api, type DietaryProfile, type FoodPreferenceSelections } from '@/lib/api';
 
 const OPTIONS: Array<{ key: keyof FoodPreferenceSelections; label: string; isChecked: (p: DietaryProfile) => boolean }> = [
-  { key: 'prefersPlantBasedSuggestions', label: 'I prefer plant-based suggestions', isChecked: (p) => p.prefers_plant_based_suggestions },
-  { key: 'eatsVegetarian', label: 'I eat vegetarian food', isChecked: (p) => p.explicit_vegetarian },
+  { key: 'isVegan', label: 'I am vegan', isChecked: (p) => p.explicit_vegan },
+  { key: 'eatsVegetarian', label: 'I am vegetarian', isChecked: (p) => p.explicit_vegetarian },
   { key: 'eatsEggs', label: 'I eat eggs', isChecked: (p) => p.observed_eggs && !p.explicit_avoids_eggs },
   { key: 'eatsChicken', label: 'I eat chicken', isChecked: (p) => p.observed_chicken && !p.explicit_avoids_chicken },
   { key: 'eatsFishOrSeafood', label: 'I eat fish or seafood', isChecked: (p) => p.observed_fish && !p.explicit_avoids_fish },

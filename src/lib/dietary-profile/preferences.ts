@@ -11,7 +11,7 @@ import { deriveInferredPatternFromProfile } from "./update";
  * explicit_avoids_X, which recommend.ts treats as a hard block regardless
  * of anything observed. */
 export interface FoodPreferenceSelections {
-  prefersPlantBasedSuggestions?: boolean;
+  isVegan?: boolean;
   eatsVegetarian?: boolean;
   eatsEggs?: boolean;
   eatsChicken?: boolean;
@@ -29,9 +29,15 @@ export interface FoodPreferenceSelections {
 export function applyExplicitPreferences(profile: DietaryProfile, selections: FoodPreferenceSelections): DietaryProfile {
   const next: DietaryProfile = { ...profile };
 
-  if (selections.prefersPlantBasedSuggestions !== undefined) {
-    next.prefers_plant_based_suggestions = selections.prefersPlantBasedSuggestions;
-    if (selections.prefersPlantBasedSuggestions) next.explicit_vegan = true;
+  if (selections.isVegan !== undefined) {
+    // A real self-identification ("I am vegan"), so this is the one place
+    // that sets explicit_vegan — a hard exclusion of all meat/dairy/egg/
+    // fish suggestions (see isAllowed in src/lib/food-balance/
+    // personalize.ts and recommend.ts's isAllowed). Distinct from the old
+    // "prefer plant-based suggestions" wording, which was too vague to
+    // justify a hard block (a user could prefer plant-based suggestions
+    // while still eating chicken) — "I am vegan" is unambiguous.
+    next.explicit_vegan = selections.isVegan;
   }
   if (selections.eatsVegetarian !== undefined) {
     next.explicit_vegetarian = selections.eatsVegetarian;

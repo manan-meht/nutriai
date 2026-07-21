@@ -202,7 +202,7 @@ export function PersonDetail({
             <MacronutrientSummary
               meals={mealsInRange}
               days={rangeDays}
-              targets={{ protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+              targets={{ calories: calTarget, protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
             />
 
             <View style={styles.healthRow}>
@@ -233,7 +233,7 @@ export function PersonDetail({
               <ThemedText type="small" themeColor="textSecondary" style={styles.sectionLabel}>
                 Meal activity – last 30 days
               </ThemedText>
-              <ActivityHeatmap meals={meals} workouts={workouts} />
+              <ActivityHeatmap meals={meals} />
             </View>
 
             {latestBiomarker && (

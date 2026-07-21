@@ -16,8 +16,8 @@ interface Option {
 // eat X" option starts unchecked (matching "plant-based until observed
 // otherwise") without that unchecked state being mistaken for "avoids X".
 const OPTIONS: Option[] = [
-  { key: "prefersPlantBasedSuggestions", label: "I prefer plant-based suggestions", isChecked: (p) => p.prefers_plant_based_suggestions },
-  { key: "eatsVegetarian", label: "I eat vegetarian food", isChecked: (p) => p.explicit_vegetarian },
+  { key: "isVegan", label: "I am vegan", isChecked: (p) => p.explicit_vegan },
+  { key: "eatsVegetarian", label: "I am vegetarian", isChecked: (p) => p.explicit_vegetarian },
   { key: "eatsEggs", label: "I eat eggs", isChecked: (p) => p.observed_eggs && !p.explicit_avoids_eggs },
   { key: "eatsChicken", label: "I eat chicken", isChecked: (p) => p.observed_chicken && !p.explicit_avoids_chicken },
   { key: "eatsFishOrSeafood", label: "I eat fish or seafood", isChecked: (p) => p.observed_fish && !p.explicit_avoids_fish },

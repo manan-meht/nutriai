@@ -217,11 +217,17 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
               </p>
               <span className="text-gray-400 text-sm">{targetsExpanded ? "▲" : "▼"}</span>
             </button>
-            {targetsExpanded && (
-              <div className="mt-3">
-                <NutritionTargetsCard contactId={contact.id} />
-              </div>
-            )}
+            {/* Always mounted (not gated behind targetsExpanded) so its fetch
+                — a live Food Balance Score + macro-target computation, not a
+                simple read — starts as soon as this modal opens rather than
+                only once the user clicks to expand. By the time someone
+                actually clicks "Nutrition targets", the data has usually
+                already arrived in the background; `hidden` just keeps it out
+                of layout/visually until then, without re-mounting (and
+                re-fetching) on every toggle. */}
+            <div className={targetsExpanded ? "mt-3" : "hidden"}>
+              <NutritionTargetsCard contactId={contact.id} />
+            </div>
           </div>
 
           {/* Food preferences moves in here once the user has interacted

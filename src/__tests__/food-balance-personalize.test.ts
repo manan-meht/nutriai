@@ -38,7 +38,7 @@ describe("Food Balance Recommendations — personalization", () => {
 
   it("3. Greek yogurt is not recommended for a vegan profile, even if dairy was somehow observed", () => {
     let p = updateDietaryProfile(DEFAULT_DIETARY_PROFILE, { categories: ["dairy"], confidence: "high" });
-    p = applyExplicitPreferences(p, { prefersPlantBasedSuggestions: true });
+    p = applyExplicitPreferences(p, { isVegan: true });
     const examples = pickFoodExampleLabels("protein", p, { meal: "breakfast" });
     expect(examples).not.toContain("Greek yogurt with fruit");
     expect(examples.join(" ")).not.toMatch(/paneer|egg|chicken|fish/i);
@@ -86,7 +86,7 @@ describe("Food Balance Recommendations — personalization", () => {
   });
 
   it("10. vegan profile gets tofu/dal/chana/rajma/soy-style suggestions", () => {
-    const p = applyExplicitPreferences(DEFAULT_DIETARY_PROFILE, { prefersPlantBasedSuggestions: true });
+    const p = applyExplicitPreferences(DEFAULT_DIETARY_PROFILE, { isVegan: true });
     const examples = pickFoodExampleLabels("protein", p).join(" ").toLowerCase();
     expect(examples).toMatch(/tofu|dal|chana|rajma|soy/);
     expect(examples).not.toMatch(/paneer|yogurt|egg|chicken|fish/);

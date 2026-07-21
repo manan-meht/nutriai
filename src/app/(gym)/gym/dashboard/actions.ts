@@ -520,7 +520,7 @@ export async function getClientDietaryPreferences(clientId: string): Promise<imp
 
   const p = clientRow?.dietary_profile ?? {};
   const selections: import("@/lib/dietary-profile").FoodPreferenceSelections = {};
-  if (p.prefers_plant_based_suggestions) selections.prefersPlantBasedSuggestions = true;
+  if (p.explicit_vegan) selections.isVegan = true;
   if (p.explicit_vegetarian) selections.eatsVegetarian = true;
   if (p.explicit_avoids_eggs) selections.eatsEggs = false;
   if (p.explicit_avoids_chicken) selections.eatsChicken = false;

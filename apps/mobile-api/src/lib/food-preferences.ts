@@ -26,7 +26,7 @@ export function deriveInferredPatternFromProfile(profile: DietaryProfile): Dieta
  * AI inference; a positive "I eat X" sets observed_X directly; a
  * negative "I avoid X" sets explicit_avoids_X as a hard block). */
 export interface FoodPreferenceSelections {
-  prefersPlantBasedSuggestions?: boolean;
+  isVegan?: boolean;
   eatsVegetarian?: boolean;
   eatsEggs?: boolean;
   eatsChicken?: boolean;
@@ -44,9 +44,12 @@ export interface FoodPreferenceSelections {
 export function applyExplicitPreferences(profile: DietaryProfile, selections: FoodPreferenceSelections): DietaryProfile {
   const next: DietaryProfile = { ...profile };
 
-  if (selections.prefersPlantBasedSuggestions !== undefined) {
-    next.prefers_plant_based_suggestions = selections.prefersPlantBasedSuggestions;
-    if (selections.prefersPlantBasedSuggestions) next.explicit_vegan = true;
+  if (selections.isVegan !== undefined) {
+    // A real self-identification ("I am vegan"), so this is the one place
+    // that sets explicit_vegan — a hard exclusion of all meat/dairy/egg/
+    // fish suggestions. Distinct from the old "prefer plant-based
+    // suggestions" wording, which was too vague to justify a hard block.
+    next.explicit_vegan = selections.isVegan;
   }
   if (selections.eatsVegetarian !== undefined) {
     next.explicit_vegetarian = selections.eatsVegetarian;

@@ -282,6 +282,7 @@ export type MacroKey = "calories" | "protein" | "carbs" | "fat" | "fiber";
 // (src/lib/dietary-profile/types.ts), not the full shape (observed_*/
 // inferred_pattern/suggestion-feedback arrays aren't shown or edited here).
 export interface DietaryProfile {
+  explicit_vegan: boolean;
   explicit_vegetarian: boolean;
   explicit_avoids_dairy: boolean;
   explicit_avoids_lactose: boolean;
@@ -303,7 +304,7 @@ export interface DietaryProfile {
 }
 
 export interface FoodPreferenceSelections {
-  prefersPlantBasedSuggestions?: boolean;
+  isVegan?: boolean;
   eatsVegetarian?: boolean;
   eatsEggs?: boolean;
   eatsChicken?: boolean;

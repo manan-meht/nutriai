@@ -12,8 +12,8 @@ interface DietaryPreferencesFieldsProps {
 }
 
 const OPTIONS: Array<{ key: keyof FoodPreferenceSelections; label: string }> = [
-  { key: "prefersPlantBasedSuggestions", label: "Prefers plant-based suggestions" },
-  { key: "eatsVegetarian", label: "Eats vegetarian food" },
+  { key: "isVegan", label: "Vegan" },
+  { key: "eatsVegetarian", label: "Vegetarian" },
   { key: "eatsEggs", label: "Eats eggs" },
   { key: "eatsChicken", label: "Eats chicken" },
   { key: "eatsFishOrSeafood", label: "Eats fish or seafood" },
