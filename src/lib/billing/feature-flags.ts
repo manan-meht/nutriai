@@ -50,6 +50,22 @@ export const GYM_LIMIT_ENFORCEMENT_ENABLED = flag(process.env.NEXT_PUBLIC_GYM_LI
  * integration rather than whether billing is user-facing yet. */
 export const BILLING_AVAILABLE = flag(process.env.NEXT_PUBLIC_BILLING_AVAILABLE, false);
 
+/** Comma-separated emails (case-insensitive) exempt from all billing
+ * enforcement — never read-only on trial/subscription expiry, and never
+ * hit the "add a card before your first contact" gate. Server-only (not
+ * NEXT_PUBLIC_*) since this is an internal test-account allowlist, not
+ * something that should ever be visible in a client bundle. Not a dynamic
+ * env lookup issue here since this reads process.env.BILLING_TEST_WHITELIST_EMAILS
+ * directly, once, at module scope — see the flag() comment above for why
+ * that distinction matters for NEXT_PUBLIC_* vars specifically (this isn't one). */
+export function isBillingWhitelisted(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.BILLING_TEST_WHITELIST_EMAILS;
+  if (!raw) return false;
+  const normalized = email.trim().toLowerCase();
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
 export const STRIPE_CHECKOUT_ENABLED = flag(process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED, true);
 
 /** International (non-launch-country) USD billing via Stripe. Off would

@@ -7,6 +7,7 @@ export type PricingAnalyticsEvent =
   | "pricing_viewed"
   | "founding_plan_selected"
   | "beta_billing_notice_viewed"
+  | "trial_pricing_notice_viewed"
   | "view_plans_clicked";
 
 export interface PricingAnalyticsProperties {

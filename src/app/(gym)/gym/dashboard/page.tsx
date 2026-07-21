@@ -25,7 +25,7 @@ export default async function GymDashboardPage() {
   const [clients, removedClients, entitlement] = await Promise.all([
     getClients(workspace.id),
     getRemovedClients(workspace.id),
-    getEntitlementSnapshot(workspace.id, "gym"),
+    getEntitlementSnapshot(workspace.id, "gym", user.email),
   ]);
 
   const headerStore = await headers();
@@ -38,6 +38,7 @@ export default async function GymDashboardPage() {
   const requiresCardBeforeTrial = requiresCardBeforeFirstTrial({
     workspaceCreatedAt: workspace.createdAt,
     entitlementStatus: entitlement.status,
+    ownerEmail: user.email,
   });
 
   return (

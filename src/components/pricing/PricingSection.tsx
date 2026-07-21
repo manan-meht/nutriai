@@ -14,6 +14,8 @@ import {
 import { trackPricingEvent } from "@/lib/pricing/analytics";
 import { setIntendedPlan } from "@/app/actions/pricing";
 import { BetaPricingNotice } from "./BetaPricingNotice";
+import { TrialPricingNotice } from "./TrialPricingNotice";
+import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
 
 interface PricingSectionProps {
   /** Where this section is rendered — used only for analytics categorization. */
@@ -29,7 +31,7 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
 
   useEffect(() => {
     trackPricingEvent("pricing_viewed", { sourcePage });
-    trackPricingEvent("beta_billing_notice_viewed", { sourcePage });
+    trackPricingEvent(BILLING_AVAILABLE ? "trial_pricing_notice_viewed" : "beta_billing_notice_viewed", { sourcePage });
 
     let cancelled = false;
     fetch("/api/feedback?resource=dashboard-href")
@@ -55,7 +57,7 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
         <p className="text-gray-600">{foundingMemberCopy.sectionIntro}</p>
       </div>
 
-      <BetaPricingNotice />
+      {BILLING_AVAILABLE ? <TrialPricingNotice /> : <BetaPricingNotice />}
 
       <div className="flex justify-center" role="group" aria-label="Billing interval">
         <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">

@@ -31,7 +31,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   const [contacts, removedContacts, entitlement] = await Promise.all([
     getContacts(workspace.id),
     getRemovedContacts(workspace.id),
-    getEntitlementSnapshot(workspace.id, "adults"),
+    getEntitlementSnapshot(workspace.id, "adults", user.email),
   ]);
 
   const headerStore = await headers();
@@ -59,6 +59,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   const requiresCardBeforeTrial = requiresCardBeforeFirstTrial({
     workspaceCreatedAt: workspace.createdAt,
     entitlementStatus: entitlement.status,
+    ownerEmail: user.email,
   });
 
   return (

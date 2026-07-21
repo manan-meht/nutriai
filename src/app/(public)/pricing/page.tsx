@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { PricingSection } from "@/components/pricing/PricingSection";
+import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
 
 export function generateMetadata(): Metadata {
   return {
     title: "Pricing — Tistra Health",
-    description: "Founding-member pricing for Tistra Health. Free during Beta — billing isn't available yet.",
+    description: BILLING_AVAILABLE
+      ? "Founding-member pricing for Tistra Health. Start your free 14-day trial today."
+      : "Founding-member pricing for Tistra Health. Free during Beta — billing isn't available yet.",
     alternates: { canonical: "/pricing" },
     icons: { icon: "/logos/logo-purple.png" },
   };

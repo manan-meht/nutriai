@@ -124,7 +124,12 @@ export const foundingMemberCopy = {
     "Your first 14 days are free, and billing is not yet available. While billing remains unavailable, you can continue using Tistra Health at no charge. We'll notify you when subscriptions are ready so you can review and confirm your founding-member plan. You will not be charged automatically.",
   viewPlansLabel: "View founding-member pricing",
   viewPlansShortLabel: "View plans",
-  noPaymentHelperText: "No payment required during Beta. You'll review and confirm your subscription before billing begins.",
+  // Shown once BILLING_AVAILABLE is on — replaces betaNotice/dashboardBanner
+  // above, which only apply pre-launch (kept, not deleted, since a staging
+  // deploy with the flag off still needs the old Beta copy).
+  trialNoticeTitle: "Start your free 14-day trial",
+  trialNotice: "Add a payment method when you add your first person — you won't be charged until your 14-day trial ends, and you can cancel anytime before then.",
+  noPaymentHelperText: "You'll add a payment method when you add your first person. Your first 14 days are free, and you can cancel anytime before the trial ends.",
   monthlyToggleLabel: "Monthly",
   annualToggleLabel: "Annual",
   annualSavingsLabel: `Save ${Math.round(FOUNDING_ANNUAL_SAVINGS_FRACTION * 100)}%`,

@@ -6,6 +6,7 @@ import {
   FAMILY_TRIAL_ENFORCEMENT_ENABLED,
   GYM_TRIAL_ENFORCEMENT_ENABLED,
   featureActivationDate,
+  isBillingWhitelisted,
 } from "@/lib/billing/feature-flags";
 import type { BillingMarket, BillingInterval } from "@/lib/billing/pricing";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
@@ -72,7 +73,13 @@ export async function startTrialIfNeeded(
  * depends on this app's billing feature flags) is app-specific. */
 export async function getEntitlementSnapshot(
   workspaceId: string,
-  module: EntitlementModule
+  module: EntitlementModule,
+  /** Owner's email, checked against BILLING_TEST_WHITELIST_EMAILS — pass
+   * this whenever the caller has it (page.tsx server components do, from
+   * the authenticated user) so internal test accounts never go read-only
+   * regardless of trial/subscription status. Omit only where the caller
+   * genuinely doesn't have an email (whitelisting simply won't apply). */
+  ownerEmail?: string | null
 ): Promise<EntitlementSnapshot> {
   const admin = createServiceClient();
   const core = await getEntitlementSnapshotCore(admin, workspaceId, module, now());
@@ -85,8 +92,10 @@ export async function getEntitlementSnapshot(
     // so no workspace is ever read-only regardless of trial/entitlement
     // status — status is still computed and displayed for banners/countdowns,
     // it just never blocks actions. Once billing launches, the master switch
-    // and per-module enforcement flags below take over as before.
+    // and per-module enforcement flags below take over as before. Whitelisted
+    // test accounts are exempt the same way, regardless of BILLING_AVAILABLE.
     isReadOnly:
+      !isBillingWhitelisted(ownerEmail) &&
       BILLING_AVAILABLE &&
       SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       perModuleEnforcementEnabled &&
@@ -103,12 +112,15 @@ export async function getEntitlementSnapshot(
  * already being past "not_started". Gated behind BILLING_AVAILABLE (never
  * fires during Beta) and workspaceCreatedAt so existing workspaces that
  * were created before this flow shipped are grandfathered onto the
- * card-free trial they were promised, not retroactively blocked. */
+ * card-free trial they were promised, not retroactively blocked.
+ * Whitelisted test accounts (see isBillingWhitelisted) are also exempt. */
 export function requiresCardBeforeFirstTrial(params: {
   workspaceCreatedAt: string;
   entitlementStatus: EntitlementStatus;
+  ownerEmail?: string | null;
 }): boolean {
   return (
+    !isBillingWhitelisted(params.ownerEmail) &&
     BILLING_AVAILABLE &&
     params.entitlementStatus === "not_started" &&
     new Date(params.workspaceCreatedAt) >= featureActivationDate()
