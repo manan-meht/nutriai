@@ -14,13 +14,17 @@ interface Props {
    * a self-tracked contact — relationship_type "self" is limited to one per
    * workspace (see hasSelfContact in AdultsDashboardClient.tsx). */
   hasSelfContact: boolean;
+  /** Digits-only WhatsApp number for the Tistra Health bot, embedded as a
+   * wa.me link in the invite message. Undefined if TISTRA_WHATSAPP_NUMBER
+   * isn't configured — the message falls back to not including a link. */
+  tistraWhatsAppNumber?: string;
   onClose: () => void;
   onAdded: () => void;
 }
 
 const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Friend", "Other"];
 
-export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, onClose, onAdded }: Props) {
+export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, tistraWhatsAppNumber, onClose, onAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ name: string; whatsapp: string } | null>(null);
@@ -89,8 +93,16 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, on
 
   function buildWhatsAppUrl() {
     const number = `${countryCode}${whatsapp.replace(/\D/g, "")}`;
+    const firstName = fullName.split(" ")[0] || fullName;
+    // The bot link is a plain wa.me URL, not an @-mention or button — WhatsApp
+    // auto-renders it as tappable text, and tapping it opens a fresh chat
+    // with the bot itself (distinct from this chat with the caregiver), so
+    // the invitee can start sending meal photos straight away.
+    const botLine = tistraWhatsAppNumber
+      ? ` — right here on WhatsApp: https://wa.me/${tistraWhatsAppNumber}`
+      : " — right here on WhatsApp";
     const msg = encodeURIComponent(
-      `Hi ${fullName}! 👋\n\n${caregiverName} has set up Tistra Health to help keep an eye on your nutrition.\n\nAll you need to do is send a photo or describe what you eat — right here on WhatsApp. I'll do the rest!\n\nYou can start whenever you're ready. Just send me a photo of your next meal 😊`
+      `Hi ${firstName}! 👋\n\n${caregiverName} has set up Tistra Health to help keep an eye on your nutrition.\n\nAll you need to do is send me a photo or describe what you eat${botLine}. I'll keep track for you!\n\nWhenever you're ready, just send me a photo of your next meal 😊`
     );
     return `https://wa.me/${number}?text=${msg}`;
   }

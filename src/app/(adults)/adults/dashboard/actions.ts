@@ -367,13 +367,15 @@ export async function addContact(formData: {
   // subsequent contact (see startTrialIfNeeded — idempotent per workspace).
   await startTrialIfNeeded(formData.workspaceId, user.id, "adults");
 
-  try {
-    await sendContactInvite(supabase, user.id, formData.fullName, formData.whatsappNumber);
-  } catch {
-    // Don't fail contact creation if the initial invite send fails — the
-    // caregiver can retry via resendContactInvite. sendContactInvite already
-    // logs the underlying error.
-  }
+  // No automatic WhatsApp send here — the caregiver sends the invite
+  // themselves (see AddContactModal's "Send invite via WhatsApp" button,
+  // which opens a wa.me link from the caregiver's own number). An automatic
+  // bot-sent message only works within Meta's 24-hour customer-service
+  // window (i.e. the contact already messaged the bot recently) and is
+  // silently rejected outside it — sending it unconditionally here produced
+  // a surprise, unrequested WhatsApp message whenever that window happened
+  // to be open. sendContactInvite still exists for the explicit manual
+  // resendContactInvite path.
 
   return { contactId: contact.id };
 }

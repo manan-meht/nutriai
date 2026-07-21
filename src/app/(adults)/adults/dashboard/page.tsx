@@ -76,6 +76,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
         monthlyLabel: formatMinorUnits(selfMonthly.amountMinorUnits, selfMonthly.currency),
         annualLabel: formatMinorUnits(selfAnnual.amountMinorUnits, selfAnnual.currency),
       }}
+      tistraWhatsAppNumber={process.env.TISTRA_WHATSAPP_NUMBER}
     />
   );
 }

@@ -29,13 +29,17 @@ interface Props {
   isSelfPlan?: boolean;
   pricing: { monthlyLabel: string; annualLabel: string };
   selfPricing: { monthlyLabel: string; annualLabel: string };
+  /** Digits-only WhatsApp number for the Tistra Health bot (TISTRA_WHATSAPP_NUMBER),
+   * embedded as a wa.me link in the invite message so the invitee can tap
+   * straight into a chat with the bot. Undefined if not configured. */
+  tistraWhatsAppNumber?: string;
 }
 
 const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber }: Props) {
   const [showModal, setShowModal] = useState(false);
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
   const [showSelfSetup, setShowSelfSetup] = useState(false);
@@ -306,6 +310,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           workspaceId={workspaceId}
           caregiverName={displayName || caregiverEmail}
           hasSelfContact={hasSelfContact}
+          tistraWhatsAppNumber={tistraWhatsAppNumber}
           onClose={() => setShowModal(false)}
           onAdded={() => router.refresh()}
         />
