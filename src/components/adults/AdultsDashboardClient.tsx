@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
 import { removeContact, getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite, markFamilyInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
+import { createCheckoutSession } from "@/app/actions/checkout";
 import { AddContactModal } from "./AddContactModal";
 import { SelfSetupCard } from "./SelfSetupCard";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
@@ -33,14 +34,21 @@ interface Props {
    * embedded as a wa.me link in the invite message so the invitee can tap
    * straight into a chat with the bot. Undefined if not configured. */
   tistraWhatsAppNumber?: string;
+  /** True for a brand-new workspace (no trial started yet, created after
+   * this flow shipped) that must add a card via checkout before its first
+   * trial starts — see requiresCardBeforeFirstTrial. Existing workspaces
+   * already on the card-free trial are unaffected. */
+  requiresCardBeforeTrial?: boolean;
 }
 
 const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial }: Props) {
   const [showModal, setShowModal] = useState(false);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
   const [showSelfSetup, setShowSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
@@ -48,6 +56,28 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showFeedback, setShowFeedback] = useState(false);
   const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
+
+  // "Add family member"/"Add person" open the modal directly for everyone
+  // except a brand-new workspace that must add a card first — those get
+  // redirected to Stripe Checkout (a 14-day trial attached, first charge
+  // deferred to trial end, see createCheckoutSession) instead of opening
+  // the form. The modal only ever appears once checkout succeeds and the
+  // page reloads with an actual "trialing" entitlement.
+  async function handleAddClick() {
+    if (!requiresCardBeforeTrial) {
+      setShowModal(true);
+      return;
+    }
+    setCheckoutError(null);
+    setStartingCheckout(true);
+    try {
+      const result = await createCheckoutSession("adults", "monthly");
+      window.location.href = result.url;
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Couldn't start checkout. Please try again.");
+      setStartingCheckout(false);
+    }
+  }
 
   async function handleRemove(contact: AdultsContact) {
     if (!window.confirm(
@@ -137,10 +167,11 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
               )
             : canAdd && (
                 <button
-                  onClick={() => setShowModal(true)}
-                  className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2"
+                  onClick={handleAddClick}
+                  disabled={startingCheckout}
+                  className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
                 >
-                  <span className="text-lg leading-none">+</span> Add person
+                  <span className="text-lg leading-none">+</span> {startingCheckout ? "Redirecting…" : "Add person"}
                 </button>
               )}
         </div>
@@ -255,11 +286,20 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
               </button>
             ) : canAdd && (
               <button
-                onClick={() => setShowModal(true)}
-                className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)]"
+                onClick={handleAddClick}
+                disabled={startingCheckout}
+                className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)] disabled:opacity-50"
               >
-                Add family member
+                {startingCheckout ? "Redirecting…" : "Add family member"}
               </button>
+            )}
+            {canAdd && requiresCardBeforeTrial && !startingCheckout && (
+              <p className="text-xs text-gray-400 mt-3 max-w-xs">
+                Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.
+              </p>
+            )}
+            {checkoutError && (
+              <p className="text-sm text-red-600 mt-3">{checkoutError}</p>
             )}
             <div className="mt-10 flex gap-8 items-center justify-center text-gray-400">
               <span className="text-xs font-medium uppercase tracking-widest">Private &amp; secure</span>

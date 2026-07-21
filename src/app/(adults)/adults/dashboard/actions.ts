@@ -69,7 +69,7 @@ export interface AdultsContactDetails {
   meals: AdultsMealLog[];
 }
 
-export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number; plan: string }> {
+export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?: string): Promise<{ id: string; name: string; extraCapacity: number; plan: string; createdAt: string }> {
   const admin = createServiceClient();
   const workspace = await getOrCreateWorkspace(admin, userId, "adults", caregiverName);
   return { ...workspace, plan: workspace.plan ?? "family" };

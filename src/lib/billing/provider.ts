@@ -41,6 +41,14 @@ export interface ProviderSubscriptionSnapshot {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   cancelledAt: string | null;
+  /** Provider-reported trial window, when the provider supports trials
+   * (Stripe does via subscription_data.trial_end; Razorpay currently
+   * doesn't, so its provider always returns null here). This is the only
+   * place trial_start_at/trial_end_at get written once a subscription was
+   * created via checkout with a delayed first charge — see
+   * applyProviderSubscriptionSnapshot. */
+  trialStart: string | null;
+  trialEnd: string | null;
 }
 
 export interface WebhookVerifyResult {

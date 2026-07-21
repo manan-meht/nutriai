@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { getEntitlementSnapshot, recordCheckoutIntent, type EntitlementModule } from "@/lib/entitlements/entitlements";
+import { getEntitlementSnapshot, recordCheckoutIntent, TRIAL_LENGTH_MS, type EntitlementModule } from "@/lib/entitlements/entitlements";
 import { resolveBillingMarket, getIpCountry } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, type BillingInterval } from "@/lib/billing/pricing";
@@ -48,7 +48,21 @@ export async function createCheckoutSession(
   const provider = getProviderForMarket(market);
 
   const entitlement = await getEntitlementSnapshot(workspace.id, module);
-  const delayBillingUntil = entitlement.status === "trialing" ? entitlement.trialEndAt : null;
+  // "trialing" — an existing trial is already running (started card-free
+  // via startTrialIfNeeded, the legacy path grandfathered users are still
+  // on); defer the first charge to when that trial was already going to
+  // end. "not_started" — this workspace has never started a trial at all
+  // (the new card-first flow: checkout itself is what starts the trial),
+  // so give it a fresh 14-day trial from today, sourced from Stripe's own
+  // subscription_data.trial_end via applyProviderSubscriptionSnapshot once
+  // the webhook confirms it — never from a pre-existing trialEndAt, since
+  // there isn't one yet.
+  const delayBillingUntil =
+    entitlement.status === "trialing"
+      ? entitlement.trialEndAt
+      : entitlement.status === "not_started"
+      ? new Date(Date.now() + TRIAL_LENGTH_MS).toISOString()
+      : null;
 
   const providerCustomerId = await provider.createOrRetrieveCustomer({
     ownerId: user.id,

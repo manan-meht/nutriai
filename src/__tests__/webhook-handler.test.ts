@@ -61,6 +61,8 @@ const baseSnapshot: ProviderSubscriptionSnapshot = {
   currentPeriodEnd: "2026-02-01T00:00:00.000Z",
   cancelAtPeriodEnd: false,
   cancelledAt: null,
+  trialStart: null,
+  trialEnd: null,
 };
 
 describe("processProviderWebhook", () => {

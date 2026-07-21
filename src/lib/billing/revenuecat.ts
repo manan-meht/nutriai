@@ -105,5 +105,10 @@ export function buildSnapshotFromRevenueCatEvent(event: RevenueCatEvent): Provid
     currentPeriodEnd: toIso(event.expiration_at_ms),
     cancelAtPeriodEnd: event.type === "CANCELLATION" || event.type === "SUBSCRIPTION_PAUSED",
     cancelledAt: event.type === "CANCELLATION" ? toIso(event.event_timestamp_ms) : null,
+    // Store-billing trials (App Store/Play free trial offers) aren't
+    // represented in this event shape — this card-first web trial flow is
+    // Stripe-only, so nothing to report here.
+    trialStart: null,
+    trialEnd: null,
   };
 }

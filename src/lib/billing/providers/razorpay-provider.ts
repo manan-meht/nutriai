@@ -143,5 +143,10 @@ export function razorpaySubscriptionToSnapshot(sub: any): ProviderSubscriptionSn
     currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null,
     cancelAtPeriodEnd: !!sub.cancel_at_cycle_end,
     cancelledAt: sub.ended_at ? new Date(sub.ended_at * 1000).toISOString() : null,
+    // Razorpay subscriptions don't support a delayed-first-charge trial the
+    // way Stripe's subscription_data.trial_end does — no trial concept to
+    // report here.
+    trialStart: null,
+    trialEnd: null,
   };
 }

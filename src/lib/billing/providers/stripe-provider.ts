@@ -126,5 +126,7 @@ export function stripeSubscriptionToSnapshot(sub: Stripe.Subscription): Provider
       : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
     cancelledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
+    trialStart: sub.trial_start ? new Date(sub.trial_start * 1000).toISOString() : null,
+    trialEnd: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
   };
 }

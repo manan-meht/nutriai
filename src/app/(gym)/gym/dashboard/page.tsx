@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateWorkspace, getClients, getRemovedClients } from "./actions";
 import { GymDashboardClient } from "@/components/gym/GymDashboardClient";
-import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -35,6 +35,10 @@ export default async function GymDashboardPage() {
   });
   const monthly = getPrice(market, "gym", "monthly");
   const annual = getPrice(market, "gym", "annual");
+  const requiresCardBeforeTrial = requiresCardBeforeFirstTrial({
+    workspaceCreatedAt: workspace.createdAt,
+    entitlementStatus: entitlement.status,
+  });
 
   return (
     <GymDashboardClient
@@ -49,6 +53,7 @@ export default async function GymDashboardPage() {
         monthlyLabel: formatMinorUnits(monthly.amountMinorUnits, monthly.currency),
         annualLabel: formatMinorUnits(annual.amountMinorUnits, annual.currency),
       }}
+      requiresCardBeforeTrial={requiresCardBeforeTrial}
     />
   );
 }

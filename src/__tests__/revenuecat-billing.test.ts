@@ -70,6 +70,8 @@ describe("buildSnapshotFromRevenueCatEvent", () => {
       currentPeriodEnd: new Date(1702592000000).toISOString(),
       cancelAtPeriodEnd: false,
       cancelledAt: null,
+      trialStart: null,
+      trialEnd: null,
     });
   });
 

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorkspaceSelfPlan } from "./actions";
 import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient";
 import { displayEmail } from "@/lib/auth";
-import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
+import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -56,6 +56,10 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   }
 
   const promptSelfSetup = SELF_TRACKING_ENABLED && isSelfPlan && !hasSelfContact;
+  const requiresCardBeforeTrial = requiresCardBeforeFirstTrial({
+    workspaceCreatedAt: workspace.createdAt,
+    entitlementStatus: entitlement.status,
+  });
 
   return (
     <AdultsDashboardClient
@@ -77,6 +81,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
         annualLabel: formatMinorUnits(selfAnnual.amountMinorUnits, selfAnnual.currency),
       }}
       tistraWhatsAppNumber={process.env.TISTRA_WHATSAPP_NUMBER}
+      requiresCardBeforeTrial={requiresCardBeforeTrial}
     />
   );
 }

@@ -39,7 +39,7 @@ import type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutria
 // deliberately does not depend on.
 export type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutriai/nutrition-core";
 
-export async function getOrCreateWorkspace(userId: string, coachName?: string): Promise<{ id: string; name: string; extraCapacity: number }> {
+export async function getOrCreateWorkspace(userId: string, coachName?: string): Promise<{ id: string; name: string; extraCapacity: number; createdAt: string }> {
   const admin = createServiceClient();
   return getOrCreateWorkspaceCore(admin, userId, "gym", coachName);
 }

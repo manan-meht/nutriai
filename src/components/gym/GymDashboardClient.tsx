@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { GymClient } from "@/app/(gym)/gym/dashboard/actions";
 import { removeClient } from "@/app/(gym)/gym/dashboard/actions";
+import { createCheckoutSession } from "@/app/actions/checkout";
 import { ClientCard } from "./ClientCard";
 import { AddClientModal } from "./AddClientModal";
 import { useRouter } from "next/navigation";
@@ -24,18 +25,46 @@ interface GymDashboardClientProps {
   extraCapacity: number;
   entitlement: EntitlementSnapshot;
   pricing: { monthlyLabel: string; annualLabel: string };
+  /** True for a brand-new workspace (no trial started yet, created after
+   * this flow shipped) that must add a card via checkout before its first
+   * trial starts — see requiresCardBeforeFirstTrial. Existing workspaces
+   * already on the card-free trial are unaffected. */
+  requiresCardBeforeTrial?: boolean;
 }
 
-export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing }: GymDashboardClientProps) {
+export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial }: GymDashboardClientProps) {
   const [showModal, setShowModal] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
   function handleAdded() {
     router.refresh();
+  }
+
+  // "Add client" opens the modal directly for everyone except a brand-new
+  // workspace that must add a card first — those get redirected to Stripe
+  // Checkout (a 14-day trial attached, first charge deferred to trial end)
+  // instead of opening the form. See AdultsDashboardClient's identical
+  // handleAddClick for the full rationale.
+  async function handleAddClick() {
+    if (!requiresCardBeforeTrial) {
+      setShowModal(true);
+      return;
+    }
+    setCheckoutError(null);
+    setStartingCheckout(true);
+    try {
+      const result = await createCheckoutSession("gym", "monthly");
+      window.location.href = result.url;
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Couldn't start checkout. Please try again.");
+      setStartingCheckout(false);
+    }
   }
 
   async function handleRemove(client: GymClient) {
@@ -110,10 +139,11 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
           </div>
           {canAdd && (
             <button
-              onClick={() => setShowModal(true)}
-              className="bg-purple-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-purple-700 transition-colors shadow-sm flex items-center gap-2"
+              onClick={handleAddClick}
+              disabled={startingCheckout}
+              className="bg-purple-600 text-white font-semibold rounded-full px-5 py-2.5 text-sm hover:bg-purple-700 transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
             >
-              <span className="text-lg leading-none">+</span> Add client
+              <span className="text-lg leading-none">+</span> {startingCheckout ? "Redirecting…" : "Add client"}
             </button>
           )}
         </div>
@@ -200,11 +230,20 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
             </p>
             {canAdd && (
               <button
-                onClick={() => setShowModal(true)}
-                className="bg-purple-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-purple-700 transition-colors shadow-lg shadow-purple-100"
+                onClick={handleAddClick}
+                disabled={startingCheckout}
+                className="bg-purple-600 text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-purple-700 transition-colors shadow-lg shadow-purple-100 disabled:opacity-50"
               >
-                Add your first client
+                {startingCheckout ? "Redirecting…" : "Add your first client"}
               </button>
+            )}
+            {canAdd && requiresCardBeforeTrial && !startingCheckout && (
+              <p className="text-xs text-gray-400 mt-3 max-w-xs">
+                Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.
+              </p>
+            )}
+            {checkoutError && (
+              <p className="text-sm text-red-600 mt-3">{checkoutError}</p>
             )}
             <div className="mt-10 flex gap-8 items-center justify-center text-gray-400">
               <span className="text-xs font-medium uppercase tracking-widest">Private &amp; secure</span>

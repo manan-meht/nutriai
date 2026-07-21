@@ -6,6 +6,7 @@ export interface WorkspaceSummary {
   extraCapacity: number;
   /** Only set for "adults" workspaces — "family" vs "self" plan. */
   plan?: string;
+  createdAt: string;
 }
 
 function mapWorkspaceRow(row: any, type: "adults" | "gym"): WorkspaceSummary {
@@ -14,6 +15,7 @@ function mapWorkspaceRow(row: any, type: "adults" | "gym"): WorkspaceSummary {
     name: row.name,
     extraCapacity: row.extra_capacity ?? 0,
     plan: type === "adults" ? (row.plan ?? "family") : undefined,
+    createdAt: row.created_at,
   };
 }
 
@@ -29,7 +31,7 @@ export async function findWorkspace(
   userId: string,
   type: "adults" | "gym"
 ): Promise<WorkspaceSummary | null> {
-  const selectColumns = type === "adults" ? "id, name, extra_capacity, plan" : "id, name, extra_capacity";
+  const selectColumns = type === "adults" ? "id, name, extra_capacity, plan, created_at" : "id, name, extra_capacity, created_at";
 
   const { data: existing } = await admin
     .from("workspaces")
@@ -61,7 +63,7 @@ export async function getOrCreateWorkspace(
   const existing = await findWorkspace(admin, userId, type);
   if (existing) return existing;
 
-  const selectColumns = type === "adults" ? "id, name, extra_capacity, plan" : "id, name, extra_capacity";
+  const selectColumns = type === "adults" ? "id, name, extra_capacity, plan, created_at" : "id, name, extra_capacity, created_at";
   const name = type === "adults" ? `${ownerName ?? "My"}'s Family` : `${ownerName ?? "My"}'s Gym`;
   const slug = `${type}-${userId.slice(0, 8)}-${Date.now()}`;
 

@@ -5,6 +5,7 @@ import {
   SUBSCRIPTION_ENFORCEMENT_ENABLED,
   FAMILY_TRIAL_ENFORCEMENT_ENABLED,
   GYM_TRIAL_ENFORCEMENT_ENABLED,
+  featureActivationDate,
 } from "@/lib/billing/feature-flags";
 import type { BillingMarket, BillingInterval } from "@/lib/billing/pricing";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
@@ -13,8 +14,8 @@ import type { EntitlementModule, EntitlementStatus } from "@nutriai/nutrition-co
 
 export type { EntitlementModule, EntitlementStatus };
 
-const TRIAL_LENGTH_DAYS = 14;
-const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
+export const TRIAL_LENGTH_DAYS = 14;
+export const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
 
 export interface EntitlementSnapshot {
   /** Effective status accounting for trial expiry — may differ from the raw
@@ -91,6 +92,27 @@ export async function getEntitlementSnapshot(
       perModuleEnforcementEnabled &&
       (core.status === "expired" || core.status === "cancelled"),
   };
+}
+
+/**
+ * Whether this workspace must add a card (via checkout) before starting its
+ * first trial, rather than the legacy card-free startTrialIfNeeded path.
+ * "not_started" alone is a reliable "never added a first contact/client yet"
+ * signal — every successful addContact/addClient call triggers
+ * startTrialIfNeeded, so a workspace can't have any contacts without
+ * already being past "not_started". Gated behind BILLING_AVAILABLE (never
+ * fires during Beta) and workspaceCreatedAt so existing workspaces that
+ * were created before this flow shipped are grandfathered onto the
+ * card-free trial they were promised, not retroactively blocked. */
+export function requiresCardBeforeFirstTrial(params: {
+  workspaceCreatedAt: string;
+  entitlementStatus: EntitlementStatus;
+}): boolean {
+  return (
+    BILLING_AVAILABLE &&
+    params.entitlementStatus === "not_started" &&
+    new Date(params.workspaceCreatedAt) >= featureActivationDate()
+  );
 }
 
 /**
@@ -226,6 +248,16 @@ export async function applyProviderSubscriptionSnapshot(params: {
     cancelled_at: snapshot.cancelledAt,
   };
   if (params.providerPriceId) update.provider_price_id = params.providerPriceId;
+  // Only set when the provider actually reported a trial window (Stripe,
+  // via subscription_data.trial_end passed at checkout) — this is the one
+  // path (besides the legacy card-free startTrialIfNeeded) that populates
+  // trial_start_at/trial_end_at, for the "card collected before first
+  // trial" checkout flow where no prior entitlement row had trial dates.
+  // Conditional, not unconditional, so a later non-trial event (e.g. an
+  // "active" renewal after the trial converted) doesn't null out the
+  // historical trial window.
+  if (snapshot.trialStart) update.trial_start_at = snapshot.trialStart;
+  if (snapshot.trialEnd) update.trial_end_at = snapshot.trialEnd;
 
   if (snapshot.status === "active") {
     const { data: existing } = await admin
