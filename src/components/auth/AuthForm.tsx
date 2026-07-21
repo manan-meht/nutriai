@@ -4,7 +4,6 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { scopedEmail } from "@/lib/auth";
-import { useRouter } from "next/navigation";
 
 type Product = "gym" | "adults";
 type Mode = "signin" | "signup";
@@ -41,7 +40,6 @@ const THEME = {
 
 export function AuthForm({ product, mode, next }: AuthFormProps) {
   const theme = THEME[product];
-  const router = useRouter();
   const supabase = createClient();
 
   const [email, setEmail] = useState("");
@@ -80,8 +78,15 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
         if (error) throw error;
-        router.push(next ?? theme.dashboardUrl);
-        router.refresh();
+        // A hard navigation, not router.push/router.refresh — the session
+        // cookie was just written by the browser Supabase client, and a
+        // soft client-side transition isn't guaranteed to carry it to the
+        // very next request. The dashboard's server-side auth check would
+        // then see no session and bounce back to login, even though the
+        // sign-in itself succeeded. A full page load guarantees the fresh
+        // cookie is attached, matching how the OAuth callback path (a real
+        // server-side redirect) already works.
+        window.location.assign(next ?? theme.dashboardUrl);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message
