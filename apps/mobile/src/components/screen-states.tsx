@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Image, type ImageSourcePropType, Pressable, StyleSheet, View } from 'react-native';
 
 import { ExternalLink } from './external-link';
 import { ThemedText } from './themed-text';
@@ -30,6 +30,7 @@ export function EmptyState({
   title,
   message,
   action,
+  image,
 }: {
   title?: string;
   message: string;
@@ -37,9 +38,19 @@ export function EmptyState({
   // action (e.g. navigate to an add screen) — the add/edit screens use
   // onPress, everything else so far has used href.
   action?: { label: string } & ({ href: `https://${string}` } | { onPress: () => void });
+  // Optional illustration shown above the title, in a soft circular frame —
+  // only worth the visual weight for a "first-run" empty state (e.g. no
+  // family members added yet), not for transient/error-adjacent states.
+  image?: ImageSourcePropType;
 }) {
   return (
     <ThemedView style={styles.centered}>
+      {image && (
+        <View style={styles.illustrationWrap}>
+          <View style={styles.illustrationHalo} />
+          <Image source={image} style={styles.illustration} resizeMode="cover" alt="" />
+        </View>
+      )}
       {title && (
         <ThemedText type="subtitle" style={styles.emptyTitle}>
           {title}
@@ -74,6 +85,28 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 28,
     textAlign: 'center',
+  },
+  illustrationWrap: {
+    width: 200,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.two,
+  },
+  illustrationHalo: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#5715CE',
+    opacity: 0.12,
+  },
+  illustration: {
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 1,
+    borderColor: '#F1EEF4',
   },
   text: {
     textAlign: 'center',

@@ -97,19 +97,27 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, on
 
   if (success) {
     return (
-      <ModalShell onClose={onClose} title="Invite sent">
+      <ModalShell onClose={onClose} title="Contact added">
         <div className="text-center py-6">
           <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📲</div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">Invite sent to {success.name}!</h3>
-          <p className="text-gray-500 text-sm mb-2 max-w-xs mx-auto">
-            We&apos;ve sent them a WhatsApp message. Once they reply, their card will update to <strong>Accepted</strong> and they can start logging meals.
+          <h3 className="text-xl font-bold text-gray-900 mb-2">{success.name} has been added!</h3>
+          <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
+            One last step — send them the WhatsApp invite yourself so they know to start logging meals. Once they reply, their card will update to <strong>Accepted</strong>.
           </p>
-          <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-700 mb-8 max-w-xs mx-auto">
-            ⏳ Waiting for {success.name} to accept
+          <a
+            href={buildWhatsAppUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold rounded-full px-8 py-3 text-sm hover:brightness-95 transition-all mb-3"
+          >
+            <WhatsAppIcon />
+            Send invite via WhatsApp
+          </a>
+          <div>
+            <button onClick={onClose} className="text-gray-500 font-medium text-sm hover:text-gray-700 transition-colors px-8 py-3">
+              Done
+            </button>
           </div>
-          <button onClick={onClose} className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-3 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors">
-            Done
-          </button>
         </div>
       </ModalShell>
     );

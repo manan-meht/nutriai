@@ -80,8 +80,9 @@ export default function GymClientListScreen() {
         }
         ListEmptyComponent={
           <EmptyState
+            image={require('@/assets/images/onboarding/coach.png')}
             title="Onboard your first client"
-            message="Add a client to start tracking their meals, progress, and recommendations."
+            message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
             action={{ label: 'Add client', onPress: () => router.push('/gym/add') }}
           />
         }

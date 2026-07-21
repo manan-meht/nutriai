@@ -106,8 +106,9 @@ export default function AdultsContactListScreen() {
         }
         ListEmptyComponent={
           <EmptyState
+            image={require('@/assets/images/onboarding/family.png')}
             title="Add someone you care about"
-            message="Add a family member to support their nutrition journey."
+            message="Invite a family member so you can support their nutrition journey. Share plans, track progress, and grow healthier together."
             action={{ label: 'Add family member', onPress: () => router.push('/adults/add') }}
           />
         }

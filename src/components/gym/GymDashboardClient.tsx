@@ -178,13 +178,25 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
 
         {/* Empty state */}
         {activeCount === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="w-20 h-20 rounded-2xl bg-purple-50 flex items-center justify-center mb-6 text-4xl">
-              🏋️
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="relative w-full max-w-[280px] aspect-square mb-8">
+              <div className="absolute inset-0 bg-purple-100/60 rounded-full blur-3xl opacity-60" />
+              <div className="relative w-full h-full rounded-full overflow-hidden border border-gray-100 bg-white shadow-[0_20px_40px_-12px_rgba(81,95,116,0.15)]">
+                <Image
+                  src="/gym-empty-state-coach.png"
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="280px"
+                />
+              </div>
+              <div className="absolute -top-2 -right-2 w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center text-2xl shadow-sm border border-white">
+                🏋️
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">No clients yet</h2>
-            <p className="text-gray-500 text-sm max-w-xs mb-8">
-              Add a client and send them a WhatsApp invite. They just need to reply with their first meal.
+            <h2 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">Onboard your first client</h2>
+            <p className="text-gray-500 text-base max-w-sm mb-8 leading-relaxed">
+              Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you&apos;ll track their progress here.
             </p>
             {canAdd && (
               <button
@@ -194,6 +206,10 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                 Add your first client
               </button>
             )}
+            <div className="mt-10 flex gap-8 items-center justify-center text-gray-400">
+              <span className="text-xs font-medium uppercase tracking-widest">Private &amp; secure</span>
+              <span className="text-xs font-medium uppercase tracking-widest">Expert verified</span>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -218,17 +218,29 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
         )}
 
         {activeCount === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="w-24 h-24 rounded-3xl bg-[var(--color-dashboard-primary-light)] flex items-center justify-center mb-6 text-5xl">
-              {isSelfPlan ? "🥗" : "👵"}
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="relative w-full max-w-[280px] aspect-square mb-8">
+              <div className="absolute inset-0 bg-[var(--color-dashboard-primary-light)]/40 rounded-full blur-3xl opacity-60" />
+              <div className="relative w-full h-full rounded-full overflow-hidden border border-gray-100 bg-white shadow-[0_20px_40px_-12px_rgba(81,95,116,0.15)]">
+                <Image
+                  src={isSelfPlan ? "/adults-empty-state-self.png" : "/adults-empty-state-family.png"}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="280px"
+                />
+              </div>
+              <div className="absolute -top-2 -right-2 w-14 h-14 bg-[var(--color-dashboard-primary-light)] rounded-full flex items-center justify-center text-2xl shadow-sm border border-white">
+                {isSelfPlan ? "🥗" : "💜"}
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              {isSelfPlan ? "Add your details to get started" : "No one added yet"}
+            <h2 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">
+              {isSelfPlan ? "Add your details to get started" : "Add someone you care about"}
             </h2>
-            <p className="text-gray-500 text-sm max-w-xs mb-8">
+            <p className="text-gray-500 text-base max-w-sm mb-8 leading-relaxed">
               {isSelfPlan
                 ? "Connect on WhatsApp and share a few details — your age, weight, and goals — so we can give you accurate protein and calorie targets instead of generic ones. Then just send meal photos and we'll track everything here."
-                : "Add a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp and you'll track their nutrition here."}
+                : "Invite a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp, and you'll track their nutrition here."}
             </p>
             {isSelfPlan ? (
               <button
@@ -242,9 +254,13 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 onClick={() => setShowModal(true)}
                 className="bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-full px-8 py-4 text-sm hover:bg-[var(--color-dashboard-primary-hover)] transition-colors shadow-lg shadow-[var(--color-dashboard-primary-light)]"
               >
-                Add your first contact
+                Add family member
               </button>
             )}
+            <div className="mt-10 flex gap-8 items-center justify-center text-gray-400">
+              <span className="text-xs font-medium uppercase tracking-widest">Private &amp; secure</span>
+              <span className="text-xs font-medium uppercase tracking-widest">Expert verified</span>
+            </div>
           </div>
         ) : (
           <>
