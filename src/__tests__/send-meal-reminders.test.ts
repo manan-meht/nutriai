@@ -76,6 +76,20 @@ function fakeDb(staleConversations: any[]) {
           }),
         };
       }
+      if (table === "entitlements") {
+        // No trialing/card-backed entitlements in this test's fixture data
+        // — the trial-reminders task (folded into this route, see its own
+        // module doc) is exercised by its own test elsewhere; this just
+        // needs to no-op cleanly here.
+        const chain: any = {
+          eq: () => chain,
+          not: () => chain,
+          is: () => chain,
+          gte: () => chain,
+          lte: () => Promise.resolve({ data: [] }),
+        };
+        return { select: () => chain };
+      }
       throw new Error(`unexpected table ${table}`);
     },
   };

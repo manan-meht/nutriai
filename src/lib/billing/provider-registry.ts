@@ -1,7 +1,5 @@
 import type { BillingMarket } from "./pricing";
 import type { PaymentProvider, PaymentProviderName } from "./provider";
-import { stripeProvider } from "./providers/stripe-provider";
-import { razorpayProvider } from "./providers/razorpay-provider";
 import { STRIPE_CHECKOUT_ENABLED, RAZORPAY_CHECKOUT_ENABLED } from "./feature-flags";
 
 /** Which provider handles a given market. IN uses Razorpay (feature-flagged,
@@ -10,7 +8,16 @@ export function providerNameForMarket(market: BillingMarket): PaymentProviderNam
   return market === "IN" ? "razorpay" : "stripe";
 }
 
-export function getProviderForMarket(market: BillingMarket): PaymentProvider {
+// Dynamic imports (not static top-of-file ones) — this registry is reachable
+// from every dashboard/billing page/route just to resolve a provider name or
+// market, and a static import of both providers pulls the (large) stripe
+// Node SDK into every one of those routes' Cloudflare Pages Function
+// bundles whether or not that specific route ever calls a provider method.
+// That pushed the combined Functions bundle over Cloudflare Pages' 25 MiB
+// limit and failed the last two deploys — see this file's git history.
+// Dynamic import lets each route that actually needs Stripe/Razorpay code
+// split it into its own chunk instead.
+export async function getProviderForMarket(market: BillingMarket): Promise<PaymentProvider> {
   const name = providerNameForMarket(market);
   if (name === "razorpay") {
     if (!RAZORPAY_CHECKOUT_ENABLED) {
@@ -19,15 +26,15 @@ export function getProviderForMarket(market: BillingMarket): PaymentProvider {
         "India merchant/recurring-payment approval is pending — see the completion report."
       );
     }
-    return razorpayProvider;
+    return (await import("./providers/razorpay-provider")).razorpayProvider;
   }
   if (!STRIPE_CHECKOUT_ENABLED) {
     throw new Error("Stripe checkout is not enabled for this deployment (NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED=false).");
   }
-  return stripeProvider;
+  return (await import("./providers/stripe-provider")).stripeProvider;
 }
 
-export function getProviderByName(name: PaymentProviderName): PaymentProvider {
+export async function getProviderByName(name: PaymentProviderName): Promise<PaymentProvider> {
   if (name === "apple" || name === "google_play") {
     // Store subscriptions (via RevenueCat) are managed entirely in-app —
     // there's no PaymentProvider implementation for these (see
@@ -38,7 +45,8 @@ export function getProviderByName(name: PaymentProviderName): PaymentProvider {
       `${name} subscriptions are managed via the App Store/Play Store, not this web provider interface — check isStoreManagedProvider() before calling getProviderByName().`
     );
   }
-  return name === "razorpay" ? razorpayProvider : stripeProvider;
+  if (name === "razorpay") return (await import("./providers/razorpay-provider")).razorpayProvider;
+  return (await import("./providers/stripe-provider")).stripeProvider;
 }
 
 /** True for subscriptions purchased via RevenueCat (Apple/Google Play) —

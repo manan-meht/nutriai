@@ -38,7 +38,7 @@ export async function refreshPaymentStatus(module: EntitlementModule): Promise<v
   // provider.retrieveSubscription() equivalent to call here.
   if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) return;
 
-  const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
+  const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const snapshot = await provider.retrieveSubscription(entitlement.provider_subscription_id);
   if (!snapshot) return;
 
@@ -60,7 +60,7 @@ export async function cancelSubscription(module: EntitlementModule, atPeriodEnd 
   if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) {
     throw new Error(STORE_MANAGED_MESSAGE);
   }
-  const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
+  const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   await provider.cancelSubscription(entitlement.provider_subscription_id, atPeriodEnd);
   await refreshPaymentStatus(module);
 }
@@ -73,7 +73,7 @@ export async function reactivateSubscription(module: EntitlementModule): Promise
   if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) {
     throw new Error(STORE_MANAGED_MESSAGE);
   }
-  const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
+  const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const reactivated = await provider.reactivateSubscription(entitlement.provider_subscription_id);
   if (reactivated) await refreshPaymentStatus(module);
   return reactivated;
@@ -90,7 +90,7 @@ export async function openBillingPortal(module: EntitlementModule): Promise<stri
   // (null) case this function's own doc comment already describes.
   if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) return null;
 
-  const provider = getProviderByName(entitlement.payment_provider as PaymentProviderName);
+  const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const headerStore = await headers();
   const origin = `https://${headerStore.get("host") ?? "localhost:3001"}`;
   const dashboardPath = module === "adults" ? "/adults/dashboard" : "/gym/dashboard";

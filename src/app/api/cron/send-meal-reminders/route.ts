@@ -8,6 +8,7 @@ import { buildReminderMessage, reminderDisplayName } from "@/lib/reminders/messa
 import { pickWeeklyWhatsAppWin, buildWeeklyWinsWhatsAppLine } from "@/lib/share-cards/weekly-summary";
 import { getProductDomain } from "@/lib/product/resolve-product";
 import type { ShareCardMealInput } from "@/lib/share-cards/triggers";
+import { sendTrialReminderEmail } from "@/lib/billing/trial-reminder-email";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -366,6 +367,105 @@ async function runWeeklyWinsShareCards(db: ReturnType<typeof createServiceClient
   return { checked: targets.length, sent, skipped };
 }
 
+// Emails the workspace owner ~3 days before a card-backed trial ends (see
+// src/lib/entitlements/entitlements.ts's requiresCardBeforeFirstTrial /
+// applyProviderSubscriptionSnapshot for how a real trial_end_at gets set).
+// Folded into this same route rather than its own file — same Worker
+// bundle-size reasoning as runResolveStaleClarifications/runWeeklyWinsShareCards
+// above; a standalone /api/cron/send-trial-reminders route added ~900 KiB of
+// its own framework overhead on top of send-meal-reminders' existing ~600
+// KiB, which helped push the whole deployment's aggregate Pages Functions
+// size over the 25 MiB limit and failed two deploys. Only ever targets
+// entitlements that went through the "add card before first trial" checkout
+// flow (payment_provider "stripe" + a real provider_subscription_id on
+// file) — the legacy card-free trial (startTrialIfNeeded with no checkout)
+// also sets trial_end_at, but nothing would actually be charged there, so
+// "your card will be charged automatically" would be actively wrong to send
+// those users.
+const TRIAL_REMINDER_WINDOW_DAYS = 3;
+
+interface TrialReminderCandidate {
+  workspaceId: string;
+  module: "adults" | "gym";
+  ownerId: string;
+  trialEndAt: string;
+}
+
+async function fetchTrialReminderCandidates(db: ReturnType<typeof createServiceClient>): Promise<TrialReminderCandidate[]> {
+  const now = new Date();
+  const windowStart = now.toISOString();
+  const windowEnd = new Date(now.getTime() + TRIAL_REMINDER_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data } = await db
+    .from("entitlements")
+    .select("workspace_id, module, owner_id, trial_end_at")
+    .eq("status", "trialing")
+    .eq("payment_provider", "stripe")
+    .not("provider_subscription_id", "is", null)
+    .is("trial_reminder_sent_at", null)
+    .gte("trial_end_at", windowStart)
+    .lte("trial_end_at", windowEnd);
+
+  return (data ?? []).map((row: any) => ({
+    workspaceId: row.workspace_id,
+    module: row.module,
+    ownerId: row.owner_id,
+    trialEndAt: row.trial_end_at,
+  }));
+}
+
+async function runTrialReminders(db: ReturnType<typeof createServiceClient>) {
+  const candidates = await fetchTrialReminderCandidates(db);
+  let sent = 0;
+  let skipped = 0;
+
+  for (const candidate of candidates) {
+    const { data: profile } = await db
+      .from("profiles")
+      .select("full_name, email")
+      .eq("id", candidate.ownerId)
+      .maybeSingle();
+
+    if (!profile?.email) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      // Deliberately not a live Stripe billing-portal URL — generating one
+      // needs stripeProvider.openBillingPortal(), which would pull the
+      // Stripe SDK into this already-shared route's bundle. /billing is a
+      // stable, always-valid destination regardless.
+      const billingPortalUrl = `https://tistrahealth.com/billing?module=${candidate.module}`;
+
+      const result = await sendTrialReminderEmail({
+        to: profile.email,
+        ownerName: profile.full_name ?? undefined,
+        module: candidate.module,
+        trialEndAt: new Date(candidate.trialEndAt),
+        billingPortalUrl,
+      });
+
+      if (!result.ok) {
+        skipped++;
+        continue;
+      }
+
+      await db
+        .from("entitlements")
+        .update({ trial_reminder_sent_at: new Date().toISOString() })
+        .eq("workspace_id", candidate.workspaceId)
+        .eq("module", candidate.module);
+      sent++;
+    } catch (err) {
+      console.error("[trial-reminders] send failed:", candidate.workspaceId, candidate.module, err instanceof Error ? err.message : err);
+      skipped++;
+    }
+  }
+
+  return { checked: candidates.length, sent, skipped };
+}
+
 export async function POST(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
@@ -374,11 +474,12 @@ export async function POST(request: NextRequest) {
   }
 
   const db = createServiceClient();
-  const [reminders, staleClarifications, weeklyWins] = await Promise.all([
+  const [reminders, staleClarifications, weeklyWins, trialReminders] = await Promise.all([
     runMealReminders(db),
     runResolveStaleClarifications(db),
     runWeeklyWinsShareCards(db),
+    runTrialReminders(db),
   ]);
 
-  return NextResponse.json({ reminders, staleClarifications, weeklyWins });
+  return NextResponse.json({ reminders, staleClarifications, weeklyWins, trialReminders });
 }

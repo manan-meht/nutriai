@@ -45,7 +45,7 @@ export async function createCheckoutSession(
 
   const price = getPrice(market, module, interval);
   const providerName = providerNameForMarket(market);
-  const provider = getProviderForMarket(market);
+  const provider = await getProviderForMarket(market);
 
   const entitlement = await getEntitlementSnapshot(workspace.id, module);
   // "trialing" — an existing trial is already running (started card-free
