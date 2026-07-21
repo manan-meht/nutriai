@@ -18,7 +18,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
   return (
     <>
       <ClientDashboard {...details} />
-      <div className="max-w-3xl mx-auto px-4 pb-8">
+      <div className="max-w-3xl mx-auto px-4 pt-6 pb-8">
         <AccessCodeCard
           personName={details.client.fullName}
           onGenerate={generateClientAccessCodeAction.bind(null, clientId)}

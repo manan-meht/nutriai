@@ -20,7 +20,7 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
   return (
     <>
       <ContactDashboard {...details} />
-      <div className="max-w-3xl mx-auto px-4 pb-8 space-y-6">
+      <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
         <AccessCodeCard
           personName={details.contact.fullName}
           onGenerate={generateAccessCodeAction.bind(null, contactId)}
