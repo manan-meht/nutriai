@@ -12,7 +12,7 @@ import {
   type BillingInterval,
 } from "@/lib/pricing/founding-member";
 import { trackPricingEvent } from "@/lib/pricing/analytics";
-import { setIntendedPlan } from "@/app/actions/pricing";
+import { choosePlanAndCheckout } from "@/app/actions/pricing";
 import { BetaPricingNotice } from "./BetaPricingNotice";
 import { TrialPricingNotice } from "./TrialPricingNotice";
 import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
@@ -26,7 +26,8 @@ const PLAN_ORDER: FoundingMemberPlanId[] = ["self", "family", "gym"];
 
 export function PricingSection({ sourcePage }: PricingSectionProps) {
   const [loggedInHref, setLoggedInHref] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<FoundingMemberPlanId | null>(null);
+  const [startingPlan, setStartingPlan] = useState<FoundingMemberPlanId | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("annual");
 
   useEffect(() => {
@@ -46,8 +47,16 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
   async function handleChoosePlan(planId: FoundingMemberPlanId) {
     trackPricingEvent("founding_plan_selected", { plan: planId, sourcePage });
     if (!loggedInHref) return; // logged-out visitors use the signup link instead
-    setSelectedPlan(planId);
-    await setIntendedPlan(planId).catch(() => {});
+    setCheckoutError(null);
+    setStartingPlan(planId);
+    try {
+      const result = await choosePlanAndCheckout(planId, billingInterval);
+      if (!result.ok) throw new Error(result.reason);
+      window.location.assign(result.url);
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Couldn't start checkout. Please try again.");
+      setStartingPlan(null);
+    }
   }
 
   return (
@@ -130,13 +139,14 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
                 <button
                   type="button"
                   onClick={() => handleChoosePlan(planId)}
-                  className="mt-auto w-full rounded-xl bg-[#6750A4] hover:bg-[#4F378A] text-white font-semibold py-2.5 text-sm transition-colors"
+                  disabled={startingPlan !== null}
+                  className="mt-auto w-full rounded-xl bg-[#6750A4] hover:bg-[#4F378A] text-white font-semibold py-2.5 text-sm transition-colors disabled:opacity-50"
                 >
-                  {selectedPlan === planId ? "Selected ✓" : "Choose this plan"}
+                  {startingPlan === planId ? "Redirecting…" : "Choose this plan"}
                 </button>
               ) : (
                 <Link
-                  href={`/${planId === "gym" ? "coach" : "family"}?plan=${planId}`}
+                  href={`/${planId === "gym" ? "gym" : "adults"}/signup?plan=${planId}&interval=${billingInterval}`}
                   onClick={() => trackPricingEvent("founding_plan_selected", { plan: planId, sourcePage })}
                   className="mt-auto w-full text-center rounded-xl bg-[#6750A4] hover:bg-[#4F378A] text-white font-semibold py-2.5 text-sm transition-colors"
                 >
@@ -147,6 +157,10 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
           );
         })}
       </div>
+
+      {checkoutError && (
+        <p className="text-center text-sm text-red-600">{checkoutError}</p>
+      )}
 
       <p className="text-center text-xs text-gray-400 max-w-xl mx-auto">{foundingMemberCopy.noPaymentHelperText}</p>
     </div>

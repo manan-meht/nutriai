@@ -2,8 +2,8 @@
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { getEntitlementSnapshot, recordCheckoutIntent, TRIAL_LENGTH_MS, type EntitlementModule } from "@/lib/entitlements/entitlements";
-import { resolveBillingMarket, getIpCountry } from "@/lib/billing/market";
+import { getEntitlementSnapshot, getExistingProviderCustomerId, recordCheckoutIntent, TRIAL_LENGTH_MS, type EntitlementModule } from "@/lib/entitlements/entitlements";
+import { resolveBillingMarket, getIpCountry, requestOrigin } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, type BillingInterval } from "@/lib/billing/pricing";
 import { getProviderForMarket, providerNameForMarket } from "@/lib/billing/provider-registry";
@@ -61,12 +61,14 @@ export async function createCheckoutSession(
     entitlement.status === "trialing"
       ? entitlement.trialEndAt
       : entitlement.status === "not_started"
-      ? new Date(Date.now() + TRIAL_LENGTH_MS).toISOString()
+      ? freshTrialEndDate().toISOString()
       : null;
 
+  const existingCustomerId = await getExistingProviderCustomerId(workspace.id, module);
   const providerCustomerId = await provider.createOrRetrieveCustomer({
     ownerId: user.id,
     email: user.email,
+    existingCustomerId,
   });
 
   await recordCheckoutIntent({
@@ -80,7 +82,7 @@ export async function createCheckoutSession(
     interval,
   });
 
-  const origin = `https://${headerStore.get("host") ?? "localhost:3001"}`;
+  const origin = requestOrigin(headerStore);
   const dashboardPath = module === "adults" ? "/adults/dashboard" : "/gym/dashboard";
 
   const result = await provider.createCheckoutSession({
@@ -107,6 +109,23 @@ export async function createCheckoutSession(
     currency: price.currency,
     interval,
   };
+}
+
+/** A fresh 14-day trial end for the "card collected, checkout starts the
+ * trial" flow — anchored to the start of tomorrow (UTC) plus 14 days,
+ * rather than `now + 14*24h`, so Stripe's own Checkout page always shows
+ * "14 days free" rather than "13 days free". Stripe computes its displayed
+ * trial length as floor(seconds-until-trial-end / 86400) at the moment the
+ * checkout page actually renders — by which point some time has always
+ * elapsed since this function ran (network round trip to the browser), so
+ * an exact `now + 14 days` reliably reads as one day short. Anchoring to
+ * tomorrow's start banks the rest of today as slack, guaranteeing at least
+ * a full 14 days remain no matter when today this runs or how long the
+ * page takes to load. */
+function freshTrialEndDate(): Date {
+  const now = new Date();
+  const startOfTomorrowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return new Date(startOfTomorrowUTC + TRIAL_LENGTH_MS);
 }
 
 async function getWorkspaceForModule(module: EntitlementModule, userId: string) {

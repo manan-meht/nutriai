@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import type { GymClient } from "@/app/(gym)/gym/dashboard/actions";
@@ -30,10 +30,21 @@ interface GymDashboardClientProps {
    * trial starts — see requiresCardBeforeFirstTrial. Existing workspaces
    * already on the card-free trial are unaffected. */
   requiresCardBeforeTrial?: boolean;
+  /** True immediately after a successful checkout redirect (?checkout=success)
+   * confirmed to have actually started a trial (entitlement.status ===
+   * "trialing" post-sync) — opens the add-client modal automatically so
+   * the visitor doesn't have to click "Add client" a second time right
+   * after paying. */
+  autoOpenAddModal?: boolean;
 }
 
-export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial }: GymDashboardClientProps) {
-  const [showModal, setShowModal] = useState(false);
+export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial, autoOpenAddModal }: GymDashboardClientProps) {
+  // Opens the add-client modal automatically right after a successful
+  // checkout — only when there's still nobody added yet. A lazy
+  // initializer rather than an effect, since this only ever needs to run
+  // once, against the server-computed value at first mount. See
+  // AdultsDashboardClient's identical pattern for the full rationale.
+  const [showModal, setShowModal] = useState(() => !!autoOpenAddModal && clients.length === 0);
   const [showPrevious, setShowPrevious] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -45,6 +56,13 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
   function handleAdded() {
     router.refresh();
   }
+
+  // Cleans the ?checkout=success param off the URL right after landing —
+  // a pure navigation side effect (no setState).
+  useEffect(() => {
+    if (autoOpenAddModal) router.replace("/gym/dashboard");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "Add client" opens the modal directly for everyone except a brand-new
   // workspace that must add a card first — those get redirected to Stripe
@@ -168,8 +186,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
 
             {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
               <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
-                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
-                <Link href="/billing?module=gym" className="underline font-medium">Subscribe</Link>
+                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.
               </div>
             )}
 
@@ -185,6 +202,12 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                 <Link href="/billing?module=gym" className="font-medium text-purple-700 underline">
                   Need more than {clientLimit} clients? Add capacity →
                 </Link>
+              </div>
+            ) : requiresCardBeforeTrial ? (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.{" "}
+                Coaching is <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+                <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span> after that.
               </div>
             ) : (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">

@@ -46,6 +46,7 @@ function makeFakeProvider(opts: {
     createOrRetrieveCustomer: jest.fn(),
     createCheckoutSession: jest.fn(),
     retrieveSubscription: jest.fn().mockResolvedValue(opts.subscriptionSnapshot ?? null),
+    findLatestSubscriptionForCustomer: jest.fn().mockResolvedValue(opts.subscriptionSnapshot ?? null),
     cancelSubscription: jest.fn(),
     reactivateSubscription: jest.fn(),
     openBillingPortal: jest.fn(),

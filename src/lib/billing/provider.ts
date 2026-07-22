@@ -74,6 +74,17 @@ export interface PaymentProvider {
 
   retrieveSubscription(providerSubscriptionId: string): Promise<ProviderSubscriptionSnapshot | null>;
 
+  /** Finds the customer's most recent subscription directly from the
+   * provider, keyed by customer id rather than subscription id. Used right
+   * after a checkout redirect back to the app (see syncCheckoutCompletion)
+   * — at that moment we only have provider_customer_id on the entitlements
+   * row (recorded before checkout even started); provider_subscription_id
+   * is only ever populated by a verified webhook, which can be delayed by
+   * seconds in production and can't reach a local dev server at all. This
+   * lets the app sync immediately instead of leaving the visitor stuck
+   * mid-flow until a webhook that may never arrive locally. */
+  findLatestSubscriptionForCustomer(customerId: string): Promise<ProviderSubscriptionSnapshot | null>;
+
   cancelSubscription(providerSubscriptionId: string, atPeriodEnd: boolean): Promise<void>;
 
   /** Resumes a subscription previously scheduled to cancel at period end.

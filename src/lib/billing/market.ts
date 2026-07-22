@@ -1,5 +1,20 @@
 import type { BillingMarket } from "./pricing";
 
+/** Reconstructs the request origin (scheme + host) for building Stripe/
+ * Razorpay redirect URLs (success/cancel, billing portal return). Always
+ * https in production (behind Cloudflare, which sets x-forwarded-proto),
+ * but a local dev server only ever serves plain http — hardcoding https
+ * would send provider redirects back to an https:// localhost URL the dev
+ * server can't answer (ERR_SSL_PROTOCOL_ERROR). Falls back to checking for
+ * a loopback host when x-forwarded-proto is absent (local dev). */
+export function requestOrigin(headerStore: Headers): string {
+  const host = headerStore.get("host") ?? "localhost:3001";
+  const forwardedProto = headerStore.get("x-forwarded-proto");
+  const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
+  const protocol = forwardedProto ?? (isLocalHost ? "http" : "https");
+  return `${protocol}://${host}`;
+}
+
 const LAUNCH_COUNTRY_MARKETS: Record<string, BillingMarket> = {
   US: "US",
   SG: "SG",

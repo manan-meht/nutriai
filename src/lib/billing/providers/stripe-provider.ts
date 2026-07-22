@@ -75,6 +75,20 @@ export const stripeProvider: PaymentProvider = {
     }
   },
 
+  async findLatestSubscriptionForCustomer(customerId: string): Promise<ProviderSubscriptionSnapshot | null> {
+    const stripe = client();
+    try {
+      // status: "all" — a brand-new subscription created seconds ago is
+      // "trialing", not "active", and the default list call excludes
+      // anything but "active"/"past_due" style statuses.
+      const subs = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+      const sub = subs.data[0];
+      return sub ? stripeSubscriptionToSnapshot(sub) : null;
+    } catch {
+      return null;
+    }
+  },
+
   async cancelSubscription(providerSubscriptionId: string, atPeriodEnd: boolean): Promise<void> {
     const stripe = client();
     if (atPeriodEnd) {

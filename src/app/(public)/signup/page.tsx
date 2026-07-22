@@ -36,7 +36,16 @@ export default async function SignupPage({
   );
 
   const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
-  const next = params.next ?? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard");
+  let next = params.next ?? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard");
+  // Carries a /pricing plan/interval choice through signup so the dashboard
+  // (which starts checkout — see requiresCardBeforeTrial) knows what to
+  // check the new workspace out for, instead of defaulting to "monthly".
+  if (params.plan || params.interval) {
+    const extra = new URLSearchParams();
+    if (params.plan) extra.set("plan", params.plan);
+    if (params.interval) extra.set("interval", params.interval);
+    next = `${next}${next.includes("?") ? "&" : "?"}${extra.toString()}`;
+  }
 
   const title = "Create a Tistra Health account";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createCheckoutSession } from "@/app/actions/checkout";
 import Image from "next/image";
 import Link from "next/link";
@@ -39,14 +39,26 @@ interface Props {
    * trial starts — see requiresCardBeforeFirstTrial. Existing workspaces
    * already on the card-free trial are unaffected. */
   requiresCardBeforeTrial?: boolean;
+  /** True immediately after a successful checkout redirect (?checkout=success)
+   * confirmed to have actually started a trial (entitlement.status ===
+   * "trialing" post-sync) — opens the add-contact modal automatically so
+   * the visitor doesn't have to click "Add family member" a second time
+   * right after paying. */
+  autoOpenAddModal?: boolean;
 }
 
 const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial }: Props) {
-  const [showModal, setShowModal] = useState(false);
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal }: Props) {
+  // Opens the add-contact modal automatically right after a successful
+  // checkout (see autoOpenAddModal's own doc comment) — only when there's
+  // still nobody added yet, so this doesn't reopen the form on an account
+  // that already has contacts (e.g. re-subscribing after a lapsed trial). A
+  // lazy initializer rather than an effect, since this only ever needs to
+  // run once, against the server-computed value at first mount.
+  const [showModal, setShowModal] = useState(() => !!autoOpenAddModal && contacts.length === 0);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
@@ -56,6 +68,14 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showFeedback, setShowFeedback] = useState(false);
   const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
+
+  // Cleans the ?checkout=success param off the URL right after landing —
+  // a pure navigation side effect (no setState), so a refresh doesn't
+  // reopen the modal or re-run the server-side sync unnecessarily.
+  useEffect(() => {
+    if (autoOpenAddModal) router.replace("/adults/dashboard");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "Add family member"/"Add person" open the modal directly for everyone
   // except a brand-new workspace that must add a card first — those get
@@ -209,8 +229,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
             {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
               <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.{" "}
-                <Link href="/billing?module=adults" className="underline font-medium">Subscribe</Link>
+                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.
               </div>
             )}
 
@@ -226,6 +245,17 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
                   {isSelfPlan ? "Want to add family too? →" : `Need more than ${familyLimit}? Add capacity →`}
                 </Link>
+              </div>
+            ) : requiresCardBeforeTrial ? (
+              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.{" "}
+                {isSelfPlan ? (
+                  <>Tracking is <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
+                  <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span> after that.</>
+                ) : (
+                  <>Family is <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
+                  <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span> after that.</>
+                )}
               </div>
             ) : isSelfPlan ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">

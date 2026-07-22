@@ -13,8 +13,6 @@ const CUSTOMER_FACING_FILES = [
   "app/(public)/page.tsx",
   "app/(public)/login/page.tsx",
   "app/(public)/signup/page.tsx",
-  "app/(gym)/gym/login/page.tsx",
-  "app/(adults)/adults/login/page.tsx",
   "app/(adults)/adults/dashboard/actions.ts",
   "components/landing/shared/LandingNav.tsx",
   "components/landing/shared/LandingFooter.tsx",

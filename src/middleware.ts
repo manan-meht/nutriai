@@ -25,6 +25,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // /adults/login, /gym/login, /adults/signup, /gym/signup used to each be
+  // their own full page (duplicating the shared /login and /signup pages'
+  // entire AuthForm render) — that duplication alone cost ~1.3-1.5 MB per
+  // route as a separate Cloudflare Pages Function, which helped push the
+  // whole deployment's aggregate Functions size over the 25 MiB limit.
+  // Handling the redirect here instead costs nothing extra (middleware is
+  // already one shared Function on every request) and removes those 4
+  // routes entirely.
+  const productLoginSignupMatch = request.nextUrl.pathname.match(/^\/(adults|gym)\/(login|signup)\/?$/);
+  if (productLoginSignupMatch) {
+    const [, product, mode] = productLoginSignupMatch;
+    const url = request.nextUrl.clone();
+    url.pathname = `/${mode}`;
+    url.searchParams.set("product", product);
+    return NextResponse.redirect(url);
+  }
+
   const response = await updateSession(request);
 
   // Set landing experiment cookie if not already present.

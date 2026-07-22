@@ -2,6 +2,8 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { FoundingMemberPlanId } from "@/lib/pricing/founding-member";
+import type { BillingInterval } from "@/lib/billing/pricing";
+import { createCheckoutSession } from "./checkout";
 
 // Maps a founding-member plan choice (as shown on /pricing) to the
 // workspace `type` it lives under and the `plan` value from migration
@@ -44,4 +46,30 @@ export async function setIntendedPlan(planId: FoundingMemberPlanId): Promise<{ o
   if (error) return { ok: false, reason: error.message };
 
   return { ok: true };
+}
+
+/**
+ * The real "choose a plan" action for a signed-in visitor on /pricing —
+ * records the intended plan (same as setIntendedPlan above) and then
+ * immediately starts checkout for it, returning the Stripe/Razorpay
+ * Checkout URL to redirect to. Previously "choosing a plan" only wrote
+ * workspaces.plan and did nothing else — clicking a plan card now actually
+ * gets the visitor to a real checkout with the plan/interval they picked,
+ * same delayed-first-charge trial logic as the dashboard's "add first
+ * contact" card-first gate (see createCheckoutSession).
+ */
+export async function choosePlanAndCheckout(
+  planId: FoundingMemberPlanId,
+  interval: BillingInterval
+): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+  const target = PLAN_TO_WORKSPACE[planId];
+  const intended = await setIntendedPlan(planId);
+  if (!intended.ok) return intended;
+
+  try {
+    const result = await createCheckoutSession(target.type, interval);
+    return { ok: true, url: result.url };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : "Couldn't start checkout." };
+  }
 }

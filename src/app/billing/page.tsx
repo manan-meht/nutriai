@@ -1,53 +1,34 @@
-export const dynamic = "force-dynamic";
-export const runtime = "edge";
+import type { Metadata } from "next";
+import { MarketingHeader } from "@/components/home/MarketingHeader";
+import { MarketingFooter } from "@/components/home/MarketingFooter";
+import { PricingSection } from "@/components/pricing/PricingSection";
 
-import { redirect } from "next/navigation";
-import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
-import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
-import { foundingMemberCopy } from "@/lib/pricing/founding-member";
-import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
-
-interface BillingPageProps {
-  searchParams?: Promise<Record<string, string>>;
+export function generateMetadata(): Metadata {
+  return {
+    title: "Billing — Tistra Health",
+    icons: { icon: "/logos/logo-purple.png" },
+  };
 }
 
-export default async function BillingPage({ searchParams }: BillingPageProps) {
-  const params = (await searchParams) ?? {};
-  const billingModule = params.module === "gym" ? "gym" : "adults";
-  const dashboardPath = billingModule === "gym" ? "/gym/dashboard" : "/adults/dashboard";
-
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(billingModule === "gym" ? "/gym/login?next=/billing?module=gym" : "/adults/login?next=/billing?module=adults");
-
-  // The Beta placeholder below only applies pre-launch. Once billing is
-  // live, subscription management (billing portal, cancel) lives on the
-  // dashboard itself (see AdultsDashboardClient/GymDashboardClient's
-  // isReadOnly banner) — deliberately NOT importing subscription-management
-  // here (it pulls in the full Stripe SDK), since that previously pushed
-  // this page's Cloudflare Pages Function alone to ~1.8 MB and helped tip
-  // the whole deployment over the 25 MiB aggregate Functions limit, failing
-  // two deploys in a row. This route just bounces back to the dashboard.
-  if (BILLING_AVAILABLE) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-16">
-        <div className="max-w-md w-full text-center">
-          <p className="text-gray-600 mb-4">Manage your subscription from your dashboard.</p>
-          <Link href={dashboardPath} className="text-[#6750A4] font-semibold underline">
-            Go to dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
+// Deliberately static, same as /pricing (no auth check, no edge runtime,
+// no import of subscription-management.ts/Stripe) — PricingSection itself
+// already handles both logged-out (→ signup, carrying the chosen plan/
+// interval through to checkout once signed up) and logged-in (→ straight
+// to Stripe Checkout) visitors client-side. A server-side auth redirect
+// here previously made this page import the full Stripe SDK just to
+// generate a billing-portal URL, which alone cost ~1.3 MB as a Cloudflare
+// Pages Function and helped push the whole deployment over the 25 MiB
+// aggregate Functions limit — see git history.
+export default function BillingPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-16">
-      <div className="max-w-md w-full">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4 text-center">{foundingMemberCopy.dashboardBannerTitle}</h1>
-        <BetaBillingBanner sourcePage="billing_page" linkLabel={foundingMemberCopy.viewPlansLabel} />
-      </div>
+    <div className="min-h-screen bg-white text-gray-900">
+      <MarketingHeader variant="home" />
+
+      <main className="max-w-5xl mx-auto px-6 py-16">
+        <PricingSection sourcePage="billing_page" />
+      </main>
+
+      <MarketingFooter variant="home" />
     </div>
   );
 }

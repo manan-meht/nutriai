@@ -72,6 +72,17 @@ export const razorpayProvider: PaymentProvider = {
     }
   },
 
+  // Razorpay checkout is feature-flagged off (RAZORPAY_CHECKOUT_ENABLED)
+  // pending India merchant/recurring-payment approval — no real Razorpay
+  // subscriptions are created yet, and its API has no simple "list
+  // subscriptions by customer_id" the way Stripe does. Returning null here
+  // means the IN market simply doesn't get the "sync immediately on
+  // checkout return" behavior Stripe gets (see syncCheckoutCompletion) —
+  // revisit once Razorpay actually launches.
+  async findLatestSubscriptionForCustomer(): Promise<ProviderSubscriptionSnapshot | null> {
+    return null;
+  },
+
   async cancelSubscription(providerSubscriptionId: string, atPeriodEnd: boolean): Promise<void> {
     const rzp = client();
     await rzp.subscriptions.cancel(providerSubscriptionId, atPeriodEnd);

@@ -6,6 +6,7 @@ import type { EntitlementModule } from "@/lib/entitlements/entitlements";
 import { applyProviderSubscriptionSnapshot } from "@/lib/entitlements/entitlements";
 import { getProviderByName, isStoreManagedProvider } from "@/lib/billing/provider-registry";
 import type { PaymentProviderName } from "@/lib/billing/provider";
+import { requestOrigin } from "@/lib/billing/market";
 
 const STORE_MANAGED_MESSAGE =
   "This subscription was purchased through the App Store/Play Store — manage or cancel it from your phone's subscription settings, not here.";
@@ -40,6 +41,43 @@ export async function refreshPaymentStatus(module: EntitlementModule): Promise<v
 
   const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const snapshot = await provider.retrieveSubscription(entitlement.provider_subscription_id);
+  if (!snapshot) return;
+
+  await applyProviderSubscriptionSnapshot({
+    workspaceId: entitlement.workspace_id,
+    module,
+    provider: entitlement.payment_provider as PaymentProviderName,
+    snapshot,
+  });
+}
+
+/**
+ * Called right when a visitor lands back on the dashboard from a
+ * successful Stripe/Razorpay Checkout redirect (see ?checkout=success on
+ * the adults/gym dashboard pages). At that instant, provider_subscription_id
+ * on the entitlements row is still null — recordCheckoutIntent (called
+ * before redirecting to checkout) only ever records provider_customer_id;
+ * the subscription itself doesn't exist until the visitor actually
+ * completes payment, and provider_subscription_id is only populated by a
+ * verified webhook afterward. That webhook can take a few seconds in
+ * production, and can't reach a local dev server at all — so rather than
+ * leaving the dashboard showing a stale "not_started" state (and re-gating
+ * "Add first contact" right back into another checkout redirect) until a
+ * webhook that may never arrive, this looks the new subscription up from
+ * the provider directly via provider_customer_id and applies it the same
+ * way the webhook would. Safe to call even when there's nothing to sync
+ * (no customer id yet, or the provider has no subscription for it) — a
+ * no-op in that case, same trust model as refreshPaymentStatus (this is a
+ * manual re-pull from the provider, never trusts the browser redirect by
+ * itself to grant access).
+ */
+export async function syncCheckoutCompletion(module: EntitlementModule): Promise<void> {
+  const entitlement = await getOwnedEntitlementRow(module);
+  if (!entitlement.payment_provider || !entitlement.provider_customer_id) return;
+  if (isStoreManagedProvider(entitlement.payment_provider as PaymentProviderName)) return;
+
+  const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
+  const snapshot = await provider.findLatestSubscriptionForCustomer(entitlement.provider_customer_id);
   if (!snapshot) return;
 
   await applyProviderSubscriptionSnapshot({
@@ -92,7 +130,7 @@ export async function openBillingPortal(module: EntitlementModule): Promise<stri
 
   const provider = await getProviderByName(entitlement.payment_provider as PaymentProviderName);
   const headerStore = await headers();
-  const origin = `https://${headerStore.get("host") ?? "localhost:3001"}`;
+  const origin = requestOrigin(headerStore);
   const dashboardPath = module === "adults" ? "/adults/dashboard" : "/gym/dashboard";
 
   return provider.openBillingPortal({

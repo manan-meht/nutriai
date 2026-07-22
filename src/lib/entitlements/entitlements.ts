@@ -104,6 +104,30 @@ export async function getEntitlementSnapshot(
 }
 
 /**
+ * The provider customer id already on file for this (workspace, module), if
+ * any — must be looked up and passed to provider.createOrRetrieveCustomer()
+ * on every checkout attempt. Without this, a second "Add first contact"
+ * click (e.g. after an earlier attempt was abandoned partway through
+ * Stripe Checkout) creates a brand-new provider customer every time
+ * instead of reusing the one already on file, silently orphaning any
+ * subscription created under the previous customer — the entitlements row
+ * gets overwritten to point at the new, subscription-less customer, and
+ * nothing can ever find the real subscription again. */
+export async function getExistingProviderCustomerId(
+  workspaceId: string,
+  module: EntitlementModule
+): Promise<string | null> {
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("entitlements")
+    .select("provider_customer_id")
+    .eq("workspace_id", workspaceId)
+    .eq("module", module)
+    .maybeSingle();
+  return data?.provider_customer_id ?? null;
+}
+
+/**
  * Whether this workspace must add a card (via checkout) before starting its
  * first trial, rather than the legacy card-free startTrialIfNeeded path.
  * "not_started" alone is a reliable "never added a first contact/client yet"
