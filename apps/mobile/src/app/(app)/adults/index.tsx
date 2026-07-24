@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { Collapsible } from '@/components/ui/collapsible';
 import { PersonCard } from '@/components/person-card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/screen-states';
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +17,7 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; contacts: AdultsContact[] }
+  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[] }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
   // enforcement rule (mobile-api's lib/entitlements.ts), same computation
@@ -45,12 +46,12 @@ export default function AdultsContactListScreen() {
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
-    return Promise.all([api.getAdultsContacts(), api.getAdultsWorkspace()])
-      .then(([{ contacts }, { entitlement }]) => {
+    return Promise.all([api.getAdultsContacts(), api.getRemovedAdultsContacts(), api.getAdultsWorkspace()])
+      .then(([{ contacts }, { contacts: removedContacts }, { entitlement }]) => {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required' });
         } else {
-          setState({ status: 'ready', contacts });
+          setState({ status: 'ready', contacts, removedContacts });
         }
       })
       .catch((err) =>
@@ -66,6 +67,28 @@ export default function AdultsContactListScreen() {
     setRefreshing(true);
     await load(false);
     setRefreshing(false);
+  }
+
+  function confirmRemove(contact: AdultsContact) {
+    Alert.alert(
+      `Remove ${contact.fullName}?`,
+      "Their data will be preserved, but this frees up an active slot only — you can't add a replacement until next calendar month (removing doesn't refund this month's add quota).",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.removeAdultsContact(contact.id);
+              await load(false);
+            } catch (err) {
+              Alert.alert('Couldn\'t remove', err instanceof Error ? err.message : 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
   }
 
   if (state.status === 'loading') return <LoadingState />;
@@ -101,6 +124,9 @@ export default function AdultsContactListScreen() {
               <ThemedText type="default" themeColor="textSecondary">
                 Choose a family member to view their meals, progress, and recommendations.
               </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                Tip: press and hold a family member to remove them.
+              </ThemedText>
             </View>
           ) : null
         }
@@ -120,16 +146,37 @@ export default function AdultsContactListScreen() {
             lastMealAt={item.lastMealAt}
             scoreQuery={{ contactId: item.id }}
             onPress={() => router.push(`/adults/${item.id}`)}
+            onLongPress={() => confirmRemove(item)}
           />
         )}
         ListFooterComponent={
-          state.contacts.length > 0 ? (
-            <Pressable onPress={() => router.push('/adults/add')} style={styles.addCard}>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
-                + Add family member
-              </ThemedText>
-            </Pressable>
-          ) : null
+          <>
+            {state.contacts.length > 0 && (
+              <Pressable onPress={() => router.push('/adults/add')} style={styles.addCard}>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
+                  + Add family member
+                </ThemedText>
+              </Pressable>
+            )}
+            {state.removedContacts.length > 0 && (
+              <View style={styles.removedSection}>
+                <Collapsible title={`Previous family members (${state.removedContacts.length})`}>
+                  {state.removedContacts.map((contact) => (
+                    <PersonCard
+                      key={contact.id}
+                      fullName={contact.fullName}
+                      subtitle={subtitleFor(contact)}
+                      mealCount={contact.mealCount}
+                      lastMealAt={contact.lastMealAt}
+                      scoreQuery={{ contactId: contact.id }}
+                      onPress={() => router.push(`/adults/${contact.id}`)}
+                      dimmed
+                    />
+                  ))}
+                </Collapsible>
+              </View>
+            )}
+          </>
         }
       />
       <Pressable
@@ -152,6 +199,7 @@ const styles = StyleSheet.create({
   listContent: { paddingVertical: Spacing.three, flexGrow: 1 },
   header: { paddingHorizontal: Spacing.three, marginBottom: Spacing.three, gap: Spacing.one },
   headline: { fontSize: 24, lineHeight: 30, marginVertical: Spacing.one },
+  hint: { marginTop: Spacing.one, fontStyle: 'italic' },
   addCard: {
     borderRadius: Spacing.three,
     borderWidth: 2,
@@ -167,5 +215,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  removedSection: { marginTop: Spacing.three, marginHorizontal: Spacing.three },
   signOutButton: { alignItems: 'center', padding: Spacing.three },
 });

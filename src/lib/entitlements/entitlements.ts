@@ -10,6 +10,7 @@ import {
 } from "@/lib/billing/feature-flags";
 import type { BillingMarket, BillingInterval } from "@/lib/billing/pricing";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
+import { sendWelcomeEmail } from "@/lib/billing/welcome-email";
 import { getEntitlementSnapshot as getEntitlementSnapshotCore } from "@nutriai/nutrition-core";
 import type { EntitlementModule, EntitlementStatus } from "@nutriai/nutrition-core";
 
@@ -307,6 +308,17 @@ export async function applyProviderSubscriptionSnapshot(params: {
     }
   }
 
+  // Fetched up front (rather than only when needed below) so the same
+  // pre-update row covers both the "active" check above and the welcome
+  // email's own once-only guard — one extra column read is cheaper than a
+  // second round trip.
+  const { data: beforeUpdate } = await admin
+    .from("entitlements")
+    .select("owner_id, welcome_email_sent_at")
+    .eq("workspace_id", params.workspaceId)
+    .eq("module", params.module)
+    .maybeSingle();
+
   const { error } = await admin
     .from("entitlements")
     .update(update)
@@ -314,4 +326,75 @@ export async function applyProviderSubscriptionSnapshot(params: {
     .eq("module", params.module);
 
   if (error) throw new Error(`Failed to apply subscription snapshot: ${error.message}`);
+
+  // "Welcome to Tistra Health" — sent once, the first time a card-backed
+  // trial actually starts (never for the legacy card-free trial, which
+  // never calls this function with a real provider at all, and never for
+  // App Store/Play Store purchases, which have no "add your card" step and
+  // are managed entirely outside this web app. Checked inline (params.provider
+  // === "apple"/"google_play") rather than importing isStoreManagedProvider
+  // from @/lib/billing/provider-registry — that module's dynamic imports of
+  // the Stripe/Razorpay SDKs get inlined into every Cloudflare Pages
+  // Function that reaches it regardless of which named export is actually
+  // used (confirmed empirically this session), and this file is imported by
+  // nearly every dashboard/checkout/webhook route.
+  // Guarded on welcome_email_sent_at rather than snapshot.status alone, so
+  // a retried/duplicate webhook for the same subscription never re-sends it.
+  if (
+    snapshot.status === "trialing" &&
+    params.provider !== "apple" &&
+    params.provider !== "google_play" &&
+    beforeUpdate &&
+    !beforeUpdate.welcome_email_sent_at &&
+    snapshot.trialEnd
+  ) {
+    try {
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("full_name, email")
+        .eq("id", beforeUpdate.owner_id)
+        .maybeSingle();
+
+      if (profile?.email) {
+        // "self" and "family" are both the "adults" entitlement module
+        // (see workspaces.plan, migration 0010_self_plan_pricing.sql) — a
+        // one-person self-plan signup must not be told "Your Family trial
+        // has started", so the actual plan is looked up separately here
+        // rather than assumed from params.module.
+        const { data: workspace } = await admin
+          .from("workspaces")
+          .select("plan")
+          .eq("id", params.workspaceId)
+          .maybeSingle();
+        const plan: "self" | "family" | "coach" =
+          params.module === "gym" ? "coach" : workspace?.plan === "self" ? "self" : "family";
+
+        const result = await sendWelcomeEmail({
+          to: profile.email,
+          ownerName: profile.full_name ?? undefined,
+          plan,
+          trialEndAt: new Date(snapshot.trialEnd),
+          // Deliberately not a live Stripe billing-portal URL — generating
+          // one needs stripeProvider.openBillingPortal(), which would pull
+          // the Stripe SDK into this webhook's bundle. /billing is a
+          // stable, always-valid destination regardless (same choice the
+          // trial-reminder cron already made — see that file's comment).
+          billingPortalUrl: `https://tistrahealth.com/billing?module=${params.module}`,
+        });
+
+        if (result.ok) {
+          await admin
+            .from("entitlements")
+            .update({ welcome_email_sent_at: now().toISOString() })
+            .eq("workspace_id", params.workspaceId)
+            .eq("module", params.module);
+        }
+      }
+    } catch (err) {
+      // Never let a welcome-email failure fail the webhook/sync itself —
+      // the subscription snapshot above has already been applied and is
+      // the source of truth regardless of whether this email goes out.
+      console.error("[welcome-email] send failed:", params.workspaceId, params.module, err instanceof Error ? err.message : err);
+    }
+  }
 }

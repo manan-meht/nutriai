@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
-import { getOrCreateAdultsWorkspace, getContacts, getContactDetails, addContact, updateContact } from "@/lib/adults";
+import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, getContactDetails, addContact, updateContact, removeContact } from "@/lib/adults";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
 import { applyExplicitPreferences, type FoodPreferenceSelections } from "@/lib/food-preferences";
@@ -11,9 +11,11 @@ export const runtime = "edge";
 // Pages project, so no /api/mobile prefix is needed):
 //   GET /adults/workspace
 //   GET /adults/contacts
+//   GET /adults/contacts/removed
 //   GET /adults/contacts/:contactId
 //   POST /adults/contacts
 //   PATCH /adults/contacts/:contactId
+//   DELETE /adults/contacts/:contactId
 //   POST /adults/contacts/:contactId/access-code    (generate)
 //   PATCH /adults/contacts/:contactId/access-code   (regenerate)
 //   DELETE /adults/contacts/:contactId/access-code  (revoke)
@@ -74,6 +76,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (path.length === 1 && path[0] === "contacts") {
     const workspace = await getOrCreateAdultsWorkspace(auth.user.id);
     const contacts = await getContacts(workspace.id, auth.supabase);
+    return NextResponse.json({ contacts });
+  }
+
+  // Must be checked before the generic /contacts/:contactId route below,
+  // since "removed" would otherwise be treated as a contact id.
+  if (path.length === 2 && path[0] === "contacts" && path[1] === "removed") {
+    const workspace = await getOrCreateAdultsWorkspace(auth.user.id);
+    const contacts = await getRemovedContacts(workspace.id, auth.supabase);
     return NextResponse.json({ contacts });
   }
 
@@ -201,6 +211,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  if (path.length === 2 && path[0] === "contacts") {
+    const result = await removeContact(path[1], auth.user.id, auth.supabase);
+    if (result.error) return NextResponse.json(result, { status: 400 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (path.length !== 3 || path[0] !== "contacts" || path[2] !== "access-code") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

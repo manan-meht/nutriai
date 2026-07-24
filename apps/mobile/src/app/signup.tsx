@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Linking from 'expo-linking';
 import { Redirect, router, useLocalSearchParams } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
@@ -14,19 +15,14 @@ import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
 type Product = 'self' | 'family' | 'coach';
 
-// Which scoped Supabase account (see lib/auth.ts#scopedEmail) each product
-// choice signs into, and the subtitle copy for it — mirrors
-// nutriai-fresh's apps/mobile/app/login/{self,family,coach}.tsx, which are
-// three thin per-product wrappers around one shared form there; kept as
-// one parameterized screen here instead since expo-router's params already
-// give us the same effect without three near-identical route files.
+// Same product -> scoped-account mapping as login.tsx.
 const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults' | 'gym'; subtitle: string }> = {
-  self: { scopeAs: 'adults', subtitle: 'Sign in to track your own meals' },
-  family: { scopeAs: 'adults', subtitle: 'Sign in to your family account' },
-  coach: { scopeAs: 'gym', subtitle: 'Sign in to your coaching account' },
+  self: { scopeAs: 'adults', subtitle: 'Create an account to track your own meals' },
+  family: { scopeAs: 'adults', subtitle: 'Create a family account' },
+  coach: { scopeAs: 'gym', subtitle: 'Create a coaching account' },
 };
 
-export default function LoginScreen() {
+export default function SignupScreen() {
   const theme = useTheme();
   const { product } = useLocalSearchParams<{ product?: string }>();
   const [email, setEmail] = useState('');
@@ -34,28 +30,38 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [emailSent, setEmailSent] = useState(false);
 
   // Reachable directly (deep link, back navigation) without having gone
   // through /select-product first — send back there rather than guessing
-  // which scoped account to sign in to.
+  // which scoped account to create.
   if (!product || !(product in PRODUCT_CONFIG)) {
     return <Redirect href="/select-product" />;
   }
   const { scopeAs, subtitle } = PRODUCT_CONFIG[product as Product];
 
-  async function handlePasswordSignIn() {
+  async function handleSignUp() {
     setError(null);
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signUp({
         email: scopedEmail(email, scopeAs),
         password,
+        options: { emailRedirectTo: Linking.createURL('auth/callback') },
       });
       if (error) throw error;
-      // Session change is picked up by AuthProvider's onAuthStateChange
-      // listener — the root layout handles redirecting once it does.
+      // Supabase doesn't error on a duplicate email sign-up (avoids leaking
+      // which emails have accounts) — it silently "succeeds" without
+      // sending anything. The tell is an empty identities array on the
+      // returned user, since no new identity was actually created. Mirrors
+      // the same check in the web app's src/components/auth/AuthForm.tsx.
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        setError('An account with this email already exists. Please sign in instead.');
+        return;
+      }
+      setEmailSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed.');
+      setError(err instanceof Error ? err.message : 'Sign-up failed.');
     } finally {
       setLoading(false);
     }
@@ -66,14 +72,32 @@ export default function LoginScreen() {
     setOauthLoading(provider);
     try {
       await signInWithProvider(provider);
+      // Session change is picked up by AuthProvider's onAuthStateChange
+      // listener — the root layout handles redirecting once it does.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed.');
+      setError(err instanceof Error ? err.message : 'Sign-up failed.');
     } finally {
       setOauthLoading(null);
     }
   }
 
   const anyLoading = loading || oauthLoading !== null;
+
+  if (emailSent) {
+    return (
+      <ThemedView style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <ThemedText style={styles.emailSentEmoji}>📬</ThemedText>
+          <ThemedText type="title" style={styles.title}>
+            Check your email
+          </ThemedText>
+          <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
+            We sent a confirmation link to {email}. Tap it on this device to activate your account.
+          </ThemedText>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
@@ -98,10 +122,10 @@ export default function LoginScreen() {
         />
         <TextInput
           style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-          placeholder="Password"
+          placeholder="Password (at least 8 characters)"
           placeholderTextColor={theme.textSecondary}
           secureTextEntry
-          autoComplete="password"
+          autoComplete="new-password"
           value={password}
           onChangeText={setPassword}
           editable={!anyLoading}
@@ -114,11 +138,11 @@ export default function LoginScreen() {
         )}
 
         <Pressable
-          style={[styles.button, styles.primaryButton, anyLoading && styles.disabled]}
-          onPress={handlePasswordSignIn}
-          disabled={anyLoading}
+          style={[styles.button, styles.primaryButton, (anyLoading || password.length < 8 || !email) && styles.disabled]}
+          onPress={handleSignUp}
+          disabled={anyLoading || password.length < 8 || !email}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : <ThemedText style={styles.primaryButtonText}>Sign in</ThemedText>}
+          {loading ? <ActivityIndicator color="#fff" /> : <ThemedText style={styles.primaryButtonText}>Create account</ThemedText>}
         </Pressable>
 
         <ThemedView type="backgroundElement" style={styles.divider} />
@@ -155,13 +179,19 @@ export default function LoginScreen() {
 
         <Pressable
           style={styles.switchLink}
-          onPress={() => router.replace({ pathname: '/signup', params: { product } })}
+          onPress={() => router.replace({ pathname: '/login', params: { product } })}
           disabled={anyLoading}
         >
           <ThemedText type="default" themeColor="textSecondary" style={styles.switchLinkText}>
-            Don&apos;t have an account? <ThemedText style={styles.switchLinkAccent}>Create one</ThemedText>
+            Already have an account? <ThemedText style={styles.switchLinkAccent}>Sign in</ThemedText>
           </ThemedText>
         </Pressable>
+
+        <ThemedText type="small" themeColor="textSecondary" style={styles.disclaimer}>
+          Tistra Health is a tracking and awareness tool only. It does not provide medical advice, diagnosis,
+          treatment, or personalized nutrition therapy. For any health, diet, medical condition, medication, or
+          nutrition concern, please consult a qualified healthcare professional.
+        </ThemedText>
       </SafeAreaView>
     </ThemedView>
   );
@@ -236,5 +266,13 @@ const styles = StyleSheet.create({
   switchLinkAccent: {
     color: '#5715CE',
     fontWeight: '600',
+  },
+  disclaimer: {
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  emailSentEmoji: {
+    fontSize: 40,
+    textAlign: 'center',
   },
 });

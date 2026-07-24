@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getClients as getClientsCore,
+  getRemovedClients as getRemovedClientsCore,
   getClientDetails as getClientDetailsCore,
   getOrCreateWorkspace as getOrCreateWorkspaceCore,
 } from "@nutriai/nutrition-core";
@@ -133,6 +134,29 @@ export async function getOrCreateWorkspace(userId: string, coachName?: string) {
 
 export async function getClients(workspaceId: string, supabase: SupabaseClient) {
   return getClientsCore(workspaceId, supabase);
+}
+
+/** Previously-removed clients — mirrors the main app's getRemovedClients
+ * (src/app/(gym)/gym/dashboard/actions.ts). */
+export async function getRemovedClients(workspaceId: string, supabase: SupabaseClient) {
+  return getRemovedClientsCore(workspaceId, supabase);
+}
+
+/** Soft-delete: preserves the client's historical data while freeing an
+ * active slot — mirrors the main app's removeClient. */
+export async function removeClient(
+  clientId: string,
+  trainerId: string,
+  supabase: SupabaseClient
+): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from("gym_clients")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", clientId)
+    .eq("trainer_id", trainerId);
+
+  if (error) return { error: error.message };
+  return {};
 }
 
 // 30-day window matches the main app's gym dashboard — see

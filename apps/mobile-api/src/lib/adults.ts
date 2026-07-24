@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   getContacts as getContactsCore,
+  getRemovedContacts as getRemovedContactsCore,
   getContactDetails as getContactDetailsCore,
   getOrCreateWorkspace,
 } from "@nutriai/nutrition-core";
@@ -167,6 +168,29 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
 
 export async function getContacts(workspaceId: string, supabase: SupabaseClient) {
   return getContactsCore(workspaceId, supabase);
+}
+
+/** Previously-removed family members — mirrors the main app's
+ * getRemovedContacts (src/app/(adults)/adults/dashboard/actions.ts). */
+export async function getRemovedContacts(workspaceId: string, supabase: SupabaseClient) {
+  return getRemovedContactsCore(workspaceId, supabase);
+}
+
+/** Soft-delete: preserves the contact's historical data while freeing an
+ * active slot — mirrors the main app's removeContact. */
+export async function removeContact(
+  contactId: string,
+  caregiverId: string,
+  supabase: SupabaseClient
+): Promise<{ error?: string }> {
+  const { error } = await supabase
+    .from("adults_contacts")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", contactId)
+    .eq("caregiver_id", caregiverId);
+
+  if (error) return { error: error.message };
+  return {};
 }
 
 // 400-day window matches the main app's date-range selector (up to "This

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 
+import { Collapsible } from '@/components/ui/collapsible';
 import { PersonCard } from '@/components/person-card';
 import { EmptyState, ErrorState, LoadingState } from '@/components/screen-states';
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +17,7 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; clients: GymClient[] };
+  | { status: 'ready'; clients: GymClient[]; removedClients: GymClient[] };
 
 function subtitleFor(client: GymClient): string | undefined {
   return client.nutritionGoals?.length ? client.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
@@ -33,9 +34,8 @@ export default function GymClientListScreen() {
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
-    return api
-      .getGymClients()
-      .then(({ clients }) => setState({ status: 'ready', clients }))
+    return Promise.all([api.getGymClients(), api.getRemovedGymClients()])
+      .then(([{ clients }, { clients: removedClients }]) => setState({ status: 'ready', clients, removedClients }))
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load clients.' })
       );
@@ -49,6 +49,28 @@ export default function GymClientListScreen() {
     setRefreshing(true);
     await load(false);
     setRefreshing(false);
+  }
+
+  function confirmRemove(client: GymClient) {
+    Alert.alert(
+      `Remove ${client.fullName}?`,
+      "Their data will be preserved, but this frees up an active slot only — you can't add a replacement until next calendar month (removing doesn't refund this month's add quota).",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.removeGymClient(client.id);
+              await load(false);
+            } catch (err) {
+              Alert.alert('Couldn\'t remove', err instanceof Error ? err.message : 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
   }
 
   if (state.status === 'loading') return <LoadingState />;
@@ -75,6 +97,9 @@ export default function GymClientListScreen() {
               <ThemedText type="default" themeColor="textSecondary">
                 See who is making progress and who may need attention today.
               </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                Tip: press and hold a client to remove them.
+              </ThemedText>
             </View>
           ) : null
         }
@@ -94,16 +119,37 @@ export default function GymClientListScreen() {
             lastMealAt={item.lastMealAt}
             scoreQuery={{ clientId: item.id }}
             onPress={() => router.push(`/gym/${item.id}`)}
+            onLongPress={() => confirmRemove(item)}
           />
         )}
         ListFooterComponent={
-          state.clients.length > 0 ? (
-            <Pressable onPress={() => router.push('/gym/add')} style={styles.addCard}>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
-                + Add client
-              </ThemedText>
-            </Pressable>
-          ) : null
+          <>
+            {state.clients.length > 0 && (
+              <Pressable onPress={() => router.push('/gym/add')} style={styles.addCard}>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
+                  + Add client
+                </ThemedText>
+              </Pressable>
+            )}
+            {state.removedClients.length > 0 && (
+              <View style={styles.removedSection}>
+                <Collapsible title={`Previous clients (${state.removedClients.length})`}>
+                  {state.removedClients.map((client) => (
+                    <PersonCard
+                      key={client.id}
+                      fullName={client.fullName}
+                      subtitle={subtitleFor(client)}
+                      mealCount={client.mealCount}
+                      lastMealAt={client.lastMealAt}
+                      scoreQuery={{ clientId: client.id }}
+                      onPress={() => router.push(`/gym/${client.id}`)}
+                      dimmed
+                    />
+                  ))}
+                </Collapsible>
+              </View>
+            )}
+          </>
         }
       />
       <Pressable
@@ -126,6 +172,7 @@ const styles = StyleSheet.create({
   listContent: { paddingVertical: Spacing.three, flexGrow: 1 },
   header: { paddingHorizontal: Spacing.three, marginBottom: Spacing.three, gap: Spacing.one },
   headline: { fontSize: 24, lineHeight: 30, marginVertical: Spacing.one },
+  hint: { marginTop: Spacing.one, fontStyle: 'italic' },
   addCard: {
     borderRadius: Spacing.three,
     borderWidth: 2,
@@ -141,5 +188,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  removedSection: { marginTop: Spacing.three, marginHorizontal: Spacing.three },
   signOutButton: { alignItems: 'center', padding: Spacing.three },
 });

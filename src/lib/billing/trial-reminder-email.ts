@@ -1,25 +1,14 @@
 // Mirrors src/lib/feedback/send-feedback-email.ts's Resend HTTP API pattern
 // (plain fetch, no SDK) — see that file's own comment for why.
 
+import { sanitizeLine, escapeHtml } from "@/lib/email/text-helpers";
+
 export interface TrialReminderEmailPayload {
   to: string;
   ownerName?: string;
   module: "adults" | "gym";
   trialEndAt: Date;
   billingPortalUrl: string;
-}
-
-function sanitizeLine(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").trim();
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 const MODULE_LABEL: Record<TrialReminderEmailPayload["module"], string> = {

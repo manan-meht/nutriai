@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
-import { getOrCreateWorkspace, getClients, getClientDetails, addClient, updateClient } from "@/lib/gym";
+import { getOrCreateWorkspace, getClients, getRemovedClients, getClientDetails, addClient, updateClient, removeClient } from "@/lib/gym";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 
 export const runtime = "edge";
@@ -8,9 +8,11 @@ export const runtime = "edge";
 // Routes handled here:
 //   GET /gym/workspace
 //   GET /gym/clients
+//   GET /gym/clients/removed
 //   GET /gym/clients/:clientId
 //   POST /gym/clients
 //   PATCH /gym/clients/:clientId
+//   DELETE /gym/clients/:clientId
 //   POST /gym/clients/:clientId/access-code    (generate)
 //   PATCH /gym/clients/:clientId/access-code   (regenerate)
 //   DELETE /gym/clients/:clientId/access-code  (revoke)
@@ -66,6 +68,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (path.length === 1 && path[0] === "clients") {
     const workspace = await getOrCreateWorkspace(auth.user.id);
     const clients = await getClients(workspace.id, auth.supabase);
+    return NextResponse.json({ clients });
+  }
+
+  // Must be checked before the generic /clients/:clientId route below,
+  // since "removed" would otherwise be treated as a client id.
+  if (path.length === 2 && path[0] === "clients" && path[1] === "removed") {
+    const workspace = await getOrCreateWorkspace(auth.user.id);
+    const clients = await getRemovedClients(workspace.id, auth.supabase);
     return NextResponse.json({ clients });
   }
 
@@ -146,6 +156,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  if (path.length === 2 && path[0] === "clients") {
+    const result = await removeClient(path[1], auth.user.id, auth.supabase);
+    if (result.error) return NextResponse.json(result, { status: 400 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (path.length !== 3 || path[0] !== "clients" || path[2] !== "access-code") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

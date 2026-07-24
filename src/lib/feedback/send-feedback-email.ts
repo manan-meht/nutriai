@@ -1,4 +1,5 @@
 import { FEEDBACK_TYPE_LABELS, type FeedbackType, type FeedbackAccountType, type FeedbackSource } from "./types";
+import { sanitizeLine, escapeHtml } from "@/lib/email/text-helpers";
 
 export interface FeedbackEmailPayload {
   feedbackType: FeedbackType;
@@ -18,24 +19,6 @@ const ACCOUNT_TYPE_LABELS: Record<FeedbackAccountType, string> = {
   coach: "Coach",
   self: "Self",
 };
-
-// Strips characters that have no legitimate place in a plain-text value
-// used to build an email (line breaks, in particular) — defense in depth
-// against header/content injection even though we're going through
-// Resend's JSON API (not raw SMTP), where classic CRLF header injection
-// isn't directly exploitable the same way a raw sendmail() call would be.
-function sanitizeLine(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").trim();
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /** Sends the feedback notification email via Resend's HTTP API (plain
  * fetch — no SDK dependency, both to avoid growing the Cloudflare Worker

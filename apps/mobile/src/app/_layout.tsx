@@ -64,6 +64,7 @@ function RootNavigator() {
       <Stack.Protected guard={!session}>
         <Stack.Screen name="select-product" />
         <Stack.Screen name="login" />
+        <Stack.Screen name="signup" />
         <Stack.Screen name="auth/callback" />
         {/* Participant/access-code flow — a completely separate session
             from Supabase Auth (see lib/end-user-session.ts), so it lives

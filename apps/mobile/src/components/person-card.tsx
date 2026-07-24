@@ -34,6 +34,8 @@ export function PersonCard({
   lastMealAt,
   scoreQuery,
   onPress,
+  onLongPress,
+  dimmed,
 }: {
   fullName: string;
   subtitle?: string;
@@ -41,6 +43,14 @@ export function PersonCard({
   lastMealAt?: string;
   scoreQuery: { contactId: string } | { clientId: string };
   onPress: () => void;
+  /** Long-press to remove — see (app)/adults/index.tsx and
+   * (app)/gym/index.tsx, mirroring the web dashboard's per-card remove
+   * button (there's no per-row overflow menu on these compact cards, so
+   * long-press stands in for it, same pattern as most native list UIs). */
+  onLongPress?: () => void;
+  /** Used for the collapsed "removed" section — same card, visually
+   * de-emphasized, read-only (no onLongPress passed there). */
+  dimmed?: boolean;
 }) {
   const theme = useTheme();
   const { result } = useFoodBalanceScore(scoreQuery);
@@ -50,7 +60,7 @@ export function PersonCard({
   const topRecommendation = isScored ? result.recommendations[0]?.title : undefined;
 
   return (
-    <Pressable onPress={onPress}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={dimmed ? styles.dimmed : undefined}>
       <ThemedView type="backgroundElement" style={styles.card}>
         <View style={styles.header}>
           <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
@@ -132,6 +142,7 @@ export function PersonCard({
 }
 
 const styles = StyleSheet.create({
+  dimmed: { opacity: 0.6 },
   card: {
     borderRadius: Spacing.three,
     padding: Spacing.three,

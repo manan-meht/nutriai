@@ -117,6 +117,9 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   /** WhatsApp meal reminders (migration 0016) — adults-only. */
   remindersEnabled: boolean;
   reminderTimes: string[];
+  /** Set once a contact has been removed (soft-deleted) — only present on
+   * rows returned by getRemovedAdultsContacts, never on getAdultsContacts. */
+  deletedAt?: string;
 }
 
 export interface MealLog {
@@ -168,6 +171,9 @@ export interface GymClient extends FoodBalanceProfileFields {
   lastMealAt?: string;
   goals: Goal[];
   trackedBiomarkers: string[];
+  /** Set once a client has been removed (soft-deleted) — only present on
+   * rows returned by getRemovedGymClients, never on getGymClients. */
+  deletedAt?: string;
 }
 
 export interface WorkoutLog {
@@ -327,13 +333,23 @@ export const api = {
 
   getAdultsWorkspace: () => apiFetch<AdultsWorkspaceResponse>("/adults/workspace"),
   getAdultsContacts: () => apiFetch<{ contacts: AdultsContact[] }>("/adults/contacts"),
+  // Previously-removed family members — mirrors the web app's
+  // getRemovedContacts (data preserved, no longer active).
+  getRemovedAdultsContacts: () => apiFetch<{ contacts: AdultsContact[] }>("/adults/contacts/removed"),
   getAdultsContactDetails: (contactId: string) =>
     apiFetch<AdultsContactDetails>(`/adults/contacts/${contactId}`),
+  // Soft-delete: preserves the contact's historical data while freeing an
+  // active slot — mirrors the web app's removeContact.
+  removeAdultsContact: (contactId: string) =>
+    apiDelete<{ ok: boolean }>(`/adults/contacts/${contactId}`),
 
   getGymWorkspace: () => apiFetch<GymWorkspaceResponse>("/gym/workspace"),
   getGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients"),
+  getRemovedGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients/removed"),
   getGymClientDetails: (clientId: string) =>
     apiFetch<GymClientDetails>(`/gym/clients/${clientId}`),
+  removeGymClient: (clientId: string) =>
+    apiDelete<{ ok: boolean }>(`/gym/clients/${clientId}`),
 
   // Feature-flagged server-side — returns 404 with {error:"Not available"}
   // when NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1 isn't set on mobile-api's
