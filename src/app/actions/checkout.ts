@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getEntitlementSnapshot, getExistingProviderCustomerId, recordCheckoutIntent, TRIAL_LENGTH_MS, type EntitlementModule } from "@/lib/entitlements/entitlements";
 import { resolveBillingMarket, getIpCountry, requestOrigin } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
-import { getPrice, type BillingInterval } from "@/lib/billing/pricing";
+import { getPrice, getSelfPrice, type BillingInterval } from "@/lib/billing/pricing";
 import { getProviderForMarket, providerNameForMarket } from "@/lib/billing/provider-registry";
 import { getStripePriceId } from "@/lib/billing/providers/stripe-price-ids";
 import { getRazorpayPlanId } from "@/lib/billing/providers/razorpay-plan-ids";
@@ -37,13 +37,20 @@ export async function createCheckoutSession(
   if (!user || !user.email) throw new Error("Not authenticated");
 
   const workspace = await getWorkspaceForModule(module, user.id);
+  // Self and Family are both `module: "adults"` workspaces (same
+  // entitlement row/trial lifecycle) but bill at different amounts — see
+  // BillingPricingTier's own doc. workspace.plan is already "self"|"family"
+  // from getOrCreateAdultsWorkspace; gym workspaces have no `plan` field at
+  // all, so this is naturally always false there.
+  const isSelfPlan = module === "adults" && "plan" in workspace && workspace.plan === "self";
+  const pricingTier = isSelfPlan ? ("self" as const) : module;
 
   const headerStore = await headers();
   const ipCountry = getIpCountry(headerStore);
   const confirmedCountry = await getConfirmedBillingCountry();
   const { market } = resolveBillingMarket({ confirmedCountry, ipCountry });
 
-  const price = getPrice(market, module, interval);
+  const price = isSelfPlan ? getSelfPrice(market, interval) : getPrice(market, module, interval);
   const providerName = providerNameForMarket(market);
   const provider = await getProviderForMarket(market);
 
@@ -90,6 +97,7 @@ export async function createCheckoutSession(
     ownerId: user.id,
     ownerEmail: user.email,
     module,
+    pricingTier,
     market,
     interval,
     delayBillingUntil,

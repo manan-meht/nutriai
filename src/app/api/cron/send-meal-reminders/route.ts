@@ -4,11 +4,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendTextMessage, sendTemplateMessage, normalizePhone } from "@/lib/whatsapp/client";
 import { isReminderDue, getLocalDateAndTime } from "@/lib/reminders/schedule";
-import { buildReminderMessage, reminderDisplayName } from "@/lib/reminders/messages";
+import { buildReminderMessage, reminderDisplayName, mealSlotForTime } from "@/lib/reminders/messages";
 import { pickWeeklyWhatsAppWin, buildWeeklyWinsWhatsAppLine } from "@/lib/share-cards/weekly-summary";
 import { getProductDomain } from "@/lib/product/resolve-product";
 import type { ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { sendTrialReminderEmail } from "@/lib/billing/trial-reminder-email";
+import { TODAYS_FOCUS_ENABLED, isTodaysFocusTestAccount } from "@/lib/billing/feature-flags";
+import { fetchTodaysFocusInputs } from "@/lib/food-balance/todays-focus-data";
+import {
+  generateRecommendationCandidates,
+  rankRecommendationCandidates,
+  applyRepetitionAndFeedbackRules,
+  renderTodayFocusMessage,
+  recentLocalDates,
+  type TodaysFocusCandidate,
+} from "@/lib/food-balance/todays-focus";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -48,13 +58,145 @@ function formatStaleMealLabel(mealType: MealTypeLabel): string {
 // sendContactInvite (adults dashboard actions.ts): prefer an approved
 // template once one exists, fall back to free-form (works only within the
 // 24h window) until then.
-async function sendReminder(to: string, displayName: string, reminderTime: string): Promise<void> {
+async function sendReminder(to: string, displayName: string, reminderTime: string, todaysFocusLine?: string): Promise<void> {
   const templateName = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
   if (templateName) {
+    // Approved WhatsApp templates have fixed, pre-approved content — a
+    // per-morning personalized line can't be appended to one without
+    // getting the template re-approved for a variable body, so Today's
+    // Focus is simply skipped (not appended, not sent separately) whenever
+    // this path is active. Free-form sends (the else branch, used within
+    // the 24h customer-service window) are the only path that supports it.
     await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [displayName]);
   } else {
-    await sendTextMessage(to, buildReminderMessage(displayName, reminderTime));
+    const base = buildReminderMessage(displayName, reminderTime);
+    await sendTextMessage(to, todaysFocusLine ? `${base}\n\n${todaysFocusLine}` : base);
   }
+}
+
+// ---- Today's Focus: morning recommendation appended to the breakfast
+// reminder (see src/lib/food-balance/todays-focus.ts for the deterministic
+// engine this calls into). Folded directly into this route rather than a
+// new file/route — same Worker bundle-size reasoning as every other job in
+// this file (see this file's other comments on the 25 MiB Cloudflare Pages
+// Functions limit). The heavier calculateFoodBalanceScore pipeline is
+// deliberately NOT used here (see todays-focus.ts's module doc) — only the
+// lightweight generate.ts-style building blocks, which this route already
+// has no problem affording (mapMealLogToFoodBalanceInput/
+// mapRowToFoodBalanceProfile pull in @nutriai/dashboard-core and
+// @nutriai/health-scoring's pure calculation code, not the Gemini SDK).
+
+const TODAYS_FOCUS_ANALYSIS_WINDOW_DAYS = 7;
+
+interface TodaysFocusEligibility {
+  contactId: string;
+  contactType: "adults_contact" | "gym_client";
+  workspaceId: string;
+  ownerEmail: string | null;
+  timezone: string;
+  todaysFocusEnabled: boolean;
+  todaysFocusFrequency: "daily" | "weekdays" | "meaningful_only";
+  todaysFocusStyle: "concise" | "explanatory";
+}
+
+/** Resolves whether Today's Focus should even be attempted for this
+ * contact this morning — the feature flag/allowlist gate, the per-contact
+ * opt-out, and the weekday-only frequency option. The "meaningful_only"
+ * frequency option is checked later, once a candidate is actually known
+ * (see buildTodaysFocusLine), since "is this meaningful" is a property of
+ * the generated recommendation, not something knowable up front. */
+function isTodaysFocusDue(elig: TodaysFocusEligibility, localDate: string): boolean {
+  if (!TODAYS_FOCUS_ENABLED && !isTodaysFocusTestAccount(elig.ownerEmail)) return false;
+  if (!elig.todaysFocusEnabled) return false;
+  if (elig.todaysFocusFrequency === "weekdays") {
+    const weekday = new Date(`${localDate}T12:00:00Z`).getUTCDay(); // 0=Sun..6=Sat; local date is a plain calendar date, time-of-day irrelevant to weekday
+    if (weekday === 0 || weekday === 6) return false;
+  }
+  return true;
+}
+
+/** Builds and persists this morning's Today's Focus recommendation for one
+ * contact, returning the rendered message line to append to their
+ * breakfast reminder (or undefined if none is due/eligible/meaningful) and
+ * the row id to mark 'sent'/'failed' against once the WhatsApp send
+ * itself completes. Never throws — a failure here should never block the
+ * underlying breakfast reminder from sending. */
+async function buildTodaysFocusLine(
+  db: ReturnType<typeof createServiceClient>,
+  elig: TodaysFocusEligibility,
+  localDate: string
+): Promise<{ line: string; recommendationId: string } | undefined> {
+  try {
+    if (!isTodaysFocusDue(elig, localDate)) return undefined;
+
+    const { meals, dietaryProfile, profile, goal, history } = await fetchTodaysFocusInputs(db, elig.contactId, elig.contactType);
+
+    const candidates = generateRecommendationCandidates({
+      meals,
+      timezone: elig.timezone,
+      todayLocalDate: localDate,
+      dietaryProfile,
+      profile,
+      goal,
+    });
+
+    const ranked = rankRecommendationCandidates(candidates);
+    const yesterdayLocalDate = recentLocalDates(localDate, 1)[0];
+    const final = applyRepetitionAndFeedbackRules(ranked, history, yesterdayLocalDate);
+    const top: TodaysFocusCandidate | undefined = final[0];
+    if (!top) return undefined;
+
+    // "Only when something meaningful needs attention" — skip entirely
+    // (no row inserted, no line appended) rather than sending a neutral
+    // reminder/positive message under this frequency setting.
+    if (elig.todaysFocusFrequency === "meaningful_only" && (top.category === "insufficient_data" || top.category === "positive_reinforcement")) {
+      return undefined;
+    }
+
+    const message = renderTodayFocusMessage(top, elig.todaysFocusStyle);
+
+    const { data: inserted, error: insertError } = await db
+      .from("todays_focus_recommendations")
+      .insert({
+        contact_id: elig.contactId,
+        contact_type: elig.contactType,
+        workspace_id: elig.workspaceId,
+        local_date: localDate,
+        timezone: elig.timezone,
+        category: top.category,
+        priority_score: top.tier * 100 + top.persistenceDays,
+        confidence: top.confidence,
+        analysis_window_days: TODAYS_FOCUS_ANALYSIS_WINDOW_DAYS,
+        supporting_metrics: top.supportingMetrics,
+        goal: goal ?? null,
+        message_variant: top.messageVariant,
+        message_text: message,
+        suggested_food_ids: top.suggestedFoodIds,
+        is_scheduled: true,
+        delivery_status: "pending",
+      })
+      .select("id")
+      .single();
+
+    // Unique-violation on the scheduled-once-per-day partial index means
+    // another overlapping cron tick already claimed today's slot for this
+    // contact — same insert-then-send idempotency pattern as
+    // meal_reminder_sends above. Skip appending anything this run.
+    if (insertError || !inserted) return undefined;
+
+    return { line: message, recommendationId: inserted.id };
+  } catch (err) {
+    console.error("[todays-focus] build failed:", elig.contactType, elig.contactId, err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
+async function markTodaysFocusDelivery(
+  db: ReturnType<typeof createServiceClient>,
+  recommendationId: string,
+  status: "sent" | "failed"
+): Promise<void> {
+  await db.from("todays_focus_recommendations").update({ delivery_status: status }).eq("id", recommendationId);
 }
 
 // Cloudflare Pages has no built-in Cron Triggers (those are Workers-only) —
@@ -68,6 +210,8 @@ async function sendReminder(to: string, displayName: string, reminderTime: strin
 interface ReminderTarget {
   id: string;
   contactType: "adults" | "gym";
+  workspaceId: string;
+  ownerId: string;
   fullName: string;
   whatsappNumber: string | null;
   timezone: string;
@@ -79,18 +223,25 @@ interface ReminderTarget {
   relationship?: string | null;
   age?: number | null;
   gender?: string | null;
+  todaysFocusEnabled: boolean;
+  todaysFocusFrequency: "daily" | "weekdays" | "meaningful_only";
+  todaysFocusStyle: "concise" | "explanatory";
 }
 
 async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise<ReminderTarget[]> {
   const [{ data: adults }, { data: gym }] = await Promise.all([
     db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times, relationship, age, gender")
+      .select(
+        "id, workspace_id, caregiver_id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times, relationship, age, gender, todays_focus_enabled, todays_focus_frequency, todays_focus_style"
+      )
       .eq("reminders_enabled", true)
       .is("deleted_at", null),
     db
       .from("gym_clients")
-      .select("id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times")
+      .select(
+        "id, workspace_id, trainer_id, full_name, whatsapp_number, timezone, reminders_enabled, reminder_times, todays_focus_enabled, todays_focus_frequency, todays_focus_style"
+      )
       .eq("reminders_enabled", true)
       .is("deleted_at", null),
   ]);
@@ -99,6 +250,8 @@ async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise
     (rows ?? []).map((r) => ({
       id: r.id,
       contactType,
+      workspaceId: r.workspace_id,
+      ownerId: contactType === "adults" ? r.caregiver_id : r.trainer_id,
       fullName: r.full_name,
       whatsappNumber: r.whatsapp_number,
       timezone: r.timezone ?? "Asia/Kolkata",
@@ -107,6 +260,9 @@ async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise
       relationship: r.relationship,
       age: r.age,
       gender: r.gender,
+      todaysFocusEnabled: r.todays_focus_enabled ?? true,
+      todaysFocusFrequency: r.todays_focus_frequency ?? "daily",
+      todaysFocusStyle: r.todays_focus_style ?? "concise",
     }));
 
   return [...map(adults, "adults"), ...map(gym, "gym")];
@@ -115,6 +271,17 @@ async function fetchTargets(db: ReturnType<typeof createServiceClient>): Promise
 async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
   const now = new Date();
   const targets = await fetchTargets(db);
+
+  // One batched lookup for every distinct owner (caregiver/trainer) email
+  // rather than a per-contact query — only needed for the
+  // isTodaysFocusTestAccount allowlist check while the feature is behind a
+  // flag; cheap regardless since this whole route already runs on a
+  // service-role client.
+  const ownerIds = [...new Set(targets.map((t) => t.ownerId).filter(Boolean))];
+  const { data: ownerProfiles } = ownerIds.length
+    ? await db.from("profiles").select("id, email").in("id", ownerIds)
+    : { data: [] as { id: string; email: string }[] };
+  const ownerEmailById = new Map((ownerProfiles ?? []).map((p: any) => [p.id, p.email as string]));
 
   let sent = 0;
   let skipped = 0;
@@ -143,6 +310,24 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
         continue;
       }
 
+      let todaysFocus: { line: string; recommendationId: string } | undefined;
+      if (mealSlotForTime(reminderTime) === "breakfast") {
+        todaysFocus = await buildTodaysFocusLine(
+          db,
+          {
+            contactId: target.id,
+            contactType: target.contactType === "adults" ? "adults_contact" : "gym_client",
+            workspaceId: target.workspaceId,
+            ownerEmail: ownerEmailById.get(target.ownerId) ?? null,
+            timezone: target.timezone,
+            todaysFocusEnabled: target.todaysFocusEnabled,
+            todaysFocusFrequency: target.todaysFocusFrequency,
+            todaysFocusStyle: target.todaysFocusStyle,
+          },
+          localDate
+        );
+      }
+
       try {
         const displayName = reminderDisplayName({
           fullName: target.fullName,
@@ -151,10 +336,12 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
           gender: target.gender,
           normalizedWhatsappNumber: normalizePhone(target.whatsappNumber),
         });
-        await sendReminder(target.whatsappNumber, displayName, reminderTime);
+        await sendReminder(target.whatsappNumber, displayName, reminderTime, todaysFocus?.line);
+        if (todaysFocus) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "sent");
         sent++;
       } catch (err) {
         console.error("[reminders] send failed:", target.contactType, target.id, err instanceof Error ? err.message : err);
+        if (todaysFocus) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "failed");
       }
     }
   }

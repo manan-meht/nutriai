@@ -114,6 +114,30 @@ export const PARENT_DASHBOARD_ACCESS_ENABLED = flag(process.env.NEXT_PUBLIC_PARE
  * report); flip on for internal/staging review before wider rollout. */
 export const FOOD_BALANCE_SCORE_ENABLED = flag(process.env.NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1, false);
 
+/** "Today's Focus" morning recommendation, appended to the existing
+ * breakfast reminder (see src/app/api/cron/send-meal-reminders/route.ts
+ * and src/lib/food-balance/todays-focus.ts). Off by default, same
+ * global-on/off-only limitation as FOOD_BALANCE_SCORE_ENABLED above — no
+ * per-user/percentage rollout infra exists in this codebase yet. Use
+ * isTodaysFocusTestAccount below for "specific test accounts only" rollout
+ * in the meantime, mirroring isBillingWhitelisted's allowlist pattern. Not
+ * NEXT_PUBLIC_* — this is only ever read server-side, inside the cron
+ * route and the WhatsApp conversation handler. */
+export const TODAYS_FOCUS_ENABLED = flag(process.env.TODAYS_FOCUS_ENABLED, false);
+
+/** Comma-separated caregiver/coach emails (case-insensitive) allowed to
+ * receive Today's Focus even while TODAYS_FOCUS_ENABLED is globally off —
+ * "internal testing" / "specific-user enablement" from the feature spec.
+ * A true percentage rollout is out of scope (see TODAYS_FOCUS_ENABLED's
+ * own comment) until this app builds real rollout infrastructure. */
+export function isTodaysFocusTestAccount(ownerEmail: string | null | undefined): boolean {
+  if (!ownerEmail) return false;
+  const raw = process.env.TODAYS_FOCUS_TEST_EMAILS;
+  if (!raw) return false;
+  const normalized = ownerEmail.trim().toLowerCase();
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
 /** How long a parent's trusted-device session lasts after WhatsApp OTP
  * verification before re-verification is required. Configurable per spec
  * (default 90 days) — distinct from the shorter 60-day default used by the

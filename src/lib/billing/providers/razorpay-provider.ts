@@ -35,7 +35,7 @@ export const razorpayProvider: PaymentProvider = {
       throw new Error("Razorpay checkout is only available for the IN market");
     }
     const rzp = client();
-    const planId = getRazorpayPlanId(params.module, params.interval);
+    const planId = getRazorpayPlanId(params.pricingTier ?? params.module, params.interval);
 
     // Razorpay subscriptions support delayed billing via start_at (unix
     // seconds) — the equivalent of Stripe's trial_end for

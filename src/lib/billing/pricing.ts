@@ -8,6 +8,16 @@ export type BillingMarket = "US" | "SG" | "AU" | "IN" | "INTL";
 export type BillingModule = "adults" | "gym";
 export type BillingInterval = "monthly" | "annual";
 
+/** Which price/price-ID a checkout should actually charge — distinct from
+ * BillingModule (the entitlement/workspace-type dimension, "adults" vs
+ * "gym"). Self and Family are both `module: "adults"` workspaces (one
+ * entitlement row, same trial/subscription lifecycle), but are billed at
+ * different amounts — see SELF_PRICING vs PRICING.adults below, and
+ * createCheckoutSession's `pricingTier` computation, which is the only
+ * place this distinction is ever made. Never used for entitlement
+ * bookkeeping, RLS, or anything besides "which price ID to charge." */
+export type BillingPricingTier = BillingModule | "self";
+
 export interface PricePoint {
   /** Integer minor units (cents/paise) — e.g. 999 = $9.99. */
   amountMinorUnits: number;
@@ -74,26 +84,24 @@ export const PRICING: Record<BillingMarket, MarketPricing> = {
 };
 
 // ---- Self-tracking plan (base = 1 person) + per-person add-ons ----
-// PLACEHOLDER PRICES — no final self-tracking prices were provided; these
-// are round placeholder numbers, clearly marked, for you to replace before
-// this plan is enabled/sold (see SELF_TRACKING_ENABLED). Structure mirrors
-// the existing family/coach PRICING table exactly so it stays region-aware
-// once real numbers are set. Never wired into validatePriceSelection /
-// checkout yet — self-plan checkout needs real Stripe/Razorpay price IDs
-// first, so this only powers dashboard/marketing copy for now.
+// Real, confirmed prices (matches the founding-member marketing table in
+// src/lib/pricing/founding-member.ts's US $4.99/mo number exactly) — wired
+// into validatePriceSelection() and createCheckoutSession() below via
+// BillingPricingTier "self", same as the adults/gym tiers.
 export const SELF_PRICING: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
-  US: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } }, // PLACEHOLDER
-  SG: { monthly: { amountMinorUnits: 690, currency: "SGD" }, annual: { amountMinorUnits: 6900, currency: "SGD" } }, // PLACEHOLDER
-  AU: { monthly: { amountMinorUnits: 799, currency: "AUD" }, annual: { amountMinorUnits: 7900, currency: "AUD" } }, // PLACEHOLDER
-  IN: { monthly: { amountMinorUnits: 19900, currency: "INR" }, annual: { amountMinorUnits: 199900, currency: "INR" } }, // PLACEHOLDER
-  INTL: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } }, // PLACEHOLDER
+  US: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } },
+  SG: { monthly: { amountMinorUnits: 690, currency: "SGD" }, annual: { amountMinorUnits: 6900, currency: "SGD" } },
+  AU: { monthly: { amountMinorUnits: 799, currency: "AUD" }, annual: { amountMinorUnits: 7900, currency: "AUD" } },
+  IN: { monthly: { amountMinorUnits: 19900, currency: "INR" }, annual: { amountMinorUnits: 199900, currency: "INR" } },
+  INTL: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } },
 };
 
 /** Additional tracked person, billed per-person, on top of a plan's base
- * included count — same placeholder-price caveat as SELF_PRICING above.
- * Shared across self/family/coach since the "add one more person" concept
- * is identical; only the base included count (see PEOPLE_INCLUDED) differs
- * per plan. */
+ * included count. Shared across self/family/coach since the "add one more
+ * person" concept is identical; only the base included count (see
+ * PEOPLE_INCLUDED) differs per plan. Not yet wired into checkout (no
+ * per-additional-person Stripe price IDs exist) — extra capacity is
+ * currently sold as a manual/support-assisted add-on, not self-serve. */
 export const ADDITIONAL_PERSON_PRICE: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
   US: { monthly: { amountMinorUnits: 299, currency: "USD" }, annual: { amountMinorUnits: 2900, currency: "USD" } }, // PLACEHOLDER
   SG: { monthly: { amountMinorUnits: 390, currency: "SGD" }, annual: { amountMinorUnits: 3900, currency: "SGD" } }, // PLACEHOLDER

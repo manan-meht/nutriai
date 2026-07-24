@@ -17,6 +17,17 @@ const BANNED_PHRASES: RegExp[] = [
   /\byou\s+are\s+deficient\b/i,
   /\bthis\s+will\s+(fix|cure|treat|prevent)\b/i,
   /\bdiagnos(e|is|ing)\b/i,
+  // Compensatory-eating / restriction language — added for the "Today's
+  // Focus" morning recommendation feature (see todays-focus.ts), whose
+  // spec explicitly bans exactly this framing after a high-calorie day.
+  /\byou\s+failed\b/i,
+  /\byou\s+(were|are)\s+bad\b/i,
+  /\bexceeded\s+your\s+allowance\b/i,
+  /\byou\s+need\s+to\s+compensate\b/i,
+  /\bburn\s+off\s+yesterday'?s\s+food\b/i,
+  /\beat\s+less\s+today\s+because\b/i,
+  /\bmake\s+up\s+for\s+yesterday'?s\s+deficit\b/i,
+  /\bskip\s+(a\s+meal|breakfast|lunch|dinner)\b/i,
 ];
 
 export function violatesSafetyRules(text: string): boolean {

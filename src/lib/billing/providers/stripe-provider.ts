@@ -30,7 +30,7 @@ export const stripeProvider: PaymentProvider = {
 
   async createCheckoutSession(params: CheckoutParams): Promise<CheckoutResult> {
     const stripe = client();
-    const priceId = getStripePriceId(params.market, params.module, params.interval);
+    const priceId = getStripePriceId(params.market, params.pricingTier ?? params.module, params.interval);
 
     // Stripe supports delaying the first invoice to a future instant via
     // subscription_data.trial_end — this is how "subscribe during an active

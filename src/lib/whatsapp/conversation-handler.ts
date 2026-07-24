@@ -22,6 +22,14 @@ import {
 } from "@/lib/ai/food-analyzer";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
+import { fetchTodaysFocusInputs, type TodaysFocusContactType } from "@/lib/food-balance/todays-focus-data";
+import {
+  generateRecommendationCandidates,
+  rankRecommendationCandidates,
+  applyRepetitionAndFeedbackRules,
+  renderTodayFocusMessage,
+  recentLocalDates,
+} from "@/lib/food-balance/todays-focus";
 import { classifyMeal, recommendProteinGrams } from "@nutriai/dashboard-core";
 import { proteinTargetG, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
@@ -1073,6 +1081,23 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     return;
   }
 
+  // Today's Focus quick-reply feedback ("Helpful"/"Not relevant"/"Change
+  // focus") — plain text since this WhatsApp integration has no
+  // interactive/button support at all (see src/lib/whatsapp/client.ts).
+  // Checked early, before any other text handling below, but scoped
+  // tightly (exact-match on one of three short phrases) so it can't ever
+  // swallow a real meal description or correction reply.
+  if (msg.type === "text" && msg.text) {
+    const handled = await handleTodaysFocusFeedback(db, msg.text, {
+      contactId: entityId,
+      contactType: isAdults ? "adults_contact" : "gym_client",
+      workspaceId,
+      timezone: contactTimezone ?? "Asia/Kolkata",
+      whatsappTo: msg.from,
+    });
+    if (handled) return;
+  }
+
   // "show today" — a plain daily summary, doesn't touch conversation state
   // or the AI, safe to answer immediately.
   if (msg.type === "text" && msg.text && isShowToday(msg.text)) {
@@ -1623,5 +1648,122 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     await sendTextMessage(msg.from, repeat);
     await setConvState("awaiting_confirmation", pendingMeal); // release lock, unchanged
     return;
+  }
+}
+
+// ---- Today's Focus quick-reply feedback -----------------------------------
+// Plain-text "Helpful"/"Not relevant"/"Change focus" replies to a morning
+// Today's Focus message (see src/lib/food-balance/todays-focus.ts and the
+// meal-reminders cron route that sends it) — this WhatsApp integration has
+// no interactive/button support, so these are exact-match text commands
+// per the feature spec's documented fallback.
+
+interface TodaysFocusFeedbackContext {
+  contactId: string;
+  contactType: TodaysFocusContactType;
+  workspaceId: string;
+  timezone: string;
+  whatsappTo: string;
+}
+
+/** Returns true if `text` was recognized and fully handled as Today's
+ * Focus feedback (caller should stop processing this message any further)
+ * — false for any other text, including when the phrase matches but there
+ * is no recent unactioned recommendation to attach it to (e.g. someone
+ * types "helpful" out of the blue), so it falls through to normal
+ * meal-logging handling exactly as before this feature existed. */
+async function handleTodaysFocusFeedback(
+  db: ReturnType<typeof admin>,
+  text: string,
+  ctx: TodaysFocusFeedbackContext
+): Promise<boolean> {
+  const normalized = text.trim().toLowerCase();
+  if (normalized !== "helpful" && normalized !== "not relevant" && normalized !== "change focus") return false;
+
+  const { data: recent } = await db
+    .from("todays_focus_recommendations")
+    .select("id, category")
+    .eq("contact_id", ctx.contactId)
+    .eq("contact_type", ctx.contactType)
+    .eq("delivery_status", "sent")
+    .is("feedback", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!recent) return false;
+
+  if (normalized === "helpful") {
+    await db.from("todays_focus_recommendations").update({ feedback: "helpful", feedback_at: new Date().toISOString() }).eq("id", recent.id);
+    await sendTextMessage(ctx.whatsappTo, "Glad that was helpful! 😊");
+    return true;
+  }
+
+  if (normalized === "not relevant") {
+    await db.from("todays_focus_recommendations").update({ feedback: "not_relevant", feedback_at: new Date().toISOString() }).eq("id", recent.id);
+    await sendTextMessage(ctx.whatsappTo, "Thanks for letting us know — we'll take that into account for future suggestions.");
+    return true;
+  }
+
+  // "change focus"
+  await db.from("todays_focus_recommendations").update({ feedback: "change_focus", feedback_at: new Date().toISOString() }).eq("id", recent.id);
+  const alternative = await buildAlternativeTodaysFocus(db, ctx, recent.category);
+  await sendTextMessage(ctx.whatsappTo, alternative);
+  return true;
+}
+
+/** Selects one alternative recommendation, excluding the category just
+ * marked "change focus" — re-runs the same deterministic ranking/
+ * repetition pipeline the morning send uses (see
+ * src/lib/food-balance/todays-focus-data.ts's fetchTodaysFocusInputs),
+ * rather than a separate ad hoc selection, so an alternative can never be
+ * less safe/less personalized than a scheduled one. Recorded as a
+ * non-scheduled history row (is_scheduled: false) so it still counts
+ * toward future repetition control without competing with the one
+ * scheduled recommendation per day. Never throws. */
+async function buildAlternativeTodaysFocus(
+  db: ReturnType<typeof admin>,
+  ctx: TodaysFocusFeedbackContext,
+  excludeCategory: string
+): Promise<string> {
+  const fallbackMessage =
+    "*Today's focus:* Aim for a protein source and some fruit or vegetables in your main meals today, and keep logging so this can be personalised further.";
+  try {
+    const { meals, dietaryProfile, profile, goal, history, style } = await fetchTodaysFocusInputs(db, ctx.contactId, ctx.contactType);
+    const todayLocalDate = new Date().toLocaleDateString("en-CA", { timeZone: ctx.timezone });
+
+    const candidates = generateRecommendationCandidates({ meals, timezone: ctx.timezone, todayLocalDate, dietaryProfile, profile, goal }).filter(
+      (c) => c.category !== excludeCategory
+    );
+    const ranked = rankRecommendationCandidates(candidates);
+    const yesterdayLocalDate = recentLocalDates(todayLocalDate, 1)[0];
+    const final = applyRepetitionAndFeedbackRules(ranked, history, yesterdayLocalDate);
+    const top = final[0];
+
+    if (!top) return fallbackMessage;
+
+    const message = renderTodayFocusMessage(top, style);
+    await db.from("todays_focus_recommendations").insert({
+      contact_id: ctx.contactId,
+      contact_type: ctx.contactType,
+      workspace_id: ctx.workspaceId,
+      local_date: todayLocalDate,
+      timezone: ctx.timezone,
+      category: top.category,
+      priority_score: top.tier * 100 + top.persistenceDays,
+      confidence: top.confidence,
+      analysis_window_days: 7,
+      supporting_metrics: top.supportingMetrics,
+      goal: goal ?? null,
+      message_variant: top.messageVariant,
+      message_text: message,
+      suggested_food_ids: top.suggestedFoodIds,
+      is_scheduled: false,
+      delivery_status: "sent",
+    });
+    return message;
+  } catch (err) {
+    console.error("[todays-focus] change-focus alternative failed:", ctx.contactId, err instanceof Error ? err.message : err);
+    return fallbackMessage;
   }
 }

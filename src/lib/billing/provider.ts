@@ -1,4 +1,4 @@
-import type { BillingModule, BillingInterval, BillingMarket } from "./pricing";
+import type { BillingModule, BillingInterval, BillingMarket, BillingPricingTier } from "./pricing";
 import type { EntitlementStatus } from "@/lib/entitlements/entitlements";
 
 // "apple"/"google_play" are store-billing providers reached only via
@@ -16,6 +16,14 @@ export interface CheckoutParams {
   ownerId: string;
   ownerEmail: string;
   module: BillingModule;
+  /** Which price to actually charge — "self" for a self-tracking adults
+   * workspace, otherwise the same as `module`. See BillingPricingTier's own
+   * doc (src/lib/billing/pricing.ts) for why this is separate from
+   * `module`: entitlement bookkeeping always stays "adults"/"gym"
+   * regardless of self vs family, only the price/price-ID lookup differs.
+   * Defaults to `module` when omitted, so existing callers/tests that only
+   * ever charged adults/gym pricing don't need to change. */
+  pricingTier?: BillingPricingTier;
   market: BillingMarket;
   interval: BillingInterval;
   /** ISO timestamp to delay the first charge to (e.g. end of an active
