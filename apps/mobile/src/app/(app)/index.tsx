@@ -103,32 +103,30 @@ export default function ProductRouterScreen() {
     return <Redirect href={state.lastChoice === 'gym' ? '/gym' : '/adults'} />;
   }
 
-  // Neither — this account has no workspace on either product yet. Can
-  // happen for a brand-new signup that hasn't added a family member/client
-  // on the web app yet (this app is read-only — see apps/mobile-api's
-  // README — so there's no "add your first one" flow to offer here).
+  // Neither — this account has no workspace on either product yet, most
+  // often a brand-new signup (see app/signup.tsx) that hasn't picked a
+  // product yet. This used to be a dead end telling people to go use the
+  // website instead — wrong, since GET /adults/workspace and
+  // GET /gym/workspace (see apps/mobile-api's route handlers) both
+  // get-or-create the workspace as a side effect of being called at all,
+  // the same way visiting either dashboard for the first time on the web
+  // app does. So the picker below (normally only shown for an account with
+  // BOTH products and no remembered choice) works just as well here —
+  // picking one and landing on that dashboard is what actually creates the
+  // workspace, letting the person add their first family member/client
+  // from right there, same as this app's existing add.tsx screens already
+  // support.
   if (!adults && !gym) {
     return (
-      <ThemedView style={styles.centered}>
-        <SafeAreaView style={styles.safeArea}>
-          <ThemedText type="subtitle" style={styles.errorText}>
-            No dashboard yet
-          </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.errorText}>
-            This account isn't set up on Family or Coach yet. Use tistrahealth.com to get started, then come
-            back here.
-          </ThemedText>
-          <Pressable
-            style={styles.button}
-            onPress={() => {
-              clearLastDashboardChoice();
-              supabase.auth.signOut();
-            }}
-          >
-            <ThemedText style={styles.buttonText}>Sign out</ThemedText>
-          </Pressable>
-        </SafeAreaView>
-      </ThemedView>
+      <ProductPicker
+        headline="How will you use Tistra Health?"
+        subhead="Choose the option that best fits you. You can change this later."
+        onContinue={(selected) => {
+          const choice = selected === 'coach' ? 'gym' : 'adults';
+          saveLastDashboardChoice(choice);
+          router.push(choice === 'gym' ? '/gym' : '/adults');
+        }}
+      />
     );
   }
 
