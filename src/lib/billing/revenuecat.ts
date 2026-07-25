@@ -1,4 +1,4 @@
-import type { EntitlementStatus } from "@/lib/entitlements/entitlements";
+import type { EntitlementStatus, EntitlementModule } from "@/lib/entitlements/entitlements";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "./provider";
 
 // RevenueCat webhook event shape (subset actually used) — see
@@ -87,6 +87,23 @@ export function mapRevenueCatEventToStatus(event: RevenueCatEvent): EntitlementS
     default:
       return null;
   }
+}
+
+/** Resolves which entitlement module a RevenueCat event's purchase belongs
+ * to, from the Play/App Store product id RevenueCat reports (Android
+ * subscriptions report as "basePlanProductId:basePlanId", e.g.
+ * "self_premium:monthly" — see the RevenueCat products configured in the
+ * dashboard, one product per Play base plan). Self and Family are both
+ * "adults" module workspaces (see BillingPricingTier's own doc in
+ * src/lib/billing/pricing.ts for why); only Coach is "gym". Returns null
+ * for a product id this app doesn't recognize (e.g. a stale/removed
+ * product), so the webhook can safely ignore it rather than guessing. */
+export function moduleForRevenueCatProductId(productId: string | null | undefined): EntitlementModule | null {
+  if (!productId) return null;
+  const baseProductId = productId.split(":")[0];
+  if (baseProductId === "self_premium" || baseProductId === "family_premium") return "adults";
+  if (baseProductId === "coach_premium") return "gym";
+  return null;
 }
 
 export function buildSnapshotFromRevenueCatEvent(event: RevenueCatEvent): ProviderSubscriptionSnapshot | null {

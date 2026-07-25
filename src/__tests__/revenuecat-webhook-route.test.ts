@@ -113,7 +113,7 @@ describe("POST /api/webhooks/revenuecat", () => {
           app_user_id: "user-1",
           store: "PLAY_STORE",
           period_type: "NORMAL",
-          product_id: "family_monthly",
+          product_id: "family_premium:monthly",
           purchased_at_ms: 1700000000000,
           expiration_at_ms: 1702592000000,
         },
@@ -139,6 +139,47 @@ describe("POST /api/webhooks/revenuecat", () => {
     );
     const json = await res.json();
     expect(json.result).toBe("duplicate");
+    expect(entitlementUpdates).toHaveLength(0);
+  });
+
+  it("resolves a coach_premium product to the gym entitlement module", async () => {
+    const { db, entitlementUpdates } = fakeDb({ entitlementRow: { workspace_id: "ws-2", module: "gym" } });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const { POST } = await import("@/app/api/webhooks/revenuecat/route");
+
+    const res = await POST(
+      postRequest({
+        event: {
+          id: "evt_1",
+          type: "INITIAL_PURCHASE",
+          app_user_id: "coach-1",
+          store: "PLAY_STORE",
+          period_type: "NORMAL",
+          product_id: "coach_premium:annual",
+          purchased_at_ms: 1700000000000,
+          expiration_at_ms: 1702592000000,
+        },
+      })
+    );
+
+    const json = await res.json();
+    expect(json.result).toBe("processed");
+    expect(entitlementUpdates).toHaveLength(1);
+    expect(entitlementUpdates[0]).toMatchObject({ status: "active", payment_provider: "google_play" });
+  });
+
+  it("ignores an event with an unrecognized product id, without applying any snapshot", async () => {
+    const { db, entitlementUpdates } = fakeDb({ entitlementRow: { workspace_id: "ws-1", module: "adults" } });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const { POST } = await import("@/app/api/webhooks/revenuecat/route");
+
+    const res = await POST(
+      postRequest({
+        event: { id: "evt_1", type: "RENEWAL", app_user_id: "user-1", store: "PLAY_STORE", product_id: "some_old_removed_product" },
+      })
+    );
+    const json = await res.json();
+    expect(json.result).toBe("ignored");
     expect(entitlementUpdates).toHaveLength(0);
   });
 

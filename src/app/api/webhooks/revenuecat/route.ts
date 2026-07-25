@@ -3,16 +3,17 @@ export const runtime = "edge";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { findEntitlementByOwner, applyProviderSubscriptionSnapshot } from "@/lib/entitlements/entitlements";
-import { buildSnapshotFromRevenueCatEvent, providerForStore, type RevenueCatEvent } from "@/lib/billing/revenuecat";
+import { buildSnapshotFromRevenueCatEvent, providerForStore, moduleForRevenueCatProductId, type RevenueCatEvent } from "@/lib/billing/revenuecat";
 
-// RevenueCat webhook — Self/Family (module "adults") mobile subscriptions
-// only, per this feature's rollout scope (Coach/Gym stays web/manual
-// billing for now). Unlike Stripe/Razorpay (see webhook-handler.ts),
-// RevenueCat's payload is already the authoritative, receipt-verified
-// entitlement state, and its subscriber identity (app_user_id) is
-// configured client-side to always be the Supabase auth user id — so
-// resolution is a direct owner_id lookup, no provider_subscription_id/
-// customer_id/checkout-metadata fallback chain needed.
+// RevenueCat webhook — Self, Family, and Coach mobile subscriptions all go
+// through here (module resolved per-event from the purchased product id,
+// see moduleForRevenueCatProductId). Unlike Stripe/Razorpay (see
+// webhook-handler.ts), RevenueCat's payload is already the authoritative,
+// receipt-verified entitlement state, and its subscriber identity
+// (app_user_id) is configured client-side to always be the Supabase auth
+// user id — so resolution is a direct owner_id lookup, no
+// provider_subscription_id/customer_id/checkout-metadata fallback chain
+// needed.
 //
 // RevenueCat doesn't sign webhooks with an HMAC scheme like Stripe/
 // Razorpay — it sends back whatever fixed Authorization header value you
@@ -77,16 +78,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, result: "ignored", reason: `event type ${event.type} not acted on` });
   }
 
-  // Self/Family only — see this route's module doc comment.
-  const target = await findEntitlementByOwner(event.app_user_id, "adults");
+  const entitlementModule = moduleForRevenueCatProductId(event.product_id);
+  if (!entitlementModule) {
+    await markProcessed();
+    return NextResponse.json({ received: true, result: "ignored", reason: `unrecognized product id ${event.product_id}` });
+  }
+
+  const target = await findEntitlementByOwner(event.app_user_id, entitlementModule);
   if (!target) {
     await markProcessed();
-    return NextResponse.json({ received: true, result: "ignored", reason: "no matching adults entitlement for this app_user_id" });
+    return NextResponse.json({ received: true, result: "ignored", reason: `no matching ${entitlementModule} entitlement for this app_user_id` });
   }
 
   await applyProviderSubscriptionSnapshot({
     workspaceId: target.workspaceId,
-    module: "adults",
+    module: entitlementModule,
     provider,
     providerPriceId: event.product_id ?? null,
     snapshot,
