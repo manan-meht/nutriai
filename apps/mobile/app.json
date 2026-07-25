@@ -38,12 +38,11 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications",
-      "expo-sharing"
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "router": {},

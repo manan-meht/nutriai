@@ -22,7 +22,7 @@ type State =
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
   // enforcement rule (mobile-api's lib/entitlements.ts), same computation
   // the web dashboard uses.
-  | { status: 'subscription_required' };
+  | { status: 'subscription_required'; plan: string };
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
   self: 'You',
@@ -47,9 +47,9 @@ export default function AdultsContactListScreen() {
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
     return Promise.all([api.getAdultsContacts(), api.getRemovedAdultsContacts(), api.getAdultsWorkspace()])
-      .then(([{ contacts }, { contacts: removedContacts }, { entitlement }]) => {
+      .then(([{ contacts }, { contacts: removedContacts }, { workspace, entitlement }]) => {
         if (entitlement.isReadOnly) {
-          setState({ status: 'subscription_required' });
+          setState({ status: 'subscription_required', plan: workspace.plan });
         } else {
           setState({ status: 'ready', contacts, removedContacts });
         }
@@ -98,7 +98,7 @@ export default function AdultsContactListScreen() {
       <EmptyState
         title="Subscription needed"
         message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
-        action={{ label: 'Subscribe', onPress: () => router.push('/adults/paywall') }}
+        action={{ label: 'Subscribe', onPress: () => router.push({ pathname: '/adults/paywall', params: { plan: state.plan } }) }}
       />
     );
   }

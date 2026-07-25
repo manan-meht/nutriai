@@ -1,5 +1,12 @@
 import { useEffect, useRef } from 'react';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { Stack } from 'expo-router';
+// DarkTheme/DefaultTheme/ThemeProvider used to be re-exported from
+// expo-router itself (SDK 57) — the SDK 54 version this app is now pinned
+// to (matching this machine's Expo Go, see this repo's README) dropped that
+// re-export, so these come straight from @react-navigation/native instead
+// (expo-router's Stack is itself built on React Navigation, so this was
+// always the real source).
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 

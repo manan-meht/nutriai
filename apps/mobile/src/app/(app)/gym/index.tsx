@@ -17,7 +17,12 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; clients: GymClient[]; removedClients: GymClient[] };
+  | { status: 'ready'; clients: GymClient[]; removedClients: GymClient[] }
+  // Trial/subscription lapsed and no active RevenueCat entitlement — see
+  // gym/paywall.tsx. Mirrors adults/index.tsx's identical gate, which
+  // Coach never had until now (this workspace type's RevenueCat wiring —
+  // "coach_premium" entitlement — was only just set up).
+  | { status: 'subscription_required' };
 
 function subtitleFor(client: GymClient): string | undefined {
   return client.nutritionGoals?.length ? client.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
@@ -34,8 +39,14 @@ export default function GymClientListScreen() {
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
-    return Promise.all([api.getGymClients(), api.getRemovedGymClients()])
-      .then(([{ clients }, { clients: removedClients }]) => setState({ status: 'ready', clients, removedClients }))
+    return Promise.all([api.getGymClients(), api.getRemovedGymClients(), api.getGymWorkspace()])
+      .then(([{ clients }, { clients: removedClients }, { entitlement }]) => {
+        if (entitlement.isReadOnly) {
+          setState({ status: 'subscription_required' });
+        } else {
+          setState({ status: 'ready', clients, removedClients });
+        }
+      })
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load clients.' })
       );
@@ -75,6 +86,15 @@ export default function GymClientListScreen() {
 
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
+  if (state.status === 'subscription_required') {
+    return (
+      <EmptyState
+        title="Subscription needed"
+        message="Your trial has ended — subscribe to keep tracking meals and progress for your clients."
+        action={{ label: 'Subscribe', onPress: () => router.push('/gym/paywall') }}
+      />
+    );
+  }
 
   const firstName = session?.user.user_metadata?.full_name?.split(' ')[0] ?? firstNameFromSession(session?.user.email);
 

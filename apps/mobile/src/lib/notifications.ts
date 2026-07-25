@@ -8,14 +8,26 @@ import { api } from "./api";
 // app is open and focused shows nothing at all (Expo's default handler is a
 // no-op). We want it to behave like a normal Android notification even in
 // foreground.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+//
+// Wrapped in try/catch: expo-notifications was fully removed from Expo Go as
+// of SDK 53 (native push registration/handling isn't available there at
+// all), and calling this at module load time throws immediately rather than
+// degrading — which crashes the whole app on import, before
+// registerForPushNotificationsAsync's own try/catch below ever gets a
+// chance to run. A development/production build (which does have the native
+// module) is unaffected either way.
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch (err) {
+  console.warn("[notifications] setNotificationHandler unavailable (likely Expo Go):", err);
+}
 
 /**
  * Requests notification permission (no-op if already granted/denied) and,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import Purchases, { type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
 
 import { ThemedText } from '@/components/themed-text';
@@ -9,38 +9,24 @@ import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { hasActiveEntitlement } from '@/lib/purchases';
 
-// The RevenueCat "entitlement identifier" (configured in the RevenueCat
-// dashboard, not a product/SKU id) that grants Self/Family (module
-// "adults") access — see this repo's RevenueCat setup notes. Defaults to
-// "adults_premium" so this screen still renders sensibly if the env var
-// isn't set in a given build, though no purchase will unlock anything
-// until it matches the dashboard's actual entitlement identifier.
-const ADULTS_ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ADULTS_ENTITLEMENT_ID ?? 'adults_premium';
+// The RevenueCat entitlement identifier that grants Coach (module "gym")
+// access — mirrors adults/paywall.tsx's ADULTS_ENTITLEMENT_ID exactly,
+// just a separate entitlement since Coach is a distinct workspace type.
+const COACH_ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_COACH_ENTITLEMENT_ID ?? 'coach_premium';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'ready'; offering: PurchasesOffering | null };
 
-/** Self/Family paywall — shown by adults/index.tsx in place of the contact
- * list once the workspace's entitlement is read-only (trial/subscription
- * lapsed). Purchases go straight through Play Billing/StoreKit via
- * RevenueCat; the persisted entitlement record is only ever updated by
- * the RevenueCat webhook (see src/app/api/webhooks/revenuecat/route.ts,
- * main web app) — this screen polls briefly after a purchase so the
- * caller (index.tsx) sees the unlocked state without a manual refresh,
- * rather than trusting the client-side purchase result by itself.
- *
- * Self and Family are priced differently (see src/lib/billing/pricing.ts's
- * BillingPricingTier on the web app) but share the same "adults_premium"
- * entitlement — only *which offering's packages* are shown differs, so
- * the caller must say which plan this workspace is actually on via the
- * `?plan=self|family` param (adults/index.tsx already has this from
- * workspace.plan). Defaults to "family" if the param is missing/invalid,
- * matching this screen's pre-Self-tier behavior. */
-export default function AdultsPaywallScreen() {
-  const { plan } = useLocalSearchParams<{ plan?: string }>();
-  const offeringId = plan === 'self' ? 'self' : 'family';
+/** Coach paywall — shown by gym/index.tsx in place of the client list once
+ * the workspace's entitlement is read-only (trial/subscription lapsed).
+ * A near-exact mirror of adults/paywall.tsx; kept as a separate file
+ * rather than a shared parameterized component since the two already
+ * diverge in copy/entitlement/dashboard-return-path, and RevenueCat
+ * purchases are a rare enough surface that a little duplication here is
+ * clearer than a shared abstraction bent to fit both. */
+export default function GymPaywallScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
@@ -48,26 +34,23 @@ export default function AdultsPaywallScreen() {
   const load = useCallback(() => {
     setState({ status: 'loading' });
     Purchases.getOfferings()
-      .then((offerings) => setState({ status: 'ready', offering: offerings.all[offeringId] ?? null }))
+      .then((offerings) => setState({ status: 'ready', offering: offerings.all['coach'] ?? null }))
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Could not load plans.' })
       );
-  }, [offeringId]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  /** Polls the workspace entitlement a few times (RevenueCat's webhook
-   * usually lands within a second or two) before returning to the contact
-   * list — avoids sending the user back to a screen that hasn't caught up
-   * with a purchase it just approved. Uses replace() rather than back():
-   * index.tsx only re-fetches on mount, and a Stack screen underneath a
-   * modal doesn't remount on a plain back-navigation. */
+  /** Same "poll briefly, then return" pattern as the adults paywall — see
+   * that file's own comment for why this doesn't just trust the
+   * client-side purchase result. */
   async function waitForEntitlementThenReturn() {
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const { entitlement } = await api.getAdultsWorkspace();
+        const { entitlement } = await api.getGymWorkspace();
         if (!entitlement.isReadOnly) break;
       } catch {
         // keep retrying — a transient network error here shouldn't strand
@@ -75,14 +58,14 @@ export default function AdultsPaywallScreen() {
       }
       await new Promise((resolve) => setTimeout(resolve, 1200));
     }
-    router.replace('/adults');
+    router.replace('/gym');
   }
 
   async function handlePurchase(pkg: PurchasesPackage) {
     setPurchasingId(pkg.identifier);
     try {
       const { customerInfo } = await Purchases.purchasePackage(pkg);
-      if (hasActiveEntitlement(customerInfo, ADULTS_ENTITLEMENT_ID)) {
+      if (hasActiveEntitlement(customerInfo, COACH_ENTITLEMENT_ID)) {
         await waitForEntitlementThenReturn();
       }
     } catch (err: any) {
@@ -98,7 +81,7 @@ export default function AdultsPaywallScreen() {
     setRestoring(true);
     try {
       const customerInfo = await Purchases.restorePurchases();
-      if (hasActiveEntitlement(customerInfo, ADULTS_ENTITLEMENT_ID)) {
+      if (hasActiveEntitlement(customerInfo, COACH_ENTITLEMENT_ID)) {
         await waitForEntitlementThenReturn();
       } else {
         setState({ status: 'error', message: 'No active subscription found for this account.' });
@@ -136,12 +119,10 @@ export default function AdultsPaywallScreen() {
   return (
     <ThemedView style={styles.container}>
       <ThemedText type="subtitle" style={styles.headline}>
-        {offeringId === 'self' ? 'Continue your progress' : "Continue your family's progress"}
+        Continue coaching your clients
       </ThemedText>
       <ThemedText type="default" themeColor="textSecondary" style={styles.text}>
-        {offeringId === 'self'
-          ? 'Subscribe to keep tracking your meals, Food Balance Score, and recommendations.'
-          : 'Subscribe to keep tracking meals, Food Balance Score, and recommendations for your family.'}
+        Subscribe to keep tracking meals, Food Balance Score, and recommendations for your clients.
       </ThemedText>
 
       {packages.length === 0 && (

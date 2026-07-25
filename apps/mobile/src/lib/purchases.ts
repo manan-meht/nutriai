@@ -7,9 +7,12 @@ import Purchases, { LOG_LEVEL, type CustomerInfo } from 'react-native-purchases'
 // id (not RevenueCat's own anonymous id) so the webhook's app_user_id ==
 // entitlements.owner_id lookup works with no extra alias-mapping step.
 //
-// Self/Family (module "adults") only — Coach/Gym stays web/manual billing
-// per this rollout's scope, so this is never configured from the gym
-// product's screens.
+// Configured once per session at the root layout (keyed on the current
+// Supabase auth user id), shared by both paywalls this app has — Self/
+// Family (adults/paywall.tsx, entitlement "adults_premium") and Coach
+// (gym/paywall.tsx, entitlement "coach_premium"). Nothing product-specific
+// happens here; which entitlement gets checked/purchased is entirely up
+// to the calling paywall screen.
 let configuredForUserId: string | null = null;
 
 function apiKeyForPlatform(): string | null {
