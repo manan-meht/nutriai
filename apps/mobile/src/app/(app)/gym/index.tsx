@@ -17,12 +17,18 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; clients: GymClient[]; removedClients: GymClient[] }
+  | { status: 'ready'; clients: GymClient[]; removedClients: GymClient[]; extraCapacity: number }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // gym/paywall.tsx. Mirrors adults/index.tsx's identical gate, which
   // Coach never had until now (this workspace type's RevenueCat wiring —
   // "coach_premium" entitlement — was only just set up).
   | { status: 'subscription_required' };
+
+// Mirrors the web app's GYM_CLIENT_LIMIT (src/lib/limits.ts) — see
+// adults/index.tsx's identical FAMILY_MEMBER_LIMIT constant for why this
+// client-side gate exists even though the DB trigger is what actually
+// enforces it.
+const GYM_CLIENT_LIMIT = 5;
 
 function subtitleFor(client: GymClient): string | undefined {
   return client.nutritionGoals?.length ? client.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
@@ -40,11 +46,11 @@ export default function GymClientListScreen() {
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
     return Promise.all([api.getGymClients(), api.getRemovedGymClients(), api.getGymWorkspace()])
-      .then(([{ clients }, { clients: removedClients }, { entitlement }]) => {
+      .then(([{ clients }, { clients: removedClients }, { workspace, entitlement }]) => {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required' });
         } else {
-          setState({ status: 'ready', clients, removedClients });
+          setState({ status: 'ready', clients, removedClients, extraCapacity: workspace.extraCapacity });
         }
       })
       .catch((err) =>
@@ -97,6 +103,8 @@ export default function GymClientListScreen() {
   }
 
   const firstName = session?.user.user_metadata?.full_name?.split(' ')[0] ?? firstNameFromSession(session?.user.email);
+  const clientLimit = GYM_CLIENT_LIMIT + Math.max(0, state.extraCapacity);
+  const canAdd = state.clients.length < clientLimit;
 
   return (
     <ThemedView style={styles.container}>
@@ -128,7 +136,7 @@ export default function GymClientListScreen() {
             image={require('@/assets/images/onboarding/coach.png')}
             title="Onboard your first client"
             message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
-            action={{ label: 'Add client', onPress: () => router.push('/gym/add') }}
+            action={canAdd ? { label: 'Add client', onPress: () => router.push('/gym/add') } : undefined}
           />
         }
         renderItem={({ item }) => (
@@ -144,12 +152,19 @@ export default function GymClientListScreen() {
         )}
         ListFooterComponent={
           <>
-            {state.clients.length > 0 && (
+            {state.clients.length > 0 && canAdd && (
               <Pressable onPress={() => router.push('/gym/add')} style={styles.addCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
                   + Add client
                 </ThemedText>
               </Pressable>
+            )}
+            {state.clients.length > 0 && !canAdd && (
+              <View style={styles.limitReachedCard}>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
+                  You&apos;ve reached the limit of {clientLimit} client{clientLimit === 1 ? '' : 's'} for this account.
+                </ThemedText>
+              </View>
             )}
             {state.removedClients.length > 0 && (
               <View style={styles.removedSection}>
@@ -207,6 +222,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  limitReachedCard: {
+    borderRadius: Spacing.three,
+    marginHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  limitReachedText: {
+    textAlign: 'center',
   },
   removedSection: { marginTop: Spacing.three, marginHorizontal: Spacing.three },
   signOutButton: { alignItems: 'center', padding: Spacing.three },

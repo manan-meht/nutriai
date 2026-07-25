@@ -17,12 +17,22 @@ import { clearLastDashboardChoice } from '@/lib/product-choice';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[] }
+  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[]; extraCapacity: number }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
   // enforcement rule (mobile-api's lib/entitlements.ts), same computation
   // the web dashboard uses.
   | { status: 'subscription_required'; plan: string };
+
+// Mirrors the web app's FAMILY_MEMBER_LIMIT (src/lib/limits.ts) — the
+// server-side DB trigger (migrations 0002-0004) is the actual
+// authoritative enforcement regardless of what this screen does or
+// doesn't check (a failed insert past this limit is always safely
+// rejected server-side), but without this client-side gate the mobile app
+// still let someone tap through the entire "Add family member" form only
+// to have it fail at submit — this matches web's canAdd, which hides the
+// button entirely once the limit is reached instead.
+const FAMILY_MEMBER_LIMIT = 2;
 
 const RELATIONSHIP_LABELS: Record<string, string> = {
   self: 'You',
@@ -51,7 +61,7 @@ export default function AdultsContactListScreen() {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required', plan: workspace.plan });
         } else {
-          setState({ status: 'ready', contacts, removedContacts });
+          setState({ status: 'ready', contacts, removedContacts, extraCapacity: workspace.extraCapacity });
         }
       })
       .catch((err) =>
@@ -104,6 +114,8 @@ export default function AdultsContactListScreen() {
   }
 
   const firstName = session?.user.user_metadata?.full_name?.split(' ')[0] ?? firstNameFromSession(session?.user.email);
+  const familyLimit = FAMILY_MEMBER_LIMIT + Math.max(0, state.extraCapacity);
+  const canAdd = state.contacts.length < familyLimit;
 
   return (
     <ThemedView style={styles.container}>
@@ -135,7 +147,7 @@ export default function AdultsContactListScreen() {
             image={require('@/assets/images/onboarding/family.png')}
             title="Add someone you care about"
             message="Invite a family member so you can support their nutrition journey. Share plans, track progress, and grow healthier together."
-            action={{ label: 'Add family member', onPress: () => router.push('/adults/add') }}
+            action={canAdd ? { label: 'Add family member', onPress: () => router.push('/adults/add') } : undefined}
           />
         }
         renderItem={({ item }) => (
@@ -151,12 +163,19 @@ export default function AdultsContactListScreen() {
         )}
         ListFooterComponent={
           <>
-            {state.contacts.length > 0 && (
+            {state.contacts.length > 0 && canAdd && (
               <Pressable onPress={() => router.push('/adults/add')} style={styles.addCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
                   + Add family member
                 </ThemedText>
               </Pressable>
+            )}
+            {state.contacts.length > 0 && !canAdd && (
+              <View style={styles.limitReachedCard}>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
+                  You&apos;ve reached the limit of {familyLimit} family member{familyLimit === 1 ? '' : 's'} for this account.
+                </ThemedText>
+              </View>
             )}
             {state.removedContacts.length > 0 && (
               <View style={styles.removedSection}>
@@ -209,6 +228,17 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  limitReachedCard: {
+    borderRadius: Spacing.three,
+    marginHorizontal: Spacing.three,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  limitReachedText: {
+    textAlign: 'center',
   },
   addCardText: {
     fontWeight: '700',
