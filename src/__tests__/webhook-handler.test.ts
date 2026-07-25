@@ -50,6 +50,7 @@ function makeFakeProvider(opts: {
     cancelSubscription: jest.fn(),
     reactivateSubscription: jest.fn(),
     openBillingPortal: jest.fn(),
+    addAdditionalCapacity: jest.fn(),
     verifyWebhookSignature: jest.fn().mockResolvedValue(opts.verifyResult),
   };
 }

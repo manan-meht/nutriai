@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createCheckoutSession } from "@/app/actions/checkout";
+import { createCheckoutSession, purchaseAdditionalCapacity } from "@/app/actions/checkout";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -61,6 +61,8 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showModal, setShowModal] = useState(() => !!autoOpenAddModal && contacts.length === 0);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [buyingCapacity, setBuyingCapacity] = useState(false);
+  const [buyCapacityError, setBuyCapacityError] = useState<string | null>(null);
   const [dismissedSelfSetup, setDismissedSelfSetup] = useState(false);
   const [showSelfSetup, setShowSelfSetup] = useState(false);
   const [showPrevious, setShowPrevious] = useState(false);
@@ -83,6 +85,33 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   // deferred to trial end, see createCheckoutSession) instead of opening
   // the form. The modal only ever appears once checkout succeeds and the
   // page reloads with an actual "trialing" entitlement.
+  // Buys one more tracked-person slot on top of the plan's base limit —
+  // adds/increases a recurring line item on the existing Stripe/Razorpay
+  // subscription (prorated immediately, billed alongside the base plan from
+  // the next renewal on). Confirms first since this charges the card
+  // immediately; the exact amount isn't known until the server resolves the
+  // account's billing market/interval, so the confirmation is generic and
+  // the actual amount charged is shown afterward.
+  async function handleBuyCapacity() {
+    if (!window.confirm("Buy 1 more slot? You'll be charged a prorated amount today, then it renews monthly with your plan.")) return;
+    setBuyCapacityError(null);
+    setBuyingCapacity(true);
+    try {
+      const result = await purchaseAdditionalCapacity("adults");
+      if (!result.ok) {
+        setBuyCapacityError(result.reason);
+        return;
+      }
+      const amount = (result.amountMinorUnits / 100).toFixed(2);
+      window.alert(`You're all set — charged ${amount} ${result.currency}/mo for the extra slot. You can now add ${result.newExtraCapacity} more ${result.newExtraCapacity === 1 ? "person" : "people"} beyond the base plan.`);
+      router.refresh();
+    } catch (err) {
+      setBuyCapacityError(err instanceof Error ? err.message : "Couldn't complete the purchase. Please try again.");
+    } finally {
+      setBuyingCapacity(false);
+    }
+  }
+
   async function handleAddClick() {
     if (!requiresCardBeforeTrial) {
       setShowModal(true);
@@ -235,16 +264,45 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
 
             {!entitlement.isReadOnly && countLimitReached && (
               <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-                {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
+                {!isSelfPlan && isSubscriber ? (
+                  <>
+                    {familyLimitReachedMessage(familyLimit)}{" "}
+                    <button
+                      type="button"
+                      onClick={handleBuyCapacity}
+                      disabled={buyingCapacity}
+                      className="underline font-medium disabled:opacity-50"
+                    >
+                      {buyingCapacity ? "Adding capacity…" : "Buy 1 more slot"}
+                    </button>
+                    {" "}for $3.33/mo (or local equivalent).
+                    {buyCapacityError && <div className="mt-1 text-red-700">{buyCapacityError}</div>}
+                  </>
+                ) : (
+                  <>
+                    {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
+                  </>
+                )}
               </div>
             )}
 
             {isSubscriber ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
                 <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
-                <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
-                  {isSelfPlan ? "Want to add family too? →" : `Need more than ${familyLimit}? Add capacity →`}
-                </Link>
+                {isSelfPlan ? (
+                  <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
+                    Want to add family too? →
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleBuyCapacity}
+                    disabled={buyingCapacity}
+                    className="font-medium text-[var(--color-dashboard-primary)] underline disabled:opacity-50"
+                  >
+                    {buyingCapacity ? "Adding capacity…" : `Need more than ${familyLimit}? Add capacity →`}
+                  </button>
+                )}
               </div>
             ) : requiresCardBeforeTrial ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">

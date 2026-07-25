@@ -110,6 +110,29 @@ export const stripeProvider: PaymentProvider = {
     return session.url;
   },
 
+  async addAdditionalCapacity({ providerSubscriptionId, priceId, quantity }): Promise<{ newTotalQuantity: number }> {
+    const stripe = client();
+    const items = await stripe.subscriptionItems.list({ subscription: providerSubscriptionId, limit: 100 });
+    const existing = items.data.find((item) => item.price.id === priceId);
+
+    if (existing) {
+      const newTotalQuantity = (existing.quantity ?? 0) + quantity;
+      await stripe.subscriptionItems.update(existing.id, {
+        quantity: newTotalQuantity,
+        proration_behavior: "always_invoice",
+      });
+      return { newTotalQuantity };
+    }
+
+    const created = await stripe.subscriptionItems.create({
+      subscription: providerSubscriptionId,
+      price: priceId,
+      quantity,
+      proration_behavior: "always_invoice",
+    });
+    return { newTotalQuantity: created.quantity ?? quantity };
+  },
+
   // Uses constructEventAsync (Web Crypto / SubtleCrypto based) rather than
   // the sync constructEvent, which relies on Node's `crypto` module and
   // isn't available under Cloudflare's Edge Runtime.

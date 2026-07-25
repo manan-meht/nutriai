@@ -16,7 +16,7 @@ export type BillingInterval = "monthly" | "annual";
  * createCheckoutSession's `pricingTier` computation, which is the only
  * place this distinction is ever made. Never used for entitlement
  * bookkeeping, RLS, or anything besides "which price ID to charge." */
-export type BillingPricingTier = BillingModule | "self";
+export type BillingPricingTier = BillingModule | "self" | "additional_person";
 
 export interface PricePoint {
   /** Integer minor units (cents/paise) — e.g. 999 = $9.99. */
@@ -97,17 +97,19 @@ export const SELF_PRICING: Record<BillingMarket, Record<BillingInterval, PricePo
 };
 
 /** Additional tracked person, billed per-person, on top of a plan's base
- * included count. Shared across self/family/coach since the "add one more
- * person" concept is identical; only the base included count (see
- * PEOPLE_INCLUDED) differs per plan. Not yet wired into checkout (no
- * per-additional-person Stripe price IDs exist) — extra capacity is
- * currently sold as a manual/support-assisted add-on, not self-serve. */
+ * included count — real, confirmed prices (matches the founding-member
+ * marketing table's US$3.33/mo). Shared across family/coach since the "add
+ * one more person" concept and price are identical for both; only the
+ * base included count (see PEOPLE_INCLUDED) differs per plan. Self has no
+ * additional-person concept at all (always exactly 1 person). Wired into
+ * checkout via BillingPricingTier "additional_person" — see
+ * purchaseAdditionalCapacity in src/app/actions/checkout.ts. */
 export const ADDITIONAL_PERSON_PRICE: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
-  US: { monthly: { amountMinorUnits: 299, currency: "USD" }, annual: { amountMinorUnits: 2900, currency: "USD" } }, // PLACEHOLDER
-  SG: { monthly: { amountMinorUnits: 390, currency: "SGD" }, annual: { amountMinorUnits: 3900, currency: "SGD" } }, // PLACEHOLDER
-  AU: { monthly: { amountMinorUnits: 450, currency: "AUD" }, annual: { amountMinorUnits: 4500, currency: "AUD" } }, // PLACEHOLDER
-  IN: { monthly: { amountMinorUnits: 9900, currency: "INR" }, annual: { amountMinorUnits: 99900, currency: "INR" } }, // PLACEHOLDER
-  INTL: { monthly: { amountMinorUnits: 299, currency: "USD" }, annual: { amountMinorUnits: 2900, currency: "USD" } }, // PLACEHOLDER
+  US: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+  SG: { monthly: { amountMinorUnits: 430, currency: "SGD" }, annual: { amountMinorUnits: 4300, currency: "SGD" } },
+  AU: { monthly: { amountMinorUnits: 499, currency: "AUD" }, annual: { amountMinorUnits: 4990, currency: "AUD" } },
+  IN: { monthly: { amountMinorUnits: 12900, currency: "INR" }, annual: { amountMinorUnits: 129000, currency: "INR" } },
+  INTL: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
 };
 
 export type BillingPlan = "self" | "family" | "coach";

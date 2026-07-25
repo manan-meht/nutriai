@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { GymClient } from "@/app/(gym)/gym/dashboard/actions";
 import { removeClient } from "@/app/(gym)/gym/dashboard/actions";
-import { createCheckoutSession } from "@/app/actions/checkout";
+import { createCheckoutSession, purchaseAdditionalCapacity } from "@/app/actions/checkout";
 import { ClientCard } from "./ClientCard";
 import { AddClientModal } from "./AddClientModal";
 import { useRouter } from "next/navigation";
@@ -50,6 +50,8 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
   const [showFeedback, setShowFeedback] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [buyingCapacity, setBuyingCapacity] = useState(false);
+  const [buyCapacityError, setBuyCapacityError] = useState<string | null>(null);
   const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
 
@@ -82,6 +84,29 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
     } catch (err) {
       setCheckoutError(err instanceof Error ? err.message : "Couldn't start checkout. Please try again.");
       setStartingCheckout(false);
+    }
+  }
+
+  // Buys one more tracked-client slot on top of the plan's base limit — see
+  // AdultsDashboardClient's identical handleBuyCapacity for the full
+  // rationale.
+  async function handleBuyCapacity() {
+    if (!window.confirm("Buy 1 more slot? You'll be charged a prorated amount today, then it renews monthly with your plan.")) return;
+    setBuyCapacityError(null);
+    setBuyingCapacity(true);
+    try {
+      const result = await purchaseAdditionalCapacity("gym");
+      if (!result.ok) {
+        setBuyCapacityError(result.reason);
+        return;
+      }
+      const amount = (result.amountMinorUnits / 100).toFixed(2);
+      window.alert(`You're all set — charged ${amount} ${result.currency}/mo for the extra slot. You can now add ${result.newExtraCapacity} more client${result.newExtraCapacity === 1 ? "" : "s"} beyond the base plan.`);
+      router.refresh();
+    } catch (err) {
+      setBuyCapacityError(err instanceof Error ? err.message : "Couldn't complete the purchase. Please try again.");
+    } finally {
+      setBuyingCapacity(false);
     }
   }
 
@@ -192,16 +217,39 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
 
             {!entitlement.isReadOnly && countLimitReached && (
               <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
-                {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
+                {isSubscriber ? (
+                  <>
+                    {gymLimitReachedMessage(clientLimit)}{" "}
+                    <button
+                      type="button"
+                      onClick={handleBuyCapacity}
+                      disabled={buyingCapacity}
+                      className="underline font-medium disabled:opacity-50"
+                    >
+                      {buyingCapacity ? "Adding capacity…" : "Buy 1 more slot"}
+                    </button>
+                    {" "}for $3.33/mo (or local equivalent).
+                    {buyCapacityError && <div className="mt-1 text-red-700">{buyCapacityError}</div>}
+                  </>
+                ) : (
+                  <>
+                    {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
+                  </>
+                )}
               </div>
             )}
 
             {isSubscriber ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
                 <span>Your plan includes up to {clientLimit} clients.</span>
-                <Link href="/billing?module=gym" className="font-medium text-purple-700 underline">
-                  Need more than {clientLimit} clients? Add capacity →
-                </Link>
+                <button
+                  type="button"
+                  onClick={handleBuyCapacity}
+                  disabled={buyingCapacity}
+                  className="font-medium text-purple-700 underline disabled:opacity-50"
+                >
+                  {buyingCapacity ? "Adding capacity…" : `Need more than ${clientLimit} clients? Add capacity →`}
+                </button>
               </div>
             ) : requiresCardBeforeTrial ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">

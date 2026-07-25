@@ -103,6 +103,19 @@ export interface PaymentProvider {
    * invoices, plan changes) where the provider supports one. */
   openBillingPortal(params: { customerId: string; returnUrl: string }): Promise<string | null>;
 
+  /** Adds `quantity` more of the additional-person add-on price to an
+   * already-existing subscription — creates the line item if this is the
+   * first purchase, or increases its quantity if some were already bought
+   * (never decreases; removing a contact doesn't refund purchased
+   * capacity, matching this app's existing "removing doesn't refund this
+   * month's add quota" policy elsewhere). Prorated immediately per the
+   * provider's default behavior. Returns the item's new total quantity so
+   * the caller can persist workspaces.extra_capacity from a real number
+   * rather than assuming its own increment matches what the provider
+   * actually recorded. Throws for providers that don't support this yet
+   * (see razorpay-provider.ts). */
+  addAdditionalCapacity(params: { providerSubscriptionId: string; priceId: string; quantity: number }): Promise<{ newTotalQuantity: number }>;
+
   /** Verifies the raw webhook request against the provider's signature
    * scheme. Must be called before any event processing — never trust an
    * unverified payload. Async because signature verification uses the Web

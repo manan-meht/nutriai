@@ -94,6 +94,17 @@ export const razorpayProvider: PaymentProvider = {
     return false;
   },
 
+  async addAdditionalCapacity(): Promise<{ newTotalQuantity: number }> {
+    // Razorpay subscriptions don't support Stripe-style persistent,
+    // quantity-adjustable line items — its "addons" API is a one-time
+    // invoice charge, not a recurring per-unit quantity that renews with
+    // the subscription. Self-serve extra capacity isn't available on this
+    // provider yet (matches RAZORPAY_CHECKOUT_ENABLED being off entirely
+    // today) — callers should catch this and fall back to a
+    // contact-support message rather than surfacing it raw.
+    throw new Error("Buying additional capacity isn't available for Razorpay subscriptions yet — please contact support.");
+  },
+
   async openBillingPortal(): Promise<string | null> {
     // Razorpay has no self-serve hosted billing portal equivalent to
     // Stripe's; subscription management happens through the subscription's
