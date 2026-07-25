@@ -31,6 +31,7 @@ import {
   recentLocalDates,
 } from "@/lib/food-balance/todays-focus";
 import { classifyMeal, recommendProteinGrams } from "@nutriai/dashboard-core";
+import { startOfLocalDayUTC } from "@/lib/reminders/schedule";
 import { proteinTargetG, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
 import { updateDietaryProfileForSavedMeal, withMedicalHandoffIfNeeded } from "@/lib/dietary-profile";
@@ -43,6 +44,19 @@ import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
+
+// Sent instead of a "✅ Saved" confirmation whenever saveMeal()'s meal_logs
+// insert actually fails — every call site used to build and send the
+// success message unconditionally regardless of whether the save
+// succeeded, so a transient DB error silently told the user their meal was
+// logged when it was never written at all (discovered via a real
+// conversation where the running daily total quietly dropped a meal that
+// had gotten this exact "successful" confirmation but was never actually
+// in meal_logs). pendingMeal is deliberately NOT cleared when this fires
+// (see each call site) so the same analysis can be retried without the
+// user having to redescribe or resend the photo.
+const MEAL_SAVE_FAILED_MESSAGE =
+  "Sorry — something went wrong and I wasn't able to save that. Please reply *Yes* to try again.";
 
 function admin() {
   return createClient(
@@ -617,8 +631,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * failure here should degrade to "no totals line", not break saving. */
   async function getDailyTotals(): Promise<{ protein: number; calories: number } | null> {
     try {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      // Contact's own local day, not the server runtime's (always UTC on
+      // Cloudflare) — using the wrong day boundary here doesn't just
+      // mis-time the cutoff, it can silently exclude an entire already-
+      // logged meal from "today" for a contact far enough from UTC.
+      const startOfDay = startOfLocalDayUTC(new Date(), contactTimezone ?? "Asia/Kolkata");
       const { data: todaysMeals, error } = await db
         .from("meal_logs")
         .select("total_protein_min, total_protein_max, total_calories_min, total_calories_max")
@@ -666,8 +683,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     try {
       if (!canShowImmediatePrompt({ lastImmediatePromptAt: entity.last_share_card_prompt_at ?? null })) return "";
 
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
+      const startOfDay = startOfLocalDayUTC(new Date(), contactTimezone ?? "Asia/Kolkata");
       const { data: todaysMeals, error } = await db
         .from("meal_logs")
         .select("logged_at, meal_type, total_protein_min, total_protein_max, total_fiber_min, total_fiber_max")
@@ -754,7 +770,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     const savedMealId = await saveMeal(pending, resolvedLabel);
     await sendTextMessage(
       msg.from,
-      `Since a new photo came in, I've saved your earlier ${formatMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+      savedMealId
+        ? `Since a new photo came in, I've saved your earlier ${formatMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+        : `Since a new photo came in, I tried to save your earlier ${formatMealLabel(resolvedLabel).toLowerCase()} using my best guess, but something went wrong and it wasn't saved. Sorry about that — let me know if you'd like to re-log it.`
     );
     await setConvState("idle", savedMealId ? { ...toPendingMeal(pending, "saved"), savedMealId } : null);
   }
@@ -990,6 +1008,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     const priorTotals = await getDailyTotals();
     const savedMealId = await saveMeal(analysis, resolvedLabel);
+    if (!savedMealId) {
+      await sendTextMessage(msg.from, MEAL_SAVE_FAILED_MESSAGE);
+      await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      return;
+    }
     const dailyTotals = addMealToTotals(priorTotals, analysis);
     const autoSaveMsg = buildAutoSaveMessage(analysis, resolvedLabel, decision, {
       seed,
@@ -998,7 +1021,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     });
     const shareCardLine = await checkDailyWinShareCardLine(targetProtein);
     await sendTextMessage(msg.from, autoSaveMsg + shareCardLine + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
-    await setConvState("idle", savedMealId ? { ...toPendingMeal(analysis, "saved"), savedMealId } : null);
+    await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId });
   }
 
   /** Shared "the user sent free text that should update/finalize a
@@ -1486,13 +1509,18 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
       const priorTotals = await getDailyTotals();
       const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+      if (!savedMealId) {
+        await sendTextMessage(msg.from, MEAL_SAVE_FAILED_MESSAGE);
+        await setConvState("awaiting_confirmation", toPendingMeal(pendingMeal, "pending_confirmation"));
+        return;
+      }
       const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
       const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
         seed,
         dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
       });
       await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
-      await setConvState("idle", savedMealId ? toPendingMeal({ ...pendingMeal, savedMealId } as any, "saved") : null);
+      await setConvState("idle", toPendingMeal({ ...pendingMeal, savedMealId } as any, "saved"));
       return;
     }
     if (msg.type === "text" && msg.text) {
@@ -1555,13 +1583,18 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
         const priorTotals = await getDailyTotals();
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+        if (!savedMealId) {
+          await sendTextMessage(msg.from, MEAL_SAVE_FAILED_MESSAGE);
+          await setConvState("awaiting_confirmation", toPendingMeal(pendingMeal, "pending_confirmation"));
+          return;
+        }
         const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
           seed,
           dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
         });
         await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
-        await setConvState("idle", savedMealId ? { ...toPendingMeal(pendingMeal, "saved"), savedMealId } : null);
+        await setConvState("idle", { ...toPendingMeal(pendingMeal, "saved"), savedMealId });
       } else {
         await sendTextMessage(msg.from, "There's nothing pending to save right now. Send a photo, or tell me what you'd like to log.");
         await setConvState("idle", null);
@@ -1592,13 +1625,18 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         const resolvedLabel = resolveMealLabel(pendingMeal.meal_type, new Date(), contactTimezone);
         const priorTotals = await getDailyTotals();
         const savedMealId = await saveMeal(pendingMeal, resolvedLabel);
+        if (!savedMealId) {
+          await sendTextMessage(msg.from, MEAL_SAVE_FAILED_MESSAGE);
+          await setConvState("awaiting_confirmation", toPendingMeal(pendingMeal, "pending_confirmation"));
+          return;
+        }
         const dailyTotals = addMealToTotals(priorTotals, pendingMeal);
         const successMsg = buildSavedMessage(pendingMeal, resolvedLabel, {
           seed,
           dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
         });
         await sendTextMessage(msg.from, successMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
-        await setConvState("idle", savedMealId ? { ...toPendingMeal(pendingMeal, "saved"), savedMealId } : null);
+        await setConvState("idle", { ...toPendingMeal(pendingMeal, "saved"), savedMealId });
       } else {
         // "Yes" with nothing pending — this session's saved meal (if any and
         // recent) already reflects a prior confirmation; don't create a

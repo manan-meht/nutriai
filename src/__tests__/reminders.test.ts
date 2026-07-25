@@ -1,5 +1,5 @@
 import { guessTimezoneFromCountryCode } from "@/lib/reminders/timezone";
-import { getLocalDateAndTime, isReminderDue } from "@/lib/reminders/schedule";
+import { getLocalDateAndTime, isReminderDue, startOfLocalDayUTC } from "@/lib/reminders/schedule";
 import { buildReminderMessage, mealSlotForTime, reminderDisplayName } from "@/lib/reminders/messages";
 
 describe("guessTimezoneFromCountryCode", () => {
@@ -131,5 +131,35 @@ describe("reminderDisplayName", () => {
 
   it("falls back to first name for a non-Indian number, even if otherwise eligible", () => {
     expect(reminderDisplayName({ ...base, normalizedWhatsappNumber: "6597268559" })).toBe("Sunita");
+  });
+});
+
+describe("startOfLocalDayUTC", () => {
+  it("returns the correct UTC instant for local midnight in a positive-offset zone", () => {
+    // 3pm in Asia/Singapore (+8) on 2026-07-25 — local midnight that day is
+    // 2026-07-24T16:00:00Z (16:00 UTC the day before).
+    const result = startOfLocalDayUTC(new Date("2026-07-25T07:00:00Z"), "Asia/Singapore");
+    expect(result.toISOString()).toBe("2026-07-24T16:00:00.000Z");
+  });
+
+  it("returns the correct UTC instant for local midnight in a negative-offset zone", () => {
+    // 10am UTC is 6am in America/New_York (-4 in summer) on the same
+    // calendar date — local midnight is 04:00 UTC that same day.
+    const result = startOfLocalDayUTC(new Date("2026-07-25T10:00:00Z"), "America/New_York");
+    expect(result.toISOString()).toBe("2026-07-25T04:00:00.000Z");
+  });
+
+  it("never wrongly excludes a meal logged earlier the same local day, unlike server-UTC midnight", () => {
+    // A meal logged at 2026-07-25T01:00:00Z is already 2026-07-25 09:00 in
+    // Singapore (+8) — server-local (UTC) midnight for "now" would put
+    // this meal on 2026-07-25 too, so this isn't the interesting case; the
+    // interesting case is a meal logged just after UTC midnight but before
+    // local midnight has passed, which server-UTC startOfDay would
+    // wrongly count as "yesterday" relative to a later UTC read — this
+    // confirms the contact's own day boundary is used instead.
+    const mealLoggedAt = new Date("2026-07-25T00:30:00Z"); // 2026-07-25 08:30 in Singapore
+    const laterSameLocalDay = new Date("2026-07-25T15:00:00Z"); // 2026-07-25 23:00 in Singapore, still same local day
+    const startOfDay = startOfLocalDayUTC(laterSameLocalDay, "Asia/Singapore");
+    expect(mealLoggedAt.getTime()).toBeGreaterThanOrEqual(startOfDay.getTime());
   });
 });

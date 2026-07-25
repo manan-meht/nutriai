@@ -28,6 +28,29 @@ export function getLocalDateAndTime(instant: Date, timezone: string): { date: st
   };
 }
 
+/** The UTC instant corresponding to local midnight, in `timezone`, on the
+ * calendar date `instant` falls on there — i.e. the correct `.gte(...)`
+ * lower bound for "today's" rows in that contact's own day, not the
+ * server/runtime's timezone (always UTC on Cloudflare). Avoids a full date
+ * library: reads the zone's current UTC offset via Intl's "shortOffset"
+ * name (e.g. "GMT+8", "GMT-4:30") and subtracts it from that calendar
+ * date's UTC midnight. Correct across DST transitions since the offset is
+ * read for this specific instant, not a fixed constant. */
+export function startOfLocalDayUTC(instant: Date, timezone: string): Date {
+  const { date } = getLocalDateAndTime(instant, timezone);
+  const [year, month, day] = date.split("-").map(Number);
+
+  const offsetName = new Intl.DateTimeFormat("en-US", { timeZone: timezone, timeZoneName: "shortOffset" })
+    .formatToParts(instant)
+    .find((p) => p.type === "timeZoneName")?.value ?? "GMT+0";
+  const match = offsetName.match(/GMT([+-]\d+)(?::(\d+))?/);
+  const offsetHours = match ? parseInt(match[1], 10) : 0;
+  const offsetMinutes = (match?.[2] ? parseInt(match[2], 10) : 0) * (offsetHours < 0 ? -1 : 1);
+  const totalOffsetMinutes = offsetHours * 60 + offsetMinutes;
+
+  return new Date(Date.UTC(year, month - 1, day) - totalOffsetMinutes * 60_000);
+}
+
 function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
