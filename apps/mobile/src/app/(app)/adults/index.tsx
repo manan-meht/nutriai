@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 
 import { Collapsible } from '@/components/ui/collapsible';
 import { PersonCard } from '@/components/person-card';
@@ -51,12 +51,19 @@ function firstNameFromSession(email?: string | null): string {
 
 export default function AdultsContactListScreen() {
   const { session } = useAuth();
+  // Only ever set (to "1") the one time (app)/index.tsx's product picker
+  // routes here right after someone picks "Self" for a brand-new signup —
+  // see getAdultsWorkspace's own doc comment for why this needs to reach
+  // the server at all. Harmless to keep sending on every load() call
+  // (refresh, etc.): mobile-api's markWorkspaceSelfPlan is a no-op once the
+  // workspace is already "self".
+  const { self: selfParam } = useLocalSearchParams<{ self?: string }>();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
-    return Promise.all([api.getAdultsContacts(), api.getRemovedAdultsContacts(), api.getAdultsWorkspace()])
+    return Promise.all([api.getAdultsContacts(), api.getRemovedAdultsContacts(), api.getAdultsWorkspace({ self: selfParam === '1' })])
       .then(([{ contacts }, { contacts: removedContacts }, { workspace, entitlement }]) => {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required', plan: workspace.plan });
@@ -67,7 +74,7 @@ export default function AdultsContactListScreen() {
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contacts.' })
       );
-  }, []);
+  }, [selfParam]);
 
   useEffect(() => {
     load(true);

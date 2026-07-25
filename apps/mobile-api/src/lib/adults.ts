@@ -166,6 +166,19 @@ export async function getOrCreateAdultsWorkspace(userId: string, caregiverName?:
   return getOrCreateWorkspace(admin, userId, "adults", caregiverName);
 }
 
+/** Mirrors the main app's markWorkspaceSelfPlan
+ * (src/app/(adults)/adults/dashboard/actions.ts) — persists self-tracking
+ * intent on the workspace as soon as it's known (this app's equivalent of
+ * the web signup flow's one-time ?self=1 redirect param), so a returning
+ * session before any self-tracking contact exists yet still shows self
+ * (not family) pricing/copy. `.eq("plan", "family")` guards against
+ * clobbering an already-upgraded/duplicate-flagged workspace — same
+ * no-op-if-already-set idempotency as the web version. */
+export async function markWorkspaceSelfPlan(workspaceId: string): Promise<void> {
+  const admin = createServiceClient();
+  await admin.from("workspaces").update({ plan: "self" }).eq("id", workspaceId).eq("plan", "family");
+}
+
 export async function getContacts(workspaceId: string, supabase: SupabaseClient) {
   return getContactsCore(workspaceId, supabase);
 }

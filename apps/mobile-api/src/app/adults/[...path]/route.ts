@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
-import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, getContactDetails, addContact, updateContact, removeContact } from "@/lib/adults";
+import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, getContactDetails, addContact, updateContact, removeContact, markWorkspaceSelfPlan } from "@/lib/adults";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
 import { applyExplicitPreferences, type FoodPreferenceSelections } from "@/lib/food-preferences";
@@ -63,6 +63,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .maybeSingle();
 
     const workspace = await getOrCreateAdultsWorkspace(auth.user.id, profile?.full_name ?? undefined);
+
+    // Mirrors the main app's one-time ?self=1 redirect param (see
+    // src/app/(adults)/adults/dashboard/page.tsx) — the mobile product
+    // picker (app/(app)/index.tsx) passes this the first time someone
+    // lands on /adults having picked "Self" rather than "Family", so a
+    // brand-new self-tracking signup doesn't default to (and get billed
+    // as) a Family workspace just because that's this function's default.
+    if (request.nextUrl.searchParams.get("self") === "1" && workspace.plan !== "self") {
+      await markWorkspaceSelfPlan(workspace.id);
+      workspace.plan = "self";
+    }
+
     const entitlement = await getEntitlementSnapshot(workspace.id, "adults");
 
     return NextResponse.json({

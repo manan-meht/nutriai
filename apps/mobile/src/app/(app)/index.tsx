@@ -124,7 +124,16 @@ export default function ProductRouterScreen() {
         onContinue={(selected) => {
           const choice = selected === 'coach' ? 'gym' : 'adults';
           saveLastDashboardChoice(choice);
-          router.push(choice === 'gym' ? '/gym' : '/adults');
+          if (choice === 'gym') {
+            router.push('/gym');
+          } else {
+            // "self" vs "family" only matters for the adults workspace's
+            // plan (see mobile-api's markWorkspaceSelfPlan) — passed as a
+            // one-time route param, same as the web signup flow's own
+            // ?self=1, so adults/index.tsx can thread it through to its
+            // first GET /adults/workspace call.
+            router.push({ pathname: '/adults', params: selected === 'self' ? { self: '1' } : {} });
+          }
         }}
       />
     );

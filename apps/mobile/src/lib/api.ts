@@ -331,7 +331,13 @@ export const api = {
   // for that).
   getMyProducts: () => apiFetch<MyProductsResponse>("/me/products"),
 
-  getAdultsWorkspace: () => apiFetch<AdultsWorkspaceResponse>("/adults/workspace"),
+  // `self: true` mirrors the web app's one-time ?self=1 redirect param —
+  // pass it the first time someone lands here having picked "Self" rather
+  // than "Family" from the product picker (see (app)/index.tsx), so a
+  // brand-new self-tracking signup's workspace gets marked "self" instead
+  // of defaulting to "family".
+  getAdultsWorkspace: (opts: { self?: boolean } = {}) =>
+    apiFetch<AdultsWorkspaceResponse>(opts.self ? "/adults/workspace?self=1" : "/adults/workspace"),
   getAdultsContacts: () => apiFetch<{ contacts: AdultsContact[] }>("/adults/contacts"),
   // Previously-removed family members — mirrors the web app's
   // getRemovedContacts (data preserved, no longer active).
