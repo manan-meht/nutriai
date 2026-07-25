@@ -3,7 +3,7 @@ export const runtime = "edge";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { findEntitlementByOwner, applyProviderSubscriptionSnapshot } from "@/lib/entitlements/entitlements";
-import { buildSnapshotFromRevenueCatEvent, providerForStore, moduleForRevenueCatProductId, type RevenueCatEvent } from "@/lib/billing/revenuecat";
+import { buildSnapshotFromRevenueCatEvent, providerForStore, moduleForRevenueCatProductId, extraCapacityModuleForRevenueCatProductId, mapRevenueCatEventToStatus, isActiveIshStatus, type RevenueCatEvent } from "@/lib/billing/revenuecat";
 
 // RevenueCat webhook — Self, Family, and Coach mobile subscriptions all go
 // through here (module resolved per-event from the purchased product id,
@@ -71,6 +71,30 @@ export async function POST(request: NextRequest) {
       .update({ processed_at: new Date().toISOString() })
       .eq("provider", provider)
       .eq("provider_event_id", event.id);
+
+  // Extra-capacity add-on purchases (adults_additional_person /
+  // coach_additional_person) don't carry their own plan/trial/status the
+  // way self_premium/family_premium/coach_premium do — they only ever
+  // toggle workspaces.extra_capacity on (still-active-ish status) or off
+  // (expired/cancelled), so they're handled entirely separately from
+  // applyProviderSubscriptionSnapshot below. See this v1's scope: mobile
+  // only supports buying exactly one extra slot (a boolean, not an
+  // adjustable Stripe-style quantity) — buying more than one requires web.
+  const extraCapacityModule = extraCapacityModuleForRevenueCatProductId(event.product_id);
+  if (extraCapacityModule) {
+    const status = mapRevenueCatEventToStatus(event);
+    if (status) {
+      const target = await findEntitlementByOwner(event.app_user_id, extraCapacityModule);
+      if (target) {
+        await admin
+          .from("workspaces")
+          .update({ extra_capacity: isActiveIshStatus(status) ? 1 : 0 })
+          .eq("id", target.workspaceId);
+      }
+    }
+    await markProcessed();
+    return NextResponse.json({ received: true, result: "processed" });
+  }
 
   const snapshot = buildSnapshotFromRevenueCatEvent(event);
   if (!snapshot) {

@@ -106,6 +106,32 @@ export function moduleForRevenueCatProductId(productId: string | null | undefine
   return null;
 }
 
+/** Resolves which module an "additional person" (extra-capacity add-on)
+ * purchase belongs to, deliberately kept separate from
+ * moduleForRevenueCatProductId — these products don't carry a
+ * plan/trial/status of their own the way self_premium/family_premium/
+ * coach_premium do; they only ever toggle workspaces.extra_capacity on or
+ * off (see the webhook route). Only Family/Coach can buy extra capacity —
+ * Self is always exactly 1 person — so there's no "self_additional_person"
+ * product. */
+export function extraCapacityModuleForRevenueCatProductId(productId: string | null | undefined): EntitlementModule | null {
+  if (!productId) return null;
+  const baseProductId = productId.split(":")[0];
+  if (baseProductId === "adults_additional_person") return "adults";
+  if (baseProductId === "coach_additional_person") return "gym";
+  return null;
+}
+
+/** Whether a mapped status still grants access — mirrors the same
+ * "still active despite payment hiccups/pending cancellation" semantics
+ * status mapping already uses for the base plan (see
+ * mapRevenueCatEventToStatus's own per-case comments). Used to decide
+ * whether an extra-capacity purchase should currently count toward
+ * workspaces.extra_capacity. */
+export function isActiveIshStatus(status: EntitlementStatus): boolean {
+  return status !== "expired" && status !== "cancelled";
+}
+
 export function buildSnapshotFromRevenueCatEvent(event: RevenueCatEvent): ProviderSubscriptionSnapshot | null {
   const status = mapRevenueCatEventToStatus(event);
   if (!status) return null;

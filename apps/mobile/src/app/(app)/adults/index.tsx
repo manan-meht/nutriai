@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
 import { PersonCard } from '@/components/person-card';
@@ -13,11 +14,19 @@ import { api, type AdultsContact } from '@/lib/api';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
+import { hasActiveEntitlement } from '@/lib/purchases';
+
+// The RevenueCat entitlement + offering identifiers for the "buy 1 more
+// slot" add-on (adults_additional_person, see this repo's RevenueCat setup
+// notes) — mirrors ADULTS_ENTITLEMENT_ID's pattern in adults/paywall.tsx.
+// Self plan workspaces never see this (always exactly 1 person, no
+// concept of extra capacity), only Family.
+const ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID ?? 'adults_extra_capacity';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[]; extraCapacity: number }
+  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[]; extraCapacity: number; plan: string }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
   // enforcement rule (mobile-api's lib/entitlements.ts), same computation
@@ -60,6 +69,7 @@ export default function AdultsContactListScreen() {
   const { self: selfParam } = useLocalSearchParams<{ self?: string }>();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
+  const [buyingCapacity, setBuyingCapacity] = useState(false);
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
@@ -68,7 +78,7 @@ export default function AdultsContactListScreen() {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required', plan: workspace.plan });
         } else {
-          setState({ status: 'ready', contacts, removedContacts, extraCapacity: workspace.extraCapacity });
+          setState({ status: 'ready', contacts, removedContacts, extraCapacity: workspace.extraCapacity, plan: workspace.plan });
         }
       })
       .catch((err) =>
@@ -106,6 +116,40 @@ export default function AdultsContactListScreen() {
         },
       ]
     );
+  }
+
+  // Buys one more family-member slot via Play/App Store billing (the
+  // "adults_additional_person" product, see this repo's RevenueCat setup
+  // notes) — the persisted extra_capacity column is only ever updated by
+  // the RevenueCat webhook, so this polls briefly after a successful
+  // purchase the same way adults/paywall.tsx's waitForEntitlementThenReturn
+  // does, rather than trusting the client-side purchase result alone.
+  async function handleBuyCapacity() {
+    setBuyingCapacity(true);
+    try {
+      const offerings = await Purchases.getOfferings();
+      const offering = offerings.all['additional_person'];
+      const pkg = offering?.availablePackages.find((p) => p.identifier === '$rc_monthly') ?? offering?.availablePackages[0];
+      if (!pkg) {
+        Alert.alert("Not available", "Extra capacity isn't available to purchase right now — please try again shortly.");
+        return;
+      }
+      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      if (hasActiveEntitlement(customerInfo, ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID)) {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const { workspace } = await api.getAdultsWorkspace();
+          if (workspace.extraCapacity > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        await load(false);
+      }
+    } catch (err: any) {
+      if (!err?.userCancelled) {
+        Alert.alert("Couldn't complete purchase", 'Please try again.');
+      }
+    } finally {
+      setBuyingCapacity(false);
+    }
   }
 
   if (state.status === 'loading') return <LoadingState />;
@@ -182,6 +226,17 @@ export default function AdultsContactListScreen() {
                 <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
                   You&apos;ve reached the limit of {familyLimit} family member{familyLimit === 1 ? '' : 's'} for this account.
                 </ThemedText>
+                {state.plan !== 'self' && (
+                  <Pressable onPress={handleBuyCapacity} disabled={buyingCapacity} style={styles.buyCapacityButton}>
+                    {buyingCapacity ? (
+                      <ActivityIndicator />
+                    ) : (
+                      <ThemedText type="smallBold" style={styles.buyCapacityText}>
+                        Buy 1 more slot
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                )}
               </View>
             )}
             {state.removedContacts.length > 0 && (
@@ -246,6 +301,16 @@ const styles = StyleSheet.create({
   },
   limitReachedText: {
     textAlign: 'center',
+  },
+  buyCapacityButton: {
+    marginTop: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.two,
+    backgroundColor: '#5715CE',
+  },
+  buyCapacityText: {
+    color: '#ffffff',
   },
   addCardText: {
     fontWeight: '700',

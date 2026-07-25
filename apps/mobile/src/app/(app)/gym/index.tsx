@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
+import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
 import { PersonCard } from '@/components/person-card';
@@ -13,6 +14,11 @@ import { api, type GymClient } from '@/lib/api';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
+import { hasActiveEntitlement } from '@/lib/purchases';
+
+// See adults/index.tsx's identical ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID for
+// the full rationale — the coach_additional_person add-on's counterpart.
+const COACH_EXTRA_CAPACITY_ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_COACH_EXTRA_CAPACITY_ENTITLEMENT_ID ?? 'coach_extra_capacity';
 
 type State =
   | { status: 'loading' }
@@ -42,6 +48,7 @@ export default function GymClientListScreen() {
   const { session } = useAuth();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
+  const [buyingCapacity, setBuyingCapacity] = useState(false);
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
@@ -88,6 +95,37 @@ export default function GymClientListScreen() {
         },
       ]
     );
+  }
+
+  // See adults/index.tsx's identical handleBuyCapacity for the full
+  // rationale (Play/App Store purchase via RevenueCat, then poll briefly
+  // for the webhook-updated extra_capacity before refreshing the list).
+  async function handleBuyCapacity() {
+    setBuyingCapacity(true);
+    try {
+      const offerings = await Purchases.getOfferings();
+      const offering = offerings.all['coach_additional_person'];
+      const pkg = offering?.availablePackages.find((p) => p.identifier === '$rc_monthly') ?? offering?.availablePackages[0];
+      if (!pkg) {
+        Alert.alert("Not available", "Extra capacity isn't available to purchase right now — please try again shortly.");
+        return;
+      }
+      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      if (hasActiveEntitlement(customerInfo, COACH_EXTRA_CAPACITY_ENTITLEMENT_ID)) {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const { workspace } = await api.getGymWorkspace();
+          if (workspace.extraCapacity > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        await load(false);
+      }
+    } catch (err: any) {
+      if (!err?.userCancelled) {
+        Alert.alert("Couldn't complete purchase", 'Please try again.');
+      }
+    } finally {
+      setBuyingCapacity(false);
+    }
   }
 
   if (state.status === 'loading') return <LoadingState />;
@@ -164,6 +202,15 @@ export default function GymClientListScreen() {
                 <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
                   You&apos;ve reached the limit of {clientLimit} client{clientLimit === 1 ? '' : 's'} for this account.
                 </ThemedText>
+                <Pressable onPress={handleBuyCapacity} disabled={buyingCapacity} style={styles.buyCapacityButton}>
+                  {buyingCapacity ? (
+                    <ActivityIndicator />
+                  ) : (
+                    <ThemedText type="smallBold" style={styles.buyCapacityText}>
+                      Buy 1 more slot
+                    </ThemedText>
+                  )}
+                </Pressable>
               </View>
             )}
             {state.removedClients.length > 0 && (
@@ -233,6 +280,16 @@ const styles = StyleSheet.create({
   },
   limitReachedText: {
     textAlign: 'center',
+  },
+  buyCapacityButton: {
+    marginTop: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Spacing.two,
+    backgroundColor: '#5715CE',
+  },
+  buyCapacityText: {
+    color: '#ffffff',
   },
   removedSection: { marginTop: Spacing.three, marginHorizontal: Spacing.three },
   signOutButton: { alignItems: 'center', padding: Spacing.three },
