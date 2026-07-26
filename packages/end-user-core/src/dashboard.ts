@@ -1,6 +1,46 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ContactType } from "./otp";
 
+// meal-photos is a private Supabase Storage bucket (see
+// supabase/migrations/0040_private_meal_photos.sql) — meal_logs.image_url
+// holds a bare storage path for new uploads, or a legacy full public URL
+// for rows written before that migration; either way it must be resolved
+// to a short-lived signed URL before being handed to a browser, since a
+// private bucket rejects the raw path/URL directly. Duplicated here
+// (rather than importing packages/nutrition-core's identical
+// resolveSignedMealPhotoUrl) since this package has no dependency on that
+// one — same "small self-contained duplication across independent
+// packages" convention as apps/mobile-api's own lib/invites.ts. Keep in
+// sync with packages/nutrition-core/src/storage.ts if this ever changes.
+const MEAL_PHOTOS_BUCKET = "meal-photos";
+const PUBLIC_URL_MARKER = `/object/public/${MEAL_PHOTOS_BUCKET}/`;
+
+function extractMealPhotoPath(value: string): string {
+  const markerIndex = value.indexOf(PUBLIC_URL_MARKER);
+  if (markerIndex === -1) return value;
+  return value.slice(markerIndex + PUBLIC_URL_MARKER.length);
+}
+
+async function resolveSignedMealPhotoUrl(
+  db: SupabaseClient,
+  value: string | null | undefined,
+  expiresInSeconds = 3600
+): Promise<string | undefined> {
+  if (!value) return undefined;
+  const path = extractMealPhotoPath(value);
+  const { data, error } = await db.storage.from(MEAL_PHOTOS_BUCKET).createSignedUrl(path, expiresInSeconds);
+  if (error || !data) return undefined;
+  return data.signedUrl;
+}
+
+async function resolveSignedMealPhotoUrls(
+  db: SupabaseClient,
+  values: Array<string | null | undefined>,
+  expiresInSeconds = 3600
+): Promise<Array<string | undefined>> {
+  return Promise.all(values.map((v) => resolveSignedMealPhotoUrl(db, v, expiresInSeconds)));
+}
+
 // Structurally identical to the main web app's ProfileDashboardProfile/
 // ProfileDashboardMeal (src/lib/dashboard/profile-dashboard-types.ts) and
 // the mobile app's PersonLike/MealLog (apps/mobile/src/lib/api.ts) — kept
@@ -95,8 +135,9 @@ export async function getEndUserDashboardData(
     .order("logged_at", { ascending: false });
 
   const allRows = mealRows ?? [];
+  const signedImageUrls = await resolveSignedMealPhotoUrls(db, allRows.map((m: any) => m.image_url));
 
-  const meals: EndUserMeal[] = allRows.map((m: any) => ({
+  const meals: EndUserMeal[] = allRows.map((m: any, i: number) => ({
     id: m.id,
     profileId: contactId,
     mealType: m.meal_type,
@@ -113,7 +154,7 @@ export async function getEndUserDashboardData(
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
-    imageUrl: m.image_url,
+    imageUrl: signedImageUrls[i],
   }));
 
   const profile: EndUserProfile = {
