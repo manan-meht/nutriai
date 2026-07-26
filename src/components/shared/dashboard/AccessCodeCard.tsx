@@ -36,6 +36,7 @@ function buildWhatsAppMessage(personName: string, formattedCode: string): string
  * person explicitly clicks — never logged (see the server actions this
  * calls, which only ever return it once at generation time). */
 export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke }: AccessCodeCardProps) {
+  const [expanded, setExpanded] = useState(false);
   const [result, setResult] = useState<AccessCodeResult | null>(null);
   const [ttlHours, setTtlHours] = useState<1 | 24>(24);
   const [loading, setLoading] = useState(false);
@@ -69,77 +70,97 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 p-5">
-      <h3 className="text-sm font-semibold text-gray-900 mb-1">Generate access code</h3>
-      <p className="text-sm text-gray-500 mb-4">
-        Create a temporary code so {personName} can open their private Tistra Health dashboard.
-      </p>
+    <div className="rounded-xl border border-gray-200">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 p-5 text-left"
+      >
+        <span className="text-sm font-semibold text-gray-900">Allow {personName} to see their data</span>
+        <svg
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
 
-      {!result && (
-        <>
-          <div className="flex items-center gap-3 mb-4">
-            <label className="text-xs text-gray-500">Expires in</label>
-            <select
-              value={ttlHours}
-              onChange={(e) => setTtlHours(Number(e.target.value) as 1 | 24)}
-              className="text-sm rounded-lg border border-gray-200 px-2 py-1.5"
-            >
-              <option value={24}>24 hours</option>
-              <option value={1}>1 hour</option>
-            </select>
-          </div>
-          <button
-            onClick={() => run(onGenerate)}
-            disabled={loading}
-            className="w-full bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-50"
-          >
-            {loading ? "Generating…" : "Generate access code"}
-          </button>
-        </>
-      )}
+      {expanded && (
+        <div className="px-5 pb-5">
+          <p className="text-sm text-gray-500 mb-4">
+            {personName} can see their own data on a private link — you&apos;ll need to send them a one-time code so
+            they can open it. Generate a code below and share it with them.
+          </p>
 
-      {result && (
-        <div className="space-y-3">
-          <div className="text-center">
-            <p className="text-2xl font-bold tracking-widest text-gray-900">{result.formattedCode}</p>
-            <p className="text-xs text-gray-400 mt-1">
-              This code works once and expires {new Date(result.expiresAt).toLocaleString()}. Only share it with {personName}.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => copyText(result.code, "code")}
-              className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              {copied === "code" ? "Copied!" : "Copy code"}
-            </button>
-            <button
-              onClick={() => copyText(buildWhatsAppMessage(personName, result.formattedCode), "message")}
-              className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              {copied === "message" ? "Copied!" : "Copy WhatsApp message"}
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => run(onRegenerate)}
-              disabled={loading}
-              className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Regenerate code
-            </button>
-            <button
-              onClick={handleRevoke}
-              disabled={loading}
-              className="rounded-lg border border-red-200 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
-            >
-              Revoke code
-            </button>
-          </div>
+          {!result && (
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <label className="text-xs text-gray-500">Expires in</label>
+                <select
+                  value={ttlHours}
+                  onChange={(e) => setTtlHours(Number(e.target.value) as 1 | 24)}
+                  className="text-sm rounded-lg border border-gray-200 px-2 py-1.5"
+                >
+                  <option value={24}>24 hours</option>
+                  <option value={1}>1 hour</option>
+                </select>
+              </div>
+              <button
+                onClick={() => run(onGenerate)}
+                disabled={loading}
+                className="w-full bg-[var(--color-dashboard-primary)] text-white font-semibold rounded-xl py-3 text-sm disabled:opacity-50"
+              >
+                {loading ? "Generating…" : "Generate access code"}
+              </button>
+            </>
+          )}
+
+          {result && (
+            <div className="space-y-3">
+              <div className="text-center">
+                <p className="text-2xl font-bold tracking-widest text-gray-900">{result.formattedCode}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  This code works once and expires {new Date(result.expiresAt).toLocaleString()}. Only share it with{" "}
+                  {personName}.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => copyText(result.code, "code")}
+                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  {copied === "code" ? "Copied!" : "Copy code"}
+                </button>
+                <button
+                  onClick={() => copyText(buildWhatsAppMessage(personName, result.formattedCode), "message")}
+                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  {copied === "message" ? "Copied!" : "Copy WhatsApp message"}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => run(onRegenerate)}
+                  disabled={loading}
+                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Regenerate code
+                </button>
+                <button
+                  onClick={handleRevoke}
+                  disabled={loading}
+                  className="rounded-lg border border-red-200 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Revoke code
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
         </div>
       )}
-
-      {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
     </div>
   );
 }

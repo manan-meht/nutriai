@@ -21,18 +21,23 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
     <>
       <ContactDashboard {...details} />
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
-        <AccessCodeCard
-          personName={details.contact.fullName}
-          onGenerate={generateAccessCodeAction.bind(null, contactId)}
-          onRegenerate={regenerateAccessCodeAction.bind(null, contactId)}
-          onRevoke={revokeAccessCodeAction.bind(null, contactId)}
-        />
         {/* Once the user has interacted with (saved) a food preference at
             least once, this moves into the Edit Contact modal instead —
             it no longer needs prominent dashboard placement once it's set
             up, and the modal is where the rest of the profile fields live. */}
         {!dietaryProfile.last_updated_at && (
           <FoodPreferencesEditor contactId={contactId} initialProfile={dietaryProfile} />
+        )}
+        {/* Never shown for a "self" contact — there's no separate person to
+            share a view-only link with; the caregiver's own login already
+            is that view. */}
+        {details.contact.relationshipType !== "self" && (
+          <AccessCodeCard
+            personName={details.contact.fullName}
+            onGenerate={generateAccessCodeAction.bind(null, contactId)}
+            onRegenerate={regenerateAccessCodeAction.bind(null, contactId)}
+            onRevoke={revokeAccessCodeAction.bind(null, contactId)}
+          />
         )}
       </div>
     </>
