@@ -72,6 +72,7 @@ export interface AdultsWorkspaceResponse {
     trialEndAt: string | null;
     trialDaysRemaining: number | null;
     isReadOnly: boolean;
+    requiresCardBeforeTrial: boolean;
   };
   caregiverEmail: string | null;
   caregiverName: string | null;

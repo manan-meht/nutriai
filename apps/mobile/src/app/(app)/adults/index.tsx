@@ -26,7 +26,16 @@ const ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID = process.env.EXPO_PUBLIC_REVENUECAT_
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; contacts: AdultsContact[]; removedContacts: AdultsContact[]; extraCapacity: number; plan: string }
+  | {
+      status: 'ready';
+      contacts: AdultsContact[];
+      removedContacts: AdultsContact[];
+      extraCapacity: number;
+      plan: string;
+      entitlementStatus: string;
+      trialDaysRemaining: number | null;
+      requiresCardBeforeTrial: boolean;
+    }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
   // enforcement rule (mobile-api's lib/entitlements.ts), same computation
@@ -78,7 +87,16 @@ export default function AdultsContactListScreen() {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required', plan: workspace.plan });
         } else {
-          setState({ status: 'ready', contacts, removedContacts, extraCapacity: workspace.extraCapacity, plan: workspace.plan });
+          setState({
+            status: 'ready',
+            contacts,
+            removedContacts,
+            extraCapacity: workspace.extraCapacity,
+            plan: workspace.plan,
+            entitlementStatus: entitlement.status,
+            trialDaysRemaining: entitlement.trialDaysRemaining,
+            requiresCardBeforeTrial: entitlement.requiresCardBeforeTrial,
+          });
         }
       })
       .catch((err) =>
@@ -152,6 +170,21 @@ export default function AdultsContactListScreen() {
     }
   }
 
+  // "Add family member" opens the add form directly, EXCEPT for a
+  // brand-new workspace that must go through Play/App Store checkout
+  // first (requiresCardBeforeTrial) — those get sent to the paywall
+  // instead, mirroring the web app's handleAddClick
+  // (src/components/adults/AdultsDashboardClient.tsx). The paywall itself
+  // starts the trial the moment the purchase sheet is approved; nothing
+  // else here needs to "start" it.
+  function handleAddPress(plan: string, requiresCardBeforeTrial: boolean) {
+    if (requiresCardBeforeTrial) {
+      router.push({ pathname: '/adults/paywall', params: { plan } });
+    } else {
+      router.push('/adults/add');
+    }
+  }
+
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
   if (state.status === 'subscription_required') {
@@ -176,29 +209,49 @@ export default function AdultsContactListScreen() {
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
-          state.contacts.length > 0 ? (
-            <View style={styles.header}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Good morning, {firstName}
-              </ThemedText>
-              <ThemedText type="subtitle" style={styles.headline}>
-                Who would you like to check in on?
-              </ThemedText>
-              <ThemedText type="default" themeColor="textSecondary">
-                Choose a family member to view their meals, progress, and recommendations.
-              </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
-                Tip: press and hold a family member to remove them.
-              </ThemedText>
-            </View>
-          ) : null
+          <>
+            {state.contacts.length > 0 && (
+              <View style={styles.header}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Good morning, {firstName}
+                </ThemedText>
+                <ThemedText type="subtitle" style={styles.headline}>
+                  Who would you like to check in on?
+                </ThemedText>
+                <ThemedText type="default" themeColor="textSecondary">
+                  Choose a family member to view their meals, progress, and recommendations.
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                  Tip: press and hold a family member to remove them.
+                </ThemedText>
+              </View>
+            )}
+            {state.requiresCardBeforeTrial ? (
+              <View style={styles.trialBanner}>
+                <ThemedText type="small">
+                  Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can
+                  cancel anytime before then.
+                </ThemedText>
+              </View>
+            ) : state.entitlementStatus === 'trialing' && state.trialDaysRemaining !== null ? (
+              <View style={styles.trialBanner}>
+                <ThemedText type="small">
+                  Free trial — {state.trialDaysRemaining} day{state.trialDaysRemaining === 1 ? '' : 's'} remaining.
+                </ThemedText>
+              </View>
+            ) : null}
+          </>
         }
         ListEmptyComponent={
           <EmptyState
             image={require('@/assets/images/onboarding/family.png')}
             title="Add someone you care about"
             message="Invite a family member so you can support their nutrition journey. Share plans, track progress, and grow healthier together."
-            action={canAdd ? { label: 'Add family member', onPress: () => router.push('/adults/add') } : undefined}
+            action={
+              canAdd
+                ? { label: 'Add family member', onPress: () => handleAddPress(state.plan, state.requiresCardBeforeTrial) }
+                : undefined
+            }
           />
         }
         renderItem={({ item }) => (
@@ -215,7 +268,7 @@ export default function AdultsContactListScreen() {
         ListFooterComponent={
           <>
             {state.contacts.length > 0 && canAdd && (
-              <Pressable onPress={() => router.push('/adults/add')} style={styles.addCard}>
+              <Pressable onPress={() => handleAddPress(state.plan, state.requiresCardBeforeTrial)} style={styles.addCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
                   + Add family member
                 </ThemedText>
@@ -279,6 +332,13 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { paddingVertical: Spacing.three, flexGrow: 1 },
   header: { paddingHorizontal: Spacing.three, marginBottom: Spacing.three, gap: Spacing.one },
+  trialBanner: {
+    marginHorizontal: Spacing.three,
+    marginBottom: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.two,
+    backgroundColor: '#F1EBFF',
+  },
   headline: { fontSize: 24, lineHeight: 30, marginVertical: Spacing.one },
   hint: { marginTop: Spacing.one, fontStyle: 'italic' },
   addCard: {

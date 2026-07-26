@@ -8,6 +8,16 @@ export interface EntitlementSnapshot {
   trialEndAt: string | null;
   trialDaysRemaining: number | null;
   isReadOnly: boolean;
+  /** True for a brand-new workspace ("not_started" — no purchase has ever
+   * happened) that must go through Play/App Store checkout before it can
+   * do anything, rather than getting free access until a trial that never
+   * actually started later "expires". Mirrors the main web app's
+   * requiresCardBeforeTrial (src/app/(adults)/adults/dashboard/page.tsx) —
+   * Play/App Store subscription trial offers work the same way Stripe's
+   * card-first trial does: the user approves payment now, isn't charged
+   * until the trial period actually ends, and RevenueCat's webhook reports
+   * period_type: TRIAL (mapped to status "trialing") the moment they do. */
+  requiresCardBeforeTrial: boolean;
 }
 
 /** Wraps the shared trial/status computation (packages/nutrition-core) with
@@ -46,5 +56,7 @@ export async function getEntitlementSnapshot(
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       module === "adults" &&
       (core.status === "expired" || core.status === "cancelled"),
+    requiresCardBeforeTrial:
+      MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED && module === "adults" && core.status === "not_started",
   };
 }
