@@ -39,7 +39,10 @@ interface PersonFormProps {
    * already has the contacts list loaded (see adults/add.tsx). Ignored
    * for product="gym". */
   hasSelfContact?: boolean;
-  onSuccess: () => void;
+  /** Passed the newly-created contact's id/name only for product="adults"
+   * mode="add" (so the caller can offer to send the WhatsApp invite right
+   * away — see adults/add.tsx) — undefined for every other case. */
+  onSuccess: (created?: { id: string; fullName: string }) => void;
 }
 
 // Ported from nutriai-fresh's old apps/mobile/src/components/PersonForm.tsx
@@ -93,7 +96,9 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       if (mode === 'add') {
         body.whatsappNumber = `+${countryCode}${whatsapp.replace(/\D/g, '')}`;
         if (product === 'adults') {
-          await api.createAdultsContact(body);
+          const created = await api.createAdultsContact(body);
+          onSuccess(isSelf ? undefined : { id: created.id, fullName });
+          return;
         } else {
           await api.createGymClient(body);
         }
@@ -150,8 +155,9 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               <TextInput
                 value={countryCode}
                 onChangeText={(t) => setCountryCode(t.replace(/\D/g, ''))}
+                keyboardType="number-pad"
                 maxLength={4}
-                style={{ width: 32, fontSize: 14, color: theme.text, padding: 8 }}
+                style={{ width: 48, fontSize: 14, color: theme.text, padding: 8 }}
               />
             </View>
             <TextInput

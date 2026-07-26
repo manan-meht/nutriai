@@ -4,6 +4,7 @@ import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, getContact
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
 import { applyExplicitPreferences, type FoodPreferenceSelections } from "@/lib/food-preferences";
+import { getOrCreateFamilyInvite } from "@/lib/invites";
 
 export const runtime = "edge";
 
@@ -21,6 +22,7 @@ export const runtime = "edge";
 //   DELETE /adults/contacts/:contactId/access-code  (revoke)
 //   GET /adults/contacts/:contactId/food-preferences
 //   PATCH /adults/contacts/:contactId/food-preferences
+//   GET /adults/contacts/:contactId/invite            (get-or-create)
 //
 // Temporary Access Codes (mobile equivalent of the web app's
 // generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction
@@ -103,6 +105,37 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const details = await getContactDetails(path[1], auth.supabase);
     if (!details) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(details);
+  }
+
+  // Mirrors the main web app's getOrCreateFamilyInvite (see
+  // src/app/(adults)/adults/dashboard/actions.ts) — returns the family
+  // member's existing pending/claimed invite, or creates a fresh one.
+  // Called right after adding a family member (see
+  // apps/mobile/src/app/(app)/adults/add.tsx) so the caregiver can actually
+  // send the WhatsApp invite, rather than the contact silently existing
+  // with no way to connect them.
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "invite") {
+    const { data: contactRow } = await auth.supabase
+      .from("adults_contacts")
+      .select("id, workspace_id, full_name")
+      .eq("id", path[1])
+      .eq("caregiver_id", auth.user.id)
+      .maybeSingle();
+    if (!contactRow) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+
+    try {
+      const db = createServiceClient();
+      const invite = await getOrCreateFamilyInvite(
+        db,
+        contactRow.workspace_id,
+        contactRow.id,
+        auth.user.id,
+        contactRow.full_name?.split(" ")[0]
+      );
+      return NextResponse.json(invite);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to create invite" }, { status: 500 });
+    }
   }
 
   // Mirrors the main web app's getFoodPreferences (see

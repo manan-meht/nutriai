@@ -218,6 +218,21 @@ export interface AccessCodeResult {
   expiresAt: string;
 }
 
+// Mirrors the main web app's InviteSummary (src/lib/invites/types.ts) —
+// what's needed to show a "Send invite via WhatsApp" action after adding a
+// family member (see apps/mobile-api's GET /adults/contacts/:id/invite).
+export interface InviteSummary {
+  token: string;
+  link: string;
+  shareLink?: string;
+  shareMessage?: string;
+  status: "pending" | "claimed" | "expired" | "revoked";
+  expiresAt: string;
+  claimedByWhatsappNumberMasked: string | null;
+  claimedAt: string | null;
+  linkOpenedAt: string | null;
+}
+
 export interface MyProductsResponse {
   adults: { workspaceId: string } | null;
   gym: { workspaceId: string } | null;
@@ -412,6 +427,7 @@ export const api = {
 
   createAdultsContact: (body: unknown) =>
     apiRequest<{ id: string }>("/adults/contacts", { method: "POST", body: JSON.stringify(body) }),
+  getFamilyInvite: (contactId: string) => apiFetch<InviteSummary>(`/adults/contacts/${contactId}/invite`),
   updateAdultsContact: (contactId: string, body: unknown) =>
     apiRequest<{ id: string }>(`/adults/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify(body) }),
   createGymClient: (body: unknown) =>

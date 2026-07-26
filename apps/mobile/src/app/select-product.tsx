@@ -23,8 +23,8 @@ export default function SelectProductScreen() {
         <ProductPicker
           headline="How will you use Tistra Health?"
           subhead="Choose the option that best fits you. You can change this later."
-          onContinue={(selected) => {
-            setPendingProductSelection(selected);
+          onContinue={async (selected) => {
+            await setPendingProductSelection(selected);
             router.push({ pathname: '/login', params: { product: selected } });
           }}
         />

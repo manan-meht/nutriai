@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 import { scopedEmail } from '@/lib/auth';
 import { signInWithProvider, type OAuthProvider } from '@/lib/oauth';
+import { setPendingProductSelection } from '@/lib/product-intent';
 import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
 type Product = 'self' | 'family' | 'coach';
@@ -65,6 +66,11 @@ export default function LoginScreen() {
     setError(null);
     setOauthLoading(provider);
     try {
+      // Re-persist the product choice right before handing off to the
+      // external OAuth browser (see lib/product-intent.ts) — reachable here
+      // reliably via the route param regardless of whether
+      // select-product.tsx's own write already landed.
+      await setPendingProductSelection(product as Product);
       await signInWithProvider(provider);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.');

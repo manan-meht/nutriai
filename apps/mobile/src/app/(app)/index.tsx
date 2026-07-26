@@ -8,29 +8,31 @@ import { ThemedView } from '@/components/themed-view';
 import { ProductPicker } from '@/components/product-picker';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
-import { consumePendingProductSelection } from '@/lib/product-intent';
+import { consumePendingProductSelection, type PendingProduct } from '@/lib/product-intent';
 import { getLastDashboardChoice, saveLastDashboardChoice, clearLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null };
+  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
-  // Read (and clear) once on mount — the card the user tapped on
-  // select-product.tsx, if this mount is the direct result of that login.
-  // See lib/product-intent.ts for why this exists: /me/products checks
-  // both products against the same auth user id, so an account seeded
-  // with both would otherwise ignore that choice and ask again below.
-  const [pendingProduct] = useState(() => consumePendingProductSelection());
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.getMyProducts(), getLastDashboardChoice()])
-      .then(([products, lastChoice]) => {
-        if (!cancelled) setState({ status: 'ready', products, lastChoice });
+    // Read (and clear) the card the user tapped on select-product.tsx, if
+    // this mount is the direct result of that login — see
+    // lib/product-intent.ts for why this exists and why it's read here
+    // (async, SecureStore-backed) rather than a synchronous in-memory read:
+    // /me/products checks both products against the same auth user id, so
+    // an account seeded with both — or, just as importantly, a brand-new
+    // account seeded with NEITHER yet — would otherwise ignore that choice
+    // and ask again below.
+    Promise.all([api.getMyProducts(), getLastDashboardChoice(), consumePendingProductSelection()])
+      .then(([products, lastChoice, pendingProduct]) => {
+        if (!cancelled) setState({ status: 'ready', products, lastChoice, pendingProduct });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -79,15 +81,16 @@ export default function ProductRouterScreen() {
   }
 
   const { adults, gym } = state.products;
+  const { pendingProduct } = state;
 
   // Exactly one product — go straight there, no switcher needed.
   if (adults && !gym) return <Redirect href="/adults" />;
   if (gym && !adults) return <Redirect href="/gym" />;
 
-  // Both, but the user just told select-product.tsx which one they meant —
-  // honor that instead of asking again below, and persist it so the next
-  // cold start (where pendingProduct is always null — it's in-memory only)
-  // skips the picker too.
+  // Both, but the user just told select-product.tsx (or login/signup, via
+  // OAuth) which one they meant — honor that instead of asking again below,
+  // and persist it so the next cold start (where pendingProduct has already
+  // been consumed) skips the picker too.
   if (adults && gym && pendingProduct) {
     const choice = pendingProduct === 'coach' ? 'gym' : 'adults';
     saveLastDashboardChoice(choice);
@@ -97,8 +100,8 @@ export default function ProductRouterScreen() {
   // Both, no fresh selection this session, but a persisted choice from a
   // previous one — go straight there instead of showing the picker again.
   // This is the actual fix for "every time I open the app I'm back on the
-  // dashboard picker": pendingProduct never survives a cold start, but this
-  // does (SecureStore, see lib/product-choice.ts).
+  // dashboard picker": pendingProduct never survives a cold start on its
+  // own, but this does (SecureStore, see lib/product-choice.ts).
   if (adults && gym && state.lastChoice) {
     return <Redirect href={state.lastChoice === 'gym' ? '/gym' : '/adults'} />;
   }
@@ -116,7 +119,26 @@ export default function ProductRouterScreen() {
   // workspace, letting the person add their first family member/client
   // from right there, same as this app's existing add.tsx screens already
   // support.
+  //
+  // Crucially, this branch must also honor `pendingProduct` exactly like
+  // the "both" branch above — a brand-new signup has NEITHER workspace yet
+  // by definition, so without this check the card someone tapped on
+  // select-product.tsx (e.g. "Family") was always silently ignored here,
+  // and they'd land back on this exact picker right after finishing sign-in
+  // (the reported "picked Family, signed in with Google, got sent back to
+  // the picker" bug — this was the other half of it, independent of
+  // whether pendingProduct itself survived the OAuth round-trip).
   if (!adults && !gym) {
+    if (pendingProduct) {
+      const choice = pendingProduct === 'coach' ? 'gym' : 'adults';
+      saveLastDashboardChoice(choice);
+      if (choice === 'gym') return <Redirect href="/gym" />;
+      return (
+        <Redirect
+          href={{ pathname: '/adults', params: pendingProduct === 'self' ? { self: '1' } : {} }}
+        />
+      );
+    }
     return (
       <ProductPicker
         headline="How will you use Tistra Health?"

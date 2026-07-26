@@ -26,7 +26,18 @@ export default function AddAdultsContactScreen() {
       product="adults"
       mode="add"
       hasSelfContact={hasSelfContact}
-      onSuccess={() => router.back()}
+      onSuccess={(created) => {
+        // created is undefined when the "Myself" relationship was chosen
+        // (self-tracking has no separate family invite to send) — see
+        // PersonForm's handleSubmit. Otherwise route to the invite screen
+        // instead of just popping back, so adding someone always ends with
+        // an actual way to connect them on WhatsApp.
+        if (created) {
+          router.replace({ pathname: '/adults/invite', params: { contactId: created.id, name: created.fullName.split(' ')[0] } });
+        } else {
+          router.back();
+        }
+      }}
     />
   );
 }
