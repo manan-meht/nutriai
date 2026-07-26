@@ -1,9 +1,32 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
 import { resolveSignedMealPhotoUrls } from "./storage";
+import { computeMacroWindowSummaries } from "./macro-summary";
 import type { BiomarkerLog, ClientDetails, GymClient, MealLog, WorkoutLog } from "./types";
 
-function mapClientRow(c: any, mealsByClient: Record<string, { count: number; lastAt?: string }>): GymClient {
+// gym_clients has no timezone column (unlike adults_contacts) — this fixed
+// default is what every macroSummary computation for gym clients uses.
+// Matches the default already used elsewhere for adults contacts that are
+// missing a timezone.
+const DEFAULT_TIMEZONE = "Asia/Kolkata";
+
+interface ClientMealSummary {
+  count: number;
+  lastAt?: string;
+  mealRows: Array<{
+    logged_at: string;
+    total_calories_min: number | null;
+    total_calories_max: number | null;
+    total_protein_min: number | null;
+    total_protein_max: number | null;
+    total_carbs_min: number | null;
+    total_carbs_max: number | null;
+    total_fat_min: number | null;
+    total_fat_max: number | null;
+  }>;
+}
+
+function mapClientRow(c: any, mealsByClient: Record<string, ClientMealSummary>): GymClient {
   return {
     id: c.id,
     workspaceId: c.workspace_id,
@@ -19,6 +42,7 @@ function mapClientRow(c: any, mealsByClient: Record<string, { count: number; las
     deletedAt: c.deleted_at ?? undefined,
     mealCount: mealsByClient[c.id]?.count ?? 0,
     lastMealAt: mealsByClient[c.id]?.lastAt,
+    macroSummary: computeMacroWindowSummaries(mealsByClient[c.id]?.mealRows ?? [], DEFAULT_TIMEZONE),
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     dateOfBirth: c.date_of_birth ?? undefined,
     metabolicEquationSex: c.metabolic_equation_sex ?? undefined,
@@ -45,19 +69,22 @@ function mapClientRow(c: any, mealsByClient: Record<string, { count: number; las
   };
 }
 
-async function fetchMealsByClient(supabase: SupabaseClient, clientIds: string[]) {
+async function fetchMealsByClient(supabase: SupabaseClient, clientIds: string[]): Promise<Record<string, ClientMealSummary>> {
   const { data: meals } = await supabase
     .from("meal_logs")
-    .select("client_id, logged_at")
+    .select(
+      "client_id, logged_at, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max"
+    )
     .in("client_id", clientIds)
     .order("logged_at", { ascending: false });
 
-  const mealsByClient: Record<string, { count: number; lastAt?: string }> = {};
+  const mealsByClient: Record<string, ClientMealSummary> = {};
   for (const m of meals ?? []) {
     if (!mealsByClient[m.client_id]) {
-      mealsByClient[m.client_id] = { count: 0, lastAt: m.logged_at };
+      mealsByClient[m.client_id] = { count: 0, lastAt: m.logged_at, mealRows: [] };
     }
     mealsByClient[m.client_id].count++;
+    mealsByClient[m.client_id].mealRows.push(m);
   }
   return mealsByClient;
 }
@@ -138,8 +165,8 @@ export async function getClientDetails(
 
   if (!clientRes.data) return null;
   const c = clientRes.data;
-  const mealsByClient = {
-    [clientId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at },
+  const mealsByClient: Record<string, ClientMealSummary> = {
+    [clientId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at, mealRows: mealsRes.data ?? [] },
   };
   const client = mapClientRow(c, mealsByClient);
 

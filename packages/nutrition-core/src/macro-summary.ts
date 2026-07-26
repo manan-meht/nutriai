@@ -1,0 +1,90 @@
+import type { MacroWindowSummary } from "./types";
+
+interface MealMacroRow {
+  logged_at: string;
+  total_calories_min: number | null;
+  total_calories_max: number | null;
+  total_protein_min: number | null;
+  total_protein_max: number | null;
+  total_carbs_min: number | null;
+  total_carbs_max: number | null;
+  total_fat_min: number | null;
+  total_fat_max: number | null;
+}
+
+function midpoint(min: number | null, max: number | null): number {
+  return ((min ?? 0) + (max ?? 0)) / 2;
+}
+
+/** Y/M/D as observed in `timeZone`, plus that same calendar day expressed
+ * as a UTC-midnight instant — the latter makes "is this meal on the same
+ * day as today" and "is this meal in the current calendar week" plain
+ * integer/millisecond comparisons, with no per-offset arithmetic needed. */
+function localDateKey(date: Date, timeZone: string): { utcMidnight: number; weekday: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  const year = Number(get("year"));
+  const month = Number(get("month"));
+  const day = Number(get("day"));
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    utcMidnight: Date.UTC(year, month - 1, day),
+    weekday: weekdayMap[get("weekday") ?? "Sun"] ?? 0,
+  };
+}
+
+const emptySummary = (): MacroWindowSummary => ({ calories: 0, proteinG: 0, carbsG: 0, fatG: 0, mealCount: 0 });
+
+/** Sums a person's logged macros for "today" and "this calendar week"
+ * (Monday-start, matching src/packages's dashboard-core convention),
+ * evaluated in `timezone` rather than the server's own UTC clock — see
+ * PersonCard's own doc comment for why this exists (Food Balance Score
+ * selection-screen fallback). Both totals always come back present and
+ * zeroed rather than undefined, so callers never need to null-check. */
+export function computeMacroWindowSummaries(
+  meals: MealMacroRow[],
+  timezone: string,
+  now: Date = new Date()
+): { today: MacroWindowSummary; week: MacroWindowSummary } {
+  const nowKey = localDateKey(now, timezone);
+  const daysSinceMonday = nowKey.weekday === 0 ? 6 : nowKey.weekday - 1;
+  const weekStartUtcMidnight = nowKey.utcMidnight - daysSinceMonday * 86_400_000;
+
+  const today = emptySummary();
+  const week = emptySummary();
+
+  for (const m of meals) {
+    const mealKey = localDateKey(new Date(m.logged_at), timezone);
+    if (mealKey.utcMidnight < weekStartUtcMidnight || mealKey.utcMidnight > nowKey.utcMidnight) continue;
+
+    const calories = midpoint(m.total_calories_min, m.total_calories_max);
+    const proteinG = midpoint(m.total_protein_min, m.total_protein_max);
+    const carbsG = midpoint(m.total_carbs_min, m.total_carbs_max);
+    const fatG = midpoint(m.total_fat_min, m.total_fat_max);
+
+    week.calories += calories;
+    week.proteinG += proteinG;
+    week.carbsG += carbsG;
+    week.fatG += fatG;
+    week.mealCount++;
+
+    if (mealKey.utcMidnight === nowKey.utcMidnight) {
+      today.calories += calories;
+      today.proteinG += proteinG;
+      today.carbsG += carbsG;
+      today.fatG += fatG;
+      today.mealCount++;
+    }
+  }
+
+  return {
+    today: { ...today, calories: Math.round(today.calories), proteinG: Math.round(today.proteinG), carbsG: Math.round(today.carbsG), fatG: Math.round(today.fatG) },
+    week: { ...week, calories: Math.round(week.calories), proteinG: Math.round(week.proteinG), carbsG: Math.round(week.carbsG), fatG: Math.round(week.fatG) },
+  };
+}

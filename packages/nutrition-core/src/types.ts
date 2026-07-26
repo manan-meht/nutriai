@@ -68,6 +68,21 @@ export interface FoodBalanceProfileFields {
   macroTargetsCustomizedAt?: string;
 }
 
+/** Sum of a person's logged macros over a window — always computed from
+ * the midpoint of each meal's min/max range (same convention as
+ * src/lib/food-balance/adapter.ts's `midpoint`), so this is a single
+ * representative number rather than another min/max range. Used as the
+ * selection-screen fallback when there isn't enough data yet for a Food
+ * Balance Score (see PersonCard) — "not much information on this screen"
+ * otherwise. */
+export interface MacroWindowSummary {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  mealCount: number;
+}
+
 export interface AdultsContact extends FoodBalanceProfileFields {
   id: string;
   workspaceId: string;
@@ -91,6 +106,14 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   timezone: string;
   remindersEnabled: boolean;
   reminderTimes: string[];
+  /** Computed in the contact's own timezone (see computeMacroWindowSummaries
+   * in adults.ts) — both always present (zeroed if no meals in that
+   * window) whenever this is populated at all. Optional because only
+   * mapContactRow (shared by mobile-api and the main web app's
+   * getContacts/getRemovedContacts) computes it — the web app's own
+   * separate getContactDetails action doesn't need it (no PersonCard
+   * equivalent there) and doesn't populate it. */
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
 }
 
 export interface AdultsMealLog {
@@ -150,6 +173,11 @@ export interface GymClient extends FoodBalanceProfileFields {
   mealCount: number;
   lastMealAt?: string;
   trackedBiomarkers: string[];
+  /** See AdultsContact.macroSummary's identical doc (both the "optional"
+   * rationale and gym_clients having no timezone column, so this is
+   * computed against a fixed default — see computeMacroWindowSummaries's
+   * caller in gym.ts — rather than a per-client one). */
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
 }
 
 export interface MealLog {

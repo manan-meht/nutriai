@@ -100,6 +100,18 @@ export interface FoodBalanceProfileFields {
   targetWeightKg?: number;
 }
 
+// Mirrors packages/nutrition-core's MacroWindowSummary — sum of a
+// person's logged macros over a window, from the midpoint of each meal's
+// min/max range. Used as the family/coach picker screen's fallback when
+// there isn't enough data yet for a Food Balance Score (see PersonCard).
+export interface MacroWindowSummary {
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  mealCount: number;
+}
+
 export interface AdultsContact extends FoodBalanceProfileFields {
   id: string;
   workspaceId: string;
@@ -113,6 +125,7 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   heightCm?: number;
   mealCount: number;
   lastMealAt?: string;
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
   goals: Goal[];
   trackedBiomarkers: string[];
   /** WhatsApp meal reminders (migration 0016) — adults-only. */
@@ -170,6 +183,7 @@ export interface GymClient extends FoodBalanceProfileFields {
   bmi?: number;
   mealCount: number;
   lastMealAt?: string;
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
   goals: Goal[];
   trackedBiomarkers: string[];
   /** Set once a client has been removed (soft-deleted) — only present on

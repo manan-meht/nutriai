@@ -188,6 +188,7 @@ export default function GymClientListScreen() {
             subtitle={subtitleFor(item)}
             mealCount={item.mealCount}
             lastMealAt={item.lastMealAt}
+            macroSummary={item.macroSummary}
             scoreQuery={{ clientId: item.id }}
             onPress={() => router.push(`/gym/${item.id}`)}
             onLongPress={() => confirmRemove(item)}

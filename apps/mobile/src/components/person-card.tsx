@@ -6,6 +6,7 @@ import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { useTheme } from '@/hooks/use-theme';
+import type { MacroWindowSummary } from '@/lib/api';
 
 function formatLastMeal(lastMealAt?: string): string {
   if (!lastMealAt) return 'No meals logged yet';
@@ -32,6 +33,7 @@ export function PersonCard({
   subtitle,
   mealCount,
   lastMealAt,
+  macroSummary,
   scoreQuery,
   onPress,
   onLongPress,
@@ -41,6 +43,14 @@ export function PersonCard({
   subtitle?: string;
   mealCount: number;
   lastMealAt?: string;
+  /** Fallback shown in place of the "still learning" progress bar when
+   * there isn't yet enough data for a Food Balance Score — otherwise that
+   * state left the card with almost nothing on it (see this component's
+   * git history for the report that prompted this). Prefers today's
+   * totals when there's at least one meal logged today, falling back to
+   * this calendar week's otherwise. Undefined only for the "removed
+   * contacts" section, which doesn't bother fetching this. */
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
   scoreQuery: { contactId: string } | { clientId: string };
   onPress: () => void;
   /** Long-press to remove — see (app)/adults/index.tsx and
@@ -58,6 +68,12 @@ export function PersonCard({
   const isLearning = result && (result.status === 'collecting_data' || result.status === 'refreshing_data');
   const isScored = result && !isLearning;
   const topRecommendation = isScored ? result.recommendations[0]?.title : undefined;
+
+  const macroFallback = isLearning && macroSummary
+    ? macroSummary.today.mealCount > 0
+      ? { label: 'Today', ...macroSummary.today }
+      : { label: 'This week', ...macroSummary.week }
+    : null;
 
   return (
     <Pressable onPress={onPress} onLongPress={onLongPress} style={dimmed ? styles.dimmed : undefined}>
@@ -83,7 +99,33 @@ export function PersonCard({
           </ThemedText>
         </View>
 
-        {isLearning && (
+        {isLearning && macroFallback && (
+          <View style={styles.learning}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.label}>
+              {macroFallback.label}&apos;s totals
+            </ThemedText>
+            <View style={styles.macroRow}>
+              {[
+                { label: 'Cal', value: macroFallback.calories, unit: '' },
+                { label: 'Protein', value: macroFallback.proteinG, unit: 'g' },
+                { label: 'Carbs', value: macroFallback.carbsG, unit: 'g' },
+                { label: 'Fat', value: macroFallback.fatG, unit: 'g' },
+              ].map((m) => (
+                <View key={m.label} style={styles.macroPill}>
+                  <ThemedText type="smallBold">
+                    {m.value}
+                    {m.unit}
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {m.label}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {isLearning && !macroFallback && (
           <View style={styles.learning}>
             <View style={styles.learningHeader}>
               <ThemedText type="small" themeColor="textSecondary" style={styles.label}>
@@ -161,6 +203,8 @@ const styles = StyleSheet.create({
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3 },
   learningCaption: { marginTop: Spacing.one, fontStyle: 'italic' },
+  macroRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.one },
+  macroPill: { alignItems: 'center', gap: 2 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   scoreNumber: { fontSize: 32, lineHeight: 36 },
   scoreTextBlock: { gap: Spacing.half },

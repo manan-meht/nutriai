@@ -271,6 +271,7 @@ export default function AdultsContactListScreen() {
             subtitle={subtitleFor(item)}
             mealCount={item.mealCount}
             lastMealAt={item.lastMealAt}
+            macroSummary={item.macroSummary}
             scoreQuery={{ contactId: item.id }}
             onPress={() => router.push(`/adults/${item.id}`)}
             onLongPress={() => confirmRemove(item)}

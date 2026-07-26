@@ -1,9 +1,26 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
 import { resolveSignedMealPhotoUrls } from "./storage";
+import { computeMacroWindowSummaries } from "./macro-summary";
 import type { AdultsContact, AdultsContactDetails, AdultsMealLog } from "./types";
 
-function mapContactRow(c: any, mealsByContact: Record<string, { count: number; lastAt?: string }>): AdultsContact {
+interface ContactMealSummary {
+  count: number;
+  lastAt?: string;
+  mealRows: Array<{
+    logged_at: string;
+    total_calories_min: number | null;
+    total_calories_max: number | null;
+    total_protein_min: number | null;
+    total_protein_max: number | null;
+    total_carbs_min: number | null;
+    total_carbs_max: number | null;
+    total_fat_min: number | null;
+    total_fat_max: number | null;
+  }>;
+}
+
+function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary>): AdultsContact {
   return {
     id: c.id,
     workspaceId: c.workspace_id,
@@ -23,6 +40,7 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsByContact[c.id]?.count ?? 0,
     lastMealAt: mealsByContact[c.id]?.lastAt,
+    macroSummary: computeMacroWindowSummaries(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
     timezone: c.timezone ?? "Asia/Kolkata",
     remindersEnabled: c.reminders_enabled ?? false,
     reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
@@ -49,20 +67,23 @@ function mapContactRow(c: any, mealsByContact: Record<string, { count: number; l
   };
 }
 
-async function fetchMealsByContact(supabase: SupabaseClient, contactIds: string[]) {
+async function fetchMealsByContact(supabase: SupabaseClient, contactIds: string[]): Promise<Record<string, ContactMealSummary>> {
   const { data: meals } = await supabase
     .from("meal_logs")
-    .select("adults_contact_id, logged_at")
+    .select(
+      "adults_contact_id, logged_at, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max"
+    )
     .in("adults_contact_id", contactIds)
     .order("logged_at", { ascending: false });
 
-  const mealsByContact: Record<string, { count: number; lastAt?: string }> = {};
+  const mealsByContact: Record<string, ContactMealSummary> = {};
   for (const m of meals ?? []) {
     if (!m.adults_contact_id) continue;
     if (!mealsByContact[m.adults_contact_id]) {
-      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at };
+      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at, mealRows: [] };
     }
     mealsByContact[m.adults_contact_id].count++;
+    mealsByContact[m.adults_contact_id].mealRows.push(m);
   }
   return mealsByContact;
 }
@@ -138,8 +159,8 @@ export async function getContactDetails(
 
   if (!contactRes.data) return null;
   const c = contactRes.data;
-  const mealsByContact = {
-    [contactId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at },
+  const mealsByContact: Record<string, ContactMealSummary> = {
+    [contactId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at, mealRows: mealsRes.data ?? [] },
   };
   const contact = mapContactRow(c, mealsByContact);
 
