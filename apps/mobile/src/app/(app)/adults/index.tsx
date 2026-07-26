@@ -227,18 +227,18 @@ export default function AdultsContactListScreen() {
               </View>
             )}
             {state.requiresCardBeforeTrial ? (
-              <View style={styles.trialBanner}>
+              <ThemedView type="backgroundElement" style={styles.trialBanner}>
                 <ThemedText type="small">
                   Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can
                   cancel anytime before then.
                 </ThemedText>
-              </View>
+              </ThemedView>
             ) : state.entitlementStatus === 'trialing' && state.trialDaysRemaining !== null ? (
-              <View style={styles.trialBanner}>
+              <ThemedView type="backgroundElement" style={styles.trialBanner}>
                 <ThemedText type="small">
                   Free trial — {state.trialDaysRemaining} day{state.trialDaysRemaining === 1 ? '' : 's'} remaining.
                 </ThemedText>
-              </View>
+              </ThemedView>
             ) : null}
           </>
         }
@@ -337,7 +337,6 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
     padding: Spacing.three,
     borderRadius: Spacing.two,
-    backgroundColor: '#F1EBFF',
   },
   headline: { fontSize: 24, lineHeight: 30, marginVertical: Spacing.one },
   hint: { marginTop: Spacing.one, fontStyle: 'italic' },
