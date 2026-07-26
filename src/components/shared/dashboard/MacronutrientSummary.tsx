@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -99,6 +100,9 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
   const [selected, setSelected] = useState<MacroKey>("protein");
   const chartDays = Math.min(Math.max(days, 1), 30);
   const dayData = buildDayData(meals, chartDays);
+  // The mini bar charts have no x-axis, so without this someone can easily
+  // mistake the bars for "today" or forget what window they're looking at.
+  const rangeLabel = chartDays === 1 ? "Today" : `Last ${chartDays} days`;
 
   const averages = Object.fromEntries(
     ALL_KEYS.map((key) => [key, averagePerDay(meals, key)])
@@ -112,12 +116,18 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
           reads as the headline number rather than one more equal-weight
           macro. */}
       <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Total calories</p>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Total calories</p>
+          <p className="text-xs text-gray-400">{rangeLabel}</p>
+        </div>
         <MacroCard macroKey="calories" average={averages.calories} target={targets?.calories} data={dayData} />
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 p-4">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Macronutrient summary</p>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Macronutrient summary</p>
+          <p className="text-xs text-gray-400">{rangeLabel}</p>
+        </div>
 
       {/* Desktop / tablet: two cards per row (rather than cramming all four
           into one row) so each mini chart has enough width to stay legible
@@ -188,7 +198,17 @@ function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; av
                 axis, but its domain still has to include the target. */}
             <YAxis hide domain={[0, (dataMax: number) => Math.max(dataMax, target ?? 0) * 1.15]} />
             {target && <ReferenceLine y={target} stroke={meta.color} strokeDasharray="4 3" strokeWidth={1.5} />}
-            <Bar dataKey={macroKey} fill={meta.color} radius={[3, 3, 0, 0]} maxBarSize={14} />
+            {/* minPointSize keeps every day's column visible (a faint nub)
+                even at value 0, so a week with only 1-2 logged days doesn't
+                look like the other 5-6 days don't exist — the underlying
+                value/tooltip is untouched, only the rendered bar height.
+                The zero-value nubs are then dimmed via Cell so they read as
+                "no data" rather than "a tiny amount was logged". */}
+            <Bar dataKey={macroKey} radius={[3, 3, 0, 0]} maxBarSize={14} minPointSize={3}>
+              {data.map((d, i) => (
+                <Cell key={i} fill={meta.color} fillOpacity={(d[macroKey] as number) > 0 ? 1 : 0.25} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -253,7 +273,11 @@ function MacroDetailChart({ macroKey, data, target }: { macroKey: MacroKey; data
         }}
       />
       {target && <ReferenceLine y={target} stroke={meta.color} strokeDasharray="4 3" strokeWidth={1.5} />}
-      <Bar dataKey={macroKey} fill={meta.color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+      <Bar dataKey={macroKey} radius={[4, 4, 0, 0]} maxBarSize={28} minPointSize={3}>
+        {data.map((d, i) => (
+          <Cell key={i} fill={meta.color} fillOpacity={(d[macroKey] as number) > 0 ? 1 : 0.25} />
+        ))}
+      </Bar>
     </BarChart>
   );
 

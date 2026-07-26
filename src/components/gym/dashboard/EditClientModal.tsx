@@ -178,7 +178,7 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
   );
 }
 
-const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm";
+const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm placeholder:text-gray-300";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

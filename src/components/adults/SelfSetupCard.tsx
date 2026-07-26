@@ -14,7 +14,7 @@ interface Props {
 
 const POLL_INTERVAL_MS = 5000;
 
-const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
+const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
 
 // Shown right after self-tracking signup (see /me and the ?self=1 redirect
 // param) or whenever the caregiver clicks "Add your details" before their

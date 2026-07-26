@@ -45,7 +45,7 @@ interface NutritionGoalFieldsProps {
   personDisplay?: PersonDisplay;
 }
 
-const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
+const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
 
 /** A single-select list of answer cards — shared layout for all three new
  * behavioural questions below, so they read/tap consistently. "Not sure"

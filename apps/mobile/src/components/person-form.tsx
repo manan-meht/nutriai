@@ -116,15 +116,28 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
     }
   }
 
+  // "About them" is wrong once "Myself" is selected — matches the person
+  // this section is actually about, same personalization pattern as
+  // NutritionGoalFields' personDisplay.
+  const isSelfRelationship = product === 'adults' && relationship === 'self';
+  const aboutSectionTitle =
+    product === 'gym'
+      ? 'Client details'
+      : isSelfRelationship
+        ? 'About you'
+        : fullName.trim()
+          ? `About ${fullName.trim().split(' ')[0]}`
+          : 'About them';
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={[styles.sectionTitle, { color: PRIMARY }]}>{product === 'adults' ? 'About them' : 'Client details'}</Text>
+      <Text style={[styles.sectionTitle, { color: PRIMARY }]}>{aboutSectionTitle}</Text>
       <Field label="Full name" color={theme.textSecondary}>
         <TextInput
           value={fullName}
           onChangeText={setFullName}
           placeholder="Full name"
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.placeholder}
           style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
         />
       </Field>
@@ -165,7 +178,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               value={whatsapp}
               onChangeText={(t) => setWhatsapp(t.replace(/\D/g, ''))}
               placeholder="98765 43210"
-              placeholderTextColor={theme.textSecondary}
+              placeholderTextColor={theme.placeholder}
               keyboardType="phone-pad"
               style={[styles.input, { flex: 1, color: theme.text, borderColor: theme.backgroundSelected }]}
             />
@@ -180,7 +193,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               value={age}
               onChangeText={setAge}
               placeholder="35"
-              placeholderTextColor={theme.textSecondary}
+              placeholderTextColor={theme.placeholder}
               keyboardType="numeric"
               style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
             />
@@ -210,7 +223,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               value={weightKg}
               onChangeText={setWeightKg}
               placeholder="70"
-              placeholderTextColor={theme.textSecondary}
+              placeholderTextColor={theme.placeholder}
               keyboardType="numeric"
               style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
             />
@@ -222,7 +235,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               value={heightCm}
               onChangeText={setHeightCm}
               placeholder="170"
-              placeholderTextColor={theme.textSecondary}
+              placeholderTextColor={theme.placeholder}
               keyboardType="numeric"
               style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
             />
@@ -262,7 +275,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
                         setReminderTimes(next);
                       }}
                       placeholder="HH:MM"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.placeholder}
                       style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
                     />
                   </Field>

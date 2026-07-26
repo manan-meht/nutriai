@@ -242,7 +242,7 @@ function Field({ label, required, hint, children }: {
   );
 }
 
-const input = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition";
+const input = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition";
 
 function WhatsAppIcon() {
   return (

@@ -141,7 +141,9 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, ti
       <form onSubmit={handleSubmit} className="flex flex-col gap-7">
 
         <section>
-          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">About them</h3>
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-4">
+            {relationship === "self" ? "About you" : fullName.trim() ? `About ${fullName.trim().split(" ")[0]}` : "About them"}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <Field label="Full name" required>
@@ -302,7 +304,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
+const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
 
 function WhatsAppIcon() {
   return (

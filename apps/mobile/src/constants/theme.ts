@@ -14,6 +14,11 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Deliberately lighter than textSecondary — a placeholder hint (e.g.
+    // "35" in an empty Age field) previously reused textSecondary and
+    // read as dark/legible enough to be mistaken for a real saved value,
+    // making an empty required field look already filled in.
+    placeholder: '#B3B6BC',
     // Brand purple — #5715CE reads fine on light backgrounds but fails
     // contrast against backgroundElement/background in dark mode, so this
     // is the one token that actually differs by scheme rather than
@@ -26,6 +31,10 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    // Deliberately dimmer than textSecondary (lower contrast against the
+    // dark background) for the same reason as light.placeholder above —
+    // textSecondary is bright enough in dark mode to read as real content.
+    placeholder: '#5B5E64',
     primary: '#B794F6',
   },
 } as const;
