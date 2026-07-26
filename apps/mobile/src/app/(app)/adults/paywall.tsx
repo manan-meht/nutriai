@@ -22,6 +22,26 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready'; offering: PurchasesOffering | null };
 
+/** Play Console's per-product title (pkg.product.title) is the same for
+ * every base plan under one product — e.g. both the monthly and annual
+ * base plans of "adults_family_premium" show as "Tistra Health — Family
+ * (Tistra Health)" with no way to tell them apart, since that title lives
+ * on the product, not the base plan. RevenueCat's own packageType (derived
+ * from the package identifier, $rc_monthly/$rc_annual for these offerings)
+ * is what actually distinguishes them, so labels are built from that
+ * instead of trusting the store's product title. */
+function packageLabel(pkg: PurchasesPackage): string {
+  if (pkg.packageType === 'MONTHLY') return 'Monthly';
+  if (pkg.packageType === 'ANNUAL') return 'Annual';
+  return pkg.product.title;
+}
+
+function packagePeriodSuffix(pkg: PurchasesPackage): string {
+  if (pkg.packageType === 'MONTHLY') return '/month';
+  if (pkg.packageType === 'ANNUAL') return '/year';
+  return '';
+}
+
 /** Self/Family paywall — shown by adults/index.tsx in place of the contact
  * list once the workspace's entitlement is read-only (trial/subscription
  * lapsed). Purchases go straight through Play Billing/StoreKit via
@@ -68,7 +88,17 @@ export default function AdultsPaywallScreen() {
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const { entitlement } = await api.getAdultsWorkspace();
-        if (!entitlement.isReadOnly) break;
+        // For a brand-new ("not_started") workspace, isReadOnly was ALREADY
+        // false before this purchase (see mobile-api's lib/entitlements.ts
+        // — isReadOnly only covers expired/cancelled, not not_started), so
+        // checking isReadOnly alone here broke immediately on the very
+        // first attempt regardless of whether the RevenueCat webhook had
+        // actually landed yet. That sent people back to adults/index.tsx
+        // before requiresCardBeforeTrial had flipped to false, which then
+        // immediately routed them right back here — the reported
+        // "subscribe → add family member → back to paywall" loop. Waiting
+        // on requiresCardBeforeTrial too closes that gap.
+        if (!entitlement.isReadOnly && !entitlement.requiresCardBeforeTrial) break;
       } catch {
         // keep retrying — a transient network error here shouldn't strand
         // the user on the paywall after a successful purchase.
@@ -158,9 +188,10 @@ export default function AdultsPaywallScreen() {
             disabled={purchasingId !== null}
             onPress={() => handlePurchase(pkg)}
           >
-            <ThemedText type="smallBold">{pkg.product.title}</ThemedText>
+            <ThemedText type="smallBold">{packageLabel(pkg)}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {pkg.product.priceString}
+              {packagePeriodSuffix(pkg)}
             </ThemedText>
             {purchasingId === pkg.identifier && <ActivityIndicator style={styles.packageSpinner} />}
           </Pressable>

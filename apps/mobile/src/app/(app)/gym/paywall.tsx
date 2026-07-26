@@ -19,6 +19,21 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'ready'; offering: PurchasesOffering | null };
 
+// See adults/paywall.tsx's identical packageLabel/packagePeriodSuffix for
+// the full rationale — Play Console's product title doesn't distinguish
+// monthly from annual base plans under the same product.
+function packageLabel(pkg: PurchasesPackage): string {
+  if (pkg.packageType === 'MONTHLY') return 'Monthly';
+  if (pkg.packageType === 'ANNUAL') return 'Annual';
+  return pkg.product.title;
+}
+
+function packagePeriodSuffix(pkg: PurchasesPackage): string {
+  if (pkg.packageType === 'MONTHLY') return '/month';
+  if (pkg.packageType === 'ANNUAL') return '/year';
+  return '';
+}
+
 /** Coach paywall — shown by gym/index.tsx in place of the client list once
  * the workspace's entitlement is read-only (trial/subscription lapsed).
  * A near-exact mirror of adults/paywall.tsx; kept as a separate file
@@ -139,9 +154,10 @@ export default function GymPaywallScreen() {
             disabled={purchasingId !== null}
             onPress={() => handlePurchase(pkg)}
           >
-            <ThemedText type="smallBold">{pkg.product.title}</ThemedText>
+            <ThemedText type="smallBold">{packageLabel(pkg)}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {pkg.product.priceString}
+              {packagePeriodSuffix(pkg)}
             </ThemedText>
             {purchasingId === pkg.identifier && <ActivityIndicator style={styles.packageSpinner} />}
           </Pressable>
