@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable } from 'react-native';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { PersonDetail } from '@/components/person-detail';
 import { ThemedText } from '@/components/themed-text';
@@ -26,9 +26,16 @@ export default function AdultsContactDetailScreen() {
       );
   }, [contactId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // useFocusEffect (covers the initial mount and every subsequent focus)
+  // rather than a mount-only useEffect — returning here after editing the
+  // contact (e.g. adding gender) previously showed stale data forever,
+  // since this screen instance stays mounted underneath Edit and a plain
+  // useEffect only ever ran once.
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable } from 'react-native';
-import { Stack, router, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
 import { PersonDetail } from '@/components/person-detail';
 import { ThemedText } from '@/components/themed-text';
@@ -23,9 +23,14 @@ export default function GymClientDetailScreen() {
       );
   }, [clientId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // useFocusEffect (covers the initial mount and every subsequent focus)
+  // rather than a mount-only useEffect — see adults/[contactId].tsx's
+  // identical fix for the full rationale (stale data after editing).
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={load} />;
