@@ -4,6 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
 import { computeReviewPriority, type ReviewPriority } from "@/lib/admin/review-priority";
 import { computeModelQualityMetrics, type ReviewedMealForMetrics, type ModelQualityMetrics } from "@/lib/admin/model-quality";
+import { resolveSignedMealPhotoUrl, resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
 
 // -----------------------------------------------------------------------
 // Anonymized user IDs — derived deterministically from the UUID so the
@@ -75,7 +76,14 @@ export async function getReviewQueue(filters: QueueFilters): Promise<{ items: Qu
   const { data, error } = await query;
   if (error) return { error: error.message };
 
-  let items: QueueItem[] = (data ?? []).map((row: any) => {
+  // meal-photos is a private bucket (see
+  // supabase/migrations/0040_private_meal_photos.sql) — resolve every
+  // row's stored path/legacy-URL to a short-lived signed URL in one batch
+  // rather than exposing the raw storage path.
+  const rows = data ?? [];
+  const signedImageUrls = await resolveSignedMealPhotoUrls(db, rows.map((row: any) => row.image_url));
+
+  let items: QueueItem[] = rows.map((row: any, i: number) => {
     const classification = pickLatestClassification(row.ai_meal_classifications);
     const detectedItems: string[] = (classification?.detected_items_json ?? []).map((f: any) => (typeof f === "string" ? f : f.name));
     const priority = computeReviewPriority({
@@ -88,7 +96,7 @@ export async function getReviewQueue(filters: QueueFilters): Promise<{ items: Qu
     });
     return {
       id: row.id,
-      imageUrl: row.image_url,
+      imageUrl: signedImageUrls[i] ?? null,
       submittedAt: row.submitted_at,
       mealType: row.meal_type,
       source: row.source,
@@ -218,10 +226,16 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
     .gte("submitted_at", dayStart.toISOString())
     .lt("submitted_at", dayEnd.toISOString());
 
+  // meal-photos is a private bucket (see
+  // supabase/migrations/0040_private_meal_photos.sql) — see getReviewQueue's
+  // identical resolution for the full rationale.
+  const sameDayImageUrls = await resolveSignedMealPhotoUrls(db, (sameDayRows ?? []).map((r: any) => r.image_url));
+  const submissionImageUrl = await resolveSignedMealPhotoUrl(db, row.image_url);
+
   return {
     submission: {
       id: row.id,
-      imageUrl: row.image_url,
+      imageUrl: submissionImageUrl ?? null,
       caption: row.caption,
       submittedAt: row.submitted_at,
       mealType: row.meal_type,
@@ -284,9 +298,9 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           foods: mealLogRow.foods ?? [],
         }
       : null,
-    sameDaySubmissions: (sameDayRows ?? []).map((r: any) => ({
+    sameDaySubmissions: (sameDayRows ?? []).map((r: any, i: number) => ({
       id: r.id,
-      imageUrl: r.image_url,
+      imageUrl: sameDayImageUrls[i] ?? null,
       mealType: r.meal_type,
       submittedAt: r.submitted_at,
     })),

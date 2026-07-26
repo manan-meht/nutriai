@@ -24,6 +24,7 @@ import {
   getOrCreateWorkspace as getOrCreateWorkspaceCore,
 } from "@nutriai/nutrition-core";
 import type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutriai/nutrition-core";
+import { resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
 // GymClient/GymClientGoal/BiomarkerLog/WorkoutLog come from
 // @nutriai/nutrition-core, shared with apps/mobile-api (see
 // packages/nutrition-core and that app's README) — re-exported here so
@@ -193,9 +194,15 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
   };
 
   const rawMeals = mealsRes.data ?? [];
-  const corrections = await fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id));
+  const [corrections, signedImageUrls] = await Promise.all([
+    fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id)),
+    // meal-photos is a private bucket (see
+    // supabase/migrations/0040_private_meal_photos.sql) — see the adults
+    // dashboard's identical resolution for the full rationale.
+    resolveSignedMealPhotoUrls(createServiceClient(), rawMeals.map((m: any) => m.image_url)),
+  ]);
 
-  const meals: MealLog[] = rawMeals.map((m: any) => ({
+  const meals: MealLog[] = rawMeals.map((m: any, i: number) => ({
     id: m.id,
     clientId: m.client_id,
     mealType: m.meal_type,
@@ -212,7 +219,7 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
-    imageUrl: m.image_url ?? undefined,
+    imageUrl: signedImageUrls[i],
     humanCorrection: corrections[m.id],
   }));
 

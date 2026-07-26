@@ -24,6 +24,7 @@ import {
   getContacts as getContactsCore,
   getRemovedContacts as getRemovedContactsCore,
   getOrCreateWorkspace,
+  resolveSignedMealPhotoUrls,
 } from "@nutriai/nutrition-core";
 import type { AdultsContact, AdultsGoal } from "@nutriai/nutrition-core";
 // AdultsContact/AdultsGoal come from @nutriai/nutrition-core, shared with
@@ -191,9 +192,17 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
   };
 
   const rawMeals = mealsRes.data ?? [];
-  const corrections = await fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id));
+  const [corrections, signedImageUrls] = await Promise.all([
+    fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id)),
+    // meal-photos is a private bucket (see
+    // supabase/migrations/0040_private_meal_photos.sql) — resolve each
+    // stored path/legacy-URL to a short-lived signed URL server-side with
+    // the service-role client, rather than exposing the raw storage path
+    // or relying on public bucket access.
+    resolveSignedMealPhotoUrls(createServiceClient(), rawMeals.map((m: any) => m.image_url)),
+  ]);
 
-  const meals: AdultsMealLog[] = rawMeals.map((m: any) => ({
+  const meals: AdultsMealLog[] = rawMeals.map((m: any, i: number) => ({
     id: m.id,
     contactId: m.adults_contact_id,
     mealType: m.meal_type,
@@ -210,7 +219,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
-    imageUrl: m.image_url ?? undefined,
+    imageUrl: signedImageUrls[i],
     humanCorrection: corrections[m.id],
   }));
 

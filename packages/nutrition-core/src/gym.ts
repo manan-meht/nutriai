@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
+import { resolveSignedMealPhotoUrls } from "./storage";
 import type { BiomarkerLog, ClientDetails, GymClient, MealLog, WorkoutLog } from "./types";
 
 function mapClientRow(c: any, mealsByClient: Record<string, { count: number; lastAt?: string }>): GymClient {
@@ -143,9 +144,14 @@ export async function getClientDetails(
   const client = mapClientRow(c, mealsByClient);
 
   const rawMeals = mealsRes.data ?? [];
-  const corrections = await fetchHumanCorrectionsByMealLogId(admin, rawMeals.map((m: any) => m.id));
+  const [corrections, signedImageUrls] = await Promise.all([
+    fetchHumanCorrectionsByMealLogId(admin, rawMeals.map((m: any) => m.id)),
+    // meal-photos is a private bucket (see 0040_private_meal_photos.sql) —
+    // see adults.ts's identical resolution for the full rationale.
+    resolveSignedMealPhotoUrls(admin, rawMeals.map((m: any) => m.image_url)),
+  ]);
 
-  const meals: MealLog[] = rawMeals.map((m: any) => ({
+  const meals: MealLog[] = rawMeals.map((m: any, i: number) => ({
     id: m.id,
     clientId: m.client_id,
     mealType: m.meal_type,
@@ -162,7 +168,7 @@ export async function getClientDetails(
     totalFiberMin: m.total_fiber_min ?? 0,
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
-    imageUrl: m.image_url ?? undefined,
+    imageUrl: signedImageUrls[i],
     humanCorrection: corrections[m.id],
   }));
 

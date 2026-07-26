@@ -4,3 +4,4 @@ export * from "./workspaces";
 export * from "./adults";
 export * from "./gym";
 export * from "./entitlements";
+export * from "./storage";

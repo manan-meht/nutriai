@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { stripImageMetadata } from "@/lib/images/strip-metadata";
 import { sendTextMessage, normalizePhone } from "./client";
 import {
   analyzeFood,
@@ -105,8 +106,11 @@ function extensionForMimeType(mimeType?: string): string {
 }
 
 /** Uploads the WhatsApp meal photo to Supabase Storage and returns its
- * public URL, so it can be attached to the pending meal (and later the
- * saved meal_logs row) for display in the caregiver/self dashboards.
+ * storage path (NOT a public URL — the meal-photos bucket is private, see
+ * supabase/migrations/0040_private_meal_photos.sql), so it can be attached
+ * to the pending meal (and later the saved meal_logs row); dashboards
+ * resolve this to a short-lived signed URL at read time (see
+ * packages/nutrition-core/src/storage.ts's resolveSignedMealPhotoUrl).
  * Best-effort: a failed upload should never block meal logging. */
 async function uploadMealPhoto(
   db: ReturnType<typeof admin>,
@@ -116,7 +120,11 @@ async function uploadMealPhoto(
 ): Promise<string | undefined> {
   try {
     const path = `${entityId}/${Date.now()}.${extensionForMimeType(mimeType)}`;
-    const { error } = await db.storage.from(MEAL_PHOTOS_BUCKET).upload(path, buffer, {
+    // WhatsApp-forwarded (as opposed to camera-captured) photos can carry
+    // embedded GPS/device EXIF data — strip it before it's ever persisted.
+    // See docs/FOOD_MODEL_IMPROVEMENT_AUDIT.md section F, gap #1.
+    const stripped = stripImageMetadata(buffer, mimeType);
+    const { error } = await db.storage.from(MEAL_PHOTOS_BUCKET).upload(path, stripped, {
       contentType: mimeType ?? "image/jpeg",
       upsert: false,
     });
@@ -124,8 +132,7 @@ async function uploadMealPhoto(
       console.error("[whatsapp] meal photo upload failed:", error.message);
       return undefined;
     }
-    const { data } = db.storage.from(MEAL_PHOTOS_BUCKET).getPublicUrl(path);
-    return data.publicUrl;
+    return path;
   } catch (err) {
     console.error("[whatsapp] meal photo upload threw:", err instanceof Error ? err.message : err);
     return undefined;

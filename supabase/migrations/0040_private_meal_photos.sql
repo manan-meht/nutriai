@@ -1,0 +1,16 @@
+-- Meal photos were stored in a public bucket (see 0012_meal_photos.sql),
+-- meaning anyone who obtained an image URL (leaked link, log line, browser
+-- history) could view it with no auth check. See
+-- docs/FOOD_MODEL_IMPROVEMENT_AUDIT.md section F, gap #2.
+--
+-- Access is now via short-lived signed URLs generated server-side at read
+-- time (see packages/nutrition-core/src/storage.ts's
+-- resolveSignedMealPhotoUrl) using the service-role client, which bypasses
+-- RLS/public-flag entirely — so no new storage.objects policies are needed
+-- here, only this flag flip. Historical meal_logs.image_url/
+-- meal_submissions.image_url values already stored as full public URLs
+-- keep working: the signed-URL helper detects and extracts the storage
+-- path from either a legacy full URL or a bare path (new uploads store
+-- just the bare path going forward — see conversation-handler.ts's
+-- uploadMealPhoto).
+update storage.buckets set public = false where id = 'meal-photos';
