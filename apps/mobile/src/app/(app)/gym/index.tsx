@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
@@ -65,9 +65,14 @@ export default function GymClientListScreen() {
       );
   }, []);
 
-  useEffect(() => {
-    load(true);
-  }, [load]);
+  // useFocusEffect rather than a mount-only useEffect — see
+  // adults/index.tsx's identical fix for the full rationale (stale list
+  // after adding a client and coming back).
+  useFocusEffect(
+    useCallback(() => {
+      load(false);
+    }, [load])
+  );
 
   async function onRefresh() {
     setRefreshing(true);

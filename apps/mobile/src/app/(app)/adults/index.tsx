@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
@@ -104,9 +104,20 @@ export default function AdultsContactListScreen() {
       );
   }, [selfParam]);
 
-  useEffect(() => {
-    load(true);
-  }, [load]);
+  // useFocusEffect rather than a mount-only useEffect — this screen stays
+  // mounted underneath add.tsx/the invite screen, so a plain useEffect
+  // never re-ran after adding a family member and coming back (stale list
+  // until a full app restart — same class of bug as
+  // adults/[contactId].tsx's identical fix). load(false) rather than
+  // load(true) here: on first mount `state` already starts as 'loading'
+  // (see useState above) so the spinner still shows correctly, but on
+  // every later focus this refreshes silently in the background instead
+  // of flashing a full-screen spinner over an already-visible list.
+  useFocusEffect(
+    useCallback(() => {
+      load(false);
+    }, [load])
+  );
 
   async function onRefresh() {
     setRefreshing(true);
