@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { stripImageMetadata } from "@/lib/images/strip-metadata";
-import { sendTextMessage, normalizePhone } from "./client";
+import { sendTextMessage, normalizePhone, withRetry } from "./client";
 import {
   analyzeFood,
   answerNutritionQuestion,
@@ -118,23 +118,34 @@ async function uploadMealPhoto(
   buffer: Uint8Array,
   mimeType?: string
 ): Promise<string | undefined> {
+  const path = `${entityId}/${Date.now()}.${extensionForMimeType(mimeType)}`;
+  // WhatsApp-forwarded (as opposed to camera-captured) photos can carry
+  // embedded GPS/device EXIF data — strip it before it's ever persisted.
+  // See docs/FOOD_MODEL_IMPROVEMENT_AUDIT.md section F, gap #1.
+  const stripped = stripImageMetadata(buffer, mimeType);
+
   try {
-    const path = `${entityId}/${Date.now()}.${extensionForMimeType(mimeType)}`;
-    // WhatsApp-forwarded (as opposed to camera-captured) photos can carry
-    // embedded GPS/device EXIF data — strip it before it's ever persisted.
-    // See docs/FOOD_MODEL_IMPROVEMENT_AUDIT.md section F, gap #1.
-    const stripped = stripImageMetadata(buffer, mimeType);
-    const { error } = await db.storage.from(MEAL_PHOTOS_BUCKET).upload(path, stripped, {
-      contentType: mimeType ?? "image/jpeg",
-      upsert: false,
+    // Retries the storage upload itself up to 3 times (short backoff) — a
+    // transient Supabase Storage blip previously meant a meal got logged
+    // with no photo at all, permanently, since this is a best-effort path
+    // that never blocks the meal save (see this function's own doc
+    // comment). Retrying immediately, in the same request, costs at most
+    // ~2 seconds and meaningfully cuts down on that.
+    await withRetry(async () => {
+      const { error } = await db.storage.from(MEAL_PHOTOS_BUCKET).upload(path, stripped, {
+        contentType: mimeType ?? "image/jpeg",
+        upsert: false,
+      });
+      // "already exists" means a prior attempt actually succeeded server-side
+      // even though its response was lost (the retry trigger) — same path,
+      // same content, so this is a success, not a real failure.
+      if (error && !error.message?.toLowerCase().includes("already exists")) {
+        throw new Error(error.message);
+      }
     });
-    if (error) {
-      console.error("[whatsapp] meal photo upload failed:", error.message);
-      return undefined;
-    }
     return path;
   } catch (err) {
-    console.error("[whatsapp] meal photo upload threw:", err instanceof Error ? err.message : err);
+    console.error("[whatsapp] meal photo upload failed after retries:", err instanceof Error ? err.message : err);
     return undefined;
   }
 }
