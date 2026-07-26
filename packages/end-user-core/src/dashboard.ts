@@ -66,6 +66,10 @@ export interface EndUserProfile {
   metabolicEquationSex?: "male" | "female";
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
+  dailyMovementLevel?: "mostly_seated" | "mixed_light_movement" | "moving_several_hours" | "physically_demanding" | "not_sure";
+  weeklyModerateActivity?: "under_30" | "30_to_89" | "90_to_149" | "150_to_299" | "300_plus" | "not_sure";
+  strengthExerciseFrequency?: "zero_days" | "less_than_weekly" | "one_day" | "two_days" | "three_plus_days" | "not_sure";
+  derivedActivityLevel?: "not_active" | "lightly_active" | "moderately_active" | "very_active";
   primaryNutritionGoal?:
     | "reduce_weight"
     | "reduce_body_fat"
@@ -103,9 +107,9 @@ export interface EndUserDashboardData {
 }
 
 const ADULTS_PROFILE_COLUMNS =
-  "id, full_name, whatsapp_number, relationship, relationship_type, timezone, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, target_weight_kg, tracked_biomarkers, invite_accepted_at";
+  "id, full_name, whatsapp_number, relationship, relationship_type, timezone, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, target_weight_kg, tracked_biomarkers, invite_accepted_at";
 const GYM_PROFILE_COLUMNS =
-  "id, full_name, whatsapp_number, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, target_weight_kg, tracked_biomarkers";
+  "id, full_name, whatsapp_number, weight_kg, height_cm, age, gender, primary_nutrition_goal, date_of_birth, metabolic_equation_sex, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, target_weight_kg, tracked_biomarkers";
 
 /** Fetches the full profile + meal history for a tracked contact, keyed by
  * the contact's own id (not the caregiver/coach's) — same fetch shape as
@@ -175,6 +179,10 @@ export async function getEndUserDashboardData(
     metabolicEquationSex: row?.metabolic_equation_sex,
     activityLevel: row?.activity_level,
     resistanceTrainingStatus: row?.resistance_training_status,
+    dailyMovementLevel: row?.daily_movement_level,
+    weeklyModerateActivity: row?.weekly_moderate_activity,
+    strengthExerciseFrequency: row?.strength_exercise_frequency,
+    derivedActivityLevel: row?.derived_activity_level,
     primaryNutritionGoal: row?.primary_nutrition_goal,
     targetWeightKg: row?.target_weight_kg,
   };

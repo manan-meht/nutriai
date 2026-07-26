@@ -8,6 +8,8 @@ import {
   type DiversityFoodGroup,
   type MacroTargets,
   type MacroTargetValue,
+  type DerivedActivityLevel,
+  mapDerivedToLegacyActivityLevel,
 } from "@nutriai/health-scoring";
 import type { AdultsMealLog, MealLog, FoodBalanceProfileFields } from "@nutriai/nutrition-core";
 
@@ -128,8 +130,13 @@ export interface RawFoodBalanceProfileRow {
   weight_kg?: number | null;
   height_cm?: number | null;
   gender?: string | null;
+  /** Legacy — used only when derived_activity_level is null (a row that
+   * predates the behavioural questions and hasn't been migrated/re-answered
+   * yet). See supabase/migrations/0041_activity_profile_behavioural_questions.sql. */
   activity_level?: string | null;
   resistance_training_status?: string | null;
+  derived_activity_level?: string | null;
+  strength_exercise_frequency?: string | null;
   preferred_units?: string | null;
   nutrition_goals?: string[] | null;
   target_weight_kg?: number | null;
@@ -197,9 +204,17 @@ export function mapRowToFoodBalanceProfile(row: RawFoodBalanceProfileRow): FoodB
     heightCm: row.height_cm ?? undefined,
     currentWeightKg: row.weight_kg ?? undefined,
     metabolicEquationSex: metabolicSexFromGender(row.gender),
-    activityLevel: (row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined,
+    // Prefers the new derived category (from the behavioural daily-movement/
+    // weekly-activity answers, renamed via mapDerivedToLegacyActivityLevel
+    // into this package's pre-existing ActivityLevel literal) over the
+    // legacy direct pick — falls back to the legacy value for any row not
+    // yet migrated/re-answered.
+    activityLevel: row.derived_activity_level
+      ? mapDerivedToLegacyActivityLevel(row.derived_activity_level as DerivedActivityLevel)
+      : ((row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined),
     targetWeightKg: row.target_weight_kg ?? undefined,
     resistanceTraining: (row.resistance_training_status as FoodBalanceUserProfile["resistanceTraining"]) ?? undefined,
+    strengthExerciseFrequency: (row.strength_exercise_frequency as FoodBalanceUserProfile["strengthExerciseFrequency"]) ?? undefined,
     preferredUnits: (row.preferred_units as FoodBalanceUserProfile["preferredUnits"]) ?? undefined,
   };
 }

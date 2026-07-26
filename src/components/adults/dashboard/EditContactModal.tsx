@@ -75,8 +75,9 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>({
     nutritionGoals: contact.nutritionGoals ?? [],
-    activityLevel: contact.activityLevel ?? "unknown",
-    resistanceTrainingStatus: contact.resistanceTrainingStatus ?? "unknown",
+    dailyMovementLevel: contact.dailyMovementLevel ?? "not_sure",
+    weeklyModerateActivity: contact.weeklyModerateActivity ?? "not_sure",
+    strengthExerciseFrequency: contact.strengthExerciseFrequency ?? "not_sure",
     targetWeightKg: contact.targetWeightKg?.toString() ?? "",
   });
 
@@ -100,8 +101,9 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           remindersEnabled,
           reminderTimes,
           nutritionGoals: goalFields.nutritionGoals,
-          activityLevel: goalFields.activityLevel || undefined,
-          resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+          dailyMovementLevel: goalFields.dailyMovementLevel || undefined,
+          weeklyModerateActivity: goalFields.weeklyModerateActivity || undefined,
+          strengthExerciseFrequency: goalFields.strengthExerciseFrequency || undefined,
           targetWeightKg: goalFields.targetWeightKg ? Number(goalFields.targetWeightKg) : undefined,
         }),
       });
@@ -203,7 +205,11 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           </div>
 
           <div className="pt-2 border-t border-gray-100">
-            <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+            <NutritionGoalFields
+              value={goalFields}
+              onChange={setGoalFields}
+              personDisplay={relationship === "self" ? { type: "self" } : fullName.trim() ? { type: "name", name: fullName.trim().split(" ")[0] } : { type: "they" }}
+            />
           </div>
 
           <div className="pt-2 border-t border-gray-100">

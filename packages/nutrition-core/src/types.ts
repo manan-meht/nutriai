@@ -39,8 +39,33 @@ export interface AdultsGoal {
 export interface FoodBalanceProfileFields {
   dateOfBirth?: string;
   metabolicEquationSex?: "male" | "female";
+  /** Legacy subjective activity-level answer — kept for audit/back-compat
+   * only. New code should read derivedActivityLevel (computed from
+   * dailyMovementLevel/weeklyModerateActivity via
+   * @nutriai/health-scoring's deriveActivityLevel) instead. */
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
+  /** Legacy "resistance training" answer — kept for audit/back-compat
+   * only. New code should read strengthExerciseFrequency instead. */
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
+  /** "What does a typical day look like?" — see
+   * @nutriai/health-scoring's DailyMovementLevel for the full doc. */
+  dailyMovementLevel?: "mostly_seated" | "mixed_light_movement" | "moving_several_hours" | "physically_demanding" | "not_sure";
+  /** "In a typical week, how much activity makes you breathe faster?" —
+   * see @nutriai/health-scoring's WeeklyModerateActivity. */
+  weeklyModerateActivity?: "under_30" | "30_to_89" | "90_to_149" | "150_to_299" | "300_plus" | "not_sure";
+  /** "How many days a week do you do strength-building exercises?" — see
+   * @nutriai/health-scoring's StrengthExerciseFrequency. */
+  strengthExerciseFrequency?: "zero_days" | "less_than_weekly" | "one_day" | "two_days" | "three_plus_days" | "not_sure";
+  /** Computed from dailyMovementLevel + weeklyModerateActivity via
+   * @nutriai/health-scoring's deriveActivityLevel — the category
+   * calorie/macro/recommendation logic actually consumes. Recomputed
+   * whenever either behavioural answer changes. */
+  derivedActivityLevel?: "not_active" | "lightly_active" | "moderately_active" | "very_active";
+  /** True when the three fields above were approximated from the legacy
+   * activityLevel/resistanceTrainingStatus values by the one-time backfill
+   * migration, rather than directly answered — see
+   * supabase/migrations/0041_activity_profile_behavioural_questions.sql. */
+  activityProfileMigrated?: boolean;
   preferredUnits?: "metric" | "imperial";
   /** One or more simultaneous goals — see packages/health-scoring's
    * FoodBalanceUserProfile.goals doc comment for how multiple goals are

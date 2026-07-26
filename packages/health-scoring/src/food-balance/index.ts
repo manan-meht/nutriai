@@ -10,3 +10,4 @@ export * from "./confidence";
 export * from "./recommendations";
 export * from "./calculate";
 export * from "./macro-targets";
+export * from "./derive-activity-level";

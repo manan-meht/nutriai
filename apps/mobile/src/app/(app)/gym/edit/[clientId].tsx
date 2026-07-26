@@ -45,8 +45,9 @@ export default function EditGymClientScreen() {
     goalFields: {
       ...EMPTY_NUTRITION_GOAL_FIELDS,
       nutritionGoals: client.nutritionGoals ?? [],
-      activityLevel: client.activityLevel ?? 'unknown',
-      resistanceTrainingStatus: client.resistanceTrainingStatus ?? 'unknown',
+      dailyMovementLevel: client.dailyMovementLevel ?? 'not_sure',
+      weeklyModerateActivity: client.weeklyModerateActivity ?? 'not_sure',
+      strengthExerciseFrequency: client.strengthExerciseFrequency ?? 'not_sure',
       targetWeightKg: client.targetWeightKg != null ? String(client.targetWeightKg) : '',
     },
   };

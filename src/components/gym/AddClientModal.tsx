@@ -48,8 +48,9 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
         weightKg: weightKg ? parseFloat(weightKg) : undefined,
         heightCm: heightCm ? parseFloat(heightCm) : undefined,
         nutritionGoals: goalFields.nutritionGoals,
-        activityLevel: goalFields.activityLevel || undefined,
-        resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+        dailyMovementLevel: goalFields.dailyMovementLevel || undefined,
+        weeklyModerateActivity: goalFields.weeklyModerateActivity || undefined,
+        strengthExerciseFrequency: goalFields.strengthExerciseFrequency || undefined,
         targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
         dietaryPreferences,
       });
@@ -183,7 +184,11 @@ export function AddClientModal({ workspaceId, coachName, onClose, onAdded }: Add
           </div>
         </section>
 
-        <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+        <NutritionGoalFields
+          value={goalFields}
+          onChange={setGoalFields}
+          personDisplay={fullName.trim() ? { type: "name", name: fullName.trim().split(" ")[0] } : { type: "they" }}
+        />
 
         <DietaryPreferencesFields value={dietaryPreferences} onChange={setDietaryPreferences} />
 

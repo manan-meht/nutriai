@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
   const { data: profileRow } = await auth.supabase
     .from(table)
     .select(
-      "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, dismissed_share_card_ids, custom_macro_targets"
+      "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, derived_activity_level, strength_exercise_frequency, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, dismissed_share_card_ids, custom_macro_targets"
     )
     .eq("id", id)
     .eq(ownerColumn, auth.user.id)

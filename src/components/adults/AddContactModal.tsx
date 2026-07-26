@@ -74,8 +74,9 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, ti
         reminderTimes: remindersEnabled ? reminderTimes : undefined,
         healthNotes: healthNotes || undefined,
         nutritionGoals: goalFields.nutritionGoals,
-        activityLevel: goalFields.activityLevel || undefined,
-        resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+        dailyMovementLevel: goalFields.dailyMovementLevel || undefined,
+        weeklyModerateActivity: goalFields.weeklyModerateActivity || undefined,
+        strengthExerciseFrequency: goalFields.strengthExerciseFrequency || undefined,
         targetWeightKg: goalFields.targetWeightKg ? parseFloat(goalFields.targetWeightKg) : undefined,
       });
       if (result.error) {
@@ -252,7 +253,11 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, ti
           )}
         </section>
 
-        <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+        <NutritionGoalFields
+          value={goalFields}
+          onChange={setGoalFields}
+          personDisplay={relationship === "self" ? { type: "self" } : fullName.trim() ? { type: "name", name: fullName.trim().split(" ")[0] } : { type: "they" }}
+        />
 
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>}
 

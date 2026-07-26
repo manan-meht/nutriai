@@ -8,6 +8,8 @@ import {
   type DiversityFoodGroup,
   type MacroTargets,
   type MacroTargetValue,
+  type DerivedActivityLevel,
+  mapDerivedToLegacyActivityLevel,
 } from "@nutriai/health-scoring";
 
 // Mirrors src/lib/food-balance/adapter.ts in the main web app — duplicated
@@ -102,6 +104,8 @@ interface RawFoodBalanceProfileRow {
   gender?: string | null;
   activity_level?: string | null;
   resistance_training_status?: string | null;
+  derived_activity_level?: string | null;
+  strength_exercise_frequency?: string | null;
   preferred_units?: string | null;
   nutrition_goals?: string[] | null;
   target_weight_kg?: number | null;
@@ -152,9 +156,12 @@ export function mapRowToFoodBalanceProfile(row: RawFoodBalanceProfileRow): FoodB
     heightCm: row.height_cm ?? undefined,
     currentWeightKg: row.weight_kg ?? undefined,
     metabolicEquationSex: metabolicSexFromGender(row.gender),
-    activityLevel: (row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined,
+    activityLevel: row.derived_activity_level
+      ? mapDerivedToLegacyActivityLevel(row.derived_activity_level as DerivedActivityLevel)
+      : ((row.activity_level as FoodBalanceUserProfile["activityLevel"]) ?? undefined),
     targetWeightKg: row.target_weight_kg ?? undefined,
     resistanceTraining: (row.resistance_training_status as FoodBalanceUserProfile["resistanceTraining"]) ?? undefined,
+    strengthExerciseFrequency: (row.strength_exercise_frequency as FoodBalanceUserProfile["strengthExerciseFrequency"]) ?? undefined,
     preferredUnits: (row.preferred_units as FoodBalanceUserProfile["preferredUnits"]) ?? undefined,
   };
 }

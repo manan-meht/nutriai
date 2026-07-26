@@ -5,6 +5,7 @@ import {
   getClientDetails as getClientDetailsCore,
   getOrCreateWorkspace as getOrCreateWorkspaceCore,
 } from "@nutriai/nutrition-core";
+import { deriveActivityLevel, type DailyMovementLevel, type WeeklyModerateActivity, type StrengthExerciseFrequency } from "@nutriai/health-scoring";
 import { createServiceClient } from "./supabase";
 
 // Mirrors the main app's src/app/(gym)/gym/dashboard/actions.ts read paths
@@ -43,8 +44,9 @@ export interface AddClientInput {
   weightKg?: number;
   heightCm?: number;
   nutritionGoals?: string[];
-  activityLevel?: string;
-  resistanceTrainingStatus?: string;
+  dailyMovementLevel?: string;
+  weeklyModerateActivity?: string;
+  strengthExerciseFrequency?: string;
   targetWeightKg?: number;
 }
 
@@ -71,8 +73,13 @@ export async function addClient(
       height_cm: input.heightCm ?? null,
       invite_sent_at: new Date().toISOString(),
       nutrition_goals: input.nutritionGoals ?? [],
-      activity_level: input.activityLevel || null,
-      resistance_training_status: input.resistanceTrainingStatus || null,
+      daily_movement_level: input.dailyMovementLevel || null,
+      weekly_moderate_activity: input.weeklyModerateActivity || null,
+      strength_exercise_frequency: input.strengthExerciseFrequency || null,
+      derived_activity_level:
+        input.dailyMovementLevel && input.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: input.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: input.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
       target_weight_kg: input.targetWeightKg ?? null,
     })
     .select("id")
@@ -96,8 +103,9 @@ export interface UpdateClientInput {
   weightKg?: number;
   heightCm?: number;
   nutritionGoals?: string[];
-  activityLevel?: string;
-  resistanceTrainingStatus?: string;
+  dailyMovementLevel?: string;
+  weeklyModerateActivity?: string;
+  strengthExerciseFrequency?: string;
   targetWeightKg?: number;
 }
 
@@ -116,8 +124,13 @@ export async function updateClient(
       weight_kg: input.weightKg ?? null,
       height_cm: input.heightCm ?? null,
       nutrition_goals: input.nutritionGoals ?? [],
-      activity_level: input.activityLevel || null,
-      resistance_training_status: input.resistanceTrainingStatus || null,
+      daily_movement_level: input.dailyMovementLevel || null,
+      weekly_moderate_activity: input.weeklyModerateActivity || null,
+      strength_exercise_frequency: input.strengthExerciseFrequency || null,
+      derived_activity_level:
+        input.dailyMovementLevel && input.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: input.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: input.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
       target_weight_kg: input.targetWeightKg ?? null,
     })
     .eq("id", clientId)

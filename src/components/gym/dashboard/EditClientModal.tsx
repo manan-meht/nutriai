@@ -40,8 +40,9 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>({
     nutritionGoals: client.nutritionGoals ?? [],
-    activityLevel: client.activityLevel ?? "unknown",
-    resistanceTrainingStatus: client.resistanceTrainingStatus ?? "unknown",
+    dailyMovementLevel: client.dailyMovementLevel ?? "not_sure",
+    weeklyModerateActivity: client.weeklyModerateActivity ?? "not_sure",
+    strengthExerciseFrequency: client.strengthExerciseFrequency ?? "not_sure",
     targetWeightKg: client.targetWeightKg?.toString() ?? "",
   });
 
@@ -70,8 +71,9 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
           weightKg: weightKg ? Number(weightKg) : undefined,
           heightCm: heightCm ? Number(heightCm) : undefined,
           nutritionGoals: goalFields.nutritionGoals,
-          activityLevel: goalFields.activityLevel || undefined,
-          resistanceTrainingStatus: goalFields.resistanceTrainingStatus || undefined,
+          dailyMovementLevel: goalFields.dailyMovementLevel || undefined,
+          weeklyModerateActivity: goalFields.weeklyModerateActivity || undefined,
+          strengthExerciseFrequency: goalFields.strengthExerciseFrequency || undefined,
           targetWeightKg: goalFields.targetWeightKg ? Number(goalFields.targetWeightKg) : undefined,
           dietaryPreferences,
         }),
@@ -126,7 +128,11 @@ export function EditClientModal({ client, onClose, onSaved }: Props) {
           </div>
 
           <div className="pt-2 border-t border-gray-100">
-            <NutritionGoalFields value={goalFields} onChange={setGoalFields} />
+            <NutritionGoalFields
+              value={goalFields}
+              onChange={setGoalFields}
+              personDisplay={fullName.trim() ? { type: "name", name: fullName.trim().split(" ")[0] } : { type: "they" }}
+            />
           </div>
 
           <div className="pt-2 border-t border-gray-100">

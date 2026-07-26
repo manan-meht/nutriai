@@ -28,6 +28,46 @@ export type DiversityFoodGroup =
 
 export type ResistanceTrainingStatus = "regularly" | "sometimes" | "not_currently" | "unknown";
 
+// ---------------------------------------------------------------------
+// Behavioural activity-profile questions — replace the old subjective
+// "activity level" (ActivityLevel above) and "resistance training"
+// (ResistanceTrainingStatus above) onboarding questions with observable-
+// behaviour ones. See derive-activity-level.ts for the derivation
+// function that turns these into ActivityLevel for the calculations
+// above, which are otherwise unchanged.
+// ---------------------------------------------------------------------
+
+/** "What does a typical day look like?" — observable daily movement,
+ * deliberately not asking the user to self-judge "how active" they are. */
+export type DailyMovementLevel =
+  | "mostly_seated"
+  | "mixed_light_movement"
+  | "moving_several_hours"
+  | "physically_demanding"
+  | "not_sure";
+
+/** "In a typical week, how much activity makes you breathe faster?" —
+ * minutes of activity where talking is possible but singing isn't (the
+ * plain-language equivalent of "moderate-or-vigorous intensity" without
+ * ever using that phrase in the UI). */
+export type WeeklyModerateActivity = "under_30" | "30_to_89" | "90_to_149" | "150_to_299" | "300_plus" | "not_sure";
+
+/** "How many days a week do you do strength-building exercises?" —
+ * replaces the old, poorly-understood "resistance training" question.
+ * Only weights/bands/challenging bodyweight work count; ordinary yoga or
+ * daily activity does not (see the onboarding helper text). */
+export type StrengthExerciseFrequency = "zero_days" | "less_than_weekly" | "one_day" | "two_days" | "three_plus_days" | "not_sure";
+
+/** The internal category calorie/macro/recommendation logic already
+ * expects (see energy.ts's ACTIVITY_MULTIPLIERS) — never shown to the
+ * user directly; always derived from DailyMovementLevel +
+ * WeeklyModerateActivity via deriveActivityLevel (derive-activity-level.ts).
+ * Kept as its own type (rather than reusing ActivityLevel's
+ * "mostly_sitting" literal) since this is the user-facing/DB-facing
+ * naming going forward — see mapDerivedToLegacyActivityLevel for the
+ * trivial rename into ActivityLevel. */
+export type DerivedActivityLevel = "not_active" | "lightly_active" | "moderately_active" | "very_active";
+
 /** Coverage categories for Healthy Aging's Nutrient-Dense Food Coverage
  * component — presence-based, never a claim of measured micronutrient
  * adequacy (see food-foundation.ts's calculateHealthyAgingCoverage). */
@@ -112,9 +152,22 @@ export interface FoodBalanceUserProfile {
   heightCm?: number;
   currentWeightKg?: number;
   metabolicEquationSex?: MetabolicEquationSex;
+  /** Always populated from deriveActivityLevel (see derive-activity-level.ts)
+   * — never a direct subjective user pick anymore. Callers on the new
+   * behavioural-questions onboarding flow should pass
+   * mapDerivedToLegacyActivityLevel(derivedActivityLevel) here. */
   activityLevel?: ActivityLevel;
   targetWeightKg?: number;
+  /** Legacy resistance-training status — still accepted for any caller not
+   * yet passing strengthExerciseFrequency below, but new code should
+   * prefer that field, which goal-alignment.ts checks first when present. */
   resistanceTraining?: ResistanceTrainingStatus;
+  /** Replaces resistanceTraining for the "strength-building exercises"
+   * question (see derive-activity-level.ts's doc comment on why
+   * "resistance training" was replaced) — the number of days/week someone
+   * does challenging strength work. Takes priority over `resistanceTraining`
+   * in goal-alignment.ts's needsResistanceTrainingNote when present. */
+  strengthExerciseFrequency?: StrengthExerciseFrequency;
   preferredUnits?: PreferredUnits;
 }
 

@@ -85,8 +85,17 @@ export interface AdultsWorkspaceResponse {
 export interface FoodBalanceProfileFields {
   dateOfBirth?: string;
   metabolicEquationSex?: "male" | "female";
+  /** Legacy — kept for audit/back-compat only, new code reads
+   * derivedActivityLevel instead. */
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
+  /** Legacy — kept for audit/back-compat only, new code reads
+   * strengthExerciseFrequency instead. */
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
+  dailyMovementLevel?: "mostly_seated" | "mixed_light_movement" | "moving_several_hours" | "physically_demanding" | "not_sure";
+  weeklyModerateActivity?: "under_30" | "30_to_89" | "90_to_149" | "150_to_299" | "300_plus" | "not_sure";
+  strengthExerciseFrequency?: "zero_days" | "less_than_weekly" | "one_day" | "two_days" | "three_plus_days" | "not_sure";
+  derivedActivityLevel?: "not_active" | "lightly_active" | "moderately_active" | "very_active";
+  activityProfileMigrated?: boolean;
   preferredUnits?: "metric" | "imperial";
   nutritionGoals?: Array<
     | "reduce_weight"

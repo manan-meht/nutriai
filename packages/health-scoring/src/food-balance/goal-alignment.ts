@@ -238,8 +238,17 @@ export function calculateGoalAlignmentScore(
   const knownParts = parts.filter((p) => p.value != null);
   const confidence = knownParts.length > 0 ? knownParts.reduce((s, p) => s + p.confidence, 0) / knownParts.length : 0;
 
+  // Prefers strengthExerciseFrequency (the new "how many days a week"
+  // behavioural answer) when present — 0 days or less-than-weekly gets a
+  // gentle "consider adding a session or two" note; 1+ day/week already
+  // suggests real strength work, so no note. Falls back to the legacy
+  // resistanceTraining status only for a caller that hasn't been updated
+  // yet to pass the new field.
   const needsResistanceTrainingNote =
-    profile.goals.includes("gain_muscle") && profile.resistanceTraining !== "regularly" && profile.resistanceTraining !== "sometimes";
+    profile.goals.includes("gain_muscle") &&
+    (profile.strengthExerciseFrequency
+      ? profile.strengthExerciseFrequency === "zero_days" || profile.strengthExerciseFrequency === "less_than_weekly"
+      : profile.resistanceTraining !== "regularly" && profile.resistanceTraining !== "sometimes");
 
   return { score, confidence, components, missingInputs, needsResistanceTrainingNote };
 }

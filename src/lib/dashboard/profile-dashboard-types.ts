@@ -80,6 +80,10 @@ export interface ProfileDashboardProfile {
   metabolicEquationSex?: "male" | "female";
   activityLevel?: "mostly_sitting" | "lightly_active" | "moderately_active" | "very_active" | "unknown";
   resistanceTrainingStatus?: "regularly" | "sometimes" | "not_currently" | "unknown";
+  dailyMovementLevel?: "mostly_seated" | "mixed_light_movement" | "moving_several_hours" | "physically_demanding" | "not_sure";
+  weeklyModerateActivity?: "under_30" | "30_to_89" | "90_to_149" | "150_to_299" | "300_plus" | "not_sure";
+  strengthExerciseFrequency?: "zero_days" | "less_than_weekly" | "one_day" | "two_days" | "three_plus_days" | "not_sure";
+  derivedActivityLevel?: "not_active" | "lightly_active" | "moderately_active" | "very_active";
   nutritionGoals?: Array<
     | "reduce_weight"
     | "reduce_body_fat"
@@ -144,6 +148,10 @@ export function adaptAdultsContactDetails({ contact, meals }: AdultsContactDetai
       metabolicEquationSex: contact.metabolicEquationSex,
       activityLevel: contact.activityLevel,
       resistanceTrainingStatus: contact.resistanceTrainingStatus,
+      dailyMovementLevel: contact.dailyMovementLevel,
+      weeklyModerateActivity: contact.weeklyModerateActivity,
+      strengthExerciseFrequency: contact.strengthExerciseFrequency,
+      derivedActivityLevel: contact.derivedActivityLevel,
       nutritionGoals: contact.nutritionGoals,
       targetWeightKg: contact.targetWeightKg,
     },
@@ -167,6 +175,10 @@ export function adaptClientDetails({ client, meals, workouts, biomarkers }: Clie
       metabolicEquationSex: client.metabolicEquationSex,
       activityLevel: client.activityLevel,
       resistanceTrainingStatus: client.resistanceTrainingStatus,
+      dailyMovementLevel: client.dailyMovementLevel,
+      weeklyModerateActivity: client.weeklyModerateActivity,
+      strengthExerciseFrequency: client.strengthExerciseFrequency,
+      derivedActivityLevel: client.derivedActivityLevel,
       nutritionGoals: client.nutritionGoals,
       targetWeightKg: client.targetWeightKg,
     },

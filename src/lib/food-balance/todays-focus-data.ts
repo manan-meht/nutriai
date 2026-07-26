@@ -44,7 +44,7 @@ export async function fetchTodaysFocusInputs(
     db
       .from(table)
       .select(
-        "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, todays_focus_style"
+        "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, derived_activity_level, strength_exercise_frequency, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, todays_focus_style"
       )
       .eq("id", contactId)
       .maybeSingle(),

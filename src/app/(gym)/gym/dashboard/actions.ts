@@ -25,6 +25,8 @@ import {
 } from "@nutriai/nutrition-core";
 import type { GymClient, GymClientGoal, BiomarkerLog, WorkoutLog } from "@nutriai/nutrition-core";
 import { resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
+import { deriveActivityLevel, type DailyMovementLevel, type WeeklyModerateActivity, type StrengthExerciseFrequency } from "@nutriai/health-scoring";
+import { trackActivityProfileEvent } from "@/lib/food-balance/activity-profile-analytics";
 // GymClient/GymClientGoal/BiomarkerLog/WorkoutLog come from
 // @nutriai/nutrition-core, shared with apps/mobile-api (see
 // packages/nutrition-core and that app's README) — re-exported here so
@@ -175,6 +177,11 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     metabolicEquationSex: c.metabolic_equation_sex ?? undefined,
     activityLevel: c.activity_level ?? undefined,
     resistanceTrainingStatus: c.resistance_training_status ?? undefined,
+    dailyMovementLevel: c.daily_movement_level ?? undefined,
+    weeklyModerateActivity: c.weekly_moderate_activity ?? undefined,
+    strengthExerciseFrequency: c.strength_exercise_frequency ?? undefined,
+    derivedActivityLevel: c.derived_activity_level ?? undefined,
+    activityProfileMigrated: c.activity_profile_migrated ?? false,
     preferredUnits: c.preferred_units ?? undefined,
     nutritionGoals: c.nutrition_goals ?? [],
     targetWeightKg: c.target_weight_kg ?? undefined,
@@ -320,8 +327,9 @@ export async function addClient(formData: {
   nutritionGoals?: string[];
   dateOfBirth?: string;
   metabolicEquationSex?: string;
-  activityLevel?: string;
-  resistanceTrainingStatus?: string;
+  dailyMovementLevel?: string;
+  weeklyModerateActivity?: string;
+  strengthExerciseFrequency?: string;
   targetWeightKg?: number;
   /** Optional at signup — a coach may know some of a client's eating
    * habits upfront rather than waiting for meals to be logged. Explicit
@@ -428,8 +436,13 @@ export async function addClient(formData: {
       nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
-      activity_level: formData.activityLevel || null,
-      resistance_training_status: formData.resistanceTrainingStatus || null,
+      daily_movement_level: formData.dailyMovementLevel || null,
+      weekly_moderate_activity: formData.weeklyModerateActivity || null,
+      strength_exercise_frequency: formData.strengthExerciseFrequency || null,
+      derived_activity_level:
+        formData.dailyMovementLevel && formData.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: formData.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: formData.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
       target_weight_kg: formData.targetWeightKg || null,
       dietary_profile: dietaryProfile,
     })
@@ -443,6 +456,19 @@ export async function addClient(formData: {
     return { error: GYM_MONTHLY_QUOTA_REACHED_MESSAGE };
   }
   if (error || !client) throw new Error(error?.message ?? "Failed to add client");
+
+  if (formData.dailyMovementLevel || formData.weeklyModerateActivity || formData.strengthExerciseFrequency) {
+    trackActivityProfileEvent("activity_profile_saved", {
+      module: "gym",
+      dailyMovementLevel: formData.dailyMovementLevel,
+      weeklyModerateActivity: formData.weeklyModerateActivity,
+      strengthExerciseFrequency: formData.strengthExerciseFrequency,
+      derivedActivityLevel:
+        formData.dailyMovementLevel && formData.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: formData.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: formData.weeklyModerateActivity as WeeklyModerateActivity })
+          : undefined,
+    });
+  }
 
   // Starts the Coaching trial on first successful invite; a no-op for every
   // subsequent client (see startTrialIfNeeded — idempotent per workspace).
@@ -466,8 +492,9 @@ export async function updateClient(
     nutritionGoals?: string[];
     dateOfBirth?: string;
     metabolicEquationSex?: string;
-    activityLevel?: string;
-    resistanceTrainingStatus?: string;
+    dailyMovementLevel?: string;
+    weeklyModerateActivity?: string;
+    strengthExerciseFrequency?: string;
     targetWeightKg?: number;
     dietaryPreferences?: import("@/lib/dietary-profile").FoodPreferenceSelections;
   }
@@ -495,8 +522,14 @@ export async function updateClient(
       nutrition_goals: formData.nutritionGoals ?? [],
       date_of_birth: formData.dateOfBirth || null,
       metabolic_equation_sex: formData.metabolicEquationSex || null,
-      activity_level: formData.activityLevel || null,
-      resistance_training_status: formData.resistanceTrainingStatus || null,
+      daily_movement_level: formData.dailyMovementLevel || null,
+      weekly_moderate_activity: formData.weeklyModerateActivity || null,
+      strength_exercise_frequency: formData.strengthExerciseFrequency || null,
+      derived_activity_level:
+        formData.dailyMovementLevel && formData.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: formData.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: formData.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
+      activity_profile_migrated: false,
       target_weight_kg: formData.targetWeightKg || null,
       ...dietaryProfileUpdate,
     })
@@ -504,6 +537,19 @@ export async function updateClient(
     .eq("trainer_id", user.id);
 
   if (error) return { error: error.message };
+
+  if (formData.dailyMovementLevel || formData.weeklyModerateActivity || formData.strengthExerciseFrequency) {
+    trackActivityProfileEvent("activity_profile_saved", {
+      module: "gym",
+      dailyMovementLevel: formData.dailyMovementLevel,
+      weeklyModerateActivity: formData.weeklyModerateActivity,
+      strengthExerciseFrequency: formData.strengthExerciseFrequency,
+      derivedActivityLevel:
+        formData.dailyMovementLevel && formData.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: formData.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: formData.weeklyModerateActivity as WeeklyModerateActivity })
+          : undefined,
+    });
+  }
   return {};
 }
 

@@ -33,7 +33,14 @@ import {
 } from "@/lib/food-balance/todays-focus";
 import { classifyMeal, recommendProteinGrams } from "@nutriai/dashboard-core";
 import { startOfLocalDayUTC } from "@/lib/reminders/schedule";
-import { proteinTargetG, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
+import {
+  proteinTargetG,
+  deriveActivityLevel,
+  mapDerivedToLegacyActivityLevel,
+  type FoodBalanceUserProfile,
+  type DailyMovementLevel,
+  type WeeklyModerateActivity,
+} from "@nutriai/health-scoring";
 import { parseJoinCommand, type ParsedJoinCommand } from "@/lib/invites/parse-command";
 import { updateDietaryProfileForSavedMeal, withMedicalHandoffIfNeeded } from "@/lib/dietary-profile";
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
@@ -439,8 +446,16 @@ async function handleInviteClaim(
         // / SelfSetupCard.tsx) — replaces the old adults_contact_goals write
         // below entirely.
         nutrition_goals: Array.isArray(meta.nutritionGoals) ? meta.nutritionGoals : [],
-        activity_level: typeof meta.activityLevel === "string" ? meta.activityLevel : null,
-        resistance_training_status: typeof meta.resistanceTrainingStatus === "string" ? meta.resistanceTrainingStatus : null,
+        daily_movement_level: typeof meta.dailyMovementLevel === "string" ? meta.dailyMovementLevel : null,
+        weekly_moderate_activity: typeof meta.weeklyModerateActivity === "string" ? meta.weeklyModerateActivity : null,
+        strength_exercise_frequency: typeof meta.strengthExerciseFrequency === "string" ? meta.strengthExerciseFrequency : null,
+        derived_activity_level:
+          typeof meta.dailyMovementLevel === "string" && typeof meta.weeklyModerateActivity === "string"
+            ? deriveActivityLevel({
+                dailyMovementLevel: meta.dailyMovementLevel as DailyMovementLevel,
+                weeklyModerateActivity: meta.weeklyModerateActivity as WeeklyModerateActivity,
+              })
+            : null,
         target_weight_kg: typeof meta.targetWeightKg === "number" ? meta.targetWeightKg : null,
       })
       .select("id")
@@ -479,7 +494,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Look up in gym_clients first
   const { data: gymClients } = await db
     .from("gym_clients")
-    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, nutrition_goals, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
+    .select("id, full_name, whatsapp_number, workspace_id, trainer_id, weight_kg, height_cm, age, gender, nutrition_goals, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, last_share_card_prompt_at, dismissed_share_card_ids")
     .order("created_at", { ascending: false });
 
   const gymClient = (gymClients ?? []).find((c: any) =>
@@ -491,7 +506,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, nutrition_goals, activity_level, resistance_training_status, last_share_card_prompt_at, dismissed_share_card_ids")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, nutrition_goals, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, last_share_card_prompt_at, dismissed_share_card_ids")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -1199,8 +1214,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         // metabolicSexFromGender, mirrored here inline since this file
         // doesn't otherwise import from that module).
         metabolicEquationSex: entity.gender === "male" || entity.gender === "female" ? entity.gender : undefined,
-        activityLevel: entity.activity_level ?? undefined,
+        // Prefers the new derived category (from the behavioural
+        // daily-movement/weekly-activity answers) over the legacy direct
+        // pick — falls back to the legacy value for any row not yet
+        // migrated/re-answered (see supabase/migrations/
+        // 0041_activity_profile_behavioural_questions.sql).
+        activityLevel: entity.derived_activity_level
+          ? mapDerivedToLegacyActivityLevel(entity.derived_activity_level)
+          : entity.activity_level ?? undefined,
         resistanceTraining: entity.resistance_training_status ?? undefined,
+        strengthExerciseFrequency: entity.strength_exercise_frequency ?? undefined,
       }
     : undefined;
   const proteinRange = foodBalanceProfile ? proteinTargetG(foodBalanceProfile) : null;

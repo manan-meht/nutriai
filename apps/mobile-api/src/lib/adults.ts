@@ -5,6 +5,7 @@ import {
   getContactDetails as getContactDetailsCore,
   getOrCreateWorkspace,
 } from "@nutriai/nutrition-core";
+import { deriveActivityLevel, type DailyMovementLevel, type WeeklyModerateActivity, type StrengthExerciseFrequency } from "@nutriai/health-scoring";
 import { createServiceClient } from "./supabase";
 
 // Mirrors the main app's src/app/(adults)/adults/dashboard/actions.ts read
@@ -52,8 +53,9 @@ export interface AddContactInput {
   heightCm?: number;
   healthNotes?: string;
   nutritionGoals?: string[];
-  activityLevel?: string;
-  resistanceTrainingStatus?: string;
+  dailyMovementLevel?: string;
+  weeklyModerateActivity?: string;
+  strengthExerciseFrequency?: string;
   targetWeightKg?: number;
   /** WhatsApp meal reminders (migration 0016) — gym_clients has no
    * equivalent columns, so these are adults-only, same as `relationship`. */
@@ -88,8 +90,13 @@ export async function addContact(
       health_notes: input.healthNotes || null,
       invite_sent_at: new Date().toISOString(),
       nutrition_goals: input.nutritionGoals ?? [],
-      activity_level: input.activityLevel || null,
-      resistance_training_status: input.resistanceTrainingStatus || null,
+      daily_movement_level: input.dailyMovementLevel || null,
+      weekly_moderate_activity: input.weeklyModerateActivity || null,
+      strength_exercise_frequency: input.strengthExerciseFrequency || null,
+      derived_activity_level:
+        input.dailyMovementLevel && input.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: input.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: input.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
       target_weight_kg: input.targetWeightKg ?? null,
       ...(input.timezone ? { timezone: input.timezone } : {}),
       ...(input.remindersEnabled !== undefined ? { reminders_enabled: input.remindersEnabled } : {}),
@@ -118,8 +125,9 @@ export interface UpdateContactInput {
   heightCm?: number;
   healthNotes?: string;
   nutritionGoals?: string[];
-  activityLevel?: string;
-  resistanceTrainingStatus?: string;
+  dailyMovementLevel?: string;
+  weeklyModerateActivity?: string;
+  strengthExerciseFrequency?: string;
   targetWeightKg?: number;
   /** WhatsApp meal reminders (migration 0016) — adults-only, see
    * AddContactInput. Omitted (undefined) leaves the existing stored value
@@ -147,8 +155,13 @@ export async function updateContact(
       height_cm: input.heightCm ?? null,
       health_notes: input.healthNotes || null,
       nutrition_goals: input.nutritionGoals ?? [],
-      activity_level: input.activityLevel || null,
-      resistance_training_status: input.resistanceTrainingStatus || null,
+      daily_movement_level: input.dailyMovementLevel || null,
+      weekly_moderate_activity: input.weeklyModerateActivity || null,
+      strength_exercise_frequency: input.strengthExerciseFrequency || null,
+      derived_activity_level:
+        input.dailyMovementLevel && input.weeklyModerateActivity
+          ? deriveActivityLevel({ dailyMovementLevel: input.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: input.weeklyModerateActivity as WeeklyModerateActivity })
+          : null,
       target_weight_kg: input.targetWeightKg ?? null,
       ...(input.timezone ? { timezone: input.timezone } : {}),
       ...(input.remindersEnabled !== undefined ? { reminders_enabled: input.remindersEnabled } : {}),

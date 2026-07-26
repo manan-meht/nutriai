@@ -11,7 +11,7 @@ import {
   getDateRangeDayCount,
   type DashboardDateRange,
 } from "@nutriai/dashboard-core";
-import { proteinTargetG, calculateEnergyTargetRange, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
+import { proteinTargetG, calculateEnergyTargetRange, mapDerivedToLegacyActivityLevel, type FoodBalanceUserProfile } from "@nutriai/health-scoring";
 import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
@@ -124,8 +124,11 @@ export function ProfileDashboard({
         heightCm: profile.heightCm,
         currentWeightKg: profile.weightKg,
         metabolicEquationSex: metabolicSexFromGender(profile.gender),
-        activityLevel: profile.activityLevel as FoodBalanceUserProfile["activityLevel"],
+        activityLevel: profile.derivedActivityLevel
+          ? mapDerivedToLegacyActivityLevel(profile.derivedActivityLevel)
+          : (profile.activityLevel as FoodBalanceUserProfile["activityLevel"]),
         resistanceTraining: profile.resistanceTrainingStatus as FoodBalanceUserProfile["resistanceTraining"],
+        strengthExerciseFrequency: profile.strengthExerciseFrequency,
         targetWeightKg: profile.targetWeightKg,
       }
     : undefined;
@@ -200,7 +203,7 @@ export function ProfileDashboard({
     !profile.gender && "gender",
     !profile.weightKg && "weight",
     !profile.heightCm && "height",
-    (!profile.activityLevel || profile.activityLevel === "unknown") && "activity level",
+    !profile.derivedActivityLevel && (!profile.activityLevel || profile.activityLevel === "unknown") && "activity level",
   ].filter((f): f is string => Boolean(f));
 
   return (

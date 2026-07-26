@@ -19,7 +19,7 @@ import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { api, type AccessCodeResult, type BiomarkerLog, type FoodBalanceProfileFields, type MealLog, type WorkoutLog } from '@/lib/api';
 import { filterByDateRange, getDateRangeDayCount, DEFAULT_DASHBOARD_DATE_RANGE, recommendProteinGrams, type DashboardDateRange } from '@nutriai/dashboard-core';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
-import { calculateEnergyTargetRange, proteinTargetG, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
+import { calculateEnergyTargetRange, proteinTargetG, mapDerivedToLegacyActivityLevel, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
 import { buildMealShareData } from '@/lib/meal-share/types';
 
 interface PersonLike extends FoodBalanceProfileFields {
@@ -90,8 +90,9 @@ export function PersonDetail({
         // (already collected) is used directly, mirroring the main web
         // app's src/lib/food-balance/adapter.ts#metabolicSexFromGender.
         metabolicEquationSex: person.gender === 'male' || person.gender === 'female' ? person.gender : undefined,
-        activityLevel: person.activityLevel,
+        activityLevel: person.derivedActivityLevel ? mapDerivedToLegacyActivityLevel(person.derivedActivityLevel) : person.activityLevel,
         resistanceTraining: person.resistanceTrainingStatus,
+        strengthExerciseFrequency: person.strengthExerciseFrequency,
         targetWeightKg: person.targetWeightKg,
       }
     : undefined;
@@ -136,7 +137,7 @@ export function PersonDetail({
     !person.gender && 'gender',
     !person.weightKg && 'weight',
     !person.heightCm && 'height',
-    (!person.activityLevel || person.activityLevel === 'unknown') && 'activity level',
+    !person.derivedActivityLevel && (!person.activityLevel || person.activityLevel === 'unknown') && 'activity level',
   ].filter((f): f is string => Boolean(f));
   const editHref = 'clientId' in foodBalanceQuery ? `/gym/edit/${foodBalanceQuery.clientId}` : `/adults/edit/${foodBalanceQuery.contactId}`;
 

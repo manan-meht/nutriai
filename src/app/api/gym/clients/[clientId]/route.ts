@@ -106,7 +106,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { data: profileRow } = await supabase
     .from("gym_clients")
     .select(
-      "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, dismissed_share_card_ids, custom_macro_targets"
+      "date_of_birth, age, weight_kg, height_cm, gender, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, preferred_units, nutrition_goals, target_weight_kg, dietary_profile, dismissed_share_card_ids, custom_macro_targets"
     )
     .eq("id", clientId)
     .eq("trainer_id", user.id)
