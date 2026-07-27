@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { hasActiveEntitlement } from '@/lib/purchases';
+import { FOUNDING_MEMBER_PLAN_COPY, additionalPersonMonthlyDisplay } from '@/lib/founding-member-copy';
 
 // The RevenueCat "entitlement identifier" (configured in the RevenueCat
 // dashboard, not a product/SKU id) that grants Self/Family (module
@@ -40,6 +41,28 @@ function packagePeriodSuffix(pkg: PurchasesPackage): string {
   if (pkg.packageType === 'MONTHLY') return '/month';
   if (pkg.packageType === 'ANNUAL') return '/year';
   return '';
+}
+
+/** Primary price line always comes from the store (pkg.product.priceString/
+ * price/currencyCode) so it reflects the buyer's real store-locale currency
+ * — never hardcoded, unlike founding-member-copy.ts's USD-only description/
+ * additional-person copy (that add-on isn't its own store product). Annual
+ * packages get a second line spelling out the actual once-a-year charge,
+ * matching web's PricingSection — the per-month figure above it is a
+ * rounded equivalent, not literally what's billed each cycle. */
+function packagePriceLines(pkg: PurchasesPackage): { primary: string; secondary: string | null } {
+  if (pkg.packageType === 'ANNUAL') {
+    const monthlyEquivalent = pkg.product.price / 12;
+    const formatted = new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: pkg.product.currencyCode,
+    }).format(monthlyEquivalent);
+    return {
+      primary: `${formatted}/month billed annually`,
+      secondary: `Billed as one payment of ${pkg.product.priceString}/year`,
+    };
+  }
+  return { primary: `${pkg.product.priceString}${packagePeriodSuffix(pkg)}`, secondary: null };
 }
 
 /** Self/Family paywall — shown by adults/index.tsx in place of the contact
@@ -105,7 +128,14 @@ export default function AdultsPaywallScreen() {
       }
       await new Promise((resolve) => setTimeout(resolve, 1200));
     }
-    router.replace('/adults');
+    // Always tag the return with justPurchased, even if the loop above
+    // never saw requiresCardBeforeTrial flip to false — the RevenueCat
+    // webhook that actually updates it can occasionally take longer than
+    // this ~6s poll allows for. adults/index.tsx picks this up and keeps
+    // quietly retrying for a while longer, and avoids sending the person
+    // right back to this screen if they tap "Add family member" again
+    // before the webhook lands (the reported subscribe→loop bug).
+    router.replace({ pathname: '/adults', params: { justPurchased: '1' } });
   }
 
   async function handlePurchase(pkg: PurchasesPackage) {
@@ -162,6 +192,7 @@ export default function AdultsPaywallScreen() {
   }
 
   const packages = state.offering?.availablePackages ?? [];
+  const planCopy = FOUNDING_MEMBER_PLAN_COPY[offeringId];
 
   return (
     <ThemedView style={styles.container}>
@@ -169,9 +200,7 @@ export default function AdultsPaywallScreen() {
         {offeringId === 'self' ? 'Continue your progress' : "Continue your family's progress"}
       </ThemedText>
       <ThemedText type="default" themeColor="textSecondary" style={styles.text}>
-        {offeringId === 'self'
-          ? 'Subscribe to keep tracking your meals, Food Balance Score, and recommendations.'
-          : 'Subscribe to keep tracking meals, Food Balance Score, and recommendations for your family.'}
+        {planCopy.description}
       </ThemedText>
 
       {packages.length === 0 && (
@@ -181,21 +210,39 @@ export default function AdultsPaywallScreen() {
       )}
 
       <ThemedView style={styles.packages}>
-        {packages.map((pkg) => (
-          <Pressable
-            key={pkg.identifier}
-            style={styles.packageCard}
-            disabled={purchasingId !== null}
-            onPress={() => handlePurchase(pkg)}
-          >
-            <ThemedText type="smallBold">{packageLabel(pkg)}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {pkg.product.priceString}
-              {packagePeriodSuffix(pkg)}
-            </ThemedText>
-            {purchasingId === pkg.identifier && <ActivityIndicator style={styles.packageSpinner} />}
-          </Pressable>
-        ))}
+        {packages.map((pkg) => {
+          const priceLines = packagePriceLines(pkg);
+          const interval = pkg.packageType === 'ANNUAL' ? 'annual' : 'monthly';
+          const additionalPersonPrice = additionalPersonMonthlyDisplay(planCopy, interval);
+          return (
+            <Pressable
+              key={pkg.identifier}
+              style={styles.packageCard}
+              disabled={purchasingId !== null}
+              onPress={() => handlePurchase(pkg)}
+            >
+              <ThemedText type="smallBold">{packageLabel(pkg)}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {priceLines.primary}
+              </ThemedText>
+              {priceLines.secondary && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {priceLines.secondary}
+                </ThemedText>
+              )}
+              <ThemedText type="small" themeColor="textSecondary" style={styles.packageDetailLine}>
+                Includes {planCopy.includedPeople} {planCopy.includedPeople === 1 ? 'person' : 'people'}
+              </ThemedText>
+              {additionalPersonPrice && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Additional person: {additionalPersonPrice}/person/month
+                  {interval === 'annual' ? ' billed annually' : ''}
+                </ThemedText>
+              )}
+              {purchasingId === pkg.identifier && <ActivityIndicator style={styles.packageSpinner} />}
+            </Pressable>
+          );
+        })}
       </ThemedView>
 
       <Pressable style={styles.restoreButton} onPress={handleRestore} disabled={restoring}>
@@ -220,6 +267,7 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
   },
   packageSpinner: { marginTop: Spacing.one },
+  packageDetailLine: { marginTop: Spacing.one },
   primaryButton: {
     backgroundColor: '#5715CE',
     borderRadius: Spacing.two,

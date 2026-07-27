@@ -120,7 +120,15 @@ export function PricingSection({ sourcePage }: PricingSectionProps) {
                   <span className="text-sm text-gray-500">{suffix}</span>
                 </div>
                 {billingInterval === "annual" && (
-                  <p className="text-xs text-gray-400 mt-1">{formatFoundingPrice(plan.annualPrice)} billed annually</p>
+                  // Framed as "billed as" rather than a second, independent
+                  // price — the big number above is a rounded monthly
+                  // equivalent of this exact annual charge (annualPrice is
+                  // monthlyPrice x10, not evenly divisible by 12), so stating
+                  // them as two separate facts read as if they disagreed by
+                  // a cent or two instead of one being derived from the other.
+                  <p className="text-xs text-gray-400 mt-1">
+                    Billed as one payment of {formatFoundingPrice(plan.annualPrice)}/year
+                  </p>
                 )}
               </div>
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Purchases from 'react-native-purchases';
@@ -75,7 +75,7 @@ export default function AdultsContactListScreen() {
   // the server at all. Harmless to keep sending on every load() call
   // (refresh, etc.): mobile-api's markWorkspaceSelfPlan is a no-op once the
   // workspace is already "self".
-  const { self: selfParam } = useLocalSearchParams<{ self?: string }>();
+  const { self: selfParam, justPurchased } = useLocalSearchParams<{ self?: string; justPurchased?: string }>();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   const [buyingCapacity, setBuyingCapacity] = useState(false);
@@ -118,6 +118,22 @@ export default function AdultsContactListScreen() {
       load(false);
     }, [load])
   );
+
+  // paywall.tsx's own post-purchase poll gives up after ~6s if the
+  // RevenueCat webhook that flips requiresCardBeforeTrial hasn't landed yet
+  // — this picks up where that leaves off instead of leaving the "add a
+  // payment method" banner (and the subscribe→add-member→paywall loop)
+  // stuck until the user backgrounds/foregrounds the app or force-refreshes.
+  const stillRequiresCardAfterPurchase = justPurchased === '1' && state.status === 'ready' && state.requiresCardBeforeTrial;
+  useEffect(() => {
+    if (!stillRequiresCardAfterPurchase) return;
+    const interval = setInterval(() => load(false), 2500);
+    const timeout = setTimeout(() => clearInterval(interval), 30000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [stillRequiresCardAfterPurchase, load]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -190,6 +206,19 @@ export default function AdultsContactListScreen() {
   // else here needs to "start" it.
   function handleAddPress(plan: string, requiresCardBeforeTrial: boolean) {
     if (requiresCardBeforeTrial) {
+      // Someone who just subscribed but whose webhook hasn't landed yet
+      // would otherwise get bounced straight back to the paywall they just
+      // completed — this is the reported subscribe→add-member→paywall loop.
+      // The background poll above (stillRequiresCardAfterPurchase) is
+      // already retrying; ask them to wait a moment instead of re-showing
+      // a screen that looks like their purchase didn't go through.
+      if (stillRequiresCardAfterPurchase) {
+        Alert.alert(
+          'Just a moment',
+          "We're still confirming your subscription — this can take a few seconds. Please try again shortly."
+        );
+        return;
+      }
       router.push({ pathname: '/adults/paywall', params: { plan } });
     } else {
       router.push('/adults/add');
@@ -237,7 +266,11 @@ export default function AdultsContactListScreen() {
                 </ThemedText>
               </View>
             )}
-            {state.requiresCardBeforeTrial ? (
+            {stillRequiresCardAfterPurchase ? (
+              <ThemedView type="backgroundElement" style={styles.trialBanner}>
+                <ThemedText type="small">Confirming your subscription — this can take a few seconds…</ThemedText>
+              </ThemedView>
+            ) : state.requiresCardBeforeTrial ? (
               <ThemedView type="backgroundElement" style={styles.trialBanner}>
                 <ThemedText type="small">
                   Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can
