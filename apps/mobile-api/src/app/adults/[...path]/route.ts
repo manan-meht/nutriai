@@ -77,7 +77,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       workspace.plan = "self";
     }
 
-    const entitlement = await getEntitlementSnapshot(workspace.id, "adults");
+    const entitlement = await getEntitlementSnapshot(workspace.id, "adults", auth.user.email);
 
     return NextResponse.json({
       workspace,

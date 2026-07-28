@@ -55,7 +55,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .maybeSingle();
 
     const workspace = await getOrCreateWorkspace(auth.user.id, profile?.full_name ?? undefined);
-    const entitlement = await getEntitlementSnapshot(workspace.id, "gym");
+    const entitlement = await getEntitlementSnapshot(workspace.id, "gym", auth.user.email);
 
     return NextResponse.json({
       workspace,

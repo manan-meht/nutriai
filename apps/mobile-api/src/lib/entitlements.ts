@@ -43,20 +43,46 @@ export interface EntitlementSnapshot {
  * BILLING_AVAILABLE flag already uses. */
 const MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED = process.env.MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED === "true";
 
+/** Comma-separated emails (case-insensitive) exempt from all billing
+ * enforcement on mobile — mirrors the main web app's isBillingWhitelisted
+ * (src/lib/billing/feature-flags.ts) exactly, including the env var name,
+ * so a single BILLING_TEST_WHITELIST_EMAILS value can be set the same way
+ * on both Cloudflare Pages projects rather than needing two separate lists
+ * kept in sync. This app is deployed independently of the main web app, so
+ * the env var still has to be configured here too — setting it only on the
+ * main project does not exempt anyone on mobile. */
+function isBillingWhitelisted(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.BILLING_TEST_WHITELIST_EMAILS;
+  if (!raw) return false;
+  const normalized = email.trim().toLowerCase();
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
 export async function getEntitlementSnapshot(
   workspaceId: string,
-  module: EntitlementModule
+  module: EntitlementModule,
+  /** Owner's email, checked against BILLING_TEST_WHITELIST_EMAILS — pass
+   * this whenever the caller has it (every route here does, from the
+   * authenticated bearer-token user) so internal/whitelisted test accounts
+   * never go read-only or hit the pre-first-contact paywall on mobile. */
+  ownerEmail?: string | null
 ): Promise<EntitlementSnapshot> {
   const admin = createServiceClient();
   const core = await getEntitlementSnapshotCore(admin, workspaceId, module, new Date());
+  const whitelisted = isBillingWhitelisted(ownerEmail);
 
   return {
     ...core,
     isReadOnly:
+      !whitelisted &&
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       module === "adults" &&
       (core.status === "expired" || core.status === "cancelled"),
     requiresCardBeforeTrial:
-      MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED && module === "adults" && core.status === "not_started",
+      !whitelisted &&
+      MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
+      module === "adults" &&
+      core.status === "not_started",
   };
 }
