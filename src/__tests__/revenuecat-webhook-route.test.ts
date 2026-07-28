@@ -12,7 +12,15 @@ import { NextRequest } from "next/server";
 
 const AUTH_HEADER = "Bearer test-revenuecat-secret";
 
-function fakeDb(opts: { entitlementRow?: { workspace_id: string; module: string } | null; existingEvent?: { processed_at: string | null } | null }) {
+function fakeDb(opts: {
+  entitlementRow?: { workspace_id: string; module: string } | null;
+  existingEvent?: { processed_at: string | null } | null;
+  /** A workspace findEntitlementByOwner can fall back to when no
+   * entitlements row exists yet — see entitlements.ts's own comment on
+   * why this fallback exists (mobile IAP purchases before any prior
+   * checkout-intent/trial-start ever created a row). */
+  workspaceForOwner?: { ownerId: string; module: string; workspaceId: string } | null;
+}) {
   const webhookEvents = new Map<string, { processed_at: string | null }>();
   if (opts.existingEvent) webhookEvents.set("apple:evt_1", opts.existingEvent);
   if (opts.existingEvent) webhookEvents.set("google_play:evt_1", opts.existingEvent);
@@ -63,10 +71,29 @@ function fakeDb(opts: { entitlementRow?: { workspace_id: string; module: string 
                 }),
               }),
             }),
-            update: (patch: any) => {
-              entitlementUpdates.push(patch);
-              return { eq: () => ({ eq: () => Promise.resolve({ error: null }) }) };
+            upsert: (row: any) => {
+              entitlementUpdates.push(row);
+              return Promise.resolve({ error: null });
             },
+          };
+        }
+        if (table === "workspaces") {
+          return {
+            select: () => ({
+              eq: (_c1: string, ownerId: string) => ({
+                eq: (_c2: string, module: string) => ({
+                  order: () => ({
+                    limit: () => ({
+                      maybeSingle: async () => {
+                        const w = opts.workspaceForOwner;
+                        const match = w && w.ownerId === ownerId && w.module === module;
+                        return { data: match ? { id: w!.workspaceId } : null };
+                      },
+                    }),
+                  }),
+                }),
+              }),
+            }),
           };
         }
         throw new Error(`unexpected table ${table}`);
@@ -183,8 +210,8 @@ describe("POST /api/webhooks/revenuecat", () => {
     expect(entitlementUpdates).toHaveLength(0);
   });
 
-  it("ignores an event when no matching adults entitlement exists for the app_user_id", async () => {
-    const { db, entitlementUpdates } = fakeDb({ entitlementRow: null });
+  it("ignores an event when neither an entitlements row nor a workspace exists for the app_user_id", async () => {
+    const { db, entitlementUpdates } = fakeDb({ entitlementRow: null, workspaceForOwner: null });
     (createServiceClient as jest.Mock).mockReturnValue(db);
     const { POST } = await import("@/app/api/webhooks/revenuecat/route");
 
@@ -194,6 +221,49 @@ describe("POST /api/webhooks/revenuecat", () => {
     const json = await res.json();
     expect(json.result).toBe("ignored");
     expect(entitlementUpdates).toHaveLength(0);
+  });
+
+  // Regression test for the actual reported bug: restoring/purchasing on
+  // mobile before ever adding a first contact/client left no entitlements
+  // row for findEntitlementByOwner to find (that row is only ever created
+  // lazily by startTrialIfNeeded/recordCheckoutIntent, neither of which
+  // mobile's card-first RevenueCat purchase flow triggers) — so the
+  // webhook silently dropped the purchase and the app was stuck forever on
+  // "Confirming your subscription…". The workspace itself always exists by
+  // then, so this must succeed via that fallback instead of being ignored.
+  it("creates the entitlements row from the workspace when a purchase/restore lands before one exists yet", async () => {
+    const { db, entitlementUpdates } = fakeDb({
+      entitlementRow: null,
+      workspaceForOwner: { ownerId: "user-fresh", module: "adults", workspaceId: "ws-fresh" },
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const { POST } = await import("@/app/api/webhooks/revenuecat/route");
+
+    const res = await POST(
+      postRequest({
+        event: {
+          id: "evt_1",
+          type: "INITIAL_PURCHASE",
+          app_user_id: "user-fresh",
+          store: "PLAY_STORE",
+          period_type: "TRIAL",
+          product_id: "family_premium:monthly",
+          purchased_at_ms: 1700000000000,
+          expiration_at_ms: 1702592000000,
+        },
+      })
+    );
+
+    const json = await res.json();
+    expect(json.result).toBe("processed");
+    expect(entitlementUpdates).toHaveLength(1);
+    expect(entitlementUpdates[0]).toMatchObject({
+      workspace_id: "ws-fresh",
+      module: "adults",
+      owner_id: "user-fresh",
+      status: "trialing",
+      payment_provider: "google_play",
+    });
   });
 
   it("acknowledges a TEST event without touching any entitlement", async () => {

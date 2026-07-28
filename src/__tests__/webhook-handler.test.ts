@@ -1,8 +1,29 @@
 import type { PaymentProvider, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
 
-function makeFakeServiceClient(existingEvents: Map<string, { processed_at: string | null }>) {
+// workspaceOwners: workspace id -> owner_id, looked up by
+// processProviderWebhook right before applying a snapshot (see
+// webhook-handler.ts) — the entitlements row is guaranteed to already
+// exist for Stripe/Razorpay (recordCheckoutIntent runs before checkout),
+// but applyProviderSubscriptionSnapshot's ownerId param still has to come
+// from somewhere, so this table lookup is real, not incidental.
+function makeFakeServiceClient(
+  existingEvents: Map<string, { processed_at: string | null }>,
+  workspaceOwners: Map<string, string> = new Map([["ws-family-1", "owner-1"], ["ws-1", "owner-1"]])
+) {
   return {
     from: (table: string) => {
+      if (table === "workspaces") {
+        return {
+          select: () => ({
+            eq: (_col: string, workspaceId: string) => ({
+              maybeSingle: async () => {
+                const ownerId = workspaceOwners.get(workspaceId);
+                return { data: ownerId ? { owner_id: ownerId } : null };
+              },
+            }),
+          }),
+        };
+      }
       if (table !== "payment_webhook_events") throw new Error(`unexpected table ${table}`);
       return {
         select: () => ({
@@ -114,6 +135,7 @@ describe("processProviderWebhook", () => {
       module: "adults",
       provider: "stripe",
       snapshot: baseSnapshot,
+      ownerId: "owner-1",
     }));
   });
 

@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
     provider,
     providerPriceId: event.product_id ?? null,
     snapshot,
+    ownerId: target.ownerId,
   });
 
   await markProcessed();

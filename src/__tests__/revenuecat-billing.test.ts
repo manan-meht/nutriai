@@ -48,9 +48,9 @@ describe("mapRevenueCatEventToStatus", () => {
     expect(mapRevenueCatEventToStatus(event({ type: "TEST", store: "APP_STORE" }))).toBeNull();
   });
 
-  it("maps RESTORE the same way as TRANSFER/INITIAL_PURCHASE — Purchases.restorePurchases() re-attaching an existing purchase to an app_user_id must not be silently dropped", () => {
-    expect(mapRevenueCatEventToStatus(event({ type: "RESTORE", store: "PLAY_STORE", period_type: "NORMAL" }))).toBe("active");
-    expect(mapRevenueCatEventToStatus(event({ type: "RESTORE", store: "APP_STORE", period_type: "TRIAL" }))).toBe("trialing");
+  it("maps TRANSFER to active/trialing — this also covers Purchases.restorePurchases() reattaching a purchase to a different app_user_id; RevenueCat has no separate RESTORE webhook event type", () => {
+    expect(mapRevenueCatEventToStatus(event({ type: "TRANSFER", store: "PLAY_STORE", period_type: "NORMAL" }))).toBe("active");
+    expect(mapRevenueCatEventToStatus(event({ type: "TRANSFER", store: "APP_STORE", period_type: "TRIAL" }))).toBe("trialing");
   });
 });
 

@@ -48,6 +48,7 @@ export async function refreshPaymentStatus(module: EntitlementModule): Promise<v
     module,
     provider: entitlement.payment_provider as PaymentProviderName,
     snapshot,
+    ownerId: entitlement.owner_id,
   });
 }
 
@@ -85,6 +86,7 @@ export async function syncCheckoutCompletion(module: EntitlementModule): Promise
     module,
     provider: entitlement.payment_provider as PaymentProviderName,
     snapshot,
+    ownerId: entitlement.owner_id,
   });
 }
 

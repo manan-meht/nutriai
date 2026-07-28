@@ -246,7 +246,7 @@ export async function findEntitlementByProviderCustomerId(
 export async function findEntitlementByOwner(
   ownerId: string,
   module: EntitlementModule
-): Promise<{ workspaceId: string; module: EntitlementModule } | null> {
+): Promise<{ workspaceId: string; module: EntitlementModule; ownerId: string } | null> {
   const admin = createServiceClient();
   const { data } = await admin
     .from("entitlements")
@@ -254,8 +254,31 @@ export async function findEntitlementByOwner(
     .eq("owner_id", ownerId)
     .eq("module", module)
     .maybeSingle();
-  if (!data) return null;
-  return { workspaceId: data.workspace_id, module: data.module };
+  if (data) return { workspaceId: data.workspace_id, module: data.module, ownerId };
+
+  // No entitlements row yet for this owner. That row is only ever created
+  // lazily — by startTrialIfNeeded (legacy card-free trial, first "add
+  // contact/client") or recordCheckoutIntent (web Stripe checkout) — and
+  // mobile's card-first RevenueCat purchase flow has no equivalent
+  // "record checkout intent" step before the Play/App Store purchase
+  // completes. A brand-new workspace that subscribes on mobile before
+  // adding anyone therefore has no row here yet, and this webhook would
+  // otherwise silently drop a real purchase/restore (this was the actual
+  // cause of "Confirming your subscription…" hanging forever — not a
+  // slow webhook, an event with nowhere to write to). The workspace row
+  // itself always exists by the time a purchase can happen (created the
+  // moment the dashboard is first opened, see getOrCreateWorkspace), so
+  // fall back to resolving it directly instead of giving up.
+  const { data: workspace } = await admin
+    .from("workspaces")
+    .select("id")
+    .eq("owner_id", ownerId)
+    .eq("type", module)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!workspace) return null;
+  return { workspaceId: workspace.id, module, ownerId };
 }
 
 /**
@@ -270,6 +293,11 @@ export async function applyProviderSubscriptionSnapshot(params: {
   provider: PaymentProviderName;
   providerPriceId?: string | null;
   snapshot: ProviderSubscriptionSnapshot;
+  /** Required to insert a brand-new row (owner_id is NOT NULL) — see
+   * findEntitlementByOwner's fallback for why one might not exist yet.
+   * Ignored on an update to an existing row (its owner_id is already
+   * correct and this is always the same value regardless). */
+  ownerId: string;
 }): Promise<void> {
   const admin = createServiceClient();
   const { snapshot } = params;
@@ -319,11 +347,16 @@ export async function applyProviderSubscriptionSnapshot(params: {
     .eq("module", params.module)
     .maybeSingle();
 
+  // Upsert, not update — findEntitlementByOwner can now resolve a
+  // workspace that has no entitlements row yet at all (see its own
+  // comment), so a plain .update() would silently affect zero rows in
+  // that case instead of ever recording the purchase.
   const { error } = await admin
     .from("entitlements")
-    .update(update)
-    .eq("workspace_id", params.workspaceId)
-    .eq("module", params.module);
+    .upsert(
+      { workspace_id: params.workspaceId, module: params.module, owner_id: params.ownerId, ...update },
+      { onConflict: "workspace_id,module" }
+    );
 
   if (error) throw new Error(`Failed to apply subscription snapshot: ${error.message}`);
 

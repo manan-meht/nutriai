@@ -21,7 +21,6 @@ export type RevenueCatEventType =
   | "PRODUCT_CHANGE"
   | "SUBSCRIPTION_EXTENDED"
   | "TRANSFER"
-  | "RESTORE"
   | "TEST";
 
 export type RevenueCatStore = "APP_STORE" | "MAC_APP_STORE" | "PLAY_STORE" | "AMAZON" | "STRIPE" | "PROMOTIONAL";
@@ -67,16 +66,13 @@ export function mapRevenueCatEventToStatus(event: RevenueCatEvent): EntitlementS
     case "PRODUCT_CHANGE":
     case "SUBSCRIPTION_EXTENDED":
     case "NON_RENEWING_PURCHASE":
+    // TRANSFER also covers Purchases.restorePurchases() when it reattaches
+    // an existing store purchase to a different app_user_id (e.g. a
+    // recreated Supabase account restoring on the same device/store
+    // account it originally subscribed under) — RevenueCat has no separate
+    // "RESTORE" webhook event type despite the SDK method's name; see
+    // https://www.revenuecat.com/docs/integrations/webhooks/event-types-and-fields.
     case "TRANSFER":
-    // Sent by Purchases.restorePurchases() re-attaching an existing store
-    // purchase to a (possibly new) app_user_id — e.g. a recreated Supabase
-    // account restoring on the same device/App Store account it originally
-    // subscribed under. Previously fell through to the default case and
-    // was silently dropped, leaving the DB stuck at "not_started" even
-    // though the client's own CustomerInfo already showed an active
-    // entitlement — this is what caused the "Confirming your
-    // subscription…" banner to hang forever after Restore Purchases.
-    case "RESTORE":
       return event.period_type === "TRIAL" ? "trialing" : "active";
     case "CANCELLATION":
       // Auto-renew turned off, but access continues until expiration_at_ms

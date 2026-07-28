@@ -87,11 +87,23 @@ export async function processProviderWebhook(
     return { result: "ignored", reason: "subscription not found at provider" };
   }
 
+  // Stripe/Razorpay checkouts always go through recordCheckoutIntent first
+  // (see entitlements.ts), so an entitlements row already exists by the
+  // time any webhook lands here — unlike RevenueCat's fallback path, this
+  // ownerId is never used to insert a new row, only carried through
+  // because applyProviderSubscriptionSnapshot's upsert needs one.
+  const { data: workspace } = await admin.from("workspaces").select("owner_id").eq("id", target.workspaceId).maybeSingle();
+  if (!workspace) {
+    await markProcessed(admin, providerName, verified.eventId);
+    return { result: "ignored", reason: "workspace not found" };
+  }
+
   await applyProviderSubscriptionSnapshot({
     workspaceId: target.workspaceId,
     module: target.module,
     provider: providerName,
     snapshot,
+    ownerId: workspace.owner_id,
   });
 
   await markProcessed(admin, providerName, verified.eventId);
