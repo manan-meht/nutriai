@@ -62,7 +62,21 @@ export async function POST(request: NextRequest) {
       event_type: event.type,
       payload: body as object,
     });
-    if (insertError) return NextResponse.json({ received: true, result: "duplicate" });
+    if (insertError) {
+      // "23505" (unique_violation) means a concurrent request already
+      // recorded this exact event — genuinely a duplicate, safe to treat
+      // as already-seen. Any other error (e.g. the "invalid input value
+      // for enum payment_provider" that silently swallowed every real
+      // store webhook here for a long time, see migration 0042) must
+      // surface loudly instead — returning 200 "duplicate" for it means
+      // RevenueCat never retries and this app never notices anything went
+      // wrong at all.
+      if (insertError.code === "23505") {
+        return NextResponse.json({ received: true, result: "duplicate" });
+      }
+      console.error("[revenuecat-webhook] failed to record event:", event.id, insertError.message);
+      return NextResponse.json({ received: false, error: insertError.message }, { status: 500 });
+    }
   }
 
   const markProcessed = () =>

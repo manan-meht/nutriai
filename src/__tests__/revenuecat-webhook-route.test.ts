@@ -20,6 +20,12 @@ function fakeDb(opts: {
    * why this fallback exists (mobile IAP purchases before any prior
    * checkout-intent/trial-start ever created a row). */
   workspaceForOwner?: { ownerId: string; module: string; workspaceId: string } | null;
+  /** Simulates the payment_webhook_events insert itself failing for a
+   * reason OTHER than a genuine duplicate — e.g. the enum-value rejection
+   * from migration 0042 (payment_provider didn't include 'apple'/
+   * 'google_play' for a long time, so every real store webhook insert
+   * failed here, before any event-type/entitlement logic ever ran). */
+  insertFailure?: { code: string; message: string } | null;
 }) {
   const webhookEvents = new Map<string, { processed_at: string | null }>();
   if (opts.existingEvent) webhookEvents.set("apple:evt_1", opts.existingEvent);
@@ -45,8 +51,13 @@ function fakeDb(opts: {
               }),
             }),
             insert: async (row: any) => {
+              if (opts.insertFailure) return { error: opts.insertFailure };
               const key = `${row.provider}:${row.provider_event_id}`;
-              if (webhookEvents.has(key)) return { error: { message: "duplicate" } };
+              // Real Postgres unique_violation code — this branch is
+              // actually unreachable given the route's `if (!existing)`
+              // guard above it, but kept realistic (matching route.ts's
+              // 23505 check) in case that guard is ever relaxed.
+              if (webhookEvents.has(key)) return { error: { code: "23505", message: "duplicate key" } };
               webhookEvents.set(key, { processed_at: null });
               return { error: null };
             },
@@ -264,6 +275,32 @@ describe("POST /api/webhooks/revenuecat", () => {
       status: "trialing",
       payment_provider: "google_play",
     });
+  });
+
+  // Regression test for the actual root cause of every "restore/subscribe
+  // never takes effect" report this session: payment_provider (migration
+  // 0001) only had 'stripe'/'razorpay' — inserting a payment_webhook_events
+  // row with provider 'apple'/'google_play' failed with a Postgres enum
+  // error on every single RevenueCat webhook, and the route previously
+  // treated ANY insert error the same as a harmless already-seen
+  // duplicate, returning 200 with nothing ever recorded or applied. A
+  // non-duplicate insert failure must now surface as a real error instead.
+  it("surfaces a non-duplicate insert failure instead of silently reporting it as a harmless duplicate", async () => {
+    const { db, entitlementUpdates } = fakeDb({
+      entitlementRow: { workspace_id: "ws-1", module: "adults" },
+      insertFailure: { code: "22P02", message: 'invalid input value for enum payment_provider: "google_play"' },
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const { POST } = await import("@/app/api/webhooks/revenuecat/route");
+
+    const res = await POST(
+      postRequest({ event: { id: "evt_1", type: "INITIAL_PURCHASE", app_user_id: "user-1", store: "PLAY_STORE", period_type: "NORMAL" } })
+    );
+
+    expect(res.status).toBe(500);
+    const json = await res.json();
+    expect(json.received).toBe(false);
+    expect(entitlementUpdates).toHaveLength(0);
   });
 
   it("acknowledges a TEST event without touching any entitlement", async () => {
