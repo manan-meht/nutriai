@@ -154,10 +154,19 @@ export function buildSnapshotFromRevenueCatEvent(event: RevenueCatEvent): Provid
     currentPeriodEnd: toIso(event.expiration_at_ms),
     cancelAtPeriodEnd: event.type === "CANCELLATION" || event.type === "SUBSCRIPTION_PAUSED",
     cancelledAt: event.type === "CANCELLATION" ? toIso(event.event_timestamp_ms) : null,
-    // Store-billing trials (App Store/Play free trial offers) aren't
-    // represented in this event shape — this card-first web trial flow is
-    // Stripe-only, so nothing to report here.
-    trialStart: null,
-    trialEnd: null,
+    // A store-billing trial (App Store/Play free trial offer) IS fully
+    // represented here — period_type "TRIAL" plus purchased_at_ms/
+    // expiration_at_ms together are exactly the trial window, the same
+    // fields already used for currentPeriodStart/currentPeriodEnd above.
+    // This used to be left null unconditionally (based on the mistaken
+    // assumption that RevenueCat's payload has no trial-window fields at
+    // all), which meant trial_end_at only ever got set once, by whatever
+    // FIRST created the entitlements row (e.g. the legacy card-free
+    // startTrialIfNeeded on web) — a later real store trial purchase never
+    // refreshed it, so the trial countdown shown in the app kept counting
+    // down from that original, unrelated date instead of the actual
+    // purchase's real trial period.
+    trialStart: event.period_type === "TRIAL" ? toIso(event.purchased_at_ms) : null,
+    trialEnd: event.period_type === "TRIAL" ? toIso(event.expiration_at_ms) : null,
   };
 }

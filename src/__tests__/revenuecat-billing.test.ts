@@ -80,6 +80,28 @@ describe("buildSnapshotFromRevenueCatEvent", () => {
     });
   });
 
+  // Regression test: trialStart/trialEnd used to be hardcoded null for
+  // every RevenueCat event, so a real store trial purchase never updated
+  // entitlements.trial_end_at — the app kept showing the countdown from
+  // whatever date the row was first created, not the actual purchase's
+  // trial window (reported live as "should have been 14 days remaining"
+  // showing 9 instead, from a stale trial_end_at set 6 days earlier).
+  it("populates trialStart/trialEnd from purchased_at_ms/expiration_at_ms when period_type is TRIAL", () => {
+    const snapshot = buildSnapshotFromRevenueCatEvent(
+      event({
+        type: "INITIAL_PURCHASE",
+        store: "PLAY_STORE",
+        app_user_id: "user-42",
+        purchased_at_ms: 1700000000000,
+        expiration_at_ms: 1701209600000,
+        period_type: "TRIAL",
+      })
+    );
+    expect(snapshot?.status).toBe("trialing");
+    expect(snapshot?.trialStart).toBe(new Date(1700000000000).toISOString());
+    expect(snapshot?.trialEnd).toBe(new Date(1701209600000).toISOString());
+  });
+
   it("returns null for event types that aren't acted on (e.g. TEST)", () => {
     expect(buildSnapshotFromRevenueCatEvent(event({ type: "TEST", store: "APP_STORE" }))).toBeNull();
   });
