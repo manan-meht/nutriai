@@ -135,7 +135,13 @@ export default function ProductRouterScreen() {
       if (choice === 'gym') return <Redirect href="/gym" />;
       return (
         <Redirect
-          href={{ pathname: '/adults', params: pendingProduct === 'self' ? { self: '1' } : {} }}
+          // Always pass self explicitly (never {}) — adults/index.tsx reads
+          // this via useLocalSearchParams, and if this route was already
+          // present earlier in the navigation stack (e.g. someone backed
+          // out of a "Self" pick and chose "Family" instead), an omitted
+          // param can end up inheriting that stale self=1 instead of being
+          // absent, silently flipping a Family signup to the Self plan.
+          href={{ pathname: '/adults', params: { self: pendingProduct === 'self' ? '1' : '0' } }}
         />
       );
     }
@@ -153,8 +159,11 @@ export default function ProductRouterScreen() {
             // plan (see mobile-api's markWorkspaceSelfPlan) — passed as a
             // one-time route param, same as the web signup flow's own
             // ?self=1, so adults/index.tsx can thread it through to its
-            // first GET /adults/workspace call.
-            router.push({ pathname: '/adults', params: selected === 'self' ? { self: '1' } : {} });
+            // first GET /adults/workspace call. Always passed explicitly
+            // (never {}) — see the Redirect branch above for why an
+            // omitted param can silently inherit a stale self=1 from an
+            // earlier navigation to this same route.
+            router.push({ pathname: '/adults', params: { self: selected === 'self' ? '1' : '0' } });
           }
         }}
       />
