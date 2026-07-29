@@ -256,14 +256,18 @@ export default function AdultsContactListScreen() {
                   Good morning, {firstName}
                 </ThemedText>
                 <ThemedText type="subtitle" style={styles.headline}>
-                  Who would you like to check in on?
+                  {state.plan === 'self' ? 'Your dashboard' : 'Who would you like to check in on?'}
                 </ThemedText>
                 <ThemedText type="default" themeColor="textSecondary">
-                  Choose a family member to view their meals, progress, and recommendations.
+                  {state.plan === 'self'
+                    ? 'Tap below to view your meals, progress, and recommendations.'
+                    : 'Choose a family member to view their meals, progress, and recommendations.'}
                 </ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
-                  Tip: press and hold a family member to remove them.
-                </ThemedText>
+                {state.plan !== 'self' && (
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+                    Tip: press and hold a family member to remove them.
+                  </ThemedText>
+                )}
               </View>
             )}
             {stillRequiresCardAfterPurchase ? (
@@ -287,16 +291,29 @@ export default function AdultsContactListScreen() {
           </>
         }
         ListEmptyComponent={
-          <EmptyState
-            image={require('@/assets/images/onboarding/family.png')}
-            title="Add someone you care about"
-            message="Invite a family member so you can support their nutrition journey. Share plans, track progress, and grow healthier together."
-            action={
-              canAdd
-                ? { label: 'Add family member', onPress: () => handleAddPress(state.plan, state.requiresCardBeforeTrial) }
-                : undefined
-            }
-          />
+          state.plan === 'self' ? (
+            <EmptyState
+              image={require('@/assets/images/onboarding/self.png')}
+              title="Set up your profile"
+              message="Add your own details so Tistra can start tracking your meals, progress, and recommendations."
+              action={
+                canAdd
+                  ? { label: 'Get started', onPress: () => handleAddPress(state.plan, state.requiresCardBeforeTrial) }
+                  : undefined
+              }
+            />
+          ) : (
+            <EmptyState
+              image={require('@/assets/images/onboarding/family.png')}
+              title="Add someone you care about"
+              message="Invite a family member so you can support their nutrition journey. Share plans, track progress, and grow healthier together."
+              action={
+                canAdd
+                  ? { label: 'Add family member', onPress: () => handleAddPress(state.plan, state.requiresCardBeforeTrial) }
+                  : undefined
+              }
+            />
+          )
         }
         renderItem={({ item }) => (
           <PersonCard
@@ -313,6 +330,10 @@ export default function AdultsContactListScreen() {
         ListFooterComponent={
           <>
             {state.contacts.length > 0 && canAdd && (
+              // Once a self-plan account already has its one "self" contact,
+              // any further addition genuinely is a family member (self
+              // plans don't have a second "self" concept) — this label
+              // stays unconditional on purpose.
               <Pressable onPress={() => handleAddPress(state.plan, state.requiresCardBeforeTrial)} style={styles.addCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.addCardText}>
                   + Add family member
@@ -322,7 +343,9 @@ export default function AdultsContactListScreen() {
             {state.contacts.length > 0 && !canAdd && (
               <View style={styles.limitReachedCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
-                  You&apos;ve reached the limit of {familyLimit} family member{familyLimit === 1 ? '' : 's'} for this account.
+                  {state.plan === 'self'
+                    ? "You've reached the limit for this account."
+                    : `You've reached the limit of ${familyLimit} family member${familyLimit === 1 ? '' : 's'} for this account.`}
                 </ThemedText>
                 {state.plan !== 'self' && (
                   <Pressable onPress={handleBuyCapacity} disabled={buyingCapacity} style={styles.buyCapacityButton}>
