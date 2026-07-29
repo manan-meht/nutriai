@@ -15,3 +15,8 @@ create table whatsapp_processed_media (
 
 comment on table whatsapp_processed_media is
   'Idempotency claim table for inbound WhatsApp image messages, keyed by Meta''s media id, so the same photo resent as a second WhatsApp message (distinct wamid) is not analyzed/logged twice. No cleanup job yet, same rationale as whatsapp_processed_messages.';
+
+-- Same reasoning as whatsapp_processed_messages (0024) — no owner column,
+-- only the service-role webhook handler ever touches this table. RLS with
+-- no policies still denies anon/authenticated access outright.
+alter table whatsapp_processed_media enable row level security;

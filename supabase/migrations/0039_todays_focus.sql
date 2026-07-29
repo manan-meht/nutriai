@@ -62,3 +62,37 @@ create unique index if not exists todays_focus_recommendations_scheduled_once_pe
 
 create index if not exists todays_focus_recommendations_contact_history_idx
   on todays_focus_recommendations (contact_id, contact_type, created_at desc);
+
+-- All actual app access to this table goes through service-role clients
+-- (the cron job, the WhatsApp feedback handler, daily-meal-recommendation.ts)
+-- which bypass RLS entirely — this is defense-in-depth, not load-bearing,
+-- matching the identical policy shape already used for
+-- food_balance_score_snapshots (0027_food_balance_score.sql).
+alter table todays_focus_recommendations enable row level security;
+
+create policy "contact/client owners can access their todays focus recommendations"
+  on todays_focus_recommendations for all
+  using (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = todays_focus_recommendations.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = todays_focus_recommendations.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  )
+  with check (
+    (contact_type = 'adults_contact' and exists (
+      select 1 from adults_contacts
+      where adults_contacts.id = todays_focus_recommendations.contact_id
+        and adults_contacts.caregiver_id = auth.uid()
+    ))
+    or (contact_type = 'gym_client' and exists (
+      select 1 from gym_clients
+      where gym_clients.id = todays_focus_recommendations.contact_id
+        and gym_clients.trainer_id = auth.uid()
+    ))
+  );

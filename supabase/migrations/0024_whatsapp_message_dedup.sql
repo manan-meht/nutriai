@@ -17,3 +17,11 @@ create table whatsapp_processed_messages (
 
 comment on table whatsapp_processed_messages is
   'Idempotency claim table for inbound WhatsApp webhook messages, keyed by Meta''s wamid. No cleanup job yet — small per-row size and low volume relative to other tables makes unbounded growth an acceptable tradeoff for now; add a retention job if this becomes a real storage concern.';
+
+-- No owner column exists (this isn't a per-contact table), so there's no
+-- meaningful policy to write — only the service-role webhook handler ever
+-- touches this table, which bypasses RLS entirely. Enabling RLS with no
+-- policies still denies anon/authenticated access outright, matching
+-- payment_webhook_events' identical internal-only-table convention
+-- (0001_entitlements.sql).
+alter table whatsapp_processed_messages enable row level security;
