@@ -51,7 +51,11 @@ export function NutritionTargetsCard({ contactId, clientId, refreshKey, onChange
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    // No synchronous setLoading(true) here — the initial useState(true)
+    // above covers first mount, and a refreshKey-triggered refetch simply
+    // keeps showing the current targets until the new data arrives rather
+    // than flashing back to the loading spinner (also avoids calling
+    // setState directly inside the effect body).
     fetch(path)
       .then((res) => (res.status === 404 ? null : res.ok ? res.json() : Promise.reject(new Error("failed"))))
       .then((data: { recommendedMacroTargets?: MacroTargets; activeMacroTargets?: MacroTargets } | null) => {

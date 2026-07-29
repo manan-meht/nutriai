@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import type { MealShareData } from '@/lib/meal-share/types';
 import {
@@ -63,9 +63,14 @@ export function MealShareModal({
   // computed once against a null meal and then never recomputed. Recompute
   // whenever a genuinely different meal is being shared instead, keyed off
   // a stable identity (loggedAt+imageUrl) rather than the `meal` object
-  // itself, since the caller rebuilds that object on every render.
-  useEffect(() => {
-    if (!meal) return;
+  // itself, since the caller rebuilds that object on every render. Done
+  // directly during render (React's documented "adjusting state when a
+  // prop changes" pattern) rather than in an effect, since all of this
+  // needs to land atomically before the first paint of the new meal.
+  const mealKey = meal ? `${meal.loggedAt}|${meal.imageUrl}` : null;
+  const [lastMealKey, setLastMealKey] = useState<string | null>(null);
+  if (meal && mealKey !== lastMealKey) {
+    setLastMealKey(mealKey);
     setPickerExpanded(false);
     setActiveTab('suggested');
     setCustomText('');
@@ -81,8 +86,7 @@ export function MealShareModal({
         audience,
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on meal identity, not the whole (re-created-per-render) meal/derivedCategories objects
-  }, [meal?.loggedAt, meal?.imageUrl]);
+  }
 
   if (!meal) return null;
 

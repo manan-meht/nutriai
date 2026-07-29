@@ -89,7 +89,11 @@ export default function AdultsPaywallScreen() {
   const [restoring, setRestoring] = useState(false);
 
   const load = useCallback(() => {
-    setState({ status: 'loading' });
+    // No synchronous setState({ status: 'loading' }) here — the initial
+    // useState(loading) above covers first mount, and a retry from the
+    // error state simply keeps showing that error until the refetch
+    // resolves rather than flashing back to the loading spinner (also
+    // avoids calling setState directly inside the effect body).
     Purchases.getOfferings()
       .then((offerings) => setState({ status: 'ready', offering: offerings.all[offeringId] ?? null }))
       .catch((err) =>

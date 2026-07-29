@@ -19,7 +19,11 @@ export default function EditGymClientScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
 
   const load = useCallback(() => {
-    setState({ status: 'loading' });
+    // No synchronous setState({ status: 'loading' }) here — the initial
+    // useState(loading) above covers first mount, and a retry from the
+    // error state simply keeps showing that error until the refetch
+    // resolves rather than flashing back to the loading spinner (also
+    // avoids calling setState directly inside the effect body).
     api
       .getGymClientDetails(clientId)
       .then(({ client }) => setState({ status: 'ready', client }))

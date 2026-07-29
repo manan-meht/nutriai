@@ -21,7 +21,11 @@ export default function EditAdultsContactScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
 
   const load = useCallback(() => {
-    setState({ status: 'loading' });
+    // No synchronous setState({ status: 'loading' }) here — the initial
+    // useState(loading) above covers first mount, and a retry from the
+    // error state simply keeps showing that error until the refetch
+    // resolves rather than flashing back to the loading spinner (also
+    // avoids calling setState directly inside the effect body).
     api
       .getAdultsContactDetails(contactId)
       .then(({ contact }) => setState({ status: 'ready', contact }))

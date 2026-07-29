@@ -14,7 +14,12 @@ export function useFoodBalanceScore(query: { contactId: string } | { clientId: s
 
   const fetchResult = useCallback(() => {
     let cancelled = false;
-    setLoading(true);
+    // Deliberately no synchronous setLoading(true) here — the initial
+    // useState(true) above already covers first mount, and staying on
+    // whatever's currently shown until a refetch() resolves (rather than
+    // flashing back to a loading state) avoids calling setState directly
+    // inside an effect body, matching the same tradeoff already made in
+    // the web app's useFoodBalanceData hook.
     api
       .getFoodBalanceScore(query)
       .then((data) => !cancelled && setResult(data))

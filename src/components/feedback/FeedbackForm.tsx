@@ -34,7 +34,12 @@ export function FeedbackForm({ source, product, prefillEmail, onSuccess, onSubmi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const renderedAtRef = useRef(Date.now());
+  // useState's lazy-initializer form (not useRef(Date.now())) — React
+  // guarantees the initializer function itself runs at most once, on
+  // mount, whereas useRef(Date.now()) evaluates Date.now() as a plain
+  // argument expression on every render (its result just gets discarded
+  // after the first), which is an impure call during render.
+  const [renderedAt] = useState(() => Date.now());
   const openedTrackedRef = useRef(false);
 
   useEffect(() => {
@@ -76,7 +81,7 @@ export function FeedbackForm({ source, product, prefillEmail, onSuccess, onSubmi
           product,
           pageUrl: typeof window !== "undefined" ? window.location.href : undefined,
           website: honeypot,
-          renderedAt: renderedAtRef.current,
+          renderedAt,
         }),
       });
       const json = await res.json().catch(() => null);

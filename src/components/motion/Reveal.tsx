@@ -29,7 +29,11 @@ export function Reveal({
   const reduced = useReducedMotion();
 
   useEffect(() => {
-    if (reduced) { setVisible(true); return; }
+    // No need to setVisible(true) here — the render below already treats
+    // `reduced` as visible via `visible || reduced`, so skipping observer
+    // setup entirely is enough; this also removes the only setState-
+    // during-effect call this component had.
+    if (reduced) return;
     const el = ref.current;
     if (!el) return;
     const observer = new IntersectionObserver(
@@ -44,7 +48,7 @@ export function Reveal({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [delay, threshold, reduced, direction]);
+  }, [delay, threshold, reduced]);
 
   return (
     <div
