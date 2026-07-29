@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { updateClient, getClientDetails } from "@/app/(gym)/gym/dashboard/actions";
-import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
+import { FOOD_BALANCE_SCORE_ENABLED, isMealSpecificRecommendationsEnabledFor } from "@/lib/billing/feature-flags";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile, resolveMacroTargets } from "@/lib/food-balance/adapter";
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
+import { getOrComputeDailyMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
+import { NUTRIENT_TO_RECOMMENDATION_CATEGORY } from "@/lib/food-balance/meal-nutrient-recommendations";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
-import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
+import { calculateFoodBalanceScore, type NutritionGoal } from "@nutriai/health-scoring";
 import { getEarnedCards, type ShareCardComponentScores } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
+
+// gym_clients has no timezone column (coaches/clients are assumed same
+// region for this v1 — see packages/nutrition-core/src/gym.ts's own
+// DEFAULT_TIMEZONE), so the meal-specific engine's local-date bucketing
+// uses this same fallback rather than guessing per-client.
+const GYM_DEFAULT_TIMEZONE = "Asia/Kolkata";
 
 export const runtime = "edge";
 
@@ -161,6 +169,48 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       carbs: { averageG: avgOf("totalCarbsMin", "totalCarbsMax"), targetG: activeMacroTargets.carbs.target },
     },
   });
+
+  // See src/app/api/adults/contacts/[contactId]/route.ts's identical
+  // comment — meal-specific engine, shares one daily pick with Today's
+  // Focus, falls back to the generic recommendations above when the flag
+  // is off or there's no strong enough meal-level evidence.
+  if (isMealSpecificRecommendationsEnabledFor(clientId, user.email)) {
+    const goal = profileRow?.nutrition_goals?.[0] as NutritionGoal | undefined;
+    const todayLocalDate = new Date().toLocaleDateString("en-CA", { timeZone: GYM_DEFAULT_TIMEZONE });
+    const mealSpecific = await getOrComputeDailyMealRecommendation({
+      db: supabase,
+      contactId: clientId,
+      contactType: "gym_client",
+      workspaceId: details.client.workspaceId,
+      context: "food_balance",
+      meals,
+      timezone: GYM_DEFAULT_TIMEZONE,
+      todayLocalDate,
+      dietaryProfile,
+      dailyTargets: {
+        protein: activeMacroTargets.protein.target,
+        fiber: activeMacroTargets.fiber.target,
+        calories: activeMacroTargets.calories.target,
+      },
+      goal,
+    });
+    if (mealSpecific) {
+      const confidenceScore = mealSpecific.confidence === "high" ? 1 : mealSpecific.confidence === "moderate" ? 0.6 : 0.3;
+      result.recommendations = [
+        {
+          id: `meal_specific_${mealSpecific.candidate.nutrient}_${mealSpecific.candidate.mealType ?? "general"}`,
+          category: NUTRIENT_TO_RECOMMENDATION_CATEGORY[mealSpecific.candidate.nutrient] as (typeof result.recommendations)[number]["category"],
+          title: mealSpecific.foodBalanceText.title,
+          description: mealSpecific.foodBalanceText.description,
+          reason: `Meal-specific recommendation (${mealSpecific.candidate.evidenceType})`,
+          priority: 0,
+          confidence: confidenceScore,
+          exampleFoodIds: mealSpecific.foodBalanceText.exampleFoodIds,
+        },
+        ...result.recommendations.filter((r) => r.category !== NUTRIENT_TO_RECOMMENDATION_CATEGORY[mealSpecific.candidate.nutrient]),
+      ];
+    }
+  }
 
   if (result.calculatedAt) {
     await supabase.from("food_balance_score_snapshots").insert({

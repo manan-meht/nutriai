@@ -138,6 +138,62 @@ export function isTodaysFocusTestAccount(ownerEmail: string | null | undefined):
   return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
 }
 
+/** Meal-specific nutrition recommendations (see
+ * src/lib/food-balance/meal-nutrient-recommendations.ts and
+ * daily-meal-recommendation.ts) — the deterministic "dinner has been low
+ * in protein" engine shared by Food Balance Score and Today's Focus. Off
+ * by default (falls back to the existing generic, non-meal-specific
+ * recommendation logic in both surfaces). Same allowlist convention as
+ * TODAYS_FOCUS_ENABLED/isTodaysFocusTestAccount, plus a percentage-rollout
+ * primitive neither of those flags has yet — added here since the
+ * feature's own rollout requirements explicitly ask for it. */
+export const MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_ENABLED = flag(
+  process.env.MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_ENABLED,
+  false
+);
+
+/** Comma-separated caregiver/coach emails (case-insensitive) allowed to
+ * use the meal-specific engine even while the flag above is globally off —
+ * mirrors isTodaysFocusTestAccount/isBillingWhitelisted exactly. */
+export function isMealSpecificRecommendationsTestAccount(ownerEmail: string | null | undefined): boolean {
+  if (!ownerEmail) return false;
+  const raw = process.env.MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_TEST_EMAILS;
+  if (!raw) return false;
+  const normalized = ownerEmail.trim().toLowerCase();
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
+/** Simple (non-cryptographic) deterministic string hash — the same
+ * contactId always resolves to the same in/out rollout decision for a
+ * fixed percentage, so a person's experience doesn't flicker between the
+ * old and new recommendation logic across requests/days. */
+function stableHashPercent(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 100;
+}
+
+/** MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_ROLLOUT_PERCENT (0-100, default
+ * 0) — the "percentage rollout" support the feature spec asks for, which
+ * neither TODAYS_FOCUS_ENABLED nor FOOD_BALANCE_SCORE_ENABLED have. */
+export function isMealSpecificRecommendationsRolloutTarget(contactId: string): boolean {
+  const raw = process.env.MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_ROLLOUT_PERCENT;
+  const percent = raw ? parseInt(raw, 10) : 0;
+  if (!Number.isFinite(percent) || percent <= 0) return false;
+  return stableHashPercent(contactId) < percent;
+}
+
+/** Single entry point callers should use — global flag, then allowlist,
+ * then percentage rollout, in that order. Fallback (false) always means
+ * "use the existing generic recommendation logic," never an error. */
+export function isMealSpecificRecommendationsEnabledFor(contactId: string, ownerEmail?: string | null): boolean {
+  return (
+    MEAL_SPECIFIC_NUTRITION_RECOMMENDATIONS_ENABLED ||
+    isMealSpecificRecommendationsTestAccount(ownerEmail) ||
+    isMealSpecificRecommendationsRolloutTarget(contactId)
+  );
+}
+
 /** How long a parent's trusted-device session lasts after WhatsApp OTP
  * verification before re-verification is required. Configurable per spec
  * (default 90 days) — distinct from the shorter 60-day default used by the

@@ -9,7 +9,7 @@ import { pickWeeklyWhatsAppWin, buildWeeklyWinsWhatsAppLine } from "@/lib/share-
 import { getProductDomain } from "@/lib/product/resolve-product";
 import type { ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { sendTrialReminderEmail } from "@/lib/billing/trial-reminder-email";
-import { TODAYS_FOCUS_ENABLED, isTodaysFocusTestAccount } from "@/lib/billing/feature-flags";
+import { TODAYS_FOCUS_ENABLED, isTodaysFocusTestAccount, isMealSpecificRecommendationsEnabledFor } from "@/lib/billing/feature-flags";
 import { fetchTodaysFocusInputs } from "@/lib/food-balance/todays-focus-data";
 import {
   generateRecommendationCandidates,
@@ -19,6 +19,9 @@ import {
   recentLocalDates,
   type TodaysFocusCandidate,
 } from "@/lib/food-balance/todays-focus";
+import { buildMealNutritionHistory } from "@/lib/food-balance/meal-nutrient-recommendations";
+import { readTodaysMealRecommendationClaim, computeFreshMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
+import { calculateMacroTargets } from "@nutriai/health-scoring";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -125,11 +128,89 @@ async function buildTodaysFocusLine(
   db: ReturnType<typeof createServiceClient>,
   elig: TodaysFocusEligibility,
   localDate: string
-): Promise<{ line: string; recommendationId: string } | undefined> {
+): Promise<{ line: string; recommendationId?: string } | undefined> {
   try {
     if (!isTodaysFocusDue(elig, localDate)) return undefined;
 
     const { meals, dietaryProfile, profile, goal, history } = await fetchTodaysFocusInputs(db, elig.contactId, elig.contactType);
+
+    // Meal-specific engine (behind meal_specific_nutrition_recommendations)
+    // — tried first so this and Food Balance Score never pick different
+    // meals/nutrients for the same person on the same day. Reads today's
+    // claim if Food Balance already computed one; computes+inserts its own
+    // otherwise, with the SAME is_scheduled/delivery_status lifecycle the
+    // generic pipeline below already uses (see this route's own
+    // idempotency comment on the unique-violation branch further down —
+    // getOrComputeDailyMealRecommendation is deliberately NOT used here
+    // since it marks delivery_status='sent' immediately, which is correct
+    // for a dashboard view but wrong for a WhatsApp message that hasn't
+    // actually sent yet).
+    if (isMealSpecificRecommendationsEnabledFor(elig.contactId, elig.ownerEmail)) {
+      const mealHistory = buildMealNutritionHistory(meals, elig.timezone, localDate);
+      const existingClaim = await readTodaysMealRecommendationClaim(db, elig.contactId, elig.contactType, localDate, mealHistory, dietaryProfile, goal);
+      if (existingClaim) {
+        // Already claimed (almost certainly by Food Balance Score earlier
+        // today) — reuse its wording as-is rather than inserting a second
+        // row, which the shared-claim unique index wouldn't allow anyway.
+        // Delivery status for that original row is left alone; this send
+        // isn't tracked against it (a minor fidelity gap, acceptable since
+        // the recommendation itself is still accurately delivered).
+        return { line: existingClaim.todayFocusText };
+      }
+
+      const macroTargets = profile ? calculateMacroTargets(profile) : undefined;
+      const mealSpecific = await computeFreshMealRecommendation(
+        db,
+        elig.contactId,
+        elig.contactType,
+        mealHistory,
+        macroTargets ? { protein: macroTargets.protein.target, fiber: macroTargets.fiber.target, calories: macroTargets.calories.target } : {},
+        localDate,
+        dietaryProfile,
+        goal
+      );
+
+      if (mealSpecific) {
+        const { data: inserted, error: insertError } = await db
+          .from("todays_focus_recommendations")
+          .insert({
+            contact_id: elig.contactId,
+            contact_type: elig.contactType,
+            workspace_id: elig.workspaceId,
+            local_date: localDate,
+            timezone: elig.timezone,
+            category: mealSpecific.candidate.category,
+            nutrient: mealSpecific.candidate.nutrient,
+            meal_type: mealSpecific.candidate.mealType ?? null,
+            issue_type: mealSpecific.candidate.issueType,
+            evidence_type: mealSpecific.candidate.evidenceType,
+            priority_score: mealSpecific.candidate.score ?? 0,
+            confidence: mealSpecific.confidence,
+            analysis_window_days: TODAYS_FOCUS_ANALYSIS_WINDOW_DAYS,
+            supporting_metrics: mealSpecific.candidate.supportingMetrics,
+            goal: goal ?? null,
+            message_variant: `${mealSpecific.candidate.category}_${mealSpecific.candidate.evidenceType}`,
+            message_text: mealSpecific.todayFocusText,
+            suggested_food_ids: mealSpecific.foodSuggestions.ids,
+            is_scheduled: true,
+            delivery_status: "pending",
+            context: "today_focus",
+          })
+          .select("id")
+          .single();
+
+        // Same idempotency reasoning as the generic pipeline's own insert
+        // below — a conflicting insert here means either the scheduled-
+        // once-per-day guard or the shared-daily-claim guard already
+        // caught an overlapping cron tick / concurrent Food Balance call;
+        // skip appending anything rather than risk a duplicate.
+        if (!insertError && inserted) return { line: mealSpecific.todayFocusText, recommendationId: inserted.id };
+        if (insertError) return undefined;
+      }
+      // No meal-specific candidate cleared the evidence bar today — fall
+      // through to the existing generic day-level pipeline below, exactly
+      // as if the flag were off.
+    }
 
     const candidates = generateRecommendationCandidates({
       meals,
@@ -310,7 +391,7 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
         continue;
       }
 
-      let todaysFocus: { line: string; recommendationId: string } | undefined;
+      let todaysFocus: { line: string; recommendationId?: string } | undefined;
       if (mealSlotForTime(reminderTime) === "breakfast") {
         todaysFocus = await buildTodaysFocusLine(
           db,
@@ -337,11 +418,11 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
           normalizedWhatsappNumber: normalizePhone(target.whatsappNumber),
         });
         await sendReminder(target.whatsappNumber, displayName, reminderTime, todaysFocus?.line);
-        if (todaysFocus) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "sent");
+        if (todaysFocus?.recommendationId) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "sent");
         sent++;
       } catch (err) {
         console.error("[reminders] send failed:", target.contactType, target.id, err instanceof Error ? err.message : err);
-        if (todaysFocus) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "failed");
+        if (todaysFocus?.recommendationId) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "failed");
       }
     }
   }

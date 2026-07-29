@@ -8,11 +8,13 @@ import {
   revokeFamilyInvite,
   markFamilyInviteLinkOpened,
 } from "@/app/(adults)/adults/dashboard/actions";
-import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
+import { FOOD_BALANCE_SCORE_ENABLED, isMealSpecificRecommendationsEnabledFor } from "@/lib/billing/feature-flags";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile, resolveMacroTargets } from "@/lib/food-balance/adapter";
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
+import { getOrComputeDailyMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
+import { NUTRIENT_TO_RECOMMENDATION_CATEGORY } from "@/lib/food-balance/meal-nutrient-recommendations";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
-import { calculateFoodBalanceScore } from "@nutriai/health-scoring";
+import { calculateFoodBalanceScore, type NutritionGoal } from "@nutriai/health-scoring";
 import { getEarnedCards, type ShareCardComponentScores } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 
@@ -229,6 +231,54 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       carbs: { averageG: avgOf("totalCarbsMin", "totalCarbsMax"), targetG: activeMacroTargets.carbs.target },
     },
   });
+
+  // Meal-specific recommendation engine (behind
+  // meal_specific_nutrition_recommendations) — replaces the generic
+  // "Include protein at breakfast" template-only copy with an actual
+  // meal-level claim ("dinner has been low in protein") backed by this
+  // person's real logs, sharing one daily pick with Today's Focus so the
+  // two surfaces never contradict each other. Falls back to the existing
+  // generic recommendations entirely when the flag is off or the engine
+  // finds no meal with strong enough evidence.
+  if (isMealSpecificRecommendationsEnabledFor(contactId, user.email)) {
+    const goal = profileRow?.nutrition_goals?.[0] as NutritionGoal | undefined;
+    const todayLocalDate = new Date().toLocaleDateString("en-CA", { timeZone: details.contact.timezone });
+    const mealSpecific = await getOrComputeDailyMealRecommendation({
+      db: supabase,
+      contactId,
+      contactType: "adults_contact",
+      workspaceId: details.contact.workspaceId,
+      context: "food_balance",
+      meals,
+      timezone: details.contact.timezone,
+      todayLocalDate,
+      dietaryProfile,
+      dailyTargets: {
+        protein: activeMacroTargets.protein.target,
+        fiber: activeMacroTargets.fiber.target,
+        calories: activeMacroTargets.calories.target,
+      },
+      goal,
+    });
+    if (mealSpecific) {
+      const confidenceScore = mealSpecific.confidence === "high" ? 1 : mealSpecific.confidence === "moderate" ? 0.6 : 0.3;
+      result.recommendations = [
+        {
+          id: `meal_specific_${mealSpecific.candidate.nutrient}_${mealSpecific.candidate.mealType ?? "general"}`,
+          category: NUTRIENT_TO_RECOMMENDATION_CATEGORY[mealSpecific.candidate.nutrient] as (typeof result.recommendations)[number]["category"],
+          title: mealSpecific.foodBalanceText.title,
+          description: mealSpecific.foodBalanceText.description,
+          reason: `Meal-specific recommendation (${mealSpecific.candidate.evidenceType})`,
+          priority: 0,
+          confidence: confidenceScore,
+          exampleFoodIds: mealSpecific.foodBalanceText.exampleFoodIds,
+        },
+        // Keep the existing generic list right behind it — it's still
+        // useful context, just no longer the single top recommendation.
+        ...result.recommendations.filter((r) => r.category !== NUTRIENT_TO_RECOMMENDATION_CATEGORY[mealSpecific.candidate.nutrient]),
+      ];
+    }
+  }
 
   if (result.calculatedAt) {
     await supabase.from("food_balance_score_snapshots").insert({
