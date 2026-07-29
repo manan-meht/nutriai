@@ -18,6 +18,11 @@ export interface EntitlementSnapshot {
    * until the trial period actually ends, and RevenueCat's webhook reports
    * period_type: TRIAL (mapped to status "trialing") the moment they do. */
   requiresCardBeforeTrial: boolean;
+  /** True for BILLING_TEST_WHITELIST_EMAILS accounts — lets the client
+   * show an explicit "this is a whitelisted test account" message instead
+   * of either a payment prompt or (worse) just silently showing nothing
+   * and leaving someone wondering why they were never asked to pay. */
+  isBillingWhitelisted: boolean;
 }
 
 /** Wraps the shared trial/status computation (packages/nutrition-core) with
@@ -84,5 +89,6 @@ export async function getEntitlementSnapshot(
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       module === "adults" &&
       core.status === "not_started",
+    isBillingWhitelisted: whitelisted,
   };
 }

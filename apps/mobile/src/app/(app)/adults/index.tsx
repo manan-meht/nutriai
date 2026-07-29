@@ -35,6 +35,7 @@ type State =
       entitlementStatus: string;
       trialDaysRemaining: number | null;
       requiresCardBeforeTrial: boolean;
+      isBillingWhitelisted: boolean;
     }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
@@ -96,6 +97,7 @@ export default function AdultsContactListScreen() {
             entitlementStatus: entitlement.status,
             trialDaysRemaining: entitlement.trialDaysRemaining,
             requiresCardBeforeTrial: entitlement.requiresCardBeforeTrial,
+            isBillingWhitelisted: entitlement.isBillingWhitelisted,
           });
         }
       })
@@ -270,7 +272,14 @@ export default function AdultsContactListScreen() {
                 )}
               </View>
             )}
-            {stillRequiresCardAfterPurchase ? (
+            {state.isBillingWhitelisted ? (
+              // Takes priority over every other banner — a whitelisted
+              // test account should never see payment prompts or a trial
+              // countdown, since neither is real for this account.
+              <ThemedView type="backgroundElement" style={styles.trialBanner}>
+                <ThemedText type="small">You have a whitelisted test account — no payment is needed to use Tistra Health.</ThemedText>
+              </ThemedView>
+            ) : stillRequiresCardAfterPurchase ? (
               <ThemedView type="backgroundElement" style={styles.trialBanner}>
                 <ThemedText type="small">Confirming your subscription — this can take a few seconds…</ThemedText>
               </ThemedView>

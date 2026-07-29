@@ -73,6 +73,10 @@ export interface AdultsWorkspaceResponse {
     trialDaysRemaining: number | null;
     isReadOnly: boolean;
     requiresCardBeforeTrial: boolean;
+    /** True for BILLING_TEST_WHITELIST_EMAILS accounts — the dashboard
+     * shows an explicit "whitelisted test account" message instead of
+     * either a payment prompt or the ordinary trial countdown. */
+    isBillingWhitelisted: boolean;
   };
   caregiverEmail: string | null;
   caregiverName: string | null;
