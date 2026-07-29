@@ -12,7 +12,7 @@ import { FOOD_BALANCE_SCORE_ENABLED, isMealSpecificRecommendationsEnabledFor } f
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile, resolveMacroTargets } from "@/lib/food-balance/adapter";
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
 import { getOrComputeDailyMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
-import { NUTRIENT_TO_RECOMMENDATION_CATEGORY } from "@/lib/food-balance/meal-nutrient-recommendations";
+import { NUTRIENT_TO_RECOMMENDATION_CATEGORY, RECOMMENDATION_CATEGORIES_MADE_REDUNDANT } from "@/lib/food-balance/meal-nutrient-recommendations";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile";
 import { calculateFoodBalanceScore, type NutritionGoal } from "@nutriai/health-scoring";
 import { getEarnedCards, type ShareCardComponentScores } from "@/lib/share-cards/triggers";
@@ -275,7 +275,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         },
         // Keep the existing generic list right behind it — it's still
         // useful context, just no longer the single top recommendation.
-        ...result.recommendations.filter((r) => r.category !== NUTRIENT_TO_RECOMMENDATION_CATEGORY[mealSpecific.candidate.nutrient]),
+        ...result.recommendations.filter((r) => !RECOMMENDATION_CATEGORIES_MADE_REDUNDANT[mealSpecific.candidate.nutrient].includes(r.category)),
       ];
     }
   }

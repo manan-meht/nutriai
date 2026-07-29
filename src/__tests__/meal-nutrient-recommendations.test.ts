@@ -15,6 +15,7 @@ import {
   renderFoodBalanceRecommendation,
   renderTodayFocusRecommendation,
   MEAL_RECOMMENDATION_CONFIG,
+  RECOMMENDATION_CATEGORIES_MADE_REDUNDANT,
   type MealRecommendationCandidate,
   type RecommendationHistoryEntry,
 } from "@/lib/food-balance/meal-nutrient-recommendations";
@@ -525,5 +526,28 @@ describe("generic engine reused across nutrients — calculateMealSlotAdequacy",
     const wrapper = calculateMealSlotProteinAdequacy(history, "dinner", history.dailyLoggingCompleteness, TARGET_PROTEIN_G);
     expect(generic.averageAmount).toBe(wrapper.averageProteinG);
     expect(generic.hasPattern).toBe(wrapper.hasPattern);
+  });
+});
+
+describe("RECOMMENDATION_CATEGORIES_MADE_REDUNDANT — old-system category cleanup", () => {
+  // Regression test: reported live as two overlapping recommendations
+  // shown at once ("Add fruit to breakfast" alongside the old system's
+  // "Add a vegetable or fruit serving") — the old system has no separate
+  // "fruit" category at all, only a single combined "vegetables"-
+  // categorized recommendation covering both fruit and vegetables (see
+  // packages/health-scoring/src/food-balance/recommendations.ts's
+  // TEMPLATES.fruitAndVegetableIntake). A naive same-string filter never
+  // caught this since "fruit" !== "vegetables".
+  it("a fruit candidate also marks the old system's combined vegetables category redundant", () => {
+    expect(RECOMMENDATION_CATEGORIES_MADE_REDUNDANT.fruit).toContain("vegetables");
+    expect(RECOMMENDATION_CATEGORIES_MADE_REDUNDANT.fruit).toContain("fruit");
+  });
+
+  it("a vegetable candidate also marks the old system's combined vegetables category redundant", () => {
+    expect(RECOMMENDATION_CATEGORIES_MADE_REDUNDANT.vegetable).toContain("vegetables");
+  });
+
+  it("a protein candidate marks both protein adequacy and protein distribution redundant", () => {
+    expect(RECOMMENDATION_CATEGORIES_MADE_REDUNDANT.protein).toEqual(expect.arrayContaining(["protein", "protein_distribution"]));
   });
 });

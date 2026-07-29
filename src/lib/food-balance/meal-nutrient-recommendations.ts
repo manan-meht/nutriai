@@ -51,6 +51,30 @@ export const NUTRIENT_TO_RECOMMENDATION_CATEGORY: Record<NutrientType, string> =
   calories: "energy",
 };
 
+/** Which of the OLD generic system's RecommendationCategory values become
+ * redundant once a meal-specific candidate for this nutrient is shown —
+ * NOT just NUTRIENT_TO_RECOMMENDATION_CATEGORY's single mapping, because
+ * the old system's category vocabulary doesn't line up 1:1 with this
+ * module's nutrients:
+ * - There is no separate "fruit" category in the old system at all — one
+ *   combined recommendation ("fruitAndVegetableIntake") covers both fruit
+ *   AND vegetables under category "vegetables" only (see
+ *   packages/health-scoring/src/food-balance/recommendations.ts's
+ *   TEMPLATES). A new "fruit" candidate must still remove that
+ *   "vegetables"-categorized recommendation, or both end up shown
+ *   together, repeating overlapping fruit/veg advice (reported live).
+ * - protein_distribution is a distinct old category from protein
+ *   adequacy, but is about the same nutrient — a meal-specific protein
+ *   candidate should suppress both rather than leaving the old
+ *   distribution-only recommendation sitting alongside it. */
+export const RECOMMENDATION_CATEGORIES_MADE_REDUNDANT: Record<NutrientType, string[]> = {
+  protein: ["protein", "protein_distribution"],
+  fiber: ["fibre"],
+  fruit: ["fruit", "vegetables"],
+  vegetable: ["fruit", "vegetables"],
+  calories: ["energy"],
+};
+
 export type MealGapIssueType =
   | "overall_gap"
   | "meal_gap"
@@ -774,6 +798,19 @@ export function confidenceLevelFor(candidate: MealRecommendationCandidate): Conf
 
 const MEAL_LABEL: Record<MealSlot, string> = { breakfast: "breakfast", lunch: "lunch", dinner: "dinner", snack: "snacks" };
 
+// Today's Focus is always delivered as part of the MORNING breakfast
+// reminder (see send-meal-reminders/route.ts's mealSlotForTime gate), so
+// every one of these adverbs refers to a meal still ahead that same day —
+// "tonight" only actually makes sense for dinner specifically. Previously
+// hardcoded to "tonight" regardless of mealType, so a breakfast/lunch
+// recommendation nonsensically said "add X to breakfast tonight."
+const MEAL_TIME_ADVERB: Record<MealSlot, string> = {
+  breakfast: "today",
+  lunch: "today",
+  dinner: "tonight",
+  snack: "today",
+};
+
 function positiveClause(candidate: MealRecommendationCandidate): string {
   if (!candidate.positiveContext) return "";
   const label = MEAL_LABEL[candidate.positiveContext.slot];
@@ -859,9 +896,10 @@ export function renderTodayFocusRecommendation(
     return `*Today's focus:* ${mealLabel[0] === mealLabel[0].toUpperCase() ? mealLabel : capitalized} has been noticeably lighter than your other meals. Try adding ${foodSuggestions.text} so today doesn't become too light.`;
   }
 
+  const timeAdverb = MEAL_TIME_ADVERB[candidate.mealType ?? "dinner"];
   const message =
     candidate.evidenceType === "yesterday_confirms_pattern"
-      ? `${capitalized} has been your lowest-${noun} meal this week, including yesterday. Try adding ${foodSuggestions.text} tonight.`
+      ? `${capitalized} has been your lowest-${noun} meal this week, including yesterday. Try adding ${foodSuggestions.text} ${timeAdverb}.`
       : candidate.evidenceType === "yesterday_only"
         ? `${capitalized} was lighter in ${noun} yesterday. Consider adding ${foodSuggestions.text}.`
         : candidate.evidenceType === "single_unusual_day"
