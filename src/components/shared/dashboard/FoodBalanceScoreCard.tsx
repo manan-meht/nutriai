@@ -6,6 +6,7 @@ import { trackFoodBalanceEvent } from "@/lib/food-balance/analytics";
 import type { RecommendationFeedback } from "@/lib/food-balance/feedback";
 import { recordFoodSuggestionFeedback } from "@/app/(adults)/adults/dashboard/actions";
 import { recordClientFoodSuggestionFeedback } from "@/app/(gym)/gym/dashboard/actions";
+import type { FoodBalanceDataState } from "@/lib/food-balance/use-food-balance-data";
 
 const FEEDBACK_OPTIONS: Array<{ value: RecommendationFeedback; label: string }> = [
   { value: "helpful", label: "Helpful" },
@@ -22,6 +23,10 @@ interface FoodBalanceScoreCardProps {
    * accepts either as a mutually exclusive query param). */
   contactId?: string;
   clientId?: string;
+  /** Fetched once by the parent (useFoodBalanceData) and shared with
+   * ShareCardsDashboardSection, rather than this component fetching it
+   * independently — see that hook's own comment for why. */
+  data: FoodBalanceDataState;
 }
 
 const SCORE_BAND_LABEL = [
@@ -72,46 +77,42 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
-export function FoodBalanceScoreCard({ contactId, clientId }: FoodBalanceScoreCardProps) {
-  const [result, setResult] = useState<FoodBalanceScoreResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  // Folded into the existing per-product contact/client route files
-  // instead of a standalone /api/v1/food-balance-score endpoint — see
-  // those routes' own comments on why (Cloudflare Worker bundle size).
-  const path = contactId ? `/api/adults/contacts/${contactId}` : `/api/gym/clients/${clientId}`;
+function ScoreCardSkeleton() {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-5 animate-pulse" aria-hidden="true">
+      <div className="flex items-center justify-between">
+        <div className="h-4 w-36 bg-gray-100 rounded" />
+        <div className="h-3 w-20 bg-gray-100 rounded" />
+      </div>
+      <div className="flex items-center gap-4 mt-3">
+        <div className="w-[140px] h-[140px] rounded-full bg-gray-100 shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="h-4 w-40 bg-gray-100 rounded" />
+          <div className="h-3 w-full max-w-[220px] bg-gray-100 rounded" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
+export function FoodBalanceScoreCard({ contactId, clientId, data }: FoodBalanceScoreCardProps) {
+  const result = data.status === "ready" ? data.result : null;
+
+  // Fire the "viewed" analytics event once per (result) resolution, same
+  // as the fetch-completion callback this used to do inline — moved here
+  // since the fetch itself now lives in the shared useFoodBalanceData hook.
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-    fetch(path)
-      .then((res) => {
-        if (res.status === 404) return null; // feature flag off — render nothing
-        if (!res.ok) throw new Error("failed");
-        return res.json();
-      })
-      .then((data: FoodBalanceScoreResult | null) => {
-        if (cancelled) return;
-        setResult(data);
-        if (data) {
-          trackFoodBalanceEvent(
-            data.status === "collecting_data" || data.status === "refreshing_data"
-              ? "food_balance_collecting_state_viewed"
-              : "food_balance_score_viewed",
-            { status: data.status }
-          );
-        }
-      })
-      .catch(() => !cancelled && setError(true))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
+    if (!result) return;
+    trackFoodBalanceEvent(
+      result.status === "collecting_data" || result.status === "refreshing_data"
+        ? "food_balance_collecting_state_viewed"
+        : "food_balance_score_viewed",
+      { status: result.status }
+    );
+  }, [result]);
 
-  if (loading) return null;
-  if (error) {
+  if (data.status === "loading") return <ScoreCardSkeleton />;
+  if (data.status === "error") {
     return (
       <div className="bg-white border border-gray-100 rounded-2xl p-5">
         <p className="text-sm text-gray-500">

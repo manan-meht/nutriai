@@ -1,43 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { api } from '@/lib/api';
+import { api, type FoodBalanceScoreResult } from '@/lib/api';
 import type { EarnedShareCard } from '@/lib/share-cards/types';
 import { selectDashboardCards } from '@/lib/share-cards/selector';
 import { trackShareCardEvent } from '@/lib/share-cards/analytics';
 import { ShareCardModal } from './share-card-modal';
 import { AchievementsModal } from './achievements-modal';
 
+function WinsSkeleton({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  return (
+    <View>
+      <View style={[styles.skeletonLine, styles.skeletonLabel, { backgroundColor: theme.backgroundSelected }]} />
+      <View style={styles.skeletonRow}>
+        <View style={[styles.miniCard, styles.featuredCard, styles.skeletonCard, { backgroundColor: theme.backgroundSelected }]} />
+        <View style={[styles.miniCard, styles.skeletonCard, { backgroundColor: theme.backgroundSelected }]} />
+      </View>
+    </View>
+  );
+}
+
 /** Mirrors the main web app's ShareCardsDashboardSection/YourWinsSection
- * — an independent fetch against the same food-balance-score endpoint
- * FoodBalanceScoreCard already calls (kept as a self-contained,
- * independently-droppable section, same reasoning as the web version),
- * capped at 3 cards, 1 featured + up to 2 smaller, horizontally
+ * — capped at 3 cards, 1 featured + up to 2 smaller, horizontally
  * scrollable on mobile per the original spec ("horizontal scroll for
- * additional cards, keep it compact"). */
-export function YourWinsSection(params: { contactId: string } | { clientId: string }) {
+ * additional cards, keep it compact"). `result`/`loading` are fetched
+ * once by the caller (person-detail.tsx's single useFoodBalanceScore
+ * call) and passed down — this used to independently fetch the same
+ * food-balance-score endpoint FoodBalanceScoreCard already calls,
+ * tripling the score's DB queries/scoring work per screen view. */
+export function YourWinsSection(
+  params: ({ contactId: string } | { clientId: string }) & { result: FoodBalanceScoreResult | null; loading: boolean }
+) {
   const theme = useTheme();
-  const [cards, setCards] = useState<EarnedShareCard[] | null>(null);
+  const { result, loading } = params;
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [openCard, setOpenCard] = useState<EarnedShareCard | null>(null);
   const [showAll, setShowAll] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .getFoodBalanceScore(params)
-      .then((data) => !cancelled && setCards(data.earnedShareCards ?? []))
-      .catch(() => !cancelled && setCards([]));
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, ['contactId' in params ? params.contactId : params.clientId]);
-
   async function handleDismissForever(conceptId: string) {
-    setCards((prev) => (prev ? prev.filter((c) => c.concept.id !== conceptId) : prev));
+    setDismissedIds((prev) => new Set(prev).add(conceptId));
     try {
       await api.dismissShareCardForever(params, conceptId);
     } catch {
@@ -45,8 +49,10 @@ export function YourWinsSection(params: { contactId: string } | { clientId: stri
     }
   }
 
-  if (cards === null) return null;
+  if (loading) return <WinsSkeleton theme={theme} />;
+  if (!result) return null;
 
+  const cards = (result.earnedShareCards ?? []).filter((c) => !dismissedIds.has(c.concept.id));
   const dashboardCards = selectDashboardCards(cards);
 
   return (
@@ -124,4 +130,8 @@ const styles = StyleSheet.create({
   scrollContent: { gap: Spacing.two, paddingRight: Spacing.two },
   miniCard: { width: 140, borderRadius: Spacing.two, padding: Spacing.two, justifyContent: 'center' },
   featuredCard: { width: 200 },
+  skeletonLine: { borderRadius: 4, height: 12 },
+  skeletonLabel: { width: 80, marginBottom: Spacing.two },
+  skeletonRow: { flexDirection: 'row', gap: Spacing.two },
+  skeletonCard: { height: 76 },
 });

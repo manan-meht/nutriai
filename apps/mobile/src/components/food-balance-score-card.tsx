@@ -5,7 +5,6 @@ import Svg, { Circle } from 'react-native-svg';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
-import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type FoodBalanceScoreResult, type RecommendationFeedback } from '@/lib/api';
 
@@ -29,17 +28,41 @@ export function bandLabelFor(score: number): string {
   return SCORE_BAND_LABEL.find((b) => score <= b.max)?.label ?? 'Supporting your goal';
 }
 
+function ScoreCardSkeleton({ theme }: { theme: ReturnType<typeof useTheme> }) {
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View style={[styles.skeletonLine, styles.skeletonTitle, { backgroundColor: theme.backgroundSelected }]} />
+      <View style={styles.scoreRow}>
+        <View style={[styles.ringWrap, styles.skeletonRing, { backgroundColor: theme.backgroundSelected }]} />
+        <View style={styles.scoreTextBlock}>
+          <View style={[styles.skeletonLine, styles.skeletonBand, { backgroundColor: theme.backgroundSelected }]} />
+          <View style={[styles.skeletonLine, styles.skeletonMeta, { backgroundColor: theme.backgroundSelected }]} />
+        </View>
+      </View>
+    </ThemedView>
+  );
+}
+
 // Ported from nutriai-fresh's
 // apps/mobile/src/components/FoodBalanceScoreCard.tsx — same ring meter
 // (purple-only, never a red/green diagnostic gauge) via react-native-svg,
 // calling mobile-api's own /food-balance-score endpoint (feature-flagged
 // server-side; a failure or 404 here just means "don't show the card", not
 // a hard error).
-export function FoodBalanceScoreCard(params: { contactId: string } | { clientId: string }) {
+//
+// `result`/`loading` are fetched once by the caller (person-detail.tsx's
+// single useFoodBalanceScore call) and passed down, rather than this
+// component fetching independently — it, YourWinsSection, and
+// person-detail.tsx itself used to each call the same endpoint separately,
+// tripling the score's DB queries/scoring work per screen view.
+export function FoodBalanceScoreCard(
+  params: ({ contactId: string } | { clientId: string }) & { result: FoodBalanceScoreResult | null; loading: boolean }
+) {
   const theme = useTheme();
-  const { result, loading } = useFoodBalanceScore(params);
+  const { result, loading } = params;
 
-  if (loading || !result) return null;
+  if (loading) return <ScoreCardSkeleton theme={theme} />;
+  if (!result) return null;
 
   if (result.status === 'collecting_data' || result.status === 'refreshing_data') {
     const { eligibleMealCount, requiredMealCount, distinctLoggingDays, requiredLoggingDays } = result.dataCoverage;
@@ -214,6 +237,11 @@ const styles = StyleSheet.create({
   scoreNumber: { position: 'absolute', fontSize: 24, lineHeight: 28 },
   scoreTextBlock: { flex: 1 },
   bandLabel: { fontWeight: '600' },
+  skeletonLine: { borderRadius: 4 },
+  skeletonTitle: { width: 140, height: 16 },
+  skeletonRing: { borderRadius: 50 },
+  skeletonBand: { width: 120, height: 16, marginBottom: Spacing.one },
+  skeletonMeta: { width: 180, height: 12 },
   recommendations: { marginTop: Spacing.three, paddingTop: Spacing.three, borderTopWidth: 1 },
   recTitle: { textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', fontSize: 11, marginBottom: Spacing.one },
   recItem: { marginBottom: Spacing.two, padding: Spacing.two, borderRadius: Spacing.two },

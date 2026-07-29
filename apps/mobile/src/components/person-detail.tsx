@@ -97,12 +97,13 @@ export function PersonDetail({
       }
     : undefined;
 
-  // Active macro targets (calories/protein/carbs/fat/fiber) — same
-  // /food-balance-score response FoodBalanceScoreCard reads, so this
-  // dashboard's targets always match whatever the user has customized
-  // (see resolveMacroTargets on the mobile-api side). Falls back to the
-  // older protein/calorie-only heuristics while loading.
-  const { result: foodBalanceResult } = useFoodBalanceScore(foodBalanceQuery);
+  // Single fetch of the /food-balance-score response, shared by this
+  // dashboard's own activeMacroTargets AND the FoodBalanceScoreCard/
+  // YourWinsSection sections below (passed down as props) — those two
+  // used to each independently call this same endpoint too, tripling its
+  // DB queries/scoring work per screen view. Falls back to the older
+  // protein/calorie-only heuristics while loading.
+  const { result: foodBalanceResult, loading: foodBalanceLoading } = useFoodBalanceScore(foodBalanceQuery);
   const activeMacroTargets = foodBalanceResult?.activeMacroTargets;
 
   const recommendedProteinG = recommendProteinGrams({
@@ -196,9 +197,9 @@ export function PersonDetail({
               </ThemedView>
             </View>
 
-            <FoodBalanceScoreCard {...foodBalanceQuery} />
+            <FoodBalanceScoreCard {...foodBalanceQuery} result={foodBalanceResult} loading={foodBalanceLoading} />
 
-            <YourWinsSection {...foodBalanceQuery} />
+            <YourWinsSection {...foodBalanceQuery} result={foodBalanceResult} loading={foodBalanceLoading} />
 
             <MacronutrientSummary
               meals={mealsInRange}

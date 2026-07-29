@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -16,6 +16,7 @@ import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { DateRangeSelector } from "@/components/shared/dashboard/DateRangeSelector";
 import { FoodBalanceScoreCard } from "@/components/shared/dashboard/FoodBalanceScoreCard";
 import { ShareCardsDashboardSection } from "@/components/shared/dashboard/ShareCardsDashboardSection";
+import { useFoodBalanceData } from "@/lib/food-balance/use-food-balance-data";
 import { FOOD_BALANCE_SCORE_ENABLED } from "@/lib/billing/feature-flags";
 import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
 import { metabolicSexFromGender } from "@/lib/food-balance/adapter";
@@ -26,7 +27,6 @@ import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
-import type { MacroTargets } from "@nutriai/health-scoring";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -111,7 +111,6 @@ export function ProfileDashboard({
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; shareData: MealShareData | null } | null>(null);
   const MEALS_PAGE_SIZE = 10;
   const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
-  const [activeMacroTargets, setActiveMacroTargets] = useState<MacroTargets | null>(null);
   const [macroTargetsRefreshKey, setMacroTargetsRefreshKey] = useState(0);
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
@@ -145,26 +144,17 @@ export function ProfileDashboard({
     ? Math.round(mealsInRange.reduce((s, m) => s + (m.totalCaloriesMin + m.totalCaloriesMax) / 2, 0) / rangeDays)
     : 0;
 
-  // Active macro targets (calories/protein/carbs/fat/fiber) — fetched from
-  // the same contact/client route FoodBalanceScoreCard reads, since that's
-  // where Tistra's recommendation vs. a user's saved override is resolved
-  // (see resolveMacroTargets in src/lib/food-balance/adapter.ts). Falls
-  // back to the older protein/calorie-only heuristics while loading or if
-  // the feature flag is off, so this dashboard never regresses to "no
-  // target at all".
-  useEffect(() => {
-    let cancelled = false;
-    const path = role === "coach" ? `/api/gym/clients/${profile.id}` : `/api/adults/contacts/${profile.id}`;
-    fetch(path)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { activeMacroTargets?: MacroTargets } | null) => {
-        if (!cancelled && data?.activeMacroTargets) setActiveMacroTargets(data.activeMacroTargets);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [profile.id, role, macroTargetsRefreshKey]);
+  // One shared fetch of the contact/client route, reused by
+  // FoodBalanceScoreCard, ShareCardsDashboardSection, and this dashboard's
+  // own activeMacroTargets (Tistra's recommendation vs. a user's saved
+  // override — see resolveMacroTargets in src/lib/food-balance/adapter.ts)
+  // — all three used to independently fetch this same, non-trivial route.
+  // Falls back to the older protein/calorie-only heuristics while loading
+  // or if the feature flag is off, so this dashboard never regresses to
+  // "no target at all".
+  const foodBalancePath = role === "coach" ? `/api/gym/clients/${profile.id}` : `/api/adults/contacts/${profile.id}`;
+  const foodBalanceData = useFoodBalanceData(foodBalancePath, macroTargetsRefreshKey);
+  const activeMacroTargets = foodBalanceData.status === "ready" ? foodBalanceData.activeMacroTargets : null;
 
   const recommendedProteinG = recommendProteinGrams({
     weightKg: profile.weightKg,
@@ -302,12 +292,12 @@ export function ProfileDashboard({
 
         {/* Section 2 — Food Balance Score / insights. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} />
+          <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} />
         )}
 
         {/* Section 2b — "Your wins" shareable accomplishment cards. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} />
+          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} />
         )}
 
         {/* Section 3 — macronutrient summary. */}
