@@ -217,11 +217,18 @@ function buildPersonalizedRecommendationFields(
   switch (mapping.category) {
     case "protein": {
       // States the real actual-vs-target numbers when available (e.g.
-      // "You're averaging 82g protein against a target of 125g") rather
-      // than only naming example foods — never a fabricated number, only
-      // shown when the caller actually has both figures.
+      // "You're averaging 82g of protein per day, short of your 125g
+      // target") rather than only naming example foods — never a
+      // fabricated number, only shown when the caller actually has both
+      // figures. Explicitly says "per day" (not, say, "82g protein
+      // against a target of 125g") because this average/target pair is
+      // always the OVERALL daily figure, never meal-specific — when
+      // mapping.meal is set (e.g. "breakfast"), that's only where the
+      // recommendation suggests ADDING protein, not what the number
+      // above measures. Reported live: worded ambiguously enough that
+      // "95g" read as if it were breakfast's own target.
       const mealPhrase = macroTargets?.protein
-        ? `You're averaging ${Math.round(macroTargets.protein.averageG)}g protein against a target of ${Math.round(macroTargets.protein.targetG)}g.`
+        ? `You're averaging ${Math.round(macroTargets.protein.averageG)}g of protein per day, short of your ${Math.round(macroTargets.protein.targetG)}g target.`
         : mapping.meal === "breakfast"
         ? "Breakfast has been lighter on protein this week."
         : "Protein has been a little low this week.";
