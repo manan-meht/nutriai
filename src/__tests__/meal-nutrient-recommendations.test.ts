@@ -382,6 +382,18 @@ describe("confidenceLevelFor / rendering", () => {
     expect(rendered).toMatch(/lowest-protein meal this week, including yesterday/);
   });
 
+  // Regression test: reported live as "text seems cut off" — a candidate
+  // with no positiveContext (nothing else is doing well enough to
+  // mention) still had the template unconditionally prepend "but",
+  // producing "but breakfast has been low in fruit..." with no lead-in
+  // clause before it.
+  it("does not start the description with a dangling 'but' when there is no positive context", () => {
+    const noPositiveContext: MealRecommendationCandidate = { ...strongCandidate, positiveContext: undefined, mealType: "breakfast" };
+    const fb = renderFoodBalanceRecommendation(noPositiveContext, foods);
+    expect(fb.description).not.toMatch(/^but /i);
+    expect(fb.description).toMatch(/^Breakfast has been low in protein/);
+  });
+
   it("low-confidence wording falls back to a logging prompt, not a strong claim", () => {
     const veryWeak: MealRecommendationCandidate = { ...weakCandidate, loggingConfidence: 0.1, consistencyScore: 0.1 };
     expect(confidenceLevelFor(veryWeak)).toBe("low");

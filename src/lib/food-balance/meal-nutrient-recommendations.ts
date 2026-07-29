@@ -819,6 +819,10 @@ function positiveClause(candidate: MealRecommendationCandidate): string {
   return `Your ${label} usually ${verb} enough ${noun}, `;
 }
 
+function capitalize(s: string): string {
+  return `${s[0]?.toUpperCase() ?? ""}${s.slice(1)}`;
+}
+
 /** Longer, more explanatory rendering for the Food Balance Score card —
  * approved wording variants per evidence type, gated by confidence so a
  * low-confidence candidate never makes a strong meal-level claim (per the
@@ -849,13 +853,19 @@ export function renderFoodBalanceRecommendation(
   }
 
   if (candidate.nutrient === "calories") {
+    const lead = positiveClause(candidate);
     return {
       title: `A more substantial ${mealLabel}`,
-      description: `${positiveClause(candidate)}${mealLabel} has regularly been lighter than the rest of your day. Adding ${foodSuggestions.text} could help ${mealLabel} better support your goal.`,
+      description: `${lead ? lead : capitalize(mealLabel) + " "}has regularly been lighter than the rest of your day. Adding ${foodSuggestions.text} could help ${mealLabel} better support your goal.`,
       exampleFoodIds: foodSuggestions.ids,
     };
   }
 
+  // positiveClause already ends in ", " when non-empty, so "but" only
+  // belongs directly after it — without a positive-context clause to
+  // contrast against, prepending "but" left a dangling sentence fragment
+  // ("but breakfast has been low..."), reported live as text reading like
+  // it had been cut off.
   const lead = positiveClause(candidate);
   const daysWord =
     candidate.evidenceType === "yesterday_confirms_pattern"
@@ -863,10 +873,11 @@ export function renderFoodBalanceRecommendation(
       : candidate.evidenceType === "historical_pattern"
         ? "on most of the last few logged days"
         : "on one of your recent logged days";
+  const opening = lead ? `${lead}but ${mealLabel}` : capitalize(mealLabel);
 
   return {
     title: `Add ${noun} to ${mealLabel}`,
-    description: `${lead}but ${mealLabel} has been low in ${noun} ${daysWord}. Adding ${foodSuggestions.text} to ${mealLabel} could improve your meal balance.`,
+    description: `${opening} has been low in ${noun} ${daysWord}. Adding ${foodSuggestions.text} to ${mealLabel} could improve your meal balance.`,
     exampleFoodIds: foodSuggestions.ids,
   };
 }
