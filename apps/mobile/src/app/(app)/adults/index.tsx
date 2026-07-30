@@ -15,6 +15,8 @@ import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
 import { hasActiveEntitlement } from '@/lib/purchases';
+import { registerForPushNotificationsAsync } from '@/lib/notifications';
+import { PushPermissionCard } from '@/components/push-permission-card';
 
 // The RevenueCat entitlement + offering identifiers for the "buy 1 more
 // slot" add-on (adults_additional_person, see this repo's RevenueCat setup
@@ -136,6 +138,19 @@ export default function AdultsContactListScreen() {
       clearTimeout(timeout);
     };
   }, [stillRequiresCardAfterPurchase, load]);
+
+  // Self-plan accounts aren't sent any push notifications yet (see
+  // notifyCaregiverOfFamilyMeal in src/lib/whatsapp/conversation-handler.ts,
+  // scoped to workspace.plan === 'family' only), so there's nothing
+  // truthful to explain in a permission-priming card here — keep the old
+  // silent registration for self so an already-granted device's token
+  // still gets refreshed, without inventing a reason for a permission
+  // prompt that wouldn't lead to any actual notification today. Family
+  // plan's push explanation is PushPermissionCard below instead.
+  const plan = state.status === 'ready' || state.status === 'subscription_required' ? state.plan : null;
+  useEffect(() => {
+    if (plan === 'self') registerForPushNotificationsAsync();
+  }, [plan]);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -276,6 +291,7 @@ export default function AdultsContactListScreen() {
                 )}
               </View>
             )}
+            {state.plan === 'family' && <PushPermissionCard message="when a loved one logs a meal" />}
             {state.isBillingWhitelisted ? (
               // Takes priority over every other banner — a whitelisted
               // test account should never see payment prompts or a trial

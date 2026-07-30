@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Redirect, Stack } from 'expo-router';
 
 import { useAuth } from '@/lib/auth-context';
-import { registerForPushNotificationsAsync } from '@/lib/notifications';
+import { setupNotificationNavigation } from '@/lib/notifications';
 
 export default function AppLayout() {
   // Second auth check, redundant with the root layout's conditional
@@ -15,12 +15,20 @@ export default function AppLayout() {
   // /select-product.
   const { session } = useAuth();
 
-  // Registers (or refreshes) this device's push token once per session —
-  // cheap no-op server-side on repeat calls (upsert), and swallows all
-  // failures internally (see notifications.ts), so this can never block
-  // rendering the dashboard below.
+  // Push permission is no longer requested silently at this layout level —
+  // it now goes through PushPermissionCard (adults/index.tsx) so the OS
+  // system dialog (which neither platform lets us relabel) is preceded by
+  // our own explanation of what the notification is actually for. gym's
+  // dashboard still registers unconditionally on its own (see
+  // gym/index.tsx) since it has no per-plan messaging to show yet.
+
+  // Routes a tapped notification (cold-launch or app-already-running) to
+  // the screen it's actually about — see setupNotificationNavigation's own
+  // docs. Only wired once a session exists, since it navigates to routes
+  // inside this authenticated group.
   useEffect(() => {
-    if (session) registerForPushNotificationsAsync();
+    if (!session) return;
+    return setupNotificationNavigation();
   }, [session]);
 
   if (!session) return <Redirect href="/select-product" />;

@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { router } from "expo-router";
 import { api } from "./api";
 
 // Foreground behavior — without this, a notification that arrives while the
@@ -27,6 +28,23 @@ try {
   });
 } catch (err) {
   console.warn("[notifications] setNotificationHandler unavailable (likely Expo Go):", err);
+}
+
+/** Reads the current permission status without ever prompting — lets a
+ * caller decide whether to show its own explanation card first (only
+ * meaningful pre-decision state is "undetermined"; once a user has
+ * granted/denied, neither the OS nor we can re-prompt without them
+ * visiting system Settings). Returns null if unavailable (Expo Go, or no
+ * physical device). */
+export async function getPushPermissionStatus(): Promise<Notifications.PermissionStatus | null> {
+  try {
+    if (!Device.isDevice) return null;
+    const { status } = await Notifications.getPermissionsAsync();
+    return status;
+  } catch (err) {
+    console.warn("[notifications] getPushPermissionStatus unavailable (likely Expo Go):", err);
+    return null;
+  }
 }
 
 /**
@@ -67,5 +85,45 @@ export async function registerForPushNotificationsAsync(): Promise<void> {
     await api.registerPushToken(expoPushToken, Platform.OS === "android" ? "android" : "ios");
   } catch (err) {
     console.error("[notifications] registration failed:", err);
+  }
+}
+
+/** Routes a tapped notification to the screen it's actually about, keyed on
+ * the `data` payload each sender attaches (see sendPushNotificationToProfile
+ * call sites, e.g. notifyCaregiverOfFamilyMeal in
+ * src/lib/whatsapp/conversation-handler.ts) — without this, every
+ * notification just opened the app to whatever screen it happened to be on,
+ * regardless of which family member/contact it was about. Add a case here
+ * whenever a new notification `type` is introduced server-side. */
+function navigateForNotificationData(data: Record<string, unknown> | undefined): void {
+  if (!data) return;
+  if (data.type === "meal_logged" && typeof data.adultsContactId === "string") {
+    router.push(`/adults/${data.adultsContactId}`);
+  }
+}
+
+/**
+ * Wires up notification-tap navigation for both cases Expo distinguishes:
+ * a tap while the app is already running (foreground or backgrounded, via
+ * the response-received listener) and a tap that cold-launched the app
+ * (via getLastNotificationResponseAsync, checked once on mount). Call once
+ * from a layout that's already inside the authenticated app group, since
+ * navigateForNotificationData pushes routes that assume a session exists.
+ * Returns the cleanup function for the listener subscription.
+ */
+export function setupNotificationNavigation(): () => void {
+  try {
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => navigateForNotificationData(response?.notification.request.content.data))
+      .catch((err) => console.error("[notifications] getLastNotificationResponseAsync failed:", err));
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      navigateForNotificationData(response.notification.request.content.data);
+    });
+
+    return () => subscription.remove();
+  } catch (err) {
+    console.warn("[notifications] setupNotificationNavigation unavailable (likely Expo Go):", err);
+    return () => {};
   }
 }

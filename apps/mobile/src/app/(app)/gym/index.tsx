@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import Purchases from 'react-native-purchases';
@@ -15,6 +15,7 @@ import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
 import { hasActiveEntitlement } from '@/lib/purchases';
+import { registerForPushNotificationsAsync } from '@/lib/notifications';
 
 // See adults/index.tsx's identical ADULTS_EXTRA_CAPACITY_ENTITLEMENT_ID for
 // the full rationale — the coach_additional_person add-on's counterpart.
@@ -73,6 +74,16 @@ export default function GymClientListScreen() {
       load(false);
     }, [load])
   );
+
+  // Registers (or refreshes) this device's push token once per mount —
+  // no per-plan explanation card here yet (gym/coach notifications aren't
+  // sent server-side yet either — see sendPushNotificationToProfile's call
+  // sites), unlike adults/index.tsx's PushPermissionCard. Cheap no-op
+  // server-side on repeat calls (upsert), and swallows all failures
+  // internally (see notifications.ts).
+  useEffect(() => {
+    registerForPushNotificationsAsync();
+  }, []);
 
   async function onRefresh() {
     setRefreshing(true);

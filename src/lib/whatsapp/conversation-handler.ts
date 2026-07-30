@@ -506,7 +506,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   if (!gymClient) {
     const { data: adultsContacts } = await db
       .from("adults_contacts")
-      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, nutrition_goals, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, last_share_card_prompt_at, dismissed_share_card_ids")
+      .select("id, full_name, whatsapp_number, workspace_id, caregiver_id, timezone, weight_kg, height_cm, age, gender, relationship, relationship_type, nutrition_goals, activity_level, resistance_training_status, daily_movement_level, weekly_moderate_activity, strength_exercise_frequency, derived_activity_level, last_share_card_prompt_at, dismissed_share_card_ids")
       .order("created_at", { ascending: false });
 
     adultsContact = (adultsContacts ?? []).find((c: any) =>
@@ -828,7 +828,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * belongs to (notifying them about their own upload is redundant), and
    * gym/coach ('coach' plan / isAdults === false) isn't in scope for this
    * notification yet — see sendPushNotificationToProfile's docs for how to
-   * extend this later.
+   * extend this later. Also skips a "Myself" contact within an otherwise
+   * multi-member family plan (relationship_type "self", added via
+   * PersonForm's "Myself" chip) for the same reason — the caregiver would
+   * just be getting notified about their own upload again.
    *
    * Best-effort and fully swallowed: a push failure must never affect the
    * WhatsApp save-confirmation flow that calls this.
@@ -836,6 +839,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   async function notifyCaregiverOfFamilyMeal(resolvedLabel: MealType): Promise<void> {
     try {
       if (!isAdults) return;
+      if (adultsContact.relationship_type === "self") return;
       const { data: workspace } = await db
         .from("workspaces")
         .select("plan")
