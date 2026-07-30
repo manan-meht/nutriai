@@ -354,6 +354,7 @@ export function PersonDetail({
         onClose={() => setSharingMeal(null)}
         audience={'clientId' in foodBalanceQuery ? 'coach' : person.relationshipType === 'self' ? 'self' : 'family'}
         relationship={person.relationship}
+        gender={person.gender}
       />
     </>
   );

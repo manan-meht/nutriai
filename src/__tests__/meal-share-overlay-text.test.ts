@@ -60,6 +60,45 @@ describe("formatOverlayText", () => {
     expect(formatOverlayText(actionSuggestion, "family")).toBe("My family member protein maxxing for breakfast");
   });
 
+  it("renders a gender-neutral 'parent' relationship as 'mom' when gender is female", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "parent", "female")).toBe("My mom's balanced plate era");
+  });
+
+  it("renders a gender-neutral 'parent' relationship as 'dad' when gender is male", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "parent", "male")).toBe("My dad's balanced plate era");
+  });
+
+  it("keeps 'parent' as-is when gender is unknown", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "parent")).toBe("My parent's balanced plate era");
+  });
+
+  it("genders 'spouse' and 'sibling' the same way", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "spouse", "male")).toBe("My husband's balanced plate era");
+    expect(formatOverlayText(possessiveSuggestion, "family", "spouse", "female")).toBe("My wife's balanced plate era");
+    expect(formatOverlayText(possessiveSuggestion, "family", "sibling", "male")).toBe("My brother's balanced plate era");
+    expect(formatOverlayText(possessiveSuggestion, "family", "sibling", "female")).toBe("My sister's balanced plate era");
+  });
+
+  it("leaves an already-gendered relationship like 'son' untouched regardless of gender", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "son", "female")).toBe("My son's balanced plate era");
+  });
+
+  it("drops the relationship prefix entirely for 'other', same as a self caption", () => {
+    expect(formatOverlayText(possessiveSuggestion, "family", "other")).toBe("Balanced plate era");
+    expect(formatOverlayText(actionSuggestion, "family", "Other")).toBe("Protein maxxing for breakfast");
+  });
+
+  it("drops a leading 'The' from a possessive caption once a relationship prefix is added", () => {
+    const theSuggestion = { textSelf: "The plate is plating", format: "possessive" as const };
+    expect(formatOverlayText(theSuggestion, "family", "mom")).toBe("My mom's plate is plating");
+    expect(formatOverlayText(theSuggestion, "coach")).toBe("Client's plate is plating");
+  });
+
+  it("keeps a leading 'The' as-is for a bare self caption (no prefix to clash with)", () => {
+    const theSuggestion = { textSelf: "The plate is plating", format: "possessive" as const };
+    expect(formatOverlayText(theSuggestion, "self")).toBe("The plate is plating");
+  });
+
   it("formats coach captions with 'Client' (action)", () => {
     expect(formatOverlayText(actionSuggestion, "coach")).toBe("Client protein maxxing for breakfast");
   });

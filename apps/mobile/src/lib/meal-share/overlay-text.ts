@@ -71,7 +71,7 @@ export const SHARE_OVERLAY_TEXT_LIBRARY: ShareOverlayTextSuggestion[] = [
   s("protein-5", "protein", "Protein in the group chat", "possessive", "funny", { requiresMetric: "protein" }),
   s("protein-6", "protein", "Protein era unlocked", "possessive", "playful", { requiresMetric: "protein" }),
   s("protein-7", "protein", "Main character protein", "possessive", "bold", { requiresMetric: "protein" }),
-  s("protein-8", "protein", "Breakfast with protein energy", "action", "playful", { mealTags: ["breakfast"], requiresMetric: "protein" }),
+  s("protein-8", "protein", "Breakfast with protein energy", "possessive", "playful", { mealTags: ["breakfast"], requiresMetric: "protein" }),
   s("protein-9", "protein", "Lunch said protein first", "action", "funny", { mealTags: ["lunch"], requiresMetric: "protein" }),
   s("protein-10", "protein", "Dinner brought the protein", "action", "subtle", { mealTags: ["dinner"], requiresMetric: "protein" }),
   s("protein-11", "protein", "Protein arc going strong", "possessive", "playful", { requiresMetric: "protein" }),
@@ -87,7 +87,7 @@ export const SHARE_OVERLAY_TEXT_LIBRARY: ShareOverlayTextSuggestion[] = [
 
   // ---- Balanced meal / macros (20) ----
   s("balanced-1", "balanced_meal", "Macros understood the assignment", "action", "playful"),
-  s("balanced-2", "balanced_meal", "Balanced plate behavior", "action", "subtle"),
+  s("balanced-2", "balanced_meal", "Balanced plate behavior", "possessive", "subtle"),
   s("balanced-3", "balanced_meal", "The whole macro squad showed up", "possessive", "funny"),
   s("balanced-4", "balanced_meal", "Protein, carbs, fats — all invited", "possessive", "funny"),
   s("balanced-5", "balanced_meal", "Macros in formation", "possessive", "bold"),
@@ -111,7 +111,7 @@ export const SHARE_OVERLAY_TEXT_LIBRARY: ShareOverlayTextSuggestion[] = [
   s("fiber-1", "fiber_veg", "Fiber entered the chat", "action", "funny", { requiresMetric: "fiber" }),
   s("fiber-2", "fiber_veg", "More color, more plot", "possessive", "playful"),
   s("fiber-3", "fiber_veg", "Vegetables made an appearance", "action", "subtle"),
-  s("fiber-4", "fiber_veg", "Fiber friend behavior", "action", "funny", { requiresMetric: "fiber" }),
+  s("fiber-4", "fiber_veg", "Fiber friend behavior", "possessive", "funny", { requiresMetric: "fiber" }),
   s("fiber-5", "fiber_veg", "The gut-support arc continues", "possessive", "funny"),
   s("fiber-6", "fiber_veg", "Color on the plate", "possessive", "subtle"),
   s("fiber-7", "fiber_veg", "Plant points unlocked", "possessive", "playful"),
@@ -129,7 +129,7 @@ export const SHARE_OVERLAY_TEXT_LIBRARY: ShareOverlayTextSuggestion[] = [
   s("home-2", "home_cooked", "Kitchen deserves applause", "possessive", "funny"),
   s("home-3", "home_cooked", "Chef energy activated", "possessive", "playful"),
   s("home-4", "home_cooked", "Real food, real momentum", "possessive", "subtle"),
-  s("home-5", "home_cooked", "Home-cooked meal behavior", "action", "funny"),
+  s("home-5", "home_cooked", "Home-cooked meal behavior", "possessive", "funny"),
   s("home-6", "home_cooked", "Kitchen arc unlocked", "possessive", "playful"),
   s("home-7", "home_cooked", "Meal prep had a moment", "possessive", "funny"),
   s("home-8", "home_cooked", "Cooked at home, flexed online", "action", "funny"),
@@ -211,27 +211,68 @@ function lowercaseFirst(text: string): string {
   return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
+// A handful of possessive-format textSelf entries read fine on their own
+// ("The plate is plating") but double up on the article once a relationship
+// prefix is added ("My mom's the plate is plating") — the prefix's own "'s"
+// already does the article's job. Only applies when a prefix is actually
+// being added (family/coach); a bare self-share caption keeps its "The" as
+// written, since there's no possessive "'s" for it to clash with.
+function dropLeadingThe(text: string): string {
+  return text.replace(/^the\s+/i, "");
+}
+
+// adults_contacts.relationship stores gender-neutral terms for "parent"/
+// "spouse"/"sibling" (see RELATIONSHIPS in
+// src/components/adults/AddContactModal.tsx: son/daughter/spouse/parent/
+// sibling/friend/other) — "My parent's fuel" reads awkwardly compared to
+// "Mom's fuel"/"Dad's fuel", which the contact's gender makes unambiguous.
+// Mirrors relationshipLabelForNotification's gendering
+// (src/lib/whatsapp/conversation-handler.ts) but picks the punchier
+// "mom"/"dad" over that function's more formal "mother"/"father", since
+// these captions are meant to read as playful social-share text rather
+// than a notification sentence. "son"/"daughter"/"friend" are already
+// gendered/neutral as stored and pass through RELATIONSHIP_LABELS below
+// unchanged.
+function genderedRelationshipTerm(relationship: string, gender?: string | null): string {
+  switch (relationship) {
+    case "parent":
+      return gender === "male" ? "dad" : gender === "female" ? "mom" : "parent";
+    case "spouse":
+      return gender === "male" ? "husband" : gender === "female" ? "wife" : "spouse";
+    case "sibling":
+      return gender === "male" ? "brother" : gender === "female" ? "sister" : "sibling";
+    default:
+      return relationship;
+  }
+}
+
 /** Renders one suggestion's caption for the given audience/relationship —
  * self captions pass through unmodified (already pronoun-free); family
  * captions prefix "My {relationship} " (action) or "My {relationship}'s "
- * (possessive); coach captions use "Client " / "Client's " the same way. */
+ * (possessive); coach captions use "Client " / "Client's " the same way.
+ * A relationship of "other" (AddContactModal's catch-all option, meaning
+ * no more specific term applies) drops the prefix entirely rather than
+ * rendering the literal, meaningless "My other('s) ..." — same as self. */
 export function formatOverlayText(
   suggestion: Pick<ShareOverlayTextSuggestion, "textSelf" | "format">,
   audience: ShareOverlayAudience,
-  relationship?: string
+  relationship?: string,
+  gender?: string | null
 ): string {
   if (audience === "self" || audience === "any") return suggestion.textSelf;
+  if (audience === "family" && relationship?.toLowerCase() === "other") return suggestion.textSelf;
 
   if (audience === "coach") {
     return suggestion.format === "possessive"
-      ? `Client's ${lowercaseFirst(suggestion.textSelf)}`
+      ? `Client's ${lowercaseFirst(dropLeadingThe(suggestion.textSelf))}`
       : `Client ${lowercaseFirst(suggestion.textSelf)}`;
   }
 
   // family
-  const label = (relationship && RELATIONSHIP_LABELS[relationship.toLowerCase()]) || relationship || "family member";
+  const gendered = relationship ? genderedRelationshipTerm(relationship.toLowerCase(), gender) : undefined;
+  const label = (gendered && RELATIONSHIP_LABELS[gendered]) || gendered || relationship || "family member";
   return suggestion.format === "possessive"
-    ? `My ${label}'s ${lowercaseFirst(suggestion.textSelf)}`
+    ? `My ${label}'s ${lowercaseFirst(dropLeadingThe(suggestion.textSelf))}`
     : `My ${label} ${lowercaseFirst(suggestion.textSelf)}`;
 }
 
@@ -274,6 +315,10 @@ export interface OverlayTextContext {
   categories?: ShareOverlayTextCategory[];
   audience: ShareOverlayAudience;
   relationship?: string;
+  /** The contact's gender — only used to disambiguate a gender-neutral
+   * relationship term ("parent"/"spouse"/"sibling") into "mom"/"dad" etc.
+   * See genderedRelationshipTerm. */
+  gender?: string | null;
 }
 
 /** Ranks the library for relevance to the given context, formats each for
@@ -302,7 +347,7 @@ export function suggestOverlayTexts(
     .map(({ suggestion }) => ({
       id: suggestion.id,
       category: suggestion.category,
-      text: formatOverlayText(suggestion, context.audience, context.relationship),
+      text: formatOverlayText(suggestion, context.audience, context.relationship, context.gender),
     }));
 }
 
@@ -323,6 +368,6 @@ export function shuffleOverlayTexts(
   return shuffled.slice(0, count).map((suggestion) => ({
     id: suggestion.id,
     category: suggestion.category,
-    text: formatOverlayText(suggestion, context.audience, context.relationship),
+    text: formatOverlayText(suggestion, context.audience, context.relationship, context.gender),
   }));
 }

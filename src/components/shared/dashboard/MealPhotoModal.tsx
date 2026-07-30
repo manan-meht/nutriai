@@ -18,15 +18,19 @@ interface MealPhotoModalProps {
    * @/lib/meal-share/overlay-text.ts. Defaults to "self" since most
    * callers are a person viewing their own dashboard. */
   audience?: ShareOverlayAudience;
-  /** e.g. "mom"/"dad"/"client" — only used when audience is "family". */
+  /** e.g. "parent"/"spouse"/"client" — only used when audience is "family". */
   relationship?: string;
+  /** The contact's gender — lets a generic relationship term like "parent"
+   * render as "mom"/"dad" in the caption (see
+   * @/lib/meal-share/overlay-text.ts's genderedRelationshipTerm). */
+  gender?: string | null;
 }
 
 /** Full-screen lightbox for a meal photo — shared by the adults and gym
  * dashboards' "Recent meals" section (see ContactDashboard.tsx/
  * ClientDashboard.tsx). Tapping the small thumbnail in the list opens this
  * instead of navigating away. */
-export function MealPhotoModal({ url, label, onClose, shareData, audience = "self", relationship }: MealPhotoModalProps) {
+export function MealPhotoModal({ url, label, onClose, shareData, audience = "self", relationship, gender }: MealPhotoModalProps) {
   const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
@@ -65,7 +69,7 @@ export function MealPhotoModal({ url, label, onClose, shareData, audience = "sel
         </button>
       )}
       {sharing && shareData && (
-        <MealShareModal meal={shareData} onClose={() => setSharing(false)} audience={audience} relationship={relationship} />
+        <MealShareModal meal={shareData} onClose={() => setSharing(false)} audience={audience} relationship={relationship} gender={gender} />
       )}
     </div>,
     document.body

@@ -32,12 +32,14 @@ export function MealShareModal({
   onClose,
   audience = 'self',
   relationship,
+  gender,
 }: {
   meal: MealShareData | null;
   visible: boolean;
   onClose: () => void;
   audience?: ShareOverlayAudience;
   relationship?: string;
+  gender?: string | null;
 }) {
   const theme = useTheme();
   const cardRef = useRef<View>(null);
@@ -74,7 +76,7 @@ export function MealShareModal({
     setPickerExpanded(false);
     setActiveTab('suggested');
     setCustomText('');
-    const initial = suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship }, 8);
+    const initial = suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship, gender }, 8);
     setSuggestions(initial);
     const top = initial[0] ?? null;
     setSelected(top ? { id: top.id, text: top.text } : null);
@@ -93,11 +95,11 @@ export function MealShareModal({
   const visibleSuggestions =
     activeTab === 'suggested' || activeTab === 'custom'
       ? suggestions
-      : suggestOverlayTexts({ mealType, categories: [activeTab], audience, relationship }, 8);
+      : suggestOverlayTexts({ mealType, categories: [activeTab], audience, relationship, gender }, 8);
 
   function handleShuffle() {
     const categories = activeTab === 'suggested' || activeTab === 'custom' ? derivedCategories : [activeTab as ShareOverlayTextCategory];
-    setSuggestions(shuffleOverlayTexts({ mealType, categories, audience, relationship }, 8));
+    setSuggestions(shuffleOverlayTexts({ mealType, categories, audience, relationship, gender }, 8));
     trackShareOverlayTextEvent('share_overlay_text_shuffled', { meal_type: mealType, audience });
   }
 

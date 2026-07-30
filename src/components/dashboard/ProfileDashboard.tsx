@@ -440,6 +440,7 @@ export function ProfileDashboard({
           // "My family member ..." instead of a pronoun-free self caption.
           audience={role === "coach" ? "coach" : profile.relationshipType === "self" ? "self" : "family"}
           relationship={profile.relationship}
+          gender={profile.gender}
         />
       )}
     </div>

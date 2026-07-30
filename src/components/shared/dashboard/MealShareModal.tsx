@@ -32,11 +32,13 @@ export function MealShareModal({
   onClose,
   audience = "self",
   relationship,
+  gender,
 }: {
   meal: MealShareData;
   onClose: () => void;
   audience?: ShareOverlayAudience;
   relationship?: string;
+  gender?: string | null;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<"share" | "download" | null>(null);
@@ -55,7 +57,7 @@ export function MealShareModal({
   const derivedCategories = useMemo(() => deriveMealShareCategories(meal), [meal]);
 
   const [suggestions, setSuggestions] = useState(() =>
-    suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship }, 8)
+    suggestOverlayTexts({ mealType, categories: derivedCategories, audience, relationship, gender }, 8)
   );
 
   // The single highest-relevance suggestion is applied immediately (see
@@ -82,11 +84,11 @@ export function MealShareModal({
   const visibleSuggestions =
     activeTab === "suggested" || activeTab === "custom"
       ? suggestions
-      : suggestOverlayTexts({ mealType, categories: [activeTab], audience, relationship }, 8);
+      : suggestOverlayTexts({ mealType, categories: [activeTab], audience, relationship, gender }, 8);
 
   function handleShuffle() {
     const categories = activeTab === "suggested" || activeTab === "custom" ? derivedCategories : [activeTab];
-    const next = shuffleOverlayTexts({ mealType, categories, audience, relationship }, 8);
+    const next = shuffleOverlayTexts({ mealType, categories, audience, relationship, gender }, 8);
     setSuggestions(next);
     trackShareOverlayTextEvent("share_overlay_text_shuffled", { meal_type: mealType, audience });
   }
