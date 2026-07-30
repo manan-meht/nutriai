@@ -780,6 +780,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     if (mealError || !mealRow) {
       console.error("[whatsapp] meal_logs insert failed:", mealError?.message);
+      try {
+        await db.from("meal_save_failures").insert({
+          workspace_id: workspaceId,
+          ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+          error_message: mealError?.message ?? "meal_logs insert returned no row",
+          analysis,
+        });
+      } catch (logErr) {
+        console.error("[whatsapp] meal_save_failures insert also failed:", logErr instanceof Error ? logErr.message : logErr);
+      }
       return undefined;
     }
 

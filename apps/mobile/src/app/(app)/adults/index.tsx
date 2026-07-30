@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
@@ -231,11 +231,14 @@ export default function AdultsContactListScreen() {
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
   if (state.status === 'subscription_required') {
     return (
-      <EmptyState
-        title="Subscription needed"
-        message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
-        action={{ label: 'Subscribe', onPress: () => router.push({ pathname: '/adults/paywall', params: { plan: state.plan } }) }}
-      />
+      <>
+        <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
+        <EmptyState
+          title="Subscription needed"
+          message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
+          action={{ label: 'Subscribe', onPress: () => router.push({ pathname: '/adults/paywall', params: { plan: state.plan } }) }}
+        />
+      </>
     );
   }
 
@@ -245,6 +248,7 @@ export default function AdultsContactListScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
       <FlatList
         data={state.contacts}
         keyExtractor={(c) => c.id}
