@@ -534,14 +534,22 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
         </div>
       )}
 
-      {!isActive && !inviteAccepted && !isSelf && (
+      {!isActive && !inviteAccepted && (
         // Real WhatsApp-first invite, shown right in the list — not just a
         // "we sent something" claim (see src/lib/invites). Stops click
-        // propagation so its buttons don't trigger the card's onOpen navigation.
+        // propagation so its buttons don't trigger the card's onOpen
+        // navigation. Shown for "self" too — that contact still needs its
+        // own WhatsApp number connected, same as any other (see the
+        // matching change in the self-plan add flow), just with
+        // first-person copy since the caregiver is connecting themselves.
         <div className="mb-4" onClick={(e) => e.stopPropagation()}>
           <InviteCard
-            title="Ask them to start Tistra on WhatsApp"
-            description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
+            title={isSelf ? "Connect your own WhatsApp number" : "Ask them to start Tistra on WhatsApp"}
+            description={
+              isSelf
+                ? "Send yourself this link and message the bot from the phone you'll be logging meals from — you'll see it connected here right away."
+                : `Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`
+            }
             load={() => getOrCreateFamilyInvite(contact.id)}
             regenerate={() => regenerateFamilyInvite(contact.id)}
             revoke={() => revokeFamilyInvite(contact.id)}

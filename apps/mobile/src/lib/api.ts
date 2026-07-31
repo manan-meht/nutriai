@@ -147,6 +147,13 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   /** Set once a contact has been removed (soft-deleted) — only present on
    * rows returned by getRemovedAdultsContacts, never on getAdultsContacts. */
   deletedAt?: string;
+  /** WhatsApp invite status — mirrors the web dashboard's inviteSentAt/
+   * inviteAcceptedAt-derived "Not connected yet"/"Accepted" badge (see
+   * AdultsDashboardClient.tsx). Always set on creation (see addContact),
+   * so inviteSentAt is really "has an invite ever existed" rather than
+   * "was one actually delivered". */
+  inviteSentAt?: string;
+  inviteAcceptedAt?: string;
 }
 
 export interface MealLog {

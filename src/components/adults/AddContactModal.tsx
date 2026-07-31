@@ -32,7 +32,7 @@ const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Friend
 export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, isSelfPlan, tistraWhatsAppNumber, onClose, onAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ name: string; whatsapp: string } | null>(null);
+  const [success, setSuccess] = useState<{ name: string; whatsapp: string; isSelf: boolean } | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [countryCode, setCountryCode] = useState("91");
@@ -88,7 +88,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
         setError(result.error);
         return;
       }
-      setSuccess({ name: fullName, whatsapp });
+      setSuccess({ name: fullName, whatsapp, isSelf });
       onAdded();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -118,9 +118,19 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
       <ModalShell onClose={onClose} title="Contact added">
         <div className="text-center py-6">
           <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📲</div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">{success.name} has been added!</h3>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">
+            {success.isSelf ? "You're all set up!" : `${success.name} has been added!`}
+          </h3>
           <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
-            One last step — send them the WhatsApp invite yourself so they know to start logging meals. Once they reply, their card will update to <strong>Accepted</strong>.
+            {success.isSelf ? (
+              <>
+                One last step — send yourself this WhatsApp link and open it from the phone you&apos;ll be logging meals from. Once you reply, your card will update to <strong>Accepted</strong>.
+              </>
+            ) : (
+              <>
+                One last step — send them the WhatsApp invite yourself so they know to start logging meals. Once they reply, their card will update to <strong>Accepted</strong>.
+              </>
+            )}
           </p>
           <a
             href={buildWhatsAppUrl()}
@@ -129,7 +139,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
             className="inline-flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold rounded-full px-8 py-3 text-sm hover:brightness-95 transition-all mb-3"
           >
             <WhatsAppIcon />
-            Send invite via WhatsApp
+            {success.isSelf ? "Send myself the WhatsApp link" : "Send invite via WhatsApp"}
           </a>
           <div>
             <button onClick={onClose} className="text-gray-500 font-medium text-sm hover:text-gray-700 transition-colors px-8 py-3">

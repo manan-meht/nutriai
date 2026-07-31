@@ -46,10 +46,17 @@ interface PersonFormProps {
    * with only one possible answer. Ignored for product="gym" and for
    * mode="edit" (relationship never changes after creation). */
   workspacePlan?: string | null;
-  /** Passed the newly-created contact's id/name only for product="adults"
-   * mode="add" (so the caller can offer to send the WhatsApp invite right
-   * away — see adults/add.tsx) — undefined for every other case. */
-  onSuccess: (created?: { id: string; fullName: string }) => void;
+  /** Passed the newly-created contact's id/name/isSelf only for
+   * product="adults" mode="add" (so the caller can offer to send the
+   * WhatsApp invite right away — see adults/add.tsx) — undefined for every
+   * other case. Always populated now, including a "Myself" pick: that
+   * contact still needs its own WhatsApp number connected, whether it's a
+   * self-plan workspace's only contact or "Myself" within an otherwise
+   * multi-member family plan — the two are the same real situation (the
+   * caregiver connecting their own number) and get the same invite
+   * screen/message. `isSelf` lets the caller show self-specific copy
+   * there. */
+  onSuccess: (created?: { id: string; fullName: string; isSelf: boolean }) => void;
 }
 
 // Ported from nutriai-fresh's old apps/mobile/src/components/PersonForm.tsx
@@ -106,12 +113,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         body.whatsappNumber = `+${countryCode}${whatsapp.replace(/\D/g, '')}`;
         if (product === 'adults') {
           const created = await api.createAdultsContact(body);
-          // Skip the invite step only for "Myself" picked within an
-          // otherwise multi-member family plan — that contact uses the
-          // caregiver's own login, no separate WhatsApp link needed. A
-          // self-plan workspace's one contact still needs its own number
-          // connected, so it always gets a `created` result here.
-          onSuccess(isSelf && !isSelfPlan ? undefined : { id: created.id, fullName });
+          onSuccess({ id: created.id, fullName, isSelf });
           return;
         } else {
           await api.createGymClient(body);

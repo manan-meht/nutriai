@@ -37,18 +37,16 @@ export default function AddAdultsContactScreen() {
       hasSelfContact={hasSelfContact}
       workspacePlan={workspacePlan}
       onSuccess={(created) => {
-        // created is undefined only for the "Myself" relationship chosen
-        // within an otherwise multi-member family plan (that contact uses
-        // the caregiver's own login, no separate WhatsApp link needed) —
-        // see PersonForm's handleSubmit. A self-plan workspace's one and
-        // only contact still needs its own WhatsApp number connected, so it
-        // always gets a `created` result and routes to the invite screen
-        // like any other contact, just with self-specific copy there (see
-        // the `self=1` param).
+        // Every new contact routes to the invite screen now, including
+        // "Myself" (whether it's a self-plan workspace's only contact, or
+        // "Myself" within an otherwise multi-member family plan) — both are
+        // the same real situation (the caregiver connecting their own
+        // WhatsApp number), so both get the same self-specific copy there
+        // (see the `self=1` param and PersonForm's handleSubmit).
         if (created) {
           router.replace({
             pathname: '/adults/invite',
-            params: { contactId: created.id, name: created.fullName.split(' ')[0], ...(workspacePlan === 'self' ? { self: '1' } : {}) },
+            params: { contactId: created.id, name: created.fullName.split(' ')[0], ...(created.isSelf ? { self: '1' } : {}) },
           });
         } else {
           router.back();

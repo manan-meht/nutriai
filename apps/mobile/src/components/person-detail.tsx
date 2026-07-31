@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 
@@ -32,6 +32,11 @@ interface PersonLike extends FoodBalanceProfileFields {
    * vs. family), see @/lib/meal-share/overlay-text.ts. */
   relationshipType?: 'self' | 'family_caregiver';
   relationship?: string;
+  /** adults-only — drives the "hasn't connected on WhatsApp yet" banner
+   * below (mirrors the web dashboard's invite status badge/InviteCard,
+   * see AdultsDashboardClient.tsx). Undefined for gym clients. */
+  inviteSentAt?: string;
+  inviteAcceptedAt?: string;
 }
 
 // Shared by (app)/adults/[contactId].tsx and (app)/gym/[clientId].tsx —
@@ -292,6 +297,26 @@ export function PersonDetail({
               </Pressable>
             )}
 
+            {/* Mirrors the web dashboard's invite status badge/InviteCard on
+                the contact list (see AdultsDashboardClient.tsx) — mobile had
+                no equivalent anywhere except the one-time screen right after
+                adding a contact (adults/invite.tsx), so once a caregiver
+                navigated away there was no way to tell a contact hadn't
+                connected yet, or to resend the invite. Shown for "self" too
+                now (that contact still needs its own WhatsApp number
+                connected, same as any other) — never shown for gym clients
+                (no WhatsApp invite concept there), and disappears the
+                moment inviteAcceptedAt is set, which only happens once the
+                contact actually sends the bot a real message (not just
+                opening the link — see conversation-handler.ts). */}
+            {'contactId' in foodBalanceQuery && !person.inviteAcceptedAt && (
+              <InviteStatusBanner
+                contactId={foodBalanceQuery.contactId}
+                personName={person.fullName}
+                isSelf={person.relationshipType === 'self'}
+              />
+            )}
+
             {/* Never shown for a "self" contact — there's no separate person to
                 share a view-only link with; the caregiver's own login already
                 is that view. Mirrors the web app's identical guard (see
@@ -363,6 +388,64 @@ export function PersonDetail({
     </>
   );
 }
+
+/** "Hasn't connected on WhatsApp yet" banner + resend action — see the
+ * doc comment where this is rendered above for why this exists at all.
+ * Only ever shown when inviteAcceptedAt is falsy (caller's condition), so
+ * this component itself doesn't need to re-check that. */
+function InviteStatusBanner({ contactId, personName, isSelf }: { contactId: string; personName: string; isSelf: boolean }) {
+  const theme = useTheme();
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSend() {
+    setSending(true);
+    setError(null);
+    try {
+      const invite = await api.getFamilyInvite(contactId);
+      if (invite.shareLink) {
+        await Share.share({ message: invite.shareMessage ?? invite.shareLink });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create an invite right now.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <ThemedView type="backgroundElement" style={inviteBannerStyles.card}>
+      <ThemedText type="smallBold">Not connected yet</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary" style={inviteBannerStyles.description}>
+        {isSelf
+          ? "You haven't connected your own WhatsApp number yet — send yourself this link and reply to it to start sharing meal photos."
+          : `${personName.split(' ')[0]} hasn't opened the WhatsApp invite yet — send it again so they can start sharing meal photos.`}
+      </ThemedText>
+      <Pressable
+        onPress={handleSend}
+        disabled={sending}
+        style={[inviteBannerStyles.button, { backgroundColor: theme.primary, opacity: sending ? 0.6 : 1 }]}
+      >
+        <ThemedText type="small" style={inviteBannerStyles.buttonText}>
+          {sending ? 'Sending…' : isSelf ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+        </ThemedText>
+      </Pressable>
+      {error && (
+        <ThemedText type="small" style={inviteBannerStyles.error}>
+          {error}
+        </ThemedText>
+      )}
+    </ThemedView>
+  );
+}
+
+const inviteBannerStyles = StyleSheet.create({
+  card: { borderRadius: Spacing.two, padding: Spacing.three, gap: Spacing.two },
+  description: {},
+  button: { borderRadius: Spacing.two, paddingVertical: Spacing.two, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: '700' },
+  error: { color: '#D92D20' },
+});
 
 function HealthCard({
   icon,
