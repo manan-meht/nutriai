@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MealReviewDetail, SaveReviewInput } from "@/app/(admin)/admin/actions";
 import { saveHumanReview, escalateReview, getNextPendingMealId, addFoodToKnowledgeBase } from "@/app/(admin)/admin/actions";
@@ -20,6 +20,16 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   const { submission, classification, latestReview, mealLog } = detail;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setLightboxUrl(null);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [lightboxUrl]);
 
   const [reviewStatus, setReviewStatus] = useState(latestReview?.reviewStatus ?? "correct");
   const [proteinStatus, setProteinStatus] = useState(latestReview?.correctedProteinAnchorStatus ?? classification?.proteinAnchorStatus ?? "unknown");
@@ -130,8 +140,15 @@ export function ReviewForm({ detail }: { detail: Detail }) {
       <div className="space-y-4">
         <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           {submission.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
-            <img src={submission.imageUrl} alt="Meal submission" className="w-full max-h-96 object-cover" />
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(submission.imageUrl)}
+              className="block w-full cursor-zoom-in"
+              aria-label="Enlarge meal photo"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL */}
+              <img src={submission.imageUrl} alt="Meal submission" className="w-full max-h-96 object-cover" />
+            </button>
           ) : (
             <div className="h-64 flex items-center justify-center text-gray-400 text-sm">No photo available</div>
           )}
@@ -286,6 +303,29 @@ export function ReviewForm({ detail }: { detail: Detail }) {
           </div>
         </div>
       </div>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white text-3xl leading-none"
+            aria-label="Close"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL */}
+          <img
+            src={lightboxUrl}
+            alt="Meal submission enlarged"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-[90vh] rounded-2xl object-contain cursor-default"
+          />
+        </div>
+      )}
     </div>
   );
 }

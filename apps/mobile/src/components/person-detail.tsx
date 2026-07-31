@@ -292,7 +292,11 @@ export function PersonDetail({
               </Pressable>
             )}
 
-            {accessCode && <AccessCodeCard personName={person.fullName} {...accessCode} />}
+            {/* Never shown for a "self" contact — there's no separate person to
+                share a view-only link with; the caregiver's own login already
+                is that view. Mirrors the web app's identical guard (see
+                src/app/(adults)/adults/dashboard/contacts/[contactId]/page.tsx). */}
+            {accessCode && person.relationshipType !== 'self' && <AccessCodeCard personName={person.fullName} {...accessCode} />}
 
             {foodPreferencesContactId && hasInteractedWithFoodPreferences === false && (
               <FoodPreferencesEditor contactId={foodPreferencesContactId} />

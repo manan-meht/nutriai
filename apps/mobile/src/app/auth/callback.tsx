@@ -17,26 +17,41 @@ import { createSessionFromUrl } from '@/lib/oauth';
  * createSessionFromUrl() again if oauth.ts's own flow already did is
  * harmless (same valid tokens/code), so this is safe as a fallback/primary
  * handler regardless of which path actually catches the redirect.
+ *
+ * Also the ONLY handler for email/password signup confirmation links
+ * (signup.tsx's emailRedirectTo points here too, with no WebBrowser auth
+ * session involved at all) — tapping the confirmation email link while the
+ * app is already running (the common case: sign up, background the app to
+ * check email, tap the link) is a warm resume, not a cold launch, so
+ * getInitialURL() alone returns null and the tokens were silently dropped,
+ * leaving this screen blank forever with no error. Discovered via a real
+ * signup where exactly that happened. addEventListener('url', ...) below
+ * covers that case; getInitialURL() stays for the genuine cold-start case
+ * (app not running at all when the link is tapped).
  */
 export default function AuthCallbackScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // expo-router's own NavigationContainer already listens for incoming
-    // URLs to route here in the first place — a second
-    // Linking.addEventListener subscription on top of that trips React
-    // Navigation's "linking configured in multiple places" warning/error.
-    // getInitialURL() alone is a one-time getter, not a subscription, so
-    // it's safe to call here, and gives back the full URL (fragment
-    // included) that createSessionFromUrl needs, unlike route params.
-    Linking.getInitialURL().then((url) => {
-      if (!url) return;
+    function handleUrl(url: string) {
       createSessionFromUrl(url).catch((err) =>
         setError(err instanceof Error ? err.message : 'Sign-in did not return a valid session.')
       );
       // Successful navigation from here is handled by the auth-state
       // listener in src/lib/auth-context.tsx, not this screen.
+    }
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
     });
+
+    // Covers the app-already-running case (see doc comment above) — this
+    // is a plain event subscription on the incoming-URL event, distinct
+    // from expo-router's own linking config (which only decides which
+    // *screen* to navigate to for a deep link, not what this screen then
+    // does with the URL's tokens), so it doesn't conflict with it.
+    const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => subscription.remove();
   }, []);
 
   return (
