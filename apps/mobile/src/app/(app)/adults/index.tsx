@@ -354,6 +354,7 @@ export default function AdultsContactListScreen() {
             scoreQuery={{ contactId: item.id }}
             onPress={() => router.push(`/adults/${item.id}`)}
             onLongPress={() => confirmRemove(item)}
+            invite={{ contactId: item.id, inviteAccepted: !!item.inviteAcceptedAt, isSelf: item.relationshipType === 'self' }}
           />
         )}
         ListFooterComponent={

@@ -173,6 +173,23 @@ export function PersonDetail({
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={styles.sections}>
+            {/* Highest-priority item on this page until connected — mirrors
+                the web dashboard's invite status badge/InviteCard (see
+                AdultsDashboardClient.tsx). Shown for "self" too (that
+                contact still needs its own WhatsApp number connected, same
+                as any other) — never shown for gym clients (no WhatsApp
+                invite concept there), and disappears the moment
+                inviteAcceptedAt is set, which only happens once the contact
+                actually sends the bot a real message (not just opening the
+                link — see conversation-handler.ts). */}
+            {'contactId' in foodBalanceQuery && !person.inviteAcceptedAt && (
+              <InviteStatusBanner
+                contactId={foodBalanceQuery.contactId}
+                personName={person.fullName}
+                isSelf={person.relationshipType === 'self'}
+              />
+            )}
+
             <View>
               <ThemedText type="title" style={styles.name}>
                 {person.fullName}
@@ -295,26 +312,6 @@ export function PersonDetail({
                   Show more
                 </ThemedText>
               </Pressable>
-            )}
-
-            {/* Mirrors the web dashboard's invite status badge/InviteCard on
-                the contact list (see AdultsDashboardClient.tsx) — mobile had
-                no equivalent anywhere except the one-time screen right after
-                adding a contact (adults/invite.tsx), so once a caregiver
-                navigated away there was no way to tell a contact hadn't
-                connected yet, or to resend the invite. Shown for "self" too
-                now (that contact still needs its own WhatsApp number
-                connected, same as any other) — never shown for gym clients
-                (no WhatsApp invite concept there), and disappears the
-                moment inviteAcceptedAt is set, which only happens once the
-                contact actually sends the bot a real message (not just
-                opening the link — see conversation-handler.ts). */}
-            {'contactId' in foodBalanceQuery && !person.inviteAcceptedAt && (
-              <InviteStatusBanner
-                contactId={foodBalanceQuery.contactId}
-                personName={person.fullName}
-                isSelf={person.relationshipType === 'self'}
-              />
             )}
 
             {/* Never shown for a "self" contact — there's no separate person to

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { bandLabelFor } from './food-balance-score-card';
 import { ThemedText } from './themed-text';
@@ -6,7 +7,7 @@ import { ThemedView } from './themed-view';
 import { Spacing } from '@/constants/theme';
 import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { useTheme } from '@/hooks/use-theme';
-import type { MacroWindowSummary } from '@/lib/api';
+import { api, type MacroWindowSummary } from '@/lib/api';
 
 function formatLastMeal(lastMealAt?: string): string {
   if (!lastMealAt) return 'No meals logged yet';
@@ -38,6 +39,7 @@ export function PersonCard({
   onPress,
   onLongPress,
   dimmed,
+  invite,
 }: {
   fullName: string;
   subtitle?: string;
@@ -61,9 +63,33 @@ export function PersonCard({
   /** Used for the collapsed "removed" section — same card, visually
    * de-emphasized, read-only (no onLongPress passed there). */
   dimmed?: boolean;
+  /** adults-only — omitted entirely for gym clients (no WhatsApp invite
+   * concept there). Shown until inviteAccepted is true, mirroring the web
+   * dashboard's list-level invite status/resend (AdultsDashboardClient.tsx)
+   * and the mobile detail page's identical banner (person-detail.tsx) —
+   * previously the list had no invite indicator or resend option at all. */
+  invite?: { contactId: string; inviteAccepted: boolean; isSelf: boolean };
 }) {
   const theme = useTheme();
   const { result } = useFoodBalanceScore(scoreQuery);
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  async function handleSendInvite() {
+    if (!invite) return;
+    setSendingInvite(true);
+    setInviteError(null);
+    try {
+      const inviteSummary = await api.getFamilyInvite(invite.contactId);
+      if (inviteSummary.shareLink) {
+        await Share.share({ message: inviteSummary.shareMessage ?? inviteSummary.shareLink });
+      }
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Could not create an invite right now.');
+    } finally {
+      setSendingInvite(false);
+    }
+  }
 
   const isLearning = result && (result.status === 'collecting_data' || result.status === 'refreshing_data');
   const isScored = result && !isLearning;
@@ -98,6 +124,34 @@ export function PersonCard({
             ›
           </ThemedText>
         </View>
+
+        {invite && !invite.inviteAccepted && (
+          <View style={[styles.inviteBox, { backgroundColor: theme.backgroundSelected }]}>
+            <ThemedText type="smallBold">Not connected yet</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.inviteText}>
+              {invite.isSelf
+                ? "You haven't connected your own WhatsApp number yet."
+                : `${fullName.split(' ')[0]} hasn't opened the WhatsApp invite yet.`}
+            </ThemedText>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                handleSendInvite();
+              }}
+              disabled={sendingInvite}
+              style={[styles.inviteButton, { backgroundColor: theme.primary, opacity: sendingInvite ? 0.6 : 1 }]}
+            >
+              <ThemedText type="small" style={styles.inviteButtonText}>
+                {sendingInvite ? 'Sending…' : invite.isSelf ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+              </ThemedText>
+            </Pressable>
+            {inviteError && (
+              <ThemedText type="small" style={styles.inviteErrorText}>
+                {inviteError}
+              </ThemedText>
+            )}
+          </View>
+        )}
 
         {isLearning && macroFallback && (
           <View style={styles.learning}>
@@ -193,6 +247,11 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  inviteBox: { borderRadius: Spacing.two, padding: Spacing.two, gap: Spacing.one },
+  inviteText: {},
+  inviteButton: { borderRadius: Spacing.two, paddingVertical: Spacing.one + 2, alignItems: 'center', marginTop: Spacing.half },
+  inviteButtonText: { color: '#fff', fontWeight: '700' },
+  inviteErrorText: { color: '#D92D20' },
   avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: '700' },
   headerText: { flex: 1 },
