@@ -62,7 +62,16 @@ export function isBillingWhitelisted(email: string | null | undefined): boolean 
   if (!email) return false;
   const raw = process.env.BILLING_TEST_WHITELIST_EMAILS;
   if (!raw) return false;
-  const normalized = email.trim().toLowerCase();
+  // Email/password signup for the "adults" product scopes the stored auth
+  // email with "+nutriai-adults" (see scopedEmail/displayEmail in
+  // src/lib/auth.ts) so the same real address can have separate adults/gym
+  // accounts — comparing against the raw scoped email silently missed
+  // every such account unless someone remembered to whitelist the exact
+  // scoped variant too (discovered via a real account this happened to).
+  // Stripping the scope tag before comparing makes the whitelist match on
+  // the person's real email regardless of which product they signed up
+  // for or how.
+  const normalized = email.trim().toLowerCase().replace(/\+nutriai-[^@]+(?=@)/, "");
   return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
 }
 

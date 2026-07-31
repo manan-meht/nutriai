@@ -101,3 +101,38 @@ describe("getEntitlementSnapshot — per-module trial enforcement flags", () => 
     expect(familySnapshot.isReadOnly).toBe(true); // family enforcement still on
   });
 });
+
+describe("isBillingWhitelisted", () => {
+  afterEach(() => {
+    delete process.env.BILLING_TEST_WHITELIST_EMAILS;
+    jest.resetModules();
+  });
+
+  it("matches a plain whitelisted email case-insensitively", async () => {
+    process.env.BILLING_TEST_WHITELIST_EMAILS = "test@example.com,Other@Example.com";
+    jest.resetModules();
+    const { isBillingWhitelisted } = await import("@/lib/billing/feature-flags");
+    expect(isBillingWhitelisted("TEST@example.com")).toBe(true);
+    expect(isBillingWhitelisted("other@example.com")).toBe(true);
+    expect(isBillingWhitelisted("nope@example.com")).toBe(false);
+  });
+
+  it("matches a whitelisted email even when the account was created with the +nutriai-adults product scope tag", async () => {
+    // Email/password signup for the "adults" product appends
+    // "+nutriai-adults" to the stored auth email (see scopedEmail in
+    // src/lib/auth.ts) — a whitelist entered as the person's plain email
+    // must still match their actual (scoped) stored account email.
+    process.env.BILLING_TEST_WHITELIST_EMAILS = "test@example.com";
+    jest.resetModules();
+    const { isBillingWhitelisted } = await import("@/lib/billing/feature-flags");
+    expect(isBillingWhitelisted("test+nutriai-adults@example.com")).toBe(true);
+  });
+
+  it("returns false for no email or an empty whitelist", async () => {
+    jest.resetModules();
+    const { isBillingWhitelisted } = await import("@/lib/billing/feature-flags");
+    expect(isBillingWhitelisted(null)).toBe(false);
+    expect(isBillingWhitelisted(undefined)).toBe(false);
+    expect(isBillingWhitelisted("test@example.com")).toBe(false);
+  });
+});
