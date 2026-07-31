@@ -46,10 +46,22 @@ export async function findWorkspace(
 }
 
 /** Finds the caller's workspace of the given type, creating one if it
- * doesn't exist yet. Idempotent: the ORDER BY created_at + LIMIT 1 makes a
- * concurrent double-call resolve to the same row on the second read even if
- * both raced past the initial "not found" check and both inserted (matches
- * the pre-extraction behavior in both apps).
+ * doesn't exist yet.
+ *
+ * The insert is an upsert against the `workspaces_owner_id_type_key` unique
+ * constraint (owner_id, type) added in
+ * supabase/migrations/0046_dedupe_and_constrain_workspaces.sql — a plain
+ * check-then-insert here previously let two near-simultaneous calls (e.g.
+ * two screens each independently calling GET /adults/workspace on mount)
+ * both pass the initial "not found" read before either insert committed,
+ * each creating their own row. Confirmed via 8 real duplicate-workspace
+ * pairs in production, all created between ~20ms and ~0.6s apart — the
+ * ORDER BY created_at + LIMIT 1 in findWorkspace made *reads* agree on
+ * which row was "the" workspace, but did nothing to stop the duplicate
+ * INSERT from happening in the first place, leaving an orphaned row
+ * behind every time. ignoreDuplicates: true means a losing request's
+ * insert is a no-op (not an error) — it re-fetches the winner's row
+ * afterward instead.
  *
  * Takes an already-constructed service-role client — this package never
  * constructs its own Supabase clients (the caller decides how to build one,
@@ -69,10 +81,15 @@ export async function getOrCreateWorkspace(
 
   const { data: created, error } = await admin
     .from("workspaces")
-    .insert({ type, name, slug, owner_id: userId })
+    .upsert({ type, name, slug, owner_id: userId }, { onConflict: "owner_id,type", ignoreDuplicates: true })
     .select(selectColumns)
-    .single();
+    .maybeSingle();
 
-  if (error || !created) throw new Error(`Failed to create workspace: ${error?.message}`);
-  return mapWorkspaceRow(created, type);
+  if (error) throw new Error(`Failed to create workspace: ${error.message}`);
+  if (created) return mapWorkspaceRow(created, type);
+
+  // Lost the race — a concurrent call already created this workspace.
+  const winner = await findWorkspace(admin, userId, type);
+  if (!winner) throw new Error("Failed to create workspace: race resolution found no row");
+  return mapWorkspaceRow(winner, type);
 }
