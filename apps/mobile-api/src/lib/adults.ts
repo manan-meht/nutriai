@@ -68,11 +68,18 @@ export async function addContact(
   workspaceId: string,
   caregiverId: string,
   input: AddContactInput,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  /** A self-plan workspace only ever has exactly one contact — the
+   * caregiver's own tracked profile — so relationship_type is forced to
+   * "self" here regardless of what the client sends, rather than trusting
+   * PersonForm to have picked "Myself" correctly (or at all, if the
+   * relationship picker is hidden for this plan client-side). */
+  workspacePlan?: string
 ): Promise<{ contactId: string; error?: undefined } | { contactId?: undefined; error: string }> {
   if (await isWhatsappNumberTaken(input.whatsappNumber)) {
     return { error: "This WhatsApp number is already registered to another contact or client." };
   }
+  const isSelfPlan = workspacePlan === "self";
 
   const { data: contact, error } = await supabase
     .from("adults_contacts")
@@ -81,8 +88,8 @@ export async function addContact(
       caregiver_id: caregiverId,
       full_name: input.fullName,
       whatsapp_number: input.whatsappNumber,
-      relationship: input.relationship || null,
-      relationship_type: input.relationshipType ?? "family_caregiver",
+      relationship: isSelfPlan ? null : input.relationship || null,
+      relationship_type: isSelfPlan ? "self" : input.relationshipType ?? "family_caregiver",
       age: input.age ?? null,
       gender: input.gender || null,
       weight_kg: input.weightKg ?? null,

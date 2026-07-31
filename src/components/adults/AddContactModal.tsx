@@ -14,6 +14,11 @@ interface Props {
    * a self-tracked contact — relationship_type "self" is limited to one per
    * workspace (see hasSelfContact in AdultsDashboardClient.tsx). */
   hasSelfContact: boolean;
+  /** A "self" plan workspace only ever has exactly one contact — the
+   * caregiver's own tracked profile — so the Relationship field is hidden
+   * entirely (there's only one possible answer) and relationship_type is
+   * forced to "self" rather than asking a question with a single option. */
+  isSelfPlan: boolean;
   /** Digits-only WhatsApp number for the Tistra Health bot, embedded as a
    * wa.me link in the invite message. Undefined if TISTRA_WHATSAPP_NUMBER
    * isn't configured — the message falls back to not including a link. */
@@ -24,7 +29,7 @@ interface Props {
 
 const RELATIONSHIPS = ["Son", "Daughter", "Spouse", "Parent", "Sibling", "Friend", "Other"];
 
-export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, tistraWhatsAppNumber, onClose, onAdded }: Props) {
+export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, isSelfPlan, tistraWhatsAppNumber, onClose, onAdded }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ name: string; whatsapp: string } | null>(null);
@@ -32,7 +37,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, ti
   const [fullName, setFullName] = useState("");
   const [countryCode, setCountryCode] = useState("91");
   const [whatsapp, setWhatsapp] = useState("");
-  const [relationship, setRelationship] = useState("");
+  const [relationship, setRelationship] = useState(isSelfPlan ? "self" : "");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [weightKg, setWeightKg] = useState("");
@@ -151,13 +156,15 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, ti
                   placeholder="Meera Nair" className={inp} />
               </Field>
             </div>
-            <Field label="Relationship">
-              <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inp}>
-                <option value="">Select</option>
-                {!hasSelfContact && <option value="self">Myself</option>}
-                {RELATIONSHIPS.map((r) => <option key={r} value={r.toLowerCase()}>{r}</option>)}
-              </select>
-            </Field>
+            {!isSelfPlan && (
+              <Field label="Relationship">
+                <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inp}>
+                  <option value="">Select</option>
+                  {!hasSelfContact && <option value="self">Myself</option>}
+                  {RELATIONSHIPS.map((r) => <option key={r} value={r.toLowerCase()}>{r}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Age">
               <input value={age} onChange={(e) => setAge(e.target.value)}
                 placeholder="65" type="number" min="40" max="110" className={inp} />

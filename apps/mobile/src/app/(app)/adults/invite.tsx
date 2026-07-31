@@ -19,7 +19,8 @@ type State = { status: 'loading' } | { status: 'error'; message: string } | { st
  * with no way to actually invite the person they just added. */
 export default function AdultsInviteScreen() {
   const theme = useTheme();
-  const { contactId, name } = useLocalSearchParams<{ contactId: string; name?: string }>();
+  const { contactId, name, self } = useLocalSearchParams<{ contactId: string; name?: string; self?: string }>();
+  const isSelfTrack = self === '1';
   const [state, setState] = useState<State>({ status: 'loading' });
 
   useEffect(() => {
@@ -75,17 +76,21 @@ export default function AdultsInviteScreen() {
           <>
             <ThemedText style={styles.emoji}>🎉</ThemedText>
             <ThemedText type="title" style={styles.title}>
-              {name ? `${name} added!` : 'Added!'}
+              {isSelfTrack ? "You're all set up!" : name ? `${name} added!` : 'Added!'}
             </ThemedText>
             <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
-              Send them this WhatsApp invite so they can start sharing meal photos with you.
+              {isSelfTrack
+                ? "One last step — send yourself this WhatsApp link and open it from the phone you'll be logging meals from. Once you're in the chat, just send a photo of your next meal to start tracking."
+                : 'Send them this WhatsApp invite so they can start sharing meal photos with you.'}
             </ThemedText>
 
             <Pressable
               style={[styles.primaryButton, { backgroundColor: theme.primary }]}
               onPress={() => handleSend(state.invite)}
             >
-              <ThemedText style={styles.primaryButtonText}>Send invite via WhatsApp</ThemedText>
+              <ThemedText style={styles.primaryButtonText}>
+                {isSelfTrack ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+              </ThemedText>
             </Pressable>
 
             <Pressable style={styles.skipLink} onPress={() => router.replace('/adults')}>

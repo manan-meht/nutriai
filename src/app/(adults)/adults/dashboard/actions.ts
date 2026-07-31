@@ -264,6 +264,20 @@ export async function addContact(formData: {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // A "self" plan workspace only ever has exactly one contact — the
+  // caregiver's own tracked profile — so relationship_type is forced to
+  // "self" here regardless of what the client sends, rather than trusting
+  // AddContactModal to have picked "Myself" correctly (or at all, if the
+  // relationship field is hidden client-side for this plan). Fetched
+  // independently of the FAMILY_LIMIT_ENFORCEMENT_ENABLED block below,
+  // since that flag gates limit enforcement, not this correctness check.
+  const { data: workspaceForPlan } = await supabase
+    .from("workspaces")
+    .select("plan")
+    .eq("id", formData.workspaceId)
+    .single();
+  const isSelfPlanWorkspace = workspaceForPlan?.plan === "self";
+
   // Fast, friendly pre-check. Not authoritative on its own — the DB trigger
   // (enforce_family_member_limit, see supabase/migrations/0002_account_limits.sql
   // and 0003_purchasable_capacity.sql) is the source of truth, runs
@@ -351,8 +365,8 @@ export async function addContact(formData: {
       caregiver_id: user.id,
       full_name: formData.fullName,
       whatsapp_number: formData.whatsappNumber,
-      relationship: formData.relationship || null,
-      relationship_type: formData.relationshipType ?? "family_caregiver",
+      relationship: isSelfPlanWorkspace ? null : formData.relationship || null,
+      relationship_type: isSelfPlanWorkspace ? "self" : formData.relationshipType ?? "family_caregiver",
       age: formData.age || null,
       gender: formData.gender || null,
       weight_kg: formData.weightKg || null,

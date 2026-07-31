@@ -39,6 +39,13 @@ interface PersonFormProps {
    * already has the contacts list loaded (see adults/add.tsx). Ignored
    * for product="gym". */
   hasSelfContact?: boolean;
+  /** "self" vs "family" — passed by the caller (see adults/add.tsx). A
+   * "self" plan workspace only ever has one contact (the caregiver's own
+   * tracked profile), so the relationship picker is skipped entirely and
+   * relationship_type is forced to "self" rather than asking a question
+   * with only one possible answer. Ignored for product="gym" and for
+   * mode="edit" (relationship never changes after creation). */
+  workspacePlan?: string | null;
   /** Passed the newly-created contact's id/name only for product="adults"
    * mode="add" (so the caller can offer to send the WhatsApp invite right
    * away — see adults/add.tsx) — undefined for every other case. */
@@ -50,12 +57,13 @@ interface PersonFormProps {
 // mirrors AddContactModal/EditContactModal/AddClientModal/EditClientModal
 // on the web app, collapsed into one RN component since the fields are
 // otherwise identical.
-export function PersonForm({ product, mode, personId, initialValues, hasSelfContact, onSuccess }: PersonFormProps) {
+export function PersonForm({ product, mode, personId, initialValues, hasSelfContact, workspacePlan, onSuccess }: PersonFormProps) {
   const theme = useTheme();
+  const isSelfPlan = product === 'adults' && mode === 'add' && workspacePlan === 'self';
   const [fullName, setFullName] = useState(initialValues?.fullName ?? '');
   const [countryCode, setCountryCode] = useState('91');
   const [whatsapp, setWhatsapp] = useState('');
-  const [relationship, setRelationship] = useState(initialValues?.relationship ?? '');
+  const [relationship, setRelationship] = useState(isSelfPlan ? 'self' : initialValues?.relationship ?? '');
   const [age, setAge] = useState(initialValues?.age ?? '');
   const [gender, setGender] = useState(initialValues?.gender ?? '');
   const [weightKg, setWeightKg] = useState(initialValues?.weightKg ?? '');
@@ -98,7 +106,12 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         body.whatsappNumber = `+${countryCode}${whatsapp.replace(/\D/g, '')}`;
         if (product === 'adults') {
           const created = await api.createAdultsContact(body);
-          onSuccess(isSelf ? undefined : { id: created.id, fullName });
+          // Skip the invite step only for "Myself" picked within an
+          // otherwise multi-member family plan — that contact uses the
+          // caregiver's own login, no separate WhatsApp link needed. A
+          // self-plan workspace's one contact still needs its own number
+          // connected, so it always gets a `created` result here.
+          onSuccess(isSelf && !isSelfPlan ? undefined : { id: created.id, fullName });
           return;
         } else {
           await api.createGymClient(body);
@@ -142,7 +155,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         />
       </Field>
 
-      {product === 'adults' && (
+      {product === 'adults' && !isSelfPlan && (
         <Field label="Relationship" color={theme.textSecondary}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {(!hasSelfContact || relationship === 'self') && (

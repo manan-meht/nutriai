@@ -438,6 +438,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           workspaceId={workspaceId}
           caregiverName={displayName || caregiverEmail}
           hasSelfContact={hasSelfContact}
+          isSelfPlan={!!isSelfPlan}
           tistraWhatsAppNumber={tistraWhatsAppNumber}
           onClose={() => setShowModal(false)}
           onAdded={() => router.refresh()}

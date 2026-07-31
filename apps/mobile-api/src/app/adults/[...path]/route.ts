@@ -181,7 +181,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
   const workspace = await getOrCreateAdultsWorkspace(auth.user.id);
-  const result = await addContact(workspace.id, auth.user.id, body, auth.supabase);
+  const result = await addContact(workspace.id, auth.user.id, body, auth.supabase, workspace.plan);
   if (result.error) return NextResponse.json(result, { status: 400 });
 
   return NextResponse.json(result);
