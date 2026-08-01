@@ -7,6 +7,7 @@ import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorksp
 import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient";
 import { displayEmail } from "@/lib/auth";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
+import { isBillingWhitelisted } from "@/lib/billing/feature-flags";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -111,6 +112,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
       tistraWhatsAppNumber={process.env.TISTRA_WHATSAPP_NUMBER}
       requiresCardBeforeTrial={requiresCardBeforeTrial}
       autoOpenAddModal={justCheckedOut && entitlement.status === "trialing"}
+      isBillingWhitelisted={isBillingWhitelisted(user.email)}
     />
   );
 }

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { getOrCreateWorkspace, getClients, getRemovedClients } from "./actions";
 import { GymDashboardClient } from "@/components/gym/GymDashboardClient";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
+import { isBillingWhitelisted } from "@/lib/billing/feature-flags";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -88,6 +89,7 @@ export default async function GymDashboardPage({ searchParams }: GymDashboardPag
       }}
       requiresCardBeforeTrial={requiresCardBeforeTrial}
       autoOpenAddModal={justCheckedOut && entitlement.status === "trialing"}
+      isBillingWhitelisted={isBillingWhitelisted(user.email)}
     />
   );
 }

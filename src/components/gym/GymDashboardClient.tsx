@@ -36,9 +36,13 @@ interface GymDashboardClientProps {
    * the visitor doesn't have to click "Add client" a second time right
    * after paying. */
   autoOpenAddModal?: boolean;
+  /** True for internal test accounts (BILLING_TEST_WHITELIST_EMAILS) that
+   * never pay — hides the "Manage or cancel" link on the trial banner so
+   * their messaging/UI stays exactly as it was before this was added. */
+  isBillingWhitelisted?: boolean;
 }
 
-export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial, autoOpenAddModal }: GymDashboardClientProps) {
+export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: GymDashboardClientProps) {
   // Opens the add-client modal automatically right after a successful
   // checkout — only when there's still nobody added yet. A lazy
   // initializer rather than an effect, since this only ever needs to run
@@ -145,7 +149,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{coachEmail}</span>
-            <Link href="/billing?module=gym" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+            <Link href="/billing/manage?module=gym" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
               Billing
             </Link>
             <button
@@ -205,13 +209,16 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
             {entitlement.isReadOnly && (
               <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
                 Your free trial has ended. Your existing clients and data are preserved and visible, but you can&apos;t invite
-                new clients or generate new AI analyses until you <Link href="/billing?module=gym" className="underline font-medium">subscribe</Link>.
+                new clients or generate new AI analyses until you <Link href="/billing/manage?module=gym" className="underline font-medium">subscribe</Link>.
               </div>
             )}
 
             {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-              <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800">
-                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.
+              <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800 flex flex-wrap items-center justify-between gap-2">
+                <span>Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.</span>
+                {!isBillingWhitelisted && (
+                  <Link href="/billing/manage?module=gym" className="underline font-medium shrink-0">Manage or cancel</Link>
+                )}
               </div>
             )}
 
@@ -233,7 +240,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                   </>
                 ) : (
                   <>
-                    {gymLimitReachedMessage(clientLimit)} <Link href="/billing?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
+                    {gymLimitReachedMessage(clientLimit)} <Link href="/billing/manage?module=gym" className="underline font-medium">Upgrade your plan</Link> to add more.
                   </>
                 )}
               </div>
@@ -262,7 +269,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                 Your first {clientLimit} clients are free for your first 14 days. After that, Coaching is{" "}
                 <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
                 <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-                <Link href="/billing?module=gym" className="underline font-medium text-purple-700">See plans</Link>
+                <Link href="/billing/manage?module=gym" className="underline font-medium text-purple-700">See plans</Link>
               </div>
             )}
           </>

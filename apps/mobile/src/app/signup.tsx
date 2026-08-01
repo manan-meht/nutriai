@@ -45,6 +45,12 @@ export default function SignupScreen() {
     setError(null);
     setLoading(true);
     try {
+      // Persisted here too, not just in handleOAuth below — this account
+      // won't have a session (and won't reach (app)/index.tsx at all) until
+      // the confirmation email is tapped, possibly much later and via a
+      // cold start, so the choice made on select-product.tsx must survive
+      // until then rather than only covering the OAuth round-trip.
+      await setPendingProductSelection(product as Product);
       const { data, error } = await supabase.auth.signUp({
         email: scopedEmail(email, scopeAs),
         password,

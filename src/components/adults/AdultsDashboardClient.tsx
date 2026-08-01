@@ -45,13 +45,17 @@ interface Props {
    * the visitor doesn't have to click "Add family member" a second time
    * right after paying. */
   autoOpenAddModal?: boolean;
+  /** True for internal test accounts (BILLING_TEST_WHITELIST_EMAILS) that
+   * never pay — hides the "Manage or cancel" link on the trial banner so
+   * their messaging/UI stays exactly as it was before this was added. */
+  isBillingWhitelisted?: boolean;
 }
 
 const RELATIONSHIP_EMOJI: Record<string, string> = {
   son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
 };
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: Props) {
   // Opens the add-contact modal automatically right after a successful
   // checkout (see autoOpenAddModal's own doc comment) — only when there's
   // still nobody added yet, so this doesn't reopen the form on an account
@@ -170,7 +174,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 hidden sm:block">{caregiverEmail}</span>
-            <Link href="/billing?module=adults" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+            <Link href="/billing/manage?module=adults" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
               Billing
             </Link>
             <button
@@ -248,17 +252,20 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
             {entitlement.isReadOnly && (
               <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
                 {isSelfPlan ? (
-                  <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+                  <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing/manage?module=adults" className="underline font-medium">subscribe</Link>.</>
                 ) : (
                   <>Your free trial has ended. Your existing family members and their data are preserved and visible, but you
-                  can&apos;t add new family members or generate new AI analyses until you <Link href="/billing?module=adults" className="underline font-medium">subscribe</Link>.</>
+                  can&apos;t add new family members or generate new AI analyses until you <Link href="/billing/manage?module=adults" className="underline font-medium">subscribe</Link>.</>
                 )}
               </div>
             )}
 
             {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-                Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.
+              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)] flex flex-wrap items-center justify-between gap-2">
+                <span>Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.</span>
+                {!isBillingWhitelisted && (
+                  <Link href="/billing/manage?module=adults" className="underline font-medium shrink-0">Manage or cancel</Link>
+                )}
               </div>
             )}
 
@@ -280,7 +287,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                   </>
                 ) : (
                   <>
-                    {familyLimitReachedMessage(familyLimit)} <Link href="/billing?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
+                    {familyLimitReachedMessage(familyLimit)} <Link href="/billing/manage?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
                   </>
                 )}
               </div>
@@ -290,7 +297,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
                 <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
                 {isSelfPlan ? (
-                  <Link href="/billing?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
+                  <Link href="/billing/manage?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
                     Want to add family too? →
                   </Link>
                 ) : (
@@ -320,14 +327,14 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 Your first 14 days are free. After that, tracking is{" "}
                 <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
                 <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span>.{" "}
-                <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
+                <Link href="/billing/manage?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
               </div>
             ) : (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
                 Your first {familyLimit} family members are free for your first 14 days. After that, Family is{" "}
                 <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
                 <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-                <Link href="/billing?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
+                <Link href="/billing/manage?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
               </div>
             )}
           </>
