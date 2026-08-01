@@ -20,7 +20,7 @@ interface ContactMealSummary {
   }>;
 }
 
-function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary>): AdultsContact {
+function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary>, lastMessageByContact: Record<string, string> = {}): AdultsContact {
   return {
     id: c.id,
     workspaceId: c.workspace_id,
@@ -35,6 +35,7 @@ function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary
     healthNotes: c.health_notes,
     inviteSentAt: c.invite_sent_at,
     inviteAcceptedAt: c.invite_accepted_at,
+    lastMessageAt: lastMessageByContact[c.id],
     createdAt: c.created_at,
     deletedAt: c.deleted_at ?? undefined,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
@@ -93,10 +94,29 @@ async function fetchMealsByContact(supabase: SupabaseClient, contactIds: string[
   return mealsByContact;
 }
 
+/** whatsapp_conversations has RLS enabled with no policies (service-role
+ * only, same "internal-only table" convention as payment_webhook_events)
+ * — needs the admin client, unlike everything else getContacts reads,
+ * which is fine through the RLS-scoped caregiver session. */
+async function fetchLastMessageByContact(admin: SupabaseClient, contactIds: string[]): Promise<Record<string, string>> {
+  const { data } = await admin
+    .from("whatsapp_conversations")
+    .select("adults_contact_id, last_message_at")
+    .in("adults_contact_id", contactIds);
+
+  const byContact: Record<string, string> = {};
+  for (const row of data ?? []) {
+    if (row.adults_contact_id && row.last_message_at) byContact[row.adults_contact_id] = row.last_message_at;
+  }
+  return byContact;
+}
+
 /** Active (non-removed) contacts for a workspace. `supabase` should be an
  * RLS-scoped client (cookie- or bearer-token-authenticated) — this only
- * returns what that client's policies allow. */
-export async function getContacts(workspaceId: string, supabase: SupabaseClient): Promise<AdultsContact[]> {
+ * returns what that client's policies allow. `admin` is a service-role
+ * client, used only for the whatsapp_conversations lookup (see
+ * fetchLastMessageByContact's own doc comment). */
+export async function getContacts(workspaceId: string, supabase: SupabaseClient, admin: SupabaseClient): Promise<AdultsContact[]> {
   const { data: contacts } = await supabase
     .from("adults_contacts")
     .select("*, goals:adults_contact_goals(*)")
@@ -106,13 +126,17 @@ export async function getContacts(workspaceId: string, supabase: SupabaseClient)
 
   if (!contacts?.length) return [];
 
-  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+  const contactIds = contacts.map((c: any) => c.id);
+  const [mealsByContact, lastMessageByContact] = await Promise.all([
+    fetchMealsByContact(supabase, contactIds),
+    fetchLastMessageByContact(admin, contactIds),
+  ]);
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact));
 }
 
 /** Previously-removed family members — data preserved and viewable, but they
  * no longer count as active and can't be logged against going forward. */
-export async function getRemovedContacts(workspaceId: string, supabase: SupabaseClient): Promise<AdultsContact[]> {
+export async function getRemovedContacts(workspaceId: string, supabase: SupabaseClient, admin: SupabaseClient): Promise<AdultsContact[]> {
   const { data: contacts } = await supabase
     .from("adults_contacts")
     .select("*, goals:adults_contact_goals(*)")
@@ -122,8 +146,12 @@ export async function getRemovedContacts(workspaceId: string, supabase: Supabase
 
   if (!contacts?.length) return [];
 
-  const mealsByContact = await fetchMealsByContact(supabase, contacts.map((c: any) => c.id));
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact));
+  const contactIds = contacts.map((c: any) => c.id);
+  const [mealsByContact, lastMessageByContact] = await Promise.all([
+    fetchMealsByContact(supabase, contactIds),
+    fetchLastMessageByContact(admin, contactIds),
+  ]);
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact));
 }
 
 /** A single contact's profile plus recent meal history, scoped to the
@@ -167,7 +195,8 @@ export async function getContactDetails(
   const mealsByContact: Record<string, ContactMealSummary> = {
     [contactId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at, mealRows: mealsRes.data ?? [] },
   };
-  const contact = mapContactRow(c, mealsByContact);
+  const lastMessageByContact = await fetchLastMessageByContact(admin, [contactId]);
+  const contact = mapContactRow(c, mealsByContact, lastMessageByContact);
 
   const rawMeals = mealsRes.data ?? [];
   const [corrections, signedImageUrls] = await Promise.all([

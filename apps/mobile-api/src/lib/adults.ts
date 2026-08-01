@@ -200,13 +200,13 @@ export async function markWorkspaceSelfPlan(workspaceId: string): Promise<void> 
 }
 
 export async function getContacts(workspaceId: string, supabase: SupabaseClient) {
-  return getContactsCore(workspaceId, supabase);
+  return getContactsCore(workspaceId, supabase, createServiceClient());
 }
 
 /** Previously-removed family members — mirrors the main app's
  * getRemovedContacts (src/app/(adults)/adults/dashboard/actions.ts). */
 export async function getRemovedContacts(workspaceId: string, supabase: SupabaseClient) {
-  return getRemovedContactsCore(workspaceId, supabase);
+  return getRemovedContactsCore(workspaceId, supabase, createServiceClient());
 }
 
 /** Soft-delete: preserves the contact's historical data while freeing an

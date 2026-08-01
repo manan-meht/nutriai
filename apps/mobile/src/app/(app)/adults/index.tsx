@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { api, type AdultsContact } from '@/lib/api';
+import { inviteStatusFor } from '@/lib/invite-status';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
@@ -38,6 +39,7 @@ type State =
       trialDaysRemaining: number | null;
       requiresCardBeforeTrial: boolean;
       isBillingWhitelisted: boolean;
+      tistraWhatsAppNumber?: string;
     }
   // Trial/subscription lapsed and no active RevenueCat entitlement — see
   // adults/paywall.tsx. isReadOnly comes from getEntitlementSnapshot's
@@ -86,7 +88,7 @@ export default function AdultsContactListScreen() {
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
     return Promise.all([api.getAdultsContacts(), api.getRemovedAdultsContacts(), api.getAdultsWorkspace({ self: selfParam === '1' })])
-      .then(([{ contacts }, { contacts: removedContacts }, { workspace, entitlement }]) => {
+      .then(([{ contacts }, { contacts: removedContacts }, { workspace, entitlement, tistraWhatsAppNumber }]) => {
         if (entitlement.isReadOnly) {
           setState({ status: 'subscription_required', plan: workspace.plan });
         } else {
@@ -100,6 +102,7 @@ export default function AdultsContactListScreen() {
             trialDaysRemaining: entitlement.trialDaysRemaining,
             requiresCardBeforeTrial: entitlement.requiresCardBeforeTrial,
             isBillingWhitelisted: entitlement.isBillingWhitelisted,
+            tistraWhatsAppNumber,
           });
         }
       })
@@ -354,7 +357,12 @@ export default function AdultsContactListScreen() {
             scoreQuery={{ contactId: item.id }}
             onPress={() => router.push(`/adults/${item.id}`)}
             onLongPress={() => confirmRemove(item)}
-            invite={{ contactId: item.id, inviteAccepted: !!item.inviteAcceptedAt, isSelf: item.relationshipType === 'self' }}
+            invite={(() => {
+              const status = inviteStatusFor(item);
+              return status === 'connected'
+                ? undefined
+                : { contactId: item.id, status, isSelf: item.relationshipType === 'self', tistraWhatsAppNumber: state.tistraWhatsAppNumber };
+            })()}
           />
         )}
         ListFooterComponent={

@@ -80,6 +80,10 @@ export interface AdultsWorkspaceResponse {
   };
   caregiverEmail: string | null;
   caregiverName: string | null;
+  /** Digits-only bot number for a plain wa.me reconnect link once WhatsApp's
+   * 24h customer-service window has lapsed (see the "stale" invite state in
+   * person-detail.tsx/person-card.tsx) — undefined if not configured. */
+  tistraWhatsAppNumber?: string;
 }
 
 // Food Balance Score profile fields (see nutrition-core's
@@ -154,6 +158,13 @@ export interface AdultsContact extends FoodBalanceProfileFields {
    * "was one actually delivered". */
   inviteSentAt?: string;
   inviteAcceptedAt?: string;
+  /** Timestamp of the contact's most recent inbound WhatsApp message (any
+   * message, not just ones that resulted in a logged meal). Used to detect
+   * "connected but gone quiet" — inviteAcceptedAt set, but lastMessageAt
+   * more than 24h ago, past which WhatsApp's own customer-service window
+   * blocks meal reminders (see send-meal-reminders/route.ts). Undefined if
+   * the contact has no conversation row yet. */
+  lastMessageAt?: string;
 }
 
 export interface MealLog {

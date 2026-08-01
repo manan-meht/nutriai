@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Share, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import { bandLabelFor } from './food-balance-score-card';
 import { ThemedText } from './themed-text';
@@ -8,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { useFoodBalanceScore } from '@/hooks/use-food-balance-score';
 import { useTheme } from '@/hooks/use-theme';
 import { api, type MacroWindowSummary } from '@/lib/api';
+import type { InviteStatus } from '@/lib/invite-status';
 
 function formatLastMeal(lastMealAt?: string): string {
   if (!lastMealAt) return 'No meals logged yet';
@@ -64,11 +65,22 @@ export function PersonCard({
    * de-emphasized, read-only (no onLongPress passed there). */
   dimmed?: boolean;
   /** adults-only — omitted entirely for gym clients (no WhatsApp invite
-   * concept there). Shown until inviteAccepted is true, mirroring the web
+   * concept there) and whenever status is "connected". Mirrors the web
    * dashboard's list-level invite status/resend (AdultsDashboardClient.tsx)
    * and the mobile detail page's identical banner (person-detail.tsx) —
    * previously the list had no invite indicator or resend option at all. */
-  invite?: { contactId: string; inviteAccepted: boolean; isSelf: boolean };
+  invite?: {
+    contactId: string;
+    status: Exclude<InviteStatus, 'connected'>;
+    isSelf: boolean;
+    /** Only used for the "stale" + isSelf case — a plain wa.me link to the
+     * bot's own number. A "not_connected" self contact still needs the
+     * real invite/JOIN flow (handleSendInvite below), since that's what
+     * actually creates the WhatsApp-linked profile in the first place; a
+     * "stale" one is already linked and just needs to say anything to
+     * reopen the 24h window, so no JOIN command is involved. */
+    tistraWhatsAppNumber?: string;
+  };
 }) {
   const theme = useTheme();
   const { result } = useFoodBalanceScore(scoreQuery);
@@ -77,6 +89,13 @@ export function PersonCard({
 
   async function handleSendInvite() {
     if (!invite) return;
+    if (invite.status === 'stale' && invite.isSelf) {
+      // Already linked — just needs any message to reopen WhatsApp's 24h
+      // window, so a plain chat link is enough (no JOIN command/invite
+      // token involved, unlike the "never connected" case below).
+      if (invite.tistraWhatsAppNumber) await Linking.openURL(`https://wa.me/${invite.tistraWhatsAppNumber}`);
+      return;
+    }
     setSendingInvite(true);
     setInviteError(null);
     try {
@@ -125,13 +144,17 @@ export function PersonCard({
           </ThemedText>
         </View>
 
-        {invite && !invite.inviteAccepted && (
+        {invite && (
           <View style={[styles.inviteBox, { backgroundColor: theme.backgroundSelected }]}>
-            <ThemedText type="smallBold">Not connected yet</ThemedText>
+            <ThemedText type="smallBold">{invite.status === 'stale' ? 'Meal reminders paused' : 'Not connected yet'}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.inviteText}>
-              {invite.isSelf
-                ? "You haven't connected your own WhatsApp number yet."
-                : `${fullName.split(' ')[0]} hasn't opened the WhatsApp invite yet.`}
+              {invite.status === 'stale'
+                ? invite.isSelf
+                  ? "More than 24 hours have passed since you've interacted with WhatsApp — meal reminders won't be sent until you do."
+                  : `More than 24 hours have passed since ${fullName.split(' ')[0]} interacted with WhatsApp — meal reminders won't be sent until they do.`
+                : invite.isSelf
+                  ? "You haven't connected your own WhatsApp number yet."
+                  : `${fullName.split(' ')[0]} hasn't opened the WhatsApp invite yet.`}
             </ThemedText>
             <Pressable
               onPress={(e) => {
@@ -142,7 +165,15 @@ export function PersonCard({
               style={[styles.inviteButton, { backgroundColor: theme.primary, opacity: sendingInvite ? 0.6 : 1 }]}
             >
               <ThemedText type="small" style={styles.inviteButtonText}>
-                {sendingInvite ? 'Sending…' : invite.isSelf ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+                {sendingInvite
+                  ? 'Sending…'
+                  : invite.status === 'stale'
+                    ? invite.isSelf
+                      ? 'Open WhatsApp'
+                      : `Remind ${fullName.split(' ')[0]}`
+                    : invite.isSelf
+                      ? 'Send myself the WhatsApp link'
+                      : 'Send invite via WhatsApp'}
               </ThemedText>
             </Pressable>
             {inviteError && (

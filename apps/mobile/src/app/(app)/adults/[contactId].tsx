@@ -10,7 +10,7 @@ import { api, type AdultsContactDetails } from '@/lib/api';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; details: AdultsContactDetails };
+  | { status: 'ready'; details: AdultsContactDetails; tistraWhatsAppNumber?: string };
 
 export default function AdultsContactDetailScreen() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
@@ -18,9 +18,8 @@ export default function AdultsContactDetailScreen() {
 
   const load = useCallback(() => {
     setState({ status: 'loading' });
-    api
-      .getAdultsContactDetails(contactId)
-      .then((details) => setState({ status: 'ready', details }))
+    Promise.all([api.getAdultsContactDetails(contactId), api.getAdultsWorkspace()])
+      .then(([details, { tistraWhatsAppNumber }]) => setState({ status: 'ready', details, tistraWhatsAppNumber }))
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contact.' })
       );
@@ -63,6 +62,7 @@ export default function AdultsContactDetailScreen() {
           onRevoke: () => api.revokeAdultsAccessCode(contactId),
         }}
         foodPreferencesContactId={contactId}
+        tistraWhatsAppNumber={state.tistraWhatsAppNumber}
       />
     </>
   );

@@ -84,6 +84,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       entitlement,
       caregiverEmail: auth.user.email ?? null,
       caregiverName: profile?.full_name ?? null,
+      // Digits-only bot number, embedded as a plain wa.me link when a
+      // caregiver/self-tracker needs to reconnect after WhatsApp's 24h
+      // customer-service window has lapsed (see the "stale" invite state
+      // in person-detail.tsx/person-card.tsx) — undefined if not
+      // configured, same as the web app's identical prop.
+      tistraWhatsAppNumber: process.env.TISTRA_WHATSAPP_NUMBER,
     });
   }
 

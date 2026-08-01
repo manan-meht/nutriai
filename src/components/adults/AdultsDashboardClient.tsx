@@ -403,6 +403,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                   contact={contact}
                   onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
                   onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
+                  tistraWhatsAppNumber={tistraWhatsAppNumber}
                 />
               ))}
             </div>
@@ -461,13 +462,30 @@ interface ContactCardProps {
   contact: AdultsContact;
   onOpen?: () => void;
   onRemove?: () => void;
+  /** Digits-only bot number for the "reminders paused" + self reconnect
+   * link below — undefined if not configured. Only meaningful for the
+   * active-contacts list; the removed-contacts one doesn't pass it. */
+  tistraWhatsAppNumber?: string;
 }
 
-function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
+// Past this point since the contact's last inbound message, WhatsApp's own
+// customer-service window closes and meal reminders stop being delivered
+// (see send-meal-reminders/route.ts) — a genuinely different, more urgent
+// state than "never connected at all", so it gets its own badge/prompt
+// rather than being lumped in with "Accepted".
+const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+function ContactCard({ contact, onOpen, onRemove, tistraWhatsAppNumber }: ContactCardProps) {
+  // Lazy initializer, not a direct Date.now() call — react-hooks/purity
+  // forbids calling impure functions during render (see this session's
+  // FeedbackForm.tsx fix for the same pattern); this only needs to be
+  // "now enough", not live-ticking, so a value fixed at mount is fine.
+  const [now] = useState(() => Date.now());
   const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   const isActive = contact.mealCount > 0;
   const inviteAccepted = !!contact.inviteAcceptedAt;
   const invitePending = !!contact.inviteSentAt && !inviteAccepted;
+  const isStale = inviteAccepted && (!contact.lastMessageAt || now - new Date(contact.lastMessageAt).getTime() > STALE_AFTER_MS);
   const isSelf = contact.relationshipType === "self";
   const emoji = isSelf ? "🙋" : contact.relationship ? (RELATIONSHIP_EMOJI[contact.relationship] ?? "🧑") : "🧑";
   const displayName = isSelf ? "You" : contact.fullName;
@@ -500,12 +518,13 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            isActive ? "bg-green-50 text-green-700"
+            isStale ? "bg-amber-50 text-amber-700"
+            : isActive ? "bg-green-50 text-green-700"
             : inviteAccepted ? "bg-blue-50 text-blue-700"
             : invitePending ? "bg-amber-50 text-amber-700"
             : "bg-gray-100 text-gray-500"
           }`}>
-            {isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Not connected yet" : "Not invited"}
+            {isStale ? "Reminders paused" : isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Not connected yet" : "Not invited"}
           </span>
           {onRemove && (
             <button
@@ -555,6 +574,47 @@ function ContactCard({ contact, onOpen, onRemove }: ContactCardProps) {
             revoke={() => revokeFamilyInvite(contact.id)}
             onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
           />
+        </div>
+      )}
+
+      {isStale && (
+        // Distinct from the "never connected" InviteCard above — this
+        // contact has genuinely connected before, they've just gone quiet
+        // past WhatsApp's 24h customer-service window (see isStale's own
+        // comment). Family reuses the same underlying invite link (safe:
+        // the JOIN command just re-confirms an existing contact, doesn't
+        // create a duplicate) with "remind" framing; self gets a plain
+        // reconnect link instead, since self's JOIN handling always
+        // creates a *new* profile — reusing it on an already-linked
+        // contact would risk a duplicate.
+        <div className="mb-4" onClick={(e) => e.stopPropagation()}>
+          {isSelf ? (
+            <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
+              <p className="text-xs font-semibold text-amber-800 mb-1">
+                More than 24 hours have passed since you&apos;ve interacted with WhatsApp
+              </p>
+              <p className="text-xs text-amber-700 mb-2">Meal reminders won&apos;t be sent until you reconnect.</p>
+              {tistraWhatsAppNumber && (
+                <a
+                  href={`https://wa.me/${tistraWhatsAppNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-amber-800 underline"
+                >
+                  Open WhatsApp
+                </a>
+              )}
+            </div>
+          ) : (
+            <InviteCard
+              title="Remind them to reopen Tistra on WhatsApp"
+              description={`More than 24 hours have passed since ${contact.fullName.split(" ")[0]} interacted with WhatsApp, so meal reminders won't be sent until they message the bot again.`}
+              load={() => getOrCreateFamilyInvite(contact.id)}
+              regenerate={() => regenerateFamilyInvite(contact.id)}
+              revoke={() => revokeFamilyInvite(contact.id)}
+              onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
+            />
+          )}
         </div>
       )}
 

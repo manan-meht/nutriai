@@ -122,6 +122,14 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   healthNotes?: string;
   inviteSentAt?: string;
   inviteAcceptedAt?: string;
+  /** Timestamp of the contact's most recent inbound WhatsApp message (any
+   * message, not just ones that resulted in a logged meal) — sourced from
+   * whatsapp_conversations.last_message_at. Used to distinguish "never
+   * connected" (inviteAcceptedAt unset) from "connected but gone quiet"
+   * (inviteAcceptedAt set, but lastMessageAt more than 24h ago — meal
+   * reminders stop being sent past that point). Undefined if the contact
+   * has no conversation row yet (same as never having messaged). */
+  lastMessageAt?: string;
   createdAt: string;
   deletedAt?: string;
   trackedBiomarkers: string[];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { FlatList, Linking, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 
@@ -21,6 +21,7 @@ import { filterByDateRange, getDateRangeDayCount, DEFAULT_DASHBOARD_DATE_RANGE, 
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { calculateEnergyTargetRange, proteinTargetG, mapDerivedToLegacyActivityLevel, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
 import { buildMealShareData } from '@/lib/meal-share/types';
+import { inviteStatusFor, type InviteStatus } from '@/lib/invite-status';
 
 interface PersonLike extends FoodBalanceProfileFields {
   fullName: string;
@@ -37,6 +38,7 @@ interface PersonLike extends FoodBalanceProfileFields {
    * see AdultsDashboardClient.tsx). Undefined for gym clients. */
   inviteSentAt?: string;
   inviteAcceptedAt?: string;
+  lastMessageAt?: string;
 }
 
 // Shared by (app)/adults/[contactId].tsx and (app)/gym/[clientId].tsx —
@@ -55,12 +57,17 @@ export function PersonDetail({
   foodBalanceQuery,
   accessCode,
   foodPreferencesContactId,
+  tistraWhatsAppNumber,
 }: {
   person: PersonLike;
   meals: MealLog[];
   workouts?: WorkoutLog[];
   biomarkers?: BiomarkerLog[];
   foodBalanceQuery: { contactId: string } | { clientId: string };
+  /** Digits-only bot number for the "stale" + self reconnect link (see
+   * InviteStatusBanner below) — undefined if not configured, or for gym
+   * clients (no WhatsApp invite concept there, caller doesn't pass it). */
+  tistraWhatsAppNumber?: string;
   /** Temporary Access Code generation — omitted entirely (no card shown)
    * if the caller doesn't pass this, rather than defaulting to a no-op,
    * since every current caller (adults/gym detail screens) does pass it. */
@@ -74,6 +81,7 @@ export function PersonDetail({
   foodPreferencesContactId?: string;
 }) {
   const theme = useTheme();
+  const inviteStatusForPerson = inviteStatusFor(person);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; meal: MealLog } | null>(null);
   const [sharingMeal, setSharingMeal] = useState<MealLog | null>(null);
@@ -178,15 +186,19 @@ export function PersonDetail({
                 AdultsDashboardClient.tsx). Shown for "self" too (that
                 contact still needs its own WhatsApp number connected, same
                 as any other) — never shown for gym clients (no WhatsApp
-                invite concept there), and disappears the moment
-                inviteAcceptedAt is set, which only happens once the contact
-                actually sends the bot a real message (not just opening the
-                link — see conversation-handler.ts). */}
-            {'contactId' in foodBalanceQuery && !person.inviteAcceptedAt && (
+                invite concept there). Two distinct states, not one: "never
+                connected" (inviteAcceptedAt unset) vs "connected but gone
+                quiet" (accepted, but no message in the last 24h — past
+                WhatsApp's own customer-service window, so meal reminders
+                stop being delivered even though the contact is a genuine,
+                active user — see inviteStatusFor's own doc comment). */}
+            {'contactId' in foodBalanceQuery && inviteStatusForPerson !== 'connected' && (
               <InviteStatusBanner
                 contactId={foodBalanceQuery.contactId}
                 personName={person.fullName}
                 isSelf={person.relationshipType === 'self'}
+                status={inviteStatusForPerson}
+                tistraWhatsAppNumber={tistraWhatsAppNumber}
               />
             )}
 
@@ -390,12 +402,32 @@ export function PersonDetail({
  * doc comment where this is rendered above for why this exists at all.
  * Only ever shown when inviteAcceptedAt is falsy (caller's condition), so
  * this component itself doesn't need to re-check that. */
-function InviteStatusBanner({ contactId, personName, isSelf }: { contactId: string; personName: string; isSelf: boolean }) {
+function InviteStatusBanner({
+  contactId,
+  personName,
+  isSelf,
+  status,
+  tistraWhatsAppNumber,
+}: {
+  contactId: string;
+  personName: string;
+  isSelf: boolean;
+  status: Exclude<InviteStatus, 'connected'>;
+  tistraWhatsAppNumber?: string;
+}) {
   const theme = useTheme();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const firstName = personName.split(' ')[0];
 
   async function handleSend() {
+    if (status === 'stale' && isSelf) {
+      // Already linked — just needs any message to reopen WhatsApp's 24h
+      // window, so a plain chat link is enough (no JOIN command/invite
+      // token involved, unlike the "never connected" case below).
+      if (tistraWhatsAppNumber) await Linking.openURL(`https://wa.me/${tistraWhatsAppNumber}`);
+      return;
+    }
     setSending(true);
     setError(null);
     try {
@@ -412,11 +444,15 @@ function InviteStatusBanner({ contactId, personName, isSelf }: { contactId: stri
 
   return (
     <ThemedView type="backgroundElement" style={inviteBannerStyles.card}>
-      <ThemedText type="smallBold">Not connected yet</ThemedText>
+      <ThemedText type="smallBold">{status === 'stale' ? 'Meal reminders paused' : 'Not connected yet'}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary" style={inviteBannerStyles.description}>
-        {isSelf
-          ? "You haven't connected your own WhatsApp number yet — send yourself this link and reply to it to start sharing meal photos."
-          : `${personName.split(' ')[0]} hasn't opened the WhatsApp invite yet — send it again so they can start sharing meal photos.`}
+        {status === 'stale'
+          ? isSelf
+            ? "More than 24 hours have passed since you've interacted with WhatsApp — meal reminders won't be sent until you do."
+            : `More than 24 hours have passed since ${firstName} interacted with WhatsApp — meal reminders won't be sent until they do.`
+          : isSelf
+            ? "You haven't connected your own WhatsApp number yet — send yourself this link and reply to it to start sharing meal photos."
+            : `${firstName} hasn't opened the WhatsApp invite yet — send it again so they can start sharing meal photos.`}
       </ThemedText>
       <Pressable
         onPress={handleSend}
@@ -424,7 +460,15 @@ function InviteStatusBanner({ contactId, personName, isSelf }: { contactId: stri
         style={[inviteBannerStyles.button, { backgroundColor: theme.primary, opacity: sending ? 0.6 : 1 }]}
       >
         <ThemedText type="small" style={inviteBannerStyles.buttonText}>
-          {sending ? 'Sending…' : isSelf ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+          {sending
+            ? 'Sending…'
+            : status === 'stale'
+              ? isSelf
+                ? 'Open WhatsApp'
+                : `Remind ${firstName}`
+              : isSelf
+                ? 'Send myself the WhatsApp link'
+                : 'Send invite via WhatsApp'}
         </ThemedText>
       </Pressable>
       {error && (

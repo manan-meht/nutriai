@@ -93,14 +93,14 @@ export async function markWorkspaceSelfPlan(workspaceId: string): Promise<void> 
 
 export async function getContacts(workspaceId: string): Promise<AdultsContact[]> {
   const supabase = await createClient();
-  return getContactsCore(workspaceId, supabase);
+  return getContactsCore(workspaceId, supabase, createServiceClient());
 }
 
 /** Previously-removed family members — data preserved and viewable, but they
  * no longer count as active and can't be logged against going forward. */
 export async function getRemovedContacts(workspaceId: string): Promise<AdultsContact[]> {
   const supabase = await createClient();
-  return getRemovedContactsCore(workspaceId, supabase);
+  return getRemovedContactsCore(workspaceId, supabase, createServiceClient());
 }
 
 /** Soft-delete: preserves the contact's historical data (meals, goals) while
@@ -152,6 +152,16 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
   if (!contactRes.data) return null;
   const c = contactRes.data;
 
+  // whatsapp_conversations has RLS enabled with no policies (service-role
+  // only, same "internal-only table" convention as payment_webhook_events)
+  // — needs the admin client, unlike everything else here, which is fine
+  // through the RLS-scoped caregiver session above.
+  const { data: conversation } = await createServiceClient()
+    .from("whatsapp_conversations")
+    .select("last_message_at")
+    .eq("adults_contact_id", contactId)
+    .maybeSingle();
+
   const contact: AdultsContact = {
     id: c.id,
     workspaceId: c.workspace_id,
@@ -166,6 +176,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     healthNotes: c.health_notes,
     inviteSentAt: c.invite_sent_at,
     inviteAcceptedAt: c.invite_accepted_at,
+    lastMessageAt: conversation?.last_message_at ?? undefined,
     createdAt: c.created_at,
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsRes.data?.length ?? 0,
