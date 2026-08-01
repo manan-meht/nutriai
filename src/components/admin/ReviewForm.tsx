@@ -195,10 +195,10 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             <Row label="Detected items">{classification.detectedItems.map((f: any) => (typeof f === "string" ? f : f.name)).join(", ") || "—"}</Row>
             {mealLog ? (
               <>
-                <Row label="Calories">{formatRange(mealLog.totalCaloriesMin, mealLog.totalCaloriesMax)}</Row>
-                <Row label="Protein">{formatRange(mealLog.totalProteinMin, mealLog.totalProteinMax, "g")}</Row>
-                <Row label="Carbs">{formatRange(mealLog.totalCarbsMin, mealLog.totalCarbsMax, "g")}</Row>
-                <Row label="Fat">{formatRange(mealLog.totalFatMin, mealLog.totalFatMax, "g")}</Row>
+                <Row label="Calories">{formatMidpoint(mealLog.totalCaloriesMin, mealLog.totalCaloriesMax)}</Row>
+                <Row label="Protein">{formatMidpoint(mealLog.totalProteinMin, mealLog.totalProteinMax, "g")}</Row>
+                <Row label="Carbs">{formatMidpoint(mealLog.totalCarbsMin, mealLog.totalCarbsMax, "g")}</Row>
+                <Row label="Fat">{formatMidpoint(mealLog.totalFatMin, mealLog.totalFatMax, "g")}</Row>
               </>
             ) : (
               <Row label="Macros">Not available — this submission isn&apos;t linked to a confirmed meal log yet.</Row>
@@ -215,8 +215,8 @@ export function ReviewForm({ detail }: { detail: Detail }) {
                 <div key={i} className="border-b border-gray-50 last:border-0 pb-2 last:pb-0">
                   <p className="font-medium text-gray-800">{f.name ?? "Unknown item"}{f.portion_size ? ` · ${f.portion_size}` : ""}</p>
                   <p className="text-xs text-gray-500">
-                    {formatRange(f.calories_min, f.calories_max)} cal · {formatRange(f.protein_min, f.protein_max, "g")} protein ·{" "}
-                    {formatRange(f.carbs_min, f.carbs_max, "g")} carbs · {formatRange(f.fat_min, f.fat_max, "g")} fat
+                    {formatMidpoint(f.calories_min, f.calories_max)} cal · {formatMidpoint(f.protein_min, f.protein_max, "g")} protein ·{" "}
+                    {formatMidpoint(f.carbs_min, f.carbs_max, "g")} carbs · {formatMidpoint(f.fat_min, f.fat_max, "g")} fat
                   </p>
                   {f.visible_quantity && <p className="text-xs text-gray-400">Visible quantity: {f.visible_quantity}</p>}
                 </div>
@@ -332,11 +332,15 @@ export function ReviewForm({ detail }: { detail: Detail }) {
 
 const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm";
 
-function formatRange(min: number | null | undefined, max: number | null | undefined, unit = ""): string {
+// Always the midpoint of the model's min/max estimate, never the raw
+// range — every other surface (dashboards, WhatsApp replies) already shows
+// a single number, so showing a range here too would be an inconsistency
+// with no benefit: reviewers correct against `reviewStatus`/the categorical
+// fields below, never against the raw min/max spread itself.
+function formatMidpoint(min: number | null | undefined, max: number | null | undefined, unit = ""): string {
   if (min == null && max == null) return "—";
-  const lo = Math.round(min ?? 0);
-  const hi = Math.round(max ?? min ?? 0);
-  return lo === hi ? `${lo}${unit}` : `${lo}–${hi}${unit}`;
+  const mid = Math.round(((min ?? max ?? 0) + (max ?? min ?? 0)) / 2);
+  return `${mid}${unit}`;
 }
 
 function Row({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {

@@ -361,7 +361,7 @@ export function PersonDetail({
               </ThemedText>
             )}
             <ThemedText type="small" themeColor="textSecondary">
-              {item.totalProteinMin}-{item.totalProteinMax}g protein · {item.totalCaloriesMin}-{item.totalCaloriesMax} kcal
+              {Math.round((item.totalProteinMin + item.totalProteinMax) / 2)}g protein · {Math.round((item.totalCaloriesMin + item.totalCaloriesMax) / 2)} kcal
             </ThemedText>
           </ThemedView>
         )}

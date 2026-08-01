@@ -11,7 +11,7 @@ export function UnifiedHome({ familyHref, coachingHref }: UnifiedHomeProps) {
     <div className="min-h-screen bg-white flex flex-col">
       <header className="px-6 py-6 flex items-center justify-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
-          <Image src="/logos/logo-black.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
+          <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
         </div>
         <span className="font-bold text-gray-900 text-lg">Tistra Health</span>
       </header>
