@@ -432,7 +432,16 @@ function InviteStatusBanner({
     setError(null);
     try {
       const invite = await api.getFamilyInvite(contactId);
-      if (invite.shareLink) {
+      if (isSelf) {
+        // Not connected yet, self: there's no one to "share" this with —
+        // it's the same person, on the same phone. invite.link points
+        // straight at the bot's own number with the JOIN command
+        // prefilled (unlike shareLink, a recipient-less wa.me meant for
+        // the OS share sheet to pick a WhatsApp CONTACT — the exact bug
+        // reported: opening WhatsApp and being asked to choose who to
+        // send the invite to, with no sensible answer here).
+        await Linking.openURL(invite.link);
+      } else if (invite.shareLink) {
         await Share.share({ message: invite.shareMessage ?? invite.shareLink });
       }
     } catch (err) {
@@ -451,7 +460,7 @@ function InviteStatusBanner({
             ? "More than 24 hours have passed since you've interacted with WhatsApp — meal reminders won't be sent until you do."
             : `More than 24 hours have passed since ${firstName} interacted with WhatsApp — meal reminders won't be sent until they do.`
           : isSelf
-            ? "You haven't connected your own WhatsApp number yet — send yourself this link and reply to it to start sharing meal photos."
+            ? "You haven't connected your own WhatsApp number yet — tap below to open a chat with Tistra Health and get started."
             : `${firstName} hasn't opened the WhatsApp invite yet — send it again so they can start sharing meal photos.`}
       </ThemedText>
       <Pressable
@@ -467,7 +476,7 @@ function InviteStatusBanner({
                 ? 'Open WhatsApp'
                 : `Remind ${firstName}`
               : isSelf
-                ? 'Send myself the WhatsApp link'
+                ? 'Open WhatsApp to get started'
                 : 'Send invite via WhatsApp'}
         </ThemedText>
       </Pressable>

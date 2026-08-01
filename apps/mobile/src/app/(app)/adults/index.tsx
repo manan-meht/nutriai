@@ -12,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { api, type AdultsContact } from '@/lib/api';
 import { inviteStatusFor } from '@/lib/invite-status';
+import { displayEmail } from '@/lib/auth';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
@@ -69,7 +70,12 @@ function subtitleFor(contact: AdultsContact): string {
 }
 
 function firstNameFromSession(email?: string | null): string {
-  return email?.split('@')[0] ?? 'there';
+  // displayEmail strips the "+nutriai-adults" product scope tag (see
+  // scopedEmail in @/lib/auth) before deriving a name from it — without
+  // this, an email/password account's raw session email (which never gets
+  // a user_metadata.full_name set, unlike OAuth) leaked the scope tag
+  // straight into the "Good morning, ..." greeting.
+  return email ? displayEmail(email).split('@')[0] : 'there';
 }
 
 export default function AdultsContactListScreen() {

@@ -100,7 +100,16 @@ export function PersonCard({
     setInviteError(null);
     try {
       const inviteSummary = await api.getFamilyInvite(invite.contactId);
-      if (inviteSummary.shareLink) {
+      if (invite.isSelf) {
+        // Not connected yet, self: there's no one to "share" this with —
+        // it's the same person, on the same phone. inviteSummary.link
+        // points straight at the bot's own number with the JOIN command
+        // prefilled (unlike shareLink, a recipient-less wa.me meant for
+        // the OS share sheet to pick a WhatsApp CONTACT — the exact bug
+        // reported: opening WhatsApp and being asked to choose who to
+        // send the invite to, with no sensible answer here).
+        await Linking.openURL(inviteSummary.link);
+      } else if (inviteSummary.shareLink) {
         await Share.share({ message: inviteSummary.shareMessage ?? inviteSummary.shareLink });
       }
     } catch (err) {
@@ -172,7 +181,7 @@ export function PersonCard({
                       ? 'Open WhatsApp'
                       : `Remind ${fullName.split(' ')[0]}`
                     : invite.isSelf
-                      ? 'Send myself the WhatsApp link'
+                      ? 'Open WhatsApp to get started'
                       : 'Send invite via WhatsApp'}
               </ThemedText>
             </Pressable>

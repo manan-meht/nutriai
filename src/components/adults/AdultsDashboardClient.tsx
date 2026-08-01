@@ -559,21 +559,43 @@ function ContactCard({ contact, onOpen, onRemove, tistraWhatsAppNumber }: Contac
         // propagation so its buttons don't trigger the card's onOpen
         // navigation. Shown for "self" too — that contact still needs its
         // own WhatsApp number connected, same as any other (see the
-        // matching change in the self-plan add flow), just with
-        // first-person copy since the caregiver is connecting themselves.
+        // matching change in the self-plan add flow) — but self doesn't
+        // use InviteCard at all: getOrCreateFamilyInvite always creates a
+        // "family"-typed invite (regardless of the target's actual
+        // relationship), so its shareLink is always set, and InviteCard's
+        // own shareLink-vs-link fallback never actually reaches invite.link
+        // for a self contact — the button would open a recipient-less
+        // wa.me share link with no one sensible to pick, same bug as the
+        // mobile app's equivalent flow. A plain link straight to the bot's
+        // own number sidesteps that entirely.
         <div className="mb-4" onClick={(e) => e.stopPropagation()}>
-          <InviteCard
-            title={isSelf ? "Connect your own WhatsApp number" : "Ask them to start Tistra on WhatsApp"}
-            description={
-              isSelf
-                ? "Send yourself this link and message the bot from the phone you'll be logging meals from — you'll see it connected here right away."
-                : `Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`
-            }
-            load={() => getOrCreateFamilyInvite(contact.id)}
-            regenerate={() => regenerateFamilyInvite(contact.id)}
-            revoke={() => revokeFamilyInvite(contact.id)}
-            onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
-          />
+          {isSelf ? (
+            <div className="rounded-xl bg-[var(--color-status-steady-bg)] px-3 py-2.5">
+              <p className="text-sm font-medium text-gray-700 mb-1">Connect your own WhatsApp number</p>
+              <p className="text-xs text-gray-500 mb-2">
+                This opens a WhatsApp chat with Tistra Health, ready to go — you&apos;ll see it connected here right away.
+              </p>
+              {tistraWhatsAppNumber && (
+                <a
+                  href={`https://wa.me/${tistraWhatsAppNumber}?text=${encodeURIComponent("Hi! I'm ready to start tracking my meals with Tistra Health 👋")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-2"
+                >
+                  Open WhatsApp to get started
+                </a>
+              )}
+            </div>
+          ) : (
+            <InviteCard
+              title="Ask them to start Tistra on WhatsApp"
+              description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
+              load={() => getOrCreateFamilyInvite(contact.id)}
+              regenerate={() => regenerateFamilyInvite(contact.id)}
+              revoke={() => revokeFamilyInvite(contact.id)}
+              onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
+            />
+          )}
         </div>
       )}
 

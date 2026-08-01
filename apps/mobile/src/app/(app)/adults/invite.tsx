@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, Share, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 
@@ -43,6 +43,18 @@ export default function AdultsInviteScreen() {
   }, [contactId]);
 
   async function handleSend(invite: InviteSummary) {
+    if (isSelfTrack) {
+      // There's no one to "share" this with — it's the same person, on
+      // the same phone. invite.link already points straight at the bot's
+      // own number with the JOIN command prefilled (unlike shareLink,
+      // which is a recipient-less wa.me meant for the OS share sheet to
+      // pick a WhatsApp CONTACT — the exact bug reported: opening WhatsApp
+      // and being asked to choose who to send the invite to, with no
+      // sensible answer for a self-tracking account). Linking.openURL
+      // instead jumps directly into a chat with the bot, ready to send.
+      await Linking.openURL(invite.link);
+      return;
+    }
     if (!invite.shareLink) return;
     // wa.me with no recipient opens WhatsApp's own contact picker with the
     // message prefilled — matches the web app's buildShareLink usage
@@ -80,7 +92,7 @@ export default function AdultsInviteScreen() {
             </ThemedText>
             <ThemedText type="default" themeColor="textSecondary" style={styles.subtitle}>
               {isSelfTrack
-                ? "One last step — send yourself this WhatsApp link and open it from the phone you'll be logging meals from. Once you're in the chat, just send a photo of your next meal to start tracking."
+                ? "One last step — this opens a WhatsApp chat with Tistra Health, ready to go. Just tap send, then reply with a photo of your next meal to start tracking."
                 : 'Send them this WhatsApp invite so they can start sharing meal photos with you.'}
             </ThemedText>
 
@@ -89,7 +101,7 @@ export default function AdultsInviteScreen() {
               onPress={() => handleSend(state.invite)}
             >
               <ThemedText style={styles.primaryButtonText}>
-                {isSelfTrack ? 'Send myself the WhatsApp link' : 'Send invite via WhatsApp'}
+                {isSelfTrack ? 'Open WhatsApp to get started' : 'Send invite via WhatsApp'}
               </ThemedText>
             </Pressable>
 

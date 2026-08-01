@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { api, type GymClient } from '@/lib/api';
+import { displayEmail } from '@/lib/auth';
 import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
@@ -42,7 +43,11 @@ function subtitleFor(client: GymClient): string | undefined {
 }
 
 function firstNameFromSession(email?: string | null): string {
-  return email?.split('@')[0] ?? 'there';
+  // gym accounts are never scoped (scopedEmail returns the email
+  // unchanged for product="gym"), but stripping defensively here matches
+  // adults/index.tsx's identical fix and costs nothing if there's no tag
+  // to strip.
+  return email ? displayEmail(email).split('@')[0] : 'there';
 }
 
 export default function GymClientListScreen() {

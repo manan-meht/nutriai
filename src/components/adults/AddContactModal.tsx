@@ -113,6 +113,18 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
     return `https://wa.me/${number}?text=${msg}`;
   }
 
+  // Self accounts have no one else to message — buildWhatsAppUrl() above
+  // opens a chat to the *contact's own number*, which for self is just
+  // "Message Yourself" and never reaches the bot at all (the exact bug
+  // reported for the mobile app's equivalent flow). This opens a chat
+  // straight to the bot's own number instead, with a simple first-person
+  // message ready to send.
+  function buildSelfWhatsAppUrl(): string | null {
+    if (!tistraWhatsAppNumber) return null;
+    const msg = encodeURIComponent("Hi! I'm ready to start tracking my meals with Tistra Health 👋");
+    return `https://wa.me/${tistraWhatsAppNumber}?text=${msg}`;
+  }
+
   if (success) {
     return (
       <ModalShell onClose={onClose} title="Contact added">
@@ -124,7 +136,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
           <p className="text-gray-500 text-sm mb-6 max-w-xs mx-auto">
             {success.isSelf ? (
               <>
-                One last step — send yourself this WhatsApp link and open it from the phone you&apos;ll be logging meals from. Once you reply, your card will update to <strong>Accepted</strong>.
+                One last step — this opens a WhatsApp chat with Tistra Health, ready to go. Once you send it, your card will update to <strong>Accepted</strong>.
               </>
             ) : (
               <>
@@ -133,13 +145,13 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
             )}
           </p>
           <a
-            href={buildWhatsAppUrl()}
+            href={success.isSelf ? (buildSelfWhatsAppUrl() ?? undefined) : buildWhatsAppUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold rounded-full px-8 py-3 text-sm hover:brightness-95 transition-all mb-3"
           >
             <WhatsAppIcon />
-            {success.isSelf ? "Send myself the WhatsApp link" : "Send invite via WhatsApp"}
+            {success.isSelf ? "Open WhatsApp to get started" : "Send invite via WhatsApp"}
           </a>
           <div>
             <button onClick={onClose} className="text-gray-500 font-medium text-sm hover:text-gray-700 transition-colors px-8 py-3">

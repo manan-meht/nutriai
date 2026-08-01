@@ -13,11 +13,20 @@ import { useColorScheme } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { configurePurchases, logOutPurchases } from '@/lib/purchases';
+import { checkForUpdate } from '@/lib/check-for-update';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  // Fires once per app open, regardless of auth state — someone stuck on
+  // an old build should get nudged to update before they even sign in,
+  // not only once they happen to reopen the Play Store listing (the
+  // reported gap). See check-for-update.ts for why this is Android-only
+  // and uses the FLEXIBLE (not IMMEDIATE) update flow.
+  useEffect(() => {
+    checkForUpdate();
+  }, []);
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
