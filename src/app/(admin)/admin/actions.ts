@@ -58,10 +58,13 @@ export interface QueueItem {
   priority: ReviewPriority;
   reviewStatus: string;
   anonymizedUserId: string;
-  /** True when the AI paused this meal for a genuine identity ambiguity
-   * (e.g. "is this paneer or tofu?") rather than guessing and logging
-   * silently — see food-analyzer.ts's has_high_impact_ambiguity. */
-  hasHighImpactAmbiguity: boolean;
+  /** True when the AI paused this meal for ANY clarifying question — a
+   * genuine identity ambiguity ("is this paneer or tofu?") or plain low
+   * confidence — rather than guessing and logging silently. Reflects
+   * food-analyzer.ts's clarification_was_asked (falls back to the legacy
+   * has_high_impact_ambiguity-only signal for rows saved before that field
+   * existed). */
+  neededClarification: boolean;
 }
 
 export async function getReviewQueue(
@@ -127,7 +130,9 @@ export async function getReviewQueue(
       priority,
       reviewStatus: row.review_status,
       anonymizedUserId: anonymizedUserId(row.user_id),
-      hasHighImpactAmbiguity: classification?.structured_ai_output_json?.has_high_impact_ambiguity === true,
+      neededClarification:
+        classification?.structured_ai_output_json?.clarification_was_asked === true ||
+        classification?.structured_ai_output_json?.has_high_impact_ambiguity === true,
     };
   });
 
@@ -180,10 +185,10 @@ export interface MealReviewDetail {
     modelName: string;
     modelVersion: string | null;
     promptVersion: string | null;
-    /** True when the AI paused this meal for a genuine identity ambiguity
-     * (e.g. "is this paneer or tofu?") instead of guessing — see
-     * food-analyzer.ts's has_high_impact_ambiguity. */
-    hasHighImpactAmbiguity: boolean;
+    /** True when the AI paused this meal for ANY clarifying question — a
+     * genuine identity ambiguity or plain low confidence — instead of
+     * guessing. See QueueItem.neededClarification's doc comment. */
+    neededClarification: boolean;
     clarificationQuestion: string | null;
     highImpactAmbiguityReason: string | null;
     /** Name of the specific detected item the question was about (the one
@@ -340,11 +345,24 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           modelName: classification.model_name,
           modelVersion: classification.model_version,
           promptVersion: classification.prompt_version,
-          hasHighImpactAmbiguity: classification.structured_ai_output_json?.has_high_impact_ambiguity === true,
-          clarificationQuestion: classification.structured_ai_output_json?.clarification_question ?? null,
-          highImpactAmbiguityReason: classification.structured_ai_output_json?.high_impact_ambiguity_reason ?? null,
+          neededClarification:
+            classification.structured_ai_output_json?.clarification_was_asked === true ||
+            classification.structured_ai_output_json?.has_high_impact_ambiguity === true,
+          // original_* fields survive a correction that resolved the
+          // ambiguity (see runFreeTextCorrection); the plain field only
+          // exists on an unresolved/still-pending analysis.
+          clarificationQuestion:
+            classification.structured_ai_output_json?.original_clarification_question ??
+            classification.structured_ai_output_json?.clarification_question ??
+            null,
+          highImpactAmbiguityReason:
+            classification.structured_ai_output_json?.original_high_impact_ambiguity_reason ??
+            classification.structured_ai_output_json?.high_impact_ambiguity_reason ??
+            null,
           ambiguousItemName:
-            (classification.detected_items_json ?? []).find((f: any) => f?.is_ambiguous === true)?.name ?? null,
+            classification.structured_ai_output_json?.original_ambiguous_item_name ??
+            (classification.detected_items_json ?? []).find((f: any) => f?.is_ambiguous === true)?.name ??
+            null,
         }
       : null,
     latestReview: latestReview

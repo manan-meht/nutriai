@@ -136,7 +136,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                     </div>
                     <p className="text-sm text-gray-600 truncate mb-2">{item.aiSummary}</p>
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {item.hasHighImpactAmbiguity && <StatusBadge label="Needs clarification" mood="support" />}
+                      {item.neededClarification && <StatusBadge label="Needs clarification" mood="support" />}
                       <StatusBadge label={item.priority} mood={priorityMood(item.priority)} />
                       <StatusBadge label={item.reviewStatus} mood={reviewStatusMood(item.reviewStatus)} />
                       <span className="text-xs text-gray-400 capitalize">{item.source}</span>
@@ -187,7 +187,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                     <td className="p-3 text-gray-600">{item.confidenceScore != null ? `${Math.round(item.confidenceScore * 100)}%` : "—"}</td>
                     <td className="p-3">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {item.hasHighImpactAmbiguity && <StatusBadge label="Needs clarification" mood="support" />}
+                        {item.neededClarification && <StatusBadge label="Needs clarification" mood="support" />}
                         <StatusBadge label={item.priority} mood={priorityMood(item.priority)} />
                       </div>
                     </td>
