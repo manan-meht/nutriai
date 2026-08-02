@@ -1,23 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { MealReviewDetail, SaveReviewInput } from "@/app/(admin)/admin/actions";
-import { saveHumanReview, escalateReview, getNextPendingMealId, addFoodToKnowledgeBase } from "@/app/(admin)/admin/actions";
+import type { MealReviewDetail, SaveReviewInput, CorrectedFoodItem } from "@/app/(admin)/admin/actions";
+import { saveHumanReview, escalateReview, getNextPendingMealId } from "@/app/(admin)/admin/actions";
 import { StatusBadge, reviewStatusMood } from "@/components/admin/StatusBadge";
+import { FOOD_CATEGORIES } from "@/lib/admin/food-categories";
+import { deriveMealLevelFields } from "@/lib/admin/meal-level-derivation";
+import { likelihoodToBoolean, directionToHealthy, aiFoodCategoryToKnowledgeCategory } from "@/lib/admin/ai-item-prefill";
 
 const REVIEW_STATUS_OPTIONS = ["correct", "partially_correct", "incorrect", "unclear_photo", "not_food", "duplicate", "escalated"];
-const PRESENCE_OPTIONS = ["missing", "partial", "present", "unknown"];
-const CARB_OPTIONS = ["missing", "present", "dominant", "unknown"];
-const BALANCE_OPTIONS = ["needs_support", "moderate", "strong", "unknown"];
-const LIKELIHOOD_OPTIONS = ["low", "medium", "high", "unknown"];
-const DIRECTION_OPTIONS = ["negative", "neutral", "positive", "unknown"];
 
 type Detail = Exclude<MealReviewDetail, { error: string }>;
 
 export function ReviewForm({ detail }: { detail: Detail }) {
   const router = useRouter();
-  const { submission, classification, latestReview, mealLog } = detail;
+  const { submission, classification, latestReview, mealLog, knownFoods } = detail;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -32,46 +30,98 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   }, [lightboxUrl]);
 
   const [reviewStatus, setReviewStatus] = useState(latestReview?.reviewStatus ?? "correct");
-  const [proteinStatus, setProteinStatus] = useState(latestReview?.correctedProteinAnchorStatus ?? classification?.proteinAnchorStatus ?? "unknown");
-  const [vegStatus, setVegStatus] = useState(latestReview?.correctedVegetableFiberStatus ?? classification?.vegetableFiberStatus ?? "unknown");
-  const [carbStatus, setCarbStatus] = useState(latestReview?.correctedCarbStatus ?? classification?.carbStatus ?? "unknown");
-  const [balanceStatus, setBalanceStatus] = useState(latestReview?.correctedMealBalanceStatus ?? classification?.mealBalanceStatus ?? "unknown");
-  const [homeCooked, setHomeCooked] = useState(latestReview?.correctedHomeCookedLikelihood ?? classification?.homeCookedLikelihood ?? "unknown");
   const [enjoyment, setEnjoyment] = useState(latestReview?.correctedEnjoymentFoodPresent ?? classification?.enjoymentFoodPresent ?? false);
   const [sugaryDrink, setSugaryDrink] = useState(latestReview?.correctedSugaryDrinkPresent ?? classification?.sugaryDrinkPresent ?? false);
   const [friedFood, setFriedFood] = useState(latestReview?.correctedFriedFoodPresent ?? classification?.friedFoodPresent ?? false);
-  const [ultraProcessed, setUltraProcessed] = useState(latestReview?.correctedUltraProcessedLikelihood ?? classification?.ultraProcessedLikelihood ?? "unknown");
-  const [direction, setDirection] = useState(latestReview?.correctedHealthierDirectionSignal ?? classification?.healthierDirectionSignal ?? "unknown");
   const [suggestion, setSuggestion] = useState(latestReview?.correctedSuggestion ?? classification?.suggestedNextStep ?? "");
   const [notes, setNotes] = useState(latestReview?.reviewNotes ?? "");
-  const [itemsText, setItemsText] = useState(
-    latestReview?.correctedItemsJson
-      ? JSON.stringify(latestReview.correctedItemsJson)
-      : JSON.stringify(classification?.detectedItems ?? [])
-  );
+
+  // Matches a typed name against the existing knowledge base (case-
+  // insensitive, name or alias) so re-typing an already-known dish reuses
+  // its entry instead of fragmenting into a near-duplicate ("Chicken
+  // Curry" vs "Murgh Curry" vs "chicken curry").
+  function matchKnownFood(name: string) {
+    const lower = name.trim().toLowerCase();
+    if (!lower) return undefined;
+    return knownFoods.find((f) => f.foodName.toLowerCase() === lower || f.aliases.some((a) => a.toLowerCase() === lower));
+  }
+
+  const [foodItems, setFoodItems] = useState<CorrectedFoodItem[]>(() => {
+    if (latestReview?.correctedFoodItemsJson?.length) return latestReview.correctedFoodItemsJson;
+    const detected: string[] = (classification?.detectedItems ?? [])
+      .map((f: any) => (typeof f === "string" ? f : f.name))
+      .filter(Boolean);
+    // A dish this reviewer (or an earlier one) has already classified
+    // elsewhere prefills its known flags here — the reviewer only needs to
+    // confirm or correct, not re-decide a dish from scratch every time it
+    // reappears. Otherwise, rather than leaving every flag on "unknown"
+    // for a brand-new dish, fall back to what the AI already decided for
+    // this meal as a whole (home-cooked/ultra-processed/healthier-
+    // direction likelihoods) and, for category, its per-food food_category
+    // from the confirmed meal log where that's unambiguous (protein/fat
+    // items only — see aiFoodCategoryToKnowledgeCategory).
+    return detected.map((name) => {
+      const match = matchKnownFood(name);
+      const mealLogFood = mealLog?.foods.find((f: any) => (typeof f === "string" ? f : f.name)?.toLowerCase() === name.toLowerCase());
+      return {
+        name,
+        foodKnowledgeBaseId: match?.id ?? null,
+        category:
+          (match?.category as CorrectedFoodItem["category"]) ??
+          aiFoodCategoryToKnowledgeCategory(mealLogFood?.food_category) ??
+          null,
+        isHealthy: match?.isHealthy ?? directionToHealthy(classification?.healthierDirectionSignal),
+        isHomeCooked: match?.isHomeCooked ?? likelihoodToBoolean(classification?.homeCookedLikelihood),
+        isUltraProcessed: match?.isUltraProcessed ?? likelihoodToBoolean(classification?.ultraProcessedLikelihood),
+      };
+    });
+  });
+
+  // Rolls the per-item category + healthy/home-cooked/ultra-processed tags
+  // up into the whole-meal fields the Model Quality dashboard tracks — see
+  // deriveMealLevelFields for the actual rules. Recomputed on every item
+  // edit so the reviewer sees the effect of their correction immediately,
+  // rather than a separate set of dropdowns to keep in sync by hand.
+  const derived = useMemo(() => deriveMealLevelFields(foodItems), [foodItems]);
+
+  function updateFoodItem(index: number, patch: Partial<CorrectedFoodItem>) {
+    setFoodItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  function addFoodItem() {
+    setFoodItems((items) => [
+      ...items,
+      { name: "", foodKnowledgeBaseId: null, category: null, isHealthy: null, isHomeCooked: null, isUltraProcessed: null },
+    ]);
+  }
+
+  function removeFoodItem(index: number) {
+    setFoodItems((items) => items.filter((_, i) => i !== index));
+  }
 
   function buildInput(): SaveReviewInput {
-    let correctedItemsJson: unknown = undefined;
-    try {
-      correctedItemsJson = JSON.parse(itemsText);
-    } catch {
-      correctedItemsJson = itemsText;
-    }
+    // Re-resolves each item's foodKnowledgeBaseId at save time (not just on
+    // initial load) — a reviewer may have retyped a name into one that now
+    // matches an existing entry.
+    const correctedFoodItems = foodItems
+      .filter((item) => item.name.trim())
+      .map((item) => ({ ...item, name: item.name.trim(), foodKnowledgeBaseId: item.foodKnowledgeBaseId ?? matchKnownFood(item.name)?.id ?? null }));
     return {
       mealSubmissionId: submission.id,
       aiClassificationId: classification?.id ?? null,
       reviewStatus: reviewStatus as SaveReviewInput["reviewStatus"],
-      correctedItemsJson,
-      correctedProteinAnchorStatus: proteinStatus as SaveReviewInput["correctedProteinAnchorStatus"],
-      correctedVegetableFiberStatus: vegStatus as SaveReviewInput["correctedVegetableFiberStatus"],
-      correctedCarbStatus: carbStatus as SaveReviewInput["correctedCarbStatus"],
-      correctedMealBalanceStatus: balanceStatus as SaveReviewInput["correctedMealBalanceStatus"],
-      correctedHomeCookedLikelihood: homeCooked as SaveReviewInput["correctedHomeCookedLikelihood"],
+      correctedItemsJson: correctedFoodItems.map((item) => item.name),
+      correctedFoodItems,
+      correctedProteinAnchorStatus: derived.proteinAnchorStatus,
+      correctedVegetableFiberStatus: derived.vegetableFiberStatus,
+      correctedCarbStatus: derived.carbStatus,
+      correctedMealBalanceStatus: derived.mealBalanceStatus,
+      correctedHomeCookedLikelihood: derived.homeCookedLikelihood,
       correctedEnjoymentFoodPresent: enjoyment,
       correctedSugaryDrinkPresent: sugaryDrink,
       correctedFriedFoodPresent: friedFood,
-      correctedUltraProcessedLikelihood: ultraProcessed as SaveReviewInput["correctedUltraProcessedLikelihood"],
-      correctedHealthierDirectionSignal: direction as SaveReviewInput["correctedHealthierDirectionSignal"],
+      correctedUltraProcessedLikelihood: derived.ultraProcessedLikelihood,
+      correctedHealthierDirectionSignal: derived.healthierDirectionSignal,
       correctedSuggestion: suggestion || undefined,
       reviewNotes: notes || undefined,
     };
@@ -116,22 +166,6 @@ export function ReviewForm({ detail }: { detail: Detail }) {
     setSaving(false);
     setMessage("error" in result ? result.error : "Escalated to nutrition expert.");
     router.refresh();
-  }
-
-  async function handleAddToKnowledgeBase() {
-    let firstFood: string | undefined;
-    try {
-      const parsed = JSON.parse(itemsText);
-      firstFood = Array.isArray(parsed) ? (typeof parsed[0] === "string" ? parsed[0] : parsed[0]?.name) : undefined;
-    } catch {
-      firstFood = itemsText.split(",")[0]?.trim();
-    }
-    if (!firstFood) {
-      setMessage("No food item found to add.");
-      return;
-    }
-    const result = await addFoodToKnowledgeBase(submission.id, firstFood);
-    setMessage("error" in result ? result.error : `Added "${firstFood}" to the food knowledge base.`);
   }
 
   return (
@@ -245,18 +279,95 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             ))}
           </div>
 
-          <Field label="Food items (JSON array or comma-separated)">
-            <textarea value={itemsText} onChange={(e) => setItemsText(e.target.value)} rows={2} className={inputClass} />
-          </Field>
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">Food items</p>
+            <datalist id="known-foods-list">
+              {knownFoods.map((f) => (
+                <option key={f.id} value={f.foodName} />
+              ))}
+            </datalist>
+            <div className="space-y-2">
+              {foodItems.map((item, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2 border border-gray-100 rounded-lg p-2">
+                  <input
+                    list="known-foods-list"
+                    value={item.name}
+                    onChange={(e) => {
+                      const match = matchKnownFood(e.target.value);
+                      updateFoodItem(i, {
+                        name: e.target.value,
+                        foodKnowledgeBaseId: match?.id ?? null,
+                        category: (match?.category as CorrectedFoodItem["category"]) ?? item.category,
+                        isHealthy: match?.isHealthy ?? item.isHealthy,
+                        isHomeCooked: match?.isHomeCooked ?? item.isHomeCooked,
+                        isUltraProcessed: match?.isUltraProcessed ?? item.isUltraProcessed,
+                      });
+                    }}
+                    placeholder="Food name"
+                    className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                  />
+                  <select
+                    value={item.category ?? "unknown"}
+                    onChange={(e) => updateFoodItem(i, { category: e.target.value as CorrectedFoodItem["category"] })}
+                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs capitalize"
+                  >
+                    {FOOD_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    <input type="checkbox" checked={item.isHealthy === true} onChange={(e) => updateFoodItem(i, { isHealthy: e.target.checked })} />
+                    Healthy
+                  </label>
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={item.isHomeCooked === true}
+                      onChange={(e) => updateFoodItem(i, { isHomeCooked: e.target.checked })}
+                    />
+                    Home-cooked
+                  </label>
+                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={item.isUltraProcessed === true}
+                      onChange={(e) => updateFoodItem(i, { isUltraProcessed: e.target.checked })}
+                    />
+                    Ultra-processed
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeFoodItem(i)}
+                    aria-label={`Remove ${item.name || "item"}`}
+                    className="text-gray-400 hover:text-red-600 text-sm px-1"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addFoodItem}
+              className="mt-2 text-xs font-medium text-[var(--color-dashboard-primary)]"
+            >
+              + Add item
+            </button>
+          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <SelectField label="Protein anchor" value={proteinStatus} onChange={setProteinStatus} options={PRESENCE_OPTIONS} />
-            <SelectField label="Vegetable/fiber" value={vegStatus} onChange={setVegStatus} options={PRESENCE_OPTIONS} />
-            <SelectField label="Carb status" value={carbStatus} onChange={setCarbStatus} options={CARB_OPTIONS} />
-            <SelectField label="Meal balance" value={balanceStatus} onChange={setBalanceStatus} options={BALANCE_OPTIONS} />
-            <SelectField label="Home-cooked likelihood" value={homeCooked} onChange={setHomeCooked} options={LIKELIHOOD_OPTIONS} />
-            <SelectField label="Ultra-processed likelihood" value={ultraProcessed} onChange={setUltraProcessed} options={LIKELIHOOD_OPTIONS} />
-            <SelectField label="Healthier direction signal" value={direction} onChange={setDirection} options={DIRECTION_OPTIONS} />
+          <div>
+            <p className="text-xs text-gray-500 mb-1.5">Derived from the items above</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm bg-gray-50 rounded-lg p-3">
+              <Row label="Protein anchor" className="capitalize">{derived.proteinAnchorStatus.replace("_", " ")}</Row>
+              <Row label="Vegetable/fiber" className="capitalize">{derived.vegetableFiberStatus.replace("_", " ")}</Row>
+              <Row label="Carb status" className="capitalize">{derived.carbStatus.replace("_", " ")}</Row>
+              <Row label="Meal balance" className="capitalize">{derived.mealBalanceStatus.replace("_", " ")}</Row>
+              <Row label="Home-cooked" className="capitalize">{derived.homeCookedLikelihood.replace("_", " ")}</Row>
+              <Row label="Ultra-processed" className="capitalize">{derived.ultraProcessedLikelihood.replace("_", " ")}</Row>
+              <Row label="Healthier direction" className="capitalize">{derived.healthierDirectionSignal.replace("_", " ")}</Row>
+            </div>
           </div>
 
           <div className="flex gap-4 text-sm text-gray-600">
@@ -297,10 +408,10 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             <button onClick={handleEscalate} disabled={saving} className="border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2">
               Escalate to nutrition expert
             </button>
-            <button onClick={handleAddToKnowledgeBase} disabled={saving} className="border border-gray-200 text-gray-700 text-sm font-medium rounded-lg px-4 py-2">
-              Add selected food to knowledge base
-            </button>
           </div>
+          <p className="text-xs text-gray-400">
+            Saving also updates the food knowledge base for every named item above — healthy/home-cooked/ultra-processed flags carry forward the next time each dish appears.
+          </p>
         </div>
       </div>
 
@@ -361,27 +472,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  return (
-    <label className="block">
-      <span className="block text-xs text-gray-500 mb-1">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputClass} capitalize`}>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o.replace("_", " ")}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}

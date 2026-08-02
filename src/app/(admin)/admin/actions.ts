@@ -5,6 +5,7 @@ import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
 import { computeReviewPriority, type ReviewPriority } from "@/lib/admin/review-priority";
 import { computeModelQualityMetrics, type ReviewedMealForMetrics, type ModelQualityMetrics } from "@/lib/admin/model-quality";
 import { resolveSignedMealPhotoUrl, resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
+import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/admin/food-categories";
 
 // -----------------------------------------------------------------------
 // Anonymized user IDs — derived deterministically from the UUID so the
@@ -31,6 +32,8 @@ function pickLatestReview(reviews: any[] | null | undefined) {
 // Queue
 // -----------------------------------------------------------------------
 
+const QUEUE_PAGE_SIZE = 30;
+
 export interface QueueFilters {
   status?: "pending" | "reviewed" | "escalated" | "all";
   priority?: ReviewPriority | "all";
@@ -40,6 +43,8 @@ export interface QueueFilters {
   dateFrom?: string;
   dateTo?: string;
   sort?: "newest" | "oldest" | "lowest_confidence" | "highest_priority";
+  /** 1-indexed. */
+  page?: number;
 }
 
 export interface QueueItem {
@@ -55,16 +60,27 @@ export interface QueueItem {
   anonymizedUserId: string;
 }
 
-export async function getReviewQueue(filters: QueueFilters): Promise<{ items: QueueItem[] } | { error: string }> {
+export async function getReviewQueue(
+  filters: QueueFilters
+): Promise<{ items: QueueItem[]; page: number; hasNextPage: boolean } | { error: string }> {
   const session = await getAdminSession();
   if (!session) return { error: "Not authorized" };
 
   const db = createServiceClient();
+  const page = Math.max(1, filters.page ?? 1);
+  const offset = (page - 1) * QUEUE_PAGE_SIZE;
+  // Fetches one extra row past the page size purely to know whether a
+  // next page exists, rather than a separate COUNT query against a table
+  // that only grows — this page previously loaded up to 200 rows (each
+  // with its own signed-photo-URL round-trip, plus every row rendered
+  // twice — see the mobile/desktop views below) on every load regardless
+  // of how many the admin actually wanted to look at, which was the real
+  // source of the slowness reported against this page.
   let query = db
     .from("meal_submissions")
     .select("*, ai_meal_classifications(*)")
     .order("submitted_at", { ascending: filters.sort === "oldest" })
-    .limit(200);
+    .range(offset, offset + QUEUE_PAGE_SIZE);
 
   if (filters.status && filters.status !== "all") query = query.eq("review_status", filters.status);
   if (filters.mealType) query = query.eq("meal_type", filters.mealType);
@@ -75,6 +91,8 @@ export async function getReviewQueue(filters: QueueFilters): Promise<{ items: Qu
 
   const { data, error } = await query;
   if (error) return { error: error.message };
+  const hasNextPage = (data ?? []).length > QUEUE_PAGE_SIZE;
+  if (hasNextPage) data!.length = QUEUE_PAGE_SIZE;
 
   // meal-photos is a private bucket (see
   // supabase/migrations/0040_private_meal_photos.sql) — resolve every
@@ -119,7 +137,7 @@ export async function getReviewQueue(filters: QueueFilters): Promise<{ items: Qu
     items = [...items].sort((a, b) => rank[a.priority] - rank[b.priority]);
   }
 
-  return { items };
+  return { items, page, hasNextPage };
 }
 
 // -----------------------------------------------------------------------
@@ -162,6 +180,7 @@ export interface MealReviewDetail {
     id: string;
     reviewStatus: string;
     correctedItemsJson: any;
+    correctedFoodItemsJson: CorrectedFoodItem[] | null;
     correctedProteinAnchorStatus: string | null;
     correctedVegetableFiberStatus: string | null;
     correctedCarbStatus: string | null;
@@ -192,6 +211,34 @@ export interface MealReviewDetail {
     foods: any[];
   } | null;
   sameDaySubmissions: Array<{ id: string; imageUrl: string | null; mealType: string; submittedAt: string }>;
+  /** Existing food_knowledge_base entries (name + aliases only) for the
+   * per-item review UI's autocomplete — matching against these instead of
+   * typing a fresh name each time keeps the knowledge base from
+   * fragmenting into near-duplicates ("Chicken Curry" vs "Murgh Curry" vs
+   * "chicken curry"). */
+  knownFoods: Array<{
+    id: string;
+    foodName: string;
+    aliases: string[];
+    category: string;
+    isHealthy: boolean | null;
+    isHomeCooked: boolean | null;
+    isUltraProcessed: boolean | null;
+  }>;
+}
+
+/** One entry in a reviewer's confirmed/edited food-item list for a meal —
+ * the source of truth for "what foods were actually in this meal" and the
+ * per-food classification flags that feed food_knowledge_base (see
+ * upsertFoodKnowledgeFromReviewItems). Superset of the old freeform
+ * corrected_items_json, which only ever carried names. */
+export interface CorrectedFoodItem {
+  name: string;
+  foodKnowledgeBaseId: string | null;
+  category: FoodCategory | null;
+  isHealthy: boolean | null;
+  isHomeCooked: boolean | null;
+  isUltraProcessed: boolean | null;
 }
 
 export async function getMealReviewDetail(mealSubmissionId: string): Promise<MealReviewDetail | { error: string }> {
@@ -232,6 +279,12 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
   const sameDayImageUrls = await resolveSignedMealPhotoUrls(db, (sameDayRows ?? []).map((r: any) => r.image_url));
   const submissionImageUrl = await resolveSignedMealPhotoUrl(db, row.image_url);
 
+  const { data: knownFoodRows } = await db
+    .from("food_knowledge_base")
+    .select("id, food_name, aliases_json, category, is_healthy, is_home_cooked, is_ultra_processed")
+    .is("archived_at", null)
+    .order("food_name", { ascending: true });
+
   return {
     submission: {
       id: row.id,
@@ -271,6 +324,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           id: latestReview.id,
           reviewStatus: latestReview.review_status,
           correctedItemsJson: latestReview.corrected_items_json,
+          correctedFoodItemsJson: latestReview.corrected_food_items_json ?? null,
           correctedProteinAnchorStatus: latestReview.corrected_protein_anchor_status,
           correctedVegetableFiberStatus: latestReview.corrected_vegetable_fiber_status,
           correctedCarbStatus: latestReview.corrected_carb_status,
@@ -304,6 +358,15 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
       mealType: r.meal_type,
       submittedAt: r.submitted_at,
     })),
+    knownFoods: (knownFoodRows ?? []).map((r: any) => ({
+      id: r.id,
+      foodName: r.food_name,
+      aliases: r.aliases_json ?? [],
+      category: r.category,
+      isHealthy: r.is_healthy,
+      isHomeCooked: r.is_home_cooked,
+      isUltraProcessed: r.is_ultra_processed,
+    })),
   };
 }
 
@@ -323,6 +386,7 @@ export interface SaveReviewInput {
   aiClassificationId?: string | null;
   reviewStatus: (typeof REVIEW_STATUSES)[number];
   correctedItemsJson?: unknown;
+  correctedFoodItems?: CorrectedFoodItem[];
   correctedProteinAnchorStatus?: (typeof PRESENCE_STATUSES)[number];
   correctedVegetableFiberStatus?: (typeof PRESENCE_STATUSES)[number];
   correctedCarbStatus?: (typeof CARB_STATUSES)[number];
@@ -347,6 +411,9 @@ function validateSaveReviewInput(input: SaveReviewInput): string | null {
   if (input.correctedHomeCookedLikelihood && !LIKELIHOODS.includes(input.correctedHomeCookedLikelihood)) return "Invalid home-cooked likelihood.";
   if (input.correctedUltraProcessedLikelihood && !LIKELIHOODS.includes(input.correctedUltraProcessedLikelihood)) return "Invalid ultra-processed likelihood.";
   if (input.correctedHealthierDirectionSignal && !DIRECTION_SIGNALS.includes(input.correctedHealthierDirectionSignal)) return "Invalid healthier-direction signal.";
+  for (const item of input.correctedFoodItems ?? []) {
+    if (item.category && !FOOD_CATEGORIES.includes(item.category)) return `Invalid food category: ${item.category}.`;
+  }
   return null;
 }
 
@@ -375,6 +442,7 @@ export async function saveHumanReview(input: SaveReviewInput): Promise<{ reviewI
     reviewer_id: session.userId,
     review_status: input.reviewStatus,
     corrected_items_json: input.correctedItemsJson ?? null,
+    corrected_food_items_json: input.correctedFoodItems ?? null,
     corrected_protein_anchor_status: input.correctedProteinAnchorStatus ?? null,
     corrected_vegetable_fiber_status: input.correctedVegetableFiberStatus ?? null,
     corrected_carb_status: input.correctedCarbStatus ?? null,
@@ -412,7 +480,79 @@ export async function saveHumanReview(input: SaveReviewInput): Promise<{ reviewI
     .update({ review_status: input.reviewStatus === "escalated" ? "escalated" : "reviewed", updated_at: new Date().toISOString() })
     .eq("id", input.mealSubmissionId);
 
+  if (input.correctedFoodItems?.length) {
+    await upsertFoodKnowledgeFromReviewItems(db, input.correctedFoodItems, session.userId);
+  }
+
   return { reviewId: saved.id };
+}
+
+/** Turns a reviewer's per-item corrections directly into food_knowledge_base
+ * facts — closing the loop that used to require a separate manual "add to
+ * knowledge base" step (which only ever captured the first detected item
+ * anyway). Matches each item against an existing entry by exact
+ * name/alias first (case-insensitive) so repeated corrections of the same
+ * dish reinforce one entry instead of fragmenting into near-duplicates;
+ * only creates a new row when nothing matches. `correction_count` is a
+ * simple frequency signal — a food confirmed across many reviews is a more
+ * reliable fact for a future RAG lookup to trust than a single one-off
+ * correction. Only overwrites a flag when the reviewer actually set it
+ * (non-null) — an item left unchecked for "healthy" isn't necessarily a
+ * claim that it's unhealthy, just that this reviewer didn't judge it. */
+async function upsertFoodKnowledgeFromReviewItems(
+  db: ReturnType<typeof createServiceClient>,
+  items: CorrectedFoodItem[],
+  reviewerId: string
+): Promise<void> {
+  const named = items.filter((item) => item.name.trim());
+  if (!named.length) return;
+
+  const { data: existingRows } = await db
+    .from("food_knowledge_base")
+    .select("id, food_name, aliases_json, category, is_healthy, is_home_cooked, is_ultra_processed, correction_count")
+    .is("archived_at", null);
+
+  const byNameOrAlias = new Map<string, any>();
+  for (const row of existingRows ?? []) {
+    byNameOrAlias.set(row.food_name.toLowerCase(), row);
+    for (const alias of row.aliases_json ?? []) {
+      if (typeof alias === "string") byNameOrAlias.set(alias.toLowerCase(), row);
+    }
+  }
+
+  for (const item of named) {
+    const name = item.name.trim();
+    const match = item.foodKnowledgeBaseId
+      ? (existingRows ?? []).find((r) => r.id === item.foodKnowledgeBaseId)
+      : byNameOrAlias.get(name.toLowerCase());
+
+    if (match) {
+      await db
+        .from("food_knowledge_base")
+        .update({
+          category: item.category ?? match.category,
+          is_healthy: item.isHealthy ?? match.is_healthy,
+          is_home_cooked: item.isHomeCooked ?? match.is_home_cooked,
+          is_ultra_processed: item.isUltraProcessed ?? match.is_ultra_processed,
+          correction_count: (match.correction_count ?? 0) + 1,
+          reviewed_by: reviewerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", match.id);
+    } else {
+      await db.from("food_knowledge_base").insert({
+        food_name: name,
+        category: item.category ?? "unknown",
+        protein_relevance: "none",
+        fiber_relevance: "none",
+        is_healthy: item.isHealthy,
+        is_home_cooked: item.isHomeCooked,
+        is_ultra_processed: item.isUltraProcessed,
+        correction_count: 1,
+        reviewed_by: reviewerId,
+      });
+    }
+  }
 }
 
 export async function escalateReview(mealSubmissionId: string, notes?: string): Promise<{ ok: true } | { error: string }> {
@@ -565,31 +705,6 @@ export async function archiveFoodKnowledgeEntry(id: string): Promise<{ ok: true 
   return { ok: true };
 }
 
-/** Copies a reviewer-selected food item straight into the knowledge base as
- * a starting entry — reviewers fill in the rest (category, relevance) from
- * the food-knowledge page afterward. */
-export async function addFoodToKnowledgeBase(mealSubmissionId: string, foodName: string): Promise<{ id: string } | { error: string }> {
-  const session = await getAdminSession();
-  if (!session) return { error: "Not authorized" };
-
-  const result = await upsertFoodKnowledgeEntry({
-    foodName,
-    category: "unknown",
-    proteinRelevance: "none",
-    fiberRelevance: "none",
-  });
-  if ("error" in result) return result;
-
-  const db = createServiceClient();
-  await db.from("meal_review_audit_logs").insert({
-    meal_submission_id: mealSubmissionId,
-    actor_id: session.userId,
-    action_type: "added_to_knowledge_base",
-    after_json: { foodName, knowledgeBaseId: result.id },
-  });
-
-  return result;
-}
 
 // -----------------------------------------------------------------------
 // Model quality dashboard

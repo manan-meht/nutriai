@@ -32,6 +32,7 @@ interface AdminSearchParams {
   dateFrom?: string;
   dateTo?: string;
   sort?: string;
+  page?: string;
 }
 
 export default async function AdminPage({ searchParams }: { searchParams: Promise<AdminSearchParams> }) {
@@ -54,11 +55,23 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
     dateFrom: sp.dateFrom || undefined,
     dateTo: sp.dateTo || undefined,
     sort: (sp.sort as QueueFilters["sort"]) ?? "newest",
+    page: Number(sp.page) || 1,
   };
 
   const result = await getReviewQueue(filters);
   if ("error" in result) {
     return <p className="text-sm text-[var(--color-status-support-text)]">{result.error}</p>;
+  }
+
+  // Preserves every other filter/sort param already in the URL, only
+  // swapping `page` — same querystring the filter form itself submits to.
+  function pageHref(page: number): string {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(sp)) {
+      if (key !== "page" && value) params.set(key, value);
+    }
+    if (page > 1) params.set("page", String(page));
+    return `/admin?${params.toString()}`;
   }
 
   return (
@@ -110,7 +123,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                 <div className="flex gap-3">
                   {item.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
-                    <img src={item.imageUrl} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
+                    <img src={item.imageUrl} alt="" loading="lazy" className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
                   ) : (
                     <div className="w-16 h-16 rounded-xl bg-gray-100 flex-shrink-0" />
                   )}
@@ -159,7 +172,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                     <td className="p-3">
                       {item.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
-                        <img src={item.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={item.imageUrl} alt="" loading="lazy" className="w-10 h-10 rounded-lg object-cover" />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-gray-100" />
                       )}
@@ -189,6 +202,22 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
             </table>
           </div>
         </>
+      )}
+
+      {(result.page > 1 || result.hasNextPage) && (
+        <div className="flex items-center justify-between text-sm">
+          {result.page > 1 ? (
+            <Link href={pageHref(result.page - 1)} className="text-[var(--color-dashboard-primary)] font-medium">← Previous</Link>
+          ) : (
+            <span />
+          )}
+          <span className="text-gray-400">Page {result.page}</span>
+          {result.hasNextPage ? (
+            <Link href={pageHref(result.page + 1)} className="text-[var(--color-dashboard-primary)] font-medium">Next →</Link>
+          ) : (
+            <span />
+          )}
+        </div>
       )}
     </div>
   );
