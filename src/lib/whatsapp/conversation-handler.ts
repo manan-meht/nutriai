@@ -66,6 +66,13 @@ const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progr
 const MEAL_SAVE_FAILED_MESSAGE =
   "Sorry — something went wrong and I wasn't able to save that. Please reply *Yes* to try again.";
 
+// Analyzing a photo (Gemini vision call + upload) can take up to a minute
+// — fired immediately on receipt, before either of those actually starts,
+// so the person isn't left wondering if the photo even sent. Deliberately
+// fire-and-forget (not awaited alongside the analysis) — a slow ack
+// shouldn't add its own latency on top of the real wait.
+const ANALYZING_PHOTO_MESSAGE = "📸 Got your photo — analyzing it now, I'll confirm the details in a moment.";
+
 function admin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -1336,6 +1343,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         await saveBestGuessForClarification(pendingMeal);
       }
 
+      sendTextMessage(msg.from, ANALYZING_PHOTO_MESSAGE).catch((err) =>
+        console.error("[whatsapp] analyzing-photo ack failed:", err instanceof Error ? err.message : err)
+      );
+
       // The photo upload doesn't depend on the analysis result (or vice
       // versa) — running them in parallel instead of sequentially shaves
       // the upload's full round-trip off the total reply latency.
@@ -1442,6 +1453,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       let analysis: FoodAnalysisResult;
 
       if (msg.type === "image" && mediaBuffer) {
+        // Only for a genuinely fresh meal photo — never during a
+        // correction (isCorrecting), where the person is already mid-
+        // conversation and doesn't need a "got your photo" ack restating
+        // the obvious.
+        if (!isCorrecting) {
+          sendTextMessage(msg.from, ANALYZING_PHOTO_MESSAGE).catch((err) =>
+            console.error("[whatsapp] analyzing-photo ack failed:", err instanceof Error ? err.message : err)
+          );
+        }
+
         // A message in this branch always carries a real mediaBuffer, so it
         // must be uploaded — there's no cheap way to tell "resent the same
         // photo" apart from "sent a new one" without hashing, and assuming
