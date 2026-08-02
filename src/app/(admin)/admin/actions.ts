@@ -254,6 +254,14 @@ export interface CorrectedFoodItem {
   isHealthy: boolean | null;
   isHomeCooked: boolean | null;
   isUltraProcessed: boolean | null;
+  /** Macro corrections, prefilled from the matching mealLog.foods entry's
+   * midpoint (null if this item has no confirmed meal-log counterpart —
+   * e.g. one the reviewer added by hand). Editing these and saving writes
+   * straight into the real meal_logs row — see applyMacroCorrectionsToMealLog. */
+  caloriesKcal: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
 }
 
 export async function getMealReviewDetail(mealSubmissionId: string): Promise<MealReviewDetail | { error: string }> {

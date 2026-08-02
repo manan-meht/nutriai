@@ -73,6 +73,14 @@ export function ReviewForm({ detail }: { detail: Detail }) {
         isHealthy: match?.isHealthy ?? directionToHealthy(classification?.healthierDirectionSignal),
         isHomeCooked: match?.isHomeCooked ?? likelihoodToBoolean(classification?.homeCookedLikelihood),
         isUltraProcessed: match?.isUltraProcessed ?? likelihoodToBoolean(classification?.ultraProcessedLikelihood),
+        // null when this item has no confirmed meal_log counterpart (e.g.
+        // one the reviewer just added by hand) — nothing to correct
+        // against in that case, since there's no meal_logs food row to
+        // write an edit back into.
+        caloriesKcal: mealLogFood ? midpointValue(mealLogFood.calories_min, mealLogFood.calories_max) : null,
+        proteinG: mealLogFood ? midpointValue(mealLogFood.protein_min, mealLogFood.protein_max) : null,
+        carbsG: mealLogFood ? midpointValue(mealLogFood.carbs_min, mealLogFood.carbs_max) : null,
+        fatG: mealLogFood ? midpointValue(mealLogFood.fat_min, mealLogFood.fat_max) : null,
       };
     });
   });
@@ -84,38 +92,17 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   // rather than a separate set of dropdowns to keep in sync by hand.
   const derived = useMemo(() => deriveMealLevelFields(foodItems), [foodItems]);
 
-  // Per-item macro corrections — kept separate from foodItems above (the
-  // category/healthy/home-cooked/ultra-processed list), since mealLog.foods
-  // is a distinct list from the detected-items list a reviewer can freely
-  // add/remove from, and macro edits need to land on a specific existing
-  // meal_logs food row rather than an arbitrary reviewer-typed name.
-  // Starts at the AI's own midpoint estimate (see formatMidpoint's
-  // reasoning) — editing a field marks it as an actual correction.
-  const [itemMacros, setItemMacros] = useState(() =>
-    (mealLog?.foods ?? []).map((f: any) => ({
-      name: f.name ?? "Unknown item",
-      caloriesKcal: midpointValue(f.calories_min, f.calories_max),
-      proteinG: midpointValue(f.protein_min, f.protein_max),
-      carbsG: midpointValue(f.carbs_min, f.carbs_max),
-      fatG: midpointValue(f.fat_min, f.fat_max),
-    }))
-  );
-
-  function updateItemMacro(index: number, patch: Partial<(typeof itemMacros)[number]>) {
-    setItemMacros((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  }
-
   // Meal-level totals are always the sum of the (possibly corrected)
-  // per-item values — never independently editable — so they can't drift
-  // out of sync with what's actually in the item list below.
+  // per-item macro values below — never independently editable — so they
+  // can't drift out of sync with what's actually in the item list.
   const macroTotals = useMemo(
     () => ({
-      caloriesKcal: itemMacros.reduce((s, i) => s + i.caloriesKcal, 0),
-      proteinG: itemMacros.reduce((s, i) => s + i.proteinG, 0),
-      carbsG: itemMacros.reduce((s, i) => s + i.carbsG, 0),
-      fatG: itemMacros.reduce((s, i) => s + i.fatG, 0),
+      caloriesKcal: foodItems.reduce((s, i) => s + (i.caloriesKcal ?? 0), 0),
+      proteinG: foodItems.reduce((s, i) => s + (i.proteinG ?? 0), 0),
+      carbsG: foodItems.reduce((s, i) => s + (i.carbsG ?? 0), 0),
+      fatG: foodItems.reduce((s, i) => s + (i.fatG ?? 0), 0),
     }),
-    [itemMacros]
+    [foodItems]
   );
 
   function updateFoodItem(index: number, patch: Partial<CorrectedFoodItem>) {
@@ -125,7 +112,18 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   function addFoodItem() {
     setFoodItems((items) => [
       ...items,
-      { name: "", foodKnowledgeBaseId: null, category: null, isHealthy: null, isHomeCooked: null, isUltraProcessed: null },
+      {
+        name: "",
+        foodKnowledgeBaseId: null,
+        category: null,
+        isHealthy: null,
+        isHomeCooked: null,
+        isUltraProcessed: null,
+        caloriesKcal: null,
+        proteinG: null,
+        carbsG: null,
+        fatG: null,
+      },
     ]);
   }
 
@@ -144,16 +142,19 @@ export function ReviewForm({ detail }: { detail: Detail }) {
     // Only items actually edited from the AI's own midpoint are sent —
     // an untouched item shouldn't count as a "correction" in the audit
     // trail, and there's no need to rewrite meal_logs rows nobody changed.
-    const correctedMealMacros = itemMacros.filter((item, i) => {
-      const original = mealLog?.foods[i];
-      if (!original) return false;
-      return (
-        item.caloriesKcal !== midpointValue(original.calories_min, original.calories_max) ||
-        item.proteinG !== midpointValue(original.protein_min, original.protein_max) ||
-        item.carbsG !== midpointValue(original.carbs_min, original.carbs_max) ||
-        item.fatG !== midpointValue(original.fat_min, original.fat_max)
-      );
-    });
+    const correctedMealMacros = foodItems
+      .filter((item): item is CorrectedFoodItem & { caloriesKcal: number; proteinG: number; carbsG: number; fatG: number } => {
+        if (item.caloriesKcal == null || item.proteinG == null || item.carbsG == null || item.fatG == null) return false;
+        const original = mealLog?.foods.find((f: any) => (typeof f === "string" ? f : f.name)?.toLowerCase() === item.name.toLowerCase());
+        if (!original) return false;
+        return (
+          item.caloriesKcal !== midpointValue(original.calories_min, original.calories_max) ||
+          item.proteinG !== midpointValue(original.protein_min, original.protein_max) ||
+          item.carbsG !== midpointValue(original.carbs_min, original.carbs_max) ||
+          item.fatG !== midpointValue(original.fat_min, original.fat_max)
+        );
+      })
+      .map((item) => ({ name: item.name, caloriesKcal: item.caloriesKcal, proteinG: item.proteinG, carbsG: item.carbsG, fatG: item.fatG }));
 
     return {
       mealSubmissionId: submission.id,
@@ -314,66 +315,15 @@ export function ReviewForm({ detail }: { detail: Detail }) {
           </div>
         )}
 
-        {mealLog && mealLog.foods.length > 0 && (
+        {mealLog && mealLog.foods.some((f: any) => f.visible_quantity) && (
           <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm">
-            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Per-item macros</p>
-            <div className="space-y-2">
-              {mealLog.foods.map((f: any, i: number) => {
-                const isAmbiguous = classification?.ambiguousItemName === f.name;
-                const macro = itemMacros[i];
-                return (
-                  <div
-                    key={i}
-                    className={`border-b border-gray-50 last:border-0 pb-2 last:pb-0 ${isAmbiguous ? "bg-amber-50 -mx-2 px-2 rounded-lg" : ""}`}
-                  >
-                    <p className="font-medium text-gray-800">
-                      {isAmbiguous && <span title="AI asked a follow-up question about this item">❓ </span>}
-                      {f.name ?? "Unknown item"}{f.portion_size ? ` · ${f.portion_size}` : ""}
-                    </p>
-                    {macro && (
-                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-600">
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={macro.caloriesKcal}
-                            onChange={(e) => updateItemMacro(i, { caloriesKcal: Number(e.target.value) })}
-                            className="w-16 border border-gray-200 rounded px-1.5 py-1"
-                          />
-                          cal
-                        </label>
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={macro.proteinG}
-                            onChange={(e) => updateItemMacro(i, { proteinG: Number(e.target.value) })}
-                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
-                          />
-                          g protein
-                        </label>
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={macro.carbsG}
-                            onChange={(e) => updateItemMacro(i, { carbsG: Number(e.target.value) })}
-                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
-                          />
-                          g carbs
-                        </label>
-                        <label className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            value={macro.fatG}
-                            onChange={(e) => updateItemMacro(i, { fatG: Number(e.target.value) })}
-                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
-                          />
-                          g fat
-                        </label>
-                      </div>
-                    )}
-                    {f.visible_quantity && <p className="text-xs text-gray-400 mt-1">Visible quantity: {f.visible_quantity}</p>}
-                  </div>
-                );
-              })}
+            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Visible quantities</p>
+            <div className="space-y-1">
+              {mealLog.foods
+                .filter((f: any) => f.visible_quantity)
+                .map((f: any, i: number) => (
+                  <Row key={i} label={f.name ?? "Unknown item"}>{f.visible_quantity}</Row>
+                ))}
             </div>
           </div>
         )}
@@ -408,69 +358,112 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             <div className="space-y-2">
               {foodItems.map((item, i) => {
                 const isAmbiguous = classification?.ambiguousItemName === item.name;
+                const hasMacros = item.caloriesKcal != null && item.proteinG != null && item.carbsG != null && item.fatG != null;
                 return (
                 <div
                   key={i}
-                  className={`flex flex-wrap items-center gap-2 border rounded-lg p-2 ${isAmbiguous ? "border-amber-300 bg-amber-50" : "border-gray-100"}`}
+                  className={`border rounded-lg p-2 space-y-2 ${isAmbiguous ? "border-amber-300 bg-amber-50" : "border-gray-100"}`}
                   title={isAmbiguous ? classification?.clarificationQuestion ?? undefined : undefined}
                 >
-                  {isAmbiguous && <span className="text-xs">❓</span>}
-                  <input
-                    list="known-foods-list"
-                    value={item.name}
-                    onChange={(e) => {
-                      const match = matchKnownFood(e.target.value);
-                      updateFoodItem(i, {
-                        name: e.target.value,
-                        foodKnowledgeBaseId: match?.id ?? null,
-                        category: (match?.category as CorrectedFoodItem["category"]) ?? item.category,
-                        isHealthy: match?.isHealthy ?? item.isHealthy,
-                        isHomeCooked: match?.isHomeCooked ?? item.isHomeCooked,
-                        isUltraProcessed: match?.isUltraProcessed ?? item.isUltraProcessed,
-                      });
-                    }}
-                    placeholder="Food name"
-                    className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
-                  />
-                  <select
-                    value={item.category ?? "unknown"}
-                    onChange={(e) => updateFoodItem(i, { category: e.target.value as CorrectedFoodItem["category"] })}
-                    className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs capitalize"
-                  >
-                    {FOOD_CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c.replace("_", " ")}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
-                    <input type="checkbox" checked={item.isHealthy === true} onChange={(e) => updateFoodItem(i, { isHealthy: e.target.checked })} />
-                    Healthy
-                  </label>
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isAmbiguous && <span className="text-xs">❓</span>}
                     <input
-                      type="checkbox"
-                      checked={item.isHomeCooked === true}
-                      onChange={(e) => updateFoodItem(i, { isHomeCooked: e.target.checked })}
+                      list="known-foods-list"
+                      value={item.name}
+                      onChange={(e) => {
+                        const match = matchKnownFood(e.target.value);
+                        updateFoodItem(i, {
+                          name: e.target.value,
+                          foodKnowledgeBaseId: match?.id ?? null,
+                          category: (match?.category as CorrectedFoodItem["category"]) ?? item.category,
+                          isHealthy: match?.isHealthy ?? item.isHealthy,
+                          isHomeCooked: match?.isHomeCooked ?? item.isHomeCooked,
+                          isUltraProcessed: match?.isUltraProcessed ?? item.isUltraProcessed,
+                        });
+                      }}
+                      placeholder="Food name"
+                      className="flex-1 min-w-[160px] border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
                     />
-                    Home-cooked
-                  </label>
-                  <label className="flex items-center gap-1 text-xs text-gray-600">
-                    <input
-                      type="checkbox"
-                      checked={item.isUltraProcessed === true}
-                      onChange={(e) => updateFoodItem(i, { isUltraProcessed: e.target.checked })}
-                    />
-                    Ultra-processed
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => removeFoodItem(i)}
-                    aria-label={`Remove ${item.name || "item"}`}
-                    className="text-gray-400 hover:text-red-600 text-sm px-1"
-                  >
-                    ×
-                  </button>
+                    <select
+                      value={item.category ?? "unknown"}
+                      onChange={(e) => updateFoodItem(i, { category: e.target.value as CorrectedFoodItem["category"] })}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs capitalize"
+                    >
+                      {FOOD_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c.replace("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="flex items-center gap-1 text-xs text-gray-600">
+                      <input type="checkbox" checked={item.isHealthy === true} onChange={(e) => updateFoodItem(i, { isHealthy: e.target.checked })} />
+                      Healthy
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={item.isHomeCooked === true}
+                        onChange={(e) => updateFoodItem(i, { isHomeCooked: e.target.checked })}
+                      />
+                      Home-cooked
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={item.isUltraProcessed === true}
+                        onChange={(e) => updateFoodItem(i, { isUltraProcessed: e.target.checked })}
+                      />
+                      Ultra-processed
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => removeFoodItem(i)}
+                      aria-label={`Remove ${item.name || "item"}`}
+                      className="text-gray-400 hover:text-red-600 text-sm px-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  {hasMacros && (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={item.caloriesKcal ?? 0}
+                          onChange={(e) => updateFoodItem(i, { caloriesKcal: Number(e.target.value) })}
+                          className="w-16 border border-gray-200 rounded px-1.5 py-1"
+                        />
+                        cal
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={item.proteinG ?? 0}
+                          onChange={(e) => updateFoodItem(i, { proteinG: Number(e.target.value) })}
+                          className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                        />
+                        g protein
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={item.carbsG ?? 0}
+                          onChange={(e) => updateFoodItem(i, { carbsG: Number(e.target.value) })}
+                          className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                        />
+                        g carbs
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={item.fatG ?? 0}
+                          onChange={(e) => updateFoodItem(i, { fatG: Number(e.target.value) })}
+                          className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                        />
+                        g fat
+                      </label>
+                    </div>
+                  )}
                 </div>
                 );
               })}
