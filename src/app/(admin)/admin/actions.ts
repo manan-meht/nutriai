@@ -58,6 +58,10 @@ export interface QueueItem {
   priority: ReviewPriority;
   reviewStatus: string;
   anonymizedUserId: string;
+  /** True when the AI paused this meal for a genuine identity ambiguity
+   * (e.g. "is this paneer or tofu?") rather than guessing and logging
+   * silently — see food-analyzer.ts's has_high_impact_ambiguity. */
+  hasHighImpactAmbiguity: boolean;
 }
 
 export async function getReviewQueue(
@@ -123,6 +127,7 @@ export async function getReviewQueue(
       priority,
       reviewStatus: row.review_status,
       anonymizedUserId: anonymizedUserId(row.user_id),
+      hasHighImpactAmbiguity: classification?.structured_ai_output_json?.has_high_impact_ambiguity === true,
     };
   });
 
@@ -175,6 +180,15 @@ export interface MealReviewDetail {
     modelName: string;
     modelVersion: string | null;
     promptVersion: string | null;
+    /** True when the AI paused this meal for a genuine identity ambiguity
+     * (e.g. "is this paneer or tofu?") instead of guessing — see
+     * food-analyzer.ts's has_high_impact_ambiguity. */
+    hasHighImpactAmbiguity: boolean;
+    clarificationQuestion: string | null;
+    highImpactAmbiguityReason: string | null;
+    /** Name of the specific detected item the question was about (the one
+     * marked is_ambiguous in the AI's structured output), if any. */
+    ambiguousItemName: string | null;
   } | null;
   latestReview: {
     id: string;
@@ -200,6 +214,7 @@ export interface MealReviewDetail {
   // status enums (protein_anchor_status etc), not numeric macros. Null if
   // this submission hasn't been linked to a confirmed meal log yet.
   mealLog: {
+    id: string;
     totalCaloriesMin: number;
     totalCaloriesMax: number;
     totalProteinMin: number;
@@ -249,7 +264,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
   const { data: row, error } = await db
     .from("meal_submissions")
     .select(
-      "*, ai_meal_classifications(*), human_meal_reviews(*), meal_logs(total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max, foods)"
+      "*, ai_meal_classifications(*), human_meal_reviews(*), meal_logs(id, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max, foods)"
     )
     .eq("id", mealSubmissionId)
     .single();
@@ -317,6 +332,11 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           modelName: classification.model_name,
           modelVersion: classification.model_version,
           promptVersion: classification.prompt_version,
+          hasHighImpactAmbiguity: classification.structured_ai_output_json?.has_high_impact_ambiguity === true,
+          clarificationQuestion: classification.structured_ai_output_json?.clarification_question ?? null,
+          highImpactAmbiguityReason: classification.structured_ai_output_json?.high_impact_ambiguity_reason ?? null,
+          ambiguousItemName:
+            (classification.detected_items_json ?? []).find((f: any) => f?.is_ambiguous === true)?.name ?? null,
         }
       : null,
     latestReview: latestReview
@@ -341,6 +361,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
       : null,
     mealLog: mealLogRow
       ? {
+          id: mealLogRow.id,
           totalCaloriesMin: mealLogRow.total_calories_min ?? 0,
           totalCaloriesMax: mealLogRow.total_calories_max ?? 0,
           totalProteinMin: mealLogRow.total_protein_min ?? 0,
@@ -387,6 +408,12 @@ export interface SaveReviewInput {
   reviewStatus: (typeof REVIEW_STATUSES)[number];
   correctedItemsJson?: unknown;
   correctedFoodItems?: CorrectedFoodItem[];
+  /** Per-item macro corrections, keyed by name against mealLog.foods —
+   * when present (and mealLogId is set), saveHumanReview updates the real
+   * meal_logs row (the user-facing one), not just this QC record. Only
+   * items the reviewer actually edited need to be included. */
+  correctedMealMacros?: Array<{ name: string; caloriesKcal: number; proteinG: number; carbsG: number; fatG: number }>;
+  mealLogId?: string | null;
   correctedProteinAnchorStatus?: (typeof PRESENCE_STATUSES)[number];
   correctedVegetableFiberStatus?: (typeof PRESENCE_STATUSES)[number];
   correctedCarbStatus?: (typeof CARB_STATUSES)[number];
@@ -443,6 +470,7 @@ export async function saveHumanReview(input: SaveReviewInput): Promise<{ reviewI
     review_status: input.reviewStatus,
     corrected_items_json: input.correctedItemsJson ?? null,
     corrected_food_items_json: input.correctedFoodItems ?? null,
+    corrected_macros_json: input.correctedMealMacros ?? null,
     corrected_protein_anchor_status: input.correctedProteinAnchorStatus ?? null,
     corrected_vegetable_fiber_status: input.correctedVegetableFiberStatus ?? null,
     corrected_carb_status: input.correctedCarbStatus ?? null,
@@ -484,7 +512,62 @@ export async function saveHumanReview(input: SaveReviewInput): Promise<{ reviewI
     await upsertFoodKnowledgeFromReviewItems(db, input.correctedFoodItems, session.userId);
   }
 
+  if (input.correctedMealMacros?.length && input.mealLogId) {
+    await applyMacroCorrectionsToMealLog(db, input.mealLogId, input.correctedMealMacros);
+  }
+
   return { reviewId: saved.id };
+}
+
+/** Writes a reviewer's per-item macro corrections straight into the real
+ * meal_logs row — the one the user's dashboard/WhatsApp totals actually
+ * read from — not just this QC record. Collapses each corrected item's
+ * min/max to the same exact value (a human confirmed it, so there's no
+ * more uncertainty to express as a range — see the earlier decision to
+ * show a single midpoint everywhere rather than a range in some places
+ * and not others), and recomputes the meal's totals as the sum across all
+ * foods (corrected ones at their new value, everything else unchanged). */
+async function applyMacroCorrectionsToMealLog(
+  db: ReturnType<typeof createServiceClient>,
+  mealLogId: string,
+  corrections: Array<{ name: string; caloriesKcal: number; proteinG: number; carbsG: number; fatG: number }>
+): Promise<void> {
+  const { data: mealLogRow } = await db.from("meal_logs").select("foods").eq("id", mealLogId).single();
+  if (!mealLogRow) return;
+
+  const byName = new Map(corrections.map((c) => [c.name.toLowerCase(), c]));
+  const updatedFoods = (mealLogRow.foods ?? []).map((food: any) => {
+    const correction = byName.get(food.name?.toLowerCase());
+    if (!correction) return food;
+    return {
+      ...food,
+      calories_min: correction.caloriesKcal,
+      calories_max: correction.caloriesKcal,
+      protein_min: correction.proteinG,
+      protein_max: correction.proteinG,
+      carbs_min: correction.carbsG,
+      carbs_max: correction.carbsG,
+      fat_min: correction.fatG,
+      fat_max: correction.fatG,
+    };
+  });
+
+  const sum = (key: string) => updatedFoods.reduce((s: number, f: any) => s + (f[key] ?? 0), 0);
+
+  await db
+    .from("meal_logs")
+    .update({
+      foods: updatedFoods,
+      total_calories_min: sum("calories_min"),
+      total_calories_max: sum("calories_max"),
+      total_protein_min: sum("protein_min"),
+      total_protein_max: sum("protein_max"),
+      total_carbs_min: sum("carbs_min"),
+      total_carbs_max: sum("carbs_max"),
+      total_fat_min: sum("fat_min"),
+      total_fat_max: sum("fat_max"),
+    })
+    .eq("id", mealLogId);
 }
 
 /** Turns a reviewer's per-item corrections directly into food_knowledge_base

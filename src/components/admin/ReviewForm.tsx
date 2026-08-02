@@ -84,6 +84,40 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   // rather than a separate set of dropdowns to keep in sync by hand.
   const derived = useMemo(() => deriveMealLevelFields(foodItems), [foodItems]);
 
+  // Per-item macro corrections — kept separate from foodItems above (the
+  // category/healthy/home-cooked/ultra-processed list), since mealLog.foods
+  // is a distinct list from the detected-items list a reviewer can freely
+  // add/remove from, and macro edits need to land on a specific existing
+  // meal_logs food row rather than an arbitrary reviewer-typed name.
+  // Starts at the AI's own midpoint estimate (see formatMidpoint's
+  // reasoning) — editing a field marks it as an actual correction.
+  const [itemMacros, setItemMacros] = useState(() =>
+    (mealLog?.foods ?? []).map((f: any) => ({
+      name: f.name ?? "Unknown item",
+      caloriesKcal: midpointValue(f.calories_min, f.calories_max),
+      proteinG: midpointValue(f.protein_min, f.protein_max),
+      carbsG: midpointValue(f.carbs_min, f.carbs_max),
+      fatG: midpointValue(f.fat_min, f.fat_max),
+    }))
+  );
+
+  function updateItemMacro(index: number, patch: Partial<(typeof itemMacros)[number]>) {
+    setItemMacros((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  // Meal-level totals are always the sum of the (possibly corrected)
+  // per-item values — never independently editable — so they can't drift
+  // out of sync with what's actually in the item list below.
+  const macroTotals = useMemo(
+    () => ({
+      caloriesKcal: itemMacros.reduce((s, i) => s + i.caloriesKcal, 0),
+      proteinG: itemMacros.reduce((s, i) => s + i.proteinG, 0),
+      carbsG: itemMacros.reduce((s, i) => s + i.carbsG, 0),
+      fatG: itemMacros.reduce((s, i) => s + i.fatG, 0),
+    }),
+    [itemMacros]
+  );
+
   function updateFoodItem(index: number, patch: Partial<CorrectedFoodItem>) {
     setFoodItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
@@ -106,12 +140,29 @@ export function ReviewForm({ detail }: { detail: Detail }) {
     const correctedFoodItems = foodItems
       .filter((item) => item.name.trim())
       .map((item) => ({ ...item, name: item.name.trim(), foodKnowledgeBaseId: item.foodKnowledgeBaseId ?? matchKnownFood(item.name)?.id ?? null }));
+
+    // Only items actually edited from the AI's own midpoint are sent —
+    // an untouched item shouldn't count as a "correction" in the audit
+    // trail, and there's no need to rewrite meal_logs rows nobody changed.
+    const correctedMealMacros = itemMacros.filter((item, i) => {
+      const original = mealLog?.foods[i];
+      if (!original) return false;
+      return (
+        item.caloriesKcal !== midpointValue(original.calories_min, original.calories_max) ||
+        item.proteinG !== midpointValue(original.protein_min, original.protein_max) ||
+        item.carbsG !== midpointValue(original.carbs_min, original.carbs_max) ||
+        item.fatG !== midpointValue(original.fat_min, original.fat_max)
+      );
+    });
+
     return {
       mealSubmissionId: submission.id,
       aiClassificationId: classification?.id ?? null,
       reviewStatus: reviewStatus as SaveReviewInput["reviewStatus"],
       correctedItemsJson: correctedFoodItems.map((item) => item.name),
       correctedFoodItems,
+      correctedMealMacros: correctedMealMacros.length ? correctedMealMacros : undefined,
+      mealLogId: mealLog?.id ?? null,
       correctedProteinAnchorStatus: derived.proteinAnchorStatus,
       correctedVegetableFiberStatus: derived.vegetableFiberStatus,
       correctedCarbStatus: derived.carbStatus,
@@ -224,15 +275,37 @@ export function ReviewForm({ detail }: { detail: Detail }) {
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm space-y-1">
             <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">AI classification</p>
+            {classification.hasHighImpactAmbiguity && (
+              <div className="mb-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-amber-900">
+                <p className="font-semibold text-xs uppercase tracking-wide mb-1">AI asked a follow-up question</p>
+                <p>{classification.clarificationQuestion}</p>
+                {classification.highImpactAmbiguityReason && (
+                  <p className="text-xs text-amber-700 mt-1">{classification.highImpactAmbiguityReason}</p>
+                )}
+              </div>
+            )}
             <Row label="Model">{classification.modelName} {classification.modelVersion ?? ""} / prompt {classification.promptVersion ?? "—"}</Row>
             <Row label="Confidence">{classification.confidenceScore != null ? `${Math.round(classification.confidenceScore * 100)}%` : "—"}</Row>
-            <Row label="Detected items">{classification.detectedItems.map((f: any) => (typeof f === "string" ? f : f.name)).join(", ") || "—"}</Row>
+            <Row label="Detected items">
+              {classification.detectedItems.length
+                ? classification.detectedItems.map((f: any, i: number) => {
+                    const name = typeof f === "string" ? f : f.name;
+                    const isAmbiguous = classification.ambiguousItemName === name;
+                    return (
+                      <span key={i}>
+                        {i > 0 && ", "}
+                        {isAmbiguous ? <mark className="bg-amber-200 text-amber-900 rounded px-0.5">{name}</mark> : name}
+                      </span>
+                    );
+                  })
+                : "—"}
+            </Row>
             {mealLog ? (
               <>
-                <Row label="Calories">{formatMidpoint(mealLog.totalCaloriesMin, mealLog.totalCaloriesMax)}</Row>
-                <Row label="Protein">{formatMidpoint(mealLog.totalProteinMin, mealLog.totalProteinMax, "g")}</Row>
-                <Row label="Carbs">{formatMidpoint(mealLog.totalCarbsMin, mealLog.totalCarbsMax, "g")}</Row>
-                <Row label="Fat">{formatMidpoint(mealLog.totalFatMin, mealLog.totalFatMax, "g")}</Row>
+                <Row label="Calories">{macroTotals.caloriesKcal}</Row>
+                <Row label="Protein">{macroTotals.proteinG}g</Row>
+                <Row label="Carbs">{macroTotals.carbsG}g</Row>
+                <Row label="Fat">{macroTotals.fatG}g</Row>
               </>
             ) : (
               <Row label="Macros">Not available — this submission isn&apos;t linked to a confirmed meal log yet.</Row>
@@ -245,16 +318,62 @@ export function ReviewForm({ detail }: { detail: Detail }) {
           <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm">
             <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Per-item macros</p>
             <div className="space-y-2">
-              {mealLog.foods.map((f: any, i: number) => (
-                <div key={i} className="border-b border-gray-50 last:border-0 pb-2 last:pb-0">
-                  <p className="font-medium text-gray-800">{f.name ?? "Unknown item"}{f.portion_size ? ` · ${f.portion_size}` : ""}</p>
-                  <p className="text-xs text-gray-500">
-                    {formatMidpoint(f.calories_min, f.calories_max)} cal · {formatMidpoint(f.protein_min, f.protein_max, "g")} protein ·{" "}
-                    {formatMidpoint(f.carbs_min, f.carbs_max, "g")} carbs · {formatMidpoint(f.fat_min, f.fat_max, "g")} fat
-                  </p>
-                  {f.visible_quantity && <p className="text-xs text-gray-400">Visible quantity: {f.visible_quantity}</p>}
-                </div>
-              ))}
+              {mealLog.foods.map((f: any, i: number) => {
+                const isAmbiguous = classification?.ambiguousItemName === f.name;
+                const macro = itemMacros[i];
+                return (
+                  <div
+                    key={i}
+                    className={`border-b border-gray-50 last:border-0 pb-2 last:pb-0 ${isAmbiguous ? "bg-amber-50 -mx-2 px-2 rounded-lg" : ""}`}
+                  >
+                    <p className="font-medium text-gray-800">
+                      {isAmbiguous && <span title="AI asked a follow-up question about this item">❓ </span>}
+                      {f.name ?? "Unknown item"}{f.portion_size ? ` · ${f.portion_size}` : ""}
+                    </p>
+                    {macro && (
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-600">
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={macro.caloriesKcal}
+                            onChange={(e) => updateItemMacro(i, { caloriesKcal: Number(e.target.value) })}
+                            className="w-16 border border-gray-200 rounded px-1.5 py-1"
+                          />
+                          cal
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={macro.proteinG}
+                            onChange={(e) => updateItemMacro(i, { proteinG: Number(e.target.value) })}
+                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                          />
+                          g protein
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={macro.carbsG}
+                            onChange={(e) => updateItemMacro(i, { carbsG: Number(e.target.value) })}
+                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                          />
+                          g carbs
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={macro.fatG}
+                            onChange={(e) => updateItemMacro(i, { fatG: Number(e.target.value) })}
+                            className="w-14 border border-gray-200 rounded px-1.5 py-1"
+                          />
+                          g fat
+                        </label>
+                      </div>
+                    )}
+                    {f.visible_quantity && <p className="text-xs text-gray-400 mt-1">Visible quantity: {f.visible_quantity}</p>}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -287,8 +406,15 @@ export function ReviewForm({ detail }: { detail: Detail }) {
               ))}
             </datalist>
             <div className="space-y-2">
-              {foodItems.map((item, i) => (
-                <div key={i} className="flex flex-wrap items-center gap-2 border border-gray-100 rounded-lg p-2">
+              {foodItems.map((item, i) => {
+                const isAmbiguous = classification?.ambiguousItemName === item.name;
+                return (
+                <div
+                  key={i}
+                  className={`flex flex-wrap items-center gap-2 border rounded-lg p-2 ${isAmbiguous ? "border-amber-300 bg-amber-50" : "border-gray-100"}`}
+                  title={isAmbiguous ? classification?.clarificationQuestion ?? undefined : undefined}
+                >
+                  {isAmbiguous && <span className="text-xs">❓</span>}
                   <input
                     list="known-foods-list"
                     value={item.name}
@@ -346,7 +472,8 @@ export function ReviewForm({ detail }: { detail: Detail }) {
                     ×
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <button
               type="button"
@@ -448,10 +575,13 @@ const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm";
 // a single number, so showing a range here too would be an inconsistency
 // with no benefit: reviewers correct against `reviewStatus`/the categorical
 // fields below, never against the raw min/max spread itself.
+function midpointValue(min: number | null | undefined, max: number | null | undefined): number {
+  return Math.round(((min ?? max ?? 0) + (max ?? min ?? 0)) / 2);
+}
+
 function formatMidpoint(min: number | null | undefined, max: number | null | undefined, unit = ""): string {
   if (min == null && max == null) return "—";
-  const mid = Math.round(((min ?? max ?? 0) + (max ?? min ?? 0)) / 2);
-  return `${mid}${unit}`;
+  return `${midpointValue(min, max)}${unit}`;
 }
 
 function Row({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
