@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { classifyMeal } from "@nutriai/dashboard-core";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -154,6 +155,25 @@ export interface FoodAnalysisResult {
    * part of the Gemini response) so it survives in conversation state
    * between the "awaiting confirmation" and "saved" steps. */
   image_url?: string;
+  /** True once this meal (or the pre-correction estimate it came from)
+   * triggered ANY clarifying question — a genuine high-impact identity
+   * ambiguity (has_high_impact_ambiguity) OR plain low confidence
+   * (confidence/food_identity_confidence === "low"), which also pauses for
+   * clarification but leaves has_high_impact_ambiguity false. Set in
+   * conversation-handler.ts's finalizeEstimate whenever either trigger
+   * fires, and carried forward by runFreeTextCorrection when a correction
+   * resolves it — the resolved analysis naturally shows high confidence,
+   * so without this the fact that clarification was ever needed would be
+   * invisible in the saved record. */
+  clarification_was_asked?: boolean;
+  /** The original clarification_question, preserved across resolution —
+   * the corrected/resolved analysis's own clarification_question is unset
+   * once answered. */
+  original_clarification_question?: string;
+  original_high_impact_ambiguity_reason?: string;
+  /** Name of the specific food item the original question was about (the
+   * one marked is_ambiguous), preserved the same way. */
+  original_ambiguous_item_name?: string;
 }
 
 /** Extra fields layered onto a FoodAnalysisResult while it's sitting in
@@ -801,6 +821,12 @@ export function avgProtein(a: FoodAnalysisResult) {
 export function avgCal(a: FoodAnalysisResult) {
   return Math.round((a.total_calories_min + a.total_calories_max) / 2);
 }
+export function avgCarbs(a: FoodAnalysisResult) {
+  return Math.round((a.total_carbs_min + a.total_carbs_max) / 2);
+}
+export function avgFat(a: FoodAnalysisResult) {
+  return Math.round((a.total_fat_min + a.total_fat_max) / 2);
+}
 
 /** The one estimate/confirmation message used for every case: first-time
  * identification, a correction, or a low-confidence guess. Replaces the old
@@ -811,7 +837,9 @@ export function buildEstimateMessage(
 ): string {
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
-  const estimate = `Estimated: ${protein}g protein · ${cal} kcal.`;
+  const carbs = avgCarbs(analysis);
+  const fat = avgFat(analysis);
+  const estimate = `Estimated: ${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
   // Only shown when a specific, structured signal actually warrants it
   // (hidden food, poor image quality, a genuinely wide range, or low
   // model/portion confidence) — not by default, and not just because the
@@ -851,18 +879,24 @@ export function buildContradictionCheckMessage(originalGuess: string, correctedT
 export function buildSavedMessage(
   analysis: FoodAnalysisResult,
   resolvedLabel: MealType,
-  opts: { seed: string; timezone?: string; dailyTotals?: { protein: number; calories: number; targetProteinG?: number } | null }
+  opts: {
+    seed: string;
+    timezone?: string;
+    dailyTotals?: { protein: number; calories: number; carbs: number; fat: number; targetProteinG?: number } | null;
+  }
 ): string {
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
+  const carbs = avgCarbs(analysis);
+  const fat = avgFat(analysis);
   const label = formatMealLabel(resolvedLabel);
 
-  let msg = `✅ Saved as ${label}.\n${protein}g protein · ${cal} kcal.`;
+  let msg = `✅ Saved as ${label}.\n${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
 
   if (opts.dailyTotals) {
-    const { protein: totalProtein, calories: totalCalories, targetProteinG } = opts.dailyTotals;
+    const { protein: totalProtein, calories: totalCalories, carbs: totalCarbs, fat: totalFat, targetProteinG } = opts.dailyTotals;
     const proteinPart = targetProteinG ? `${totalProtein}g / ${targetProteinG}g protein` : `${totalProtein}g protein`;
-    msg += `\n\nToday so far: ${proteinPart} · ${totalCalories.toLocaleString("en-IN")} kcal.`;
+    msg += `\n\nToday so far: ${proteinPart} · ${totalCarbs}g carbs · ${totalFat}g fat · ${totalCalories.toLocaleString("en-IN")} kcal.`;
   }
 
   return msg;
@@ -879,13 +913,20 @@ export function buildAutoSaveMessage(
   analysis: FoodAnalysisResult,
   resolvedLabel: MealType,
   decision: SaveDecision,
-  opts: { seed: string; dailyTotals?: { protein: number; calories: number; targetProteinG?: number } | null; isClarificationResolution?: boolean }
+  opts: {
+    seed: string;
+    dailyTotals?: { protein: number; calories: number; carbs: number; fat: number; targetProteinG?: number } | null;
+    isClarificationResolution?: boolean;
+  }
 ): string {
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
+  const carbs = avgCarbs(analysis);
+  const fat = avgFat(analysis);
   const label = formatMealLabel(resolvedLabel).toLowerCase();
-  const estimate = `Estimated: ${protein}g protein · ${cal} kcal.`;
+  const estimate = `Estimated: ${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
   const portionCheck = needsPortionConfirmation(analysis) ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}` : "";
+  const recommendation = buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null);
 
   // A meal that just had its ambiguity resolved by the user reads slightly
   // differently ("Thanks — I've logged...") than a fresh, unprompted
@@ -901,15 +942,78 @@ export function buildAutoSaveMessage(
     ? "Need to fix anything? Just reply with a correction, or say Undo to remove this log."
     : "If anything is off, reply with a correction, or say Undo to remove this log.";
 
-  let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}\n\n${closing}`;
+  let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}`;
+  if (recommendation) msg += `\n\n${recommendation}`;
+  msg += `\n\n${closing}`;
 
   if (opts.dailyTotals) {
-    const { protein: totalProtein, calories: totalCalories, targetProteinG } = opts.dailyTotals;
+    const { protein: totalProtein, calories: totalCalories, carbs: totalCarbs, fat: totalFat, targetProteinG } = opts.dailyTotals;
     const proteinPart = targetProteinG ? `${totalProtein}g / ${targetProteinG}g protein` : `${totalProtein}g protein`;
-    msg += `\n\nToday so far: ${proteinPart} · ${totalCalories.toLocaleString("en-IN")} kcal.`;
+    msg += `\n\nToday so far: ${proteinPart} · ${totalCarbs}g carbs · ${totalFat}g fat · ${totalCalories.toLocaleString("en-IN")} kcal.`;
   }
 
   return msg;
+}
+
+/** Forward-looking guidance for the meals remaining today — looks at this
+ * meal alone first (protein/veg/carb presence, via the same rule-based
+ * classifyMeal used for the admin review console), then folds in today's
+ * cumulative protein vs. target so a protein-light meal right after a
+ * protein-heavy one doesn't get flagged unnecessarily. Never shown for
+ * dinner — there's no "next meal today" left to give advice for. Returns
+ * null when there's nothing worth saying (well-rounded meal with no
+ * target context to react to). */
+export function buildMealRecommendation(
+  analysis: FoodAnalysisResult,
+  resolvedLabel: MealType,
+  dailyTotals: { protein: number; targetProteinG?: number } | null
+): string | null {
+  if (resolvedLabel === "dinner") return null;
+
+  const classified = classifyMeal({
+    id: "preview",
+    loggedAt: new Date().toISOString(),
+    mealType: resolvedLabel,
+    foods: analysis.foods,
+    aiSummary: analysis.summary,
+  });
+  // Matches classifyMeal's own "proteinOk"/"vegOk" threshold (!== "missing")
+  // rather than requiring the stricter "present" — a single named protein
+  // item ("chicken curry") only counts as "partial" under classifyMeal's
+  // count-based rule, which would otherwise make this flag nearly every
+  // ordinary single-dish meal as protein-light.
+  const mealHasProtein = classified.proteinAnchorStatus !== "missing";
+  const mealHasVeg = classified.vegetableFiberStatus !== "missing";
+  const wellRounded = mealHasProtein && mealHasVeg;
+
+  const targetProteinG = dailyTotals?.targetProteinG;
+  if (!targetProteinG) {
+    if (wellRounded) return "This meal was well-rounded — protein, veg, and carbs all covered.";
+    if (!mealHasProtein) return "This meal was light on protein — try to include a protein source (dal, eggs, paneer, chicken, fish) in your next meal.";
+    if (!mealHasVeg) return "Good protein here — add a vegetable, salad, or fruit to your next meal to round out the day.";
+    return null;
+  }
+
+  const totalProtein = dailyTotals!.protein;
+  const onTrack = targetProteinG - totalProtein <= 10;
+
+  if (wellRounded) {
+    return onTrack
+      ? `This meal was well-rounded — protein, veg, and carbs all covered, and you're right on track for your ${targetProteinG}g protein target today.`
+      : `This meal was well-rounded — protein, veg, and carbs all covered. You're at ${totalProtein}g of your ${targetProteinG}g protein target today, so keep a protein source in mind for your next meal to close the gap.`;
+  }
+
+  if (!mealHasProtein) {
+    return onTrack
+      ? `This meal was light on protein, but you've already hit ${totalProtein}g of your ${targetProteinG}g target today from earlier meals — no need to add more, feel free to focus on vegetables for your next meal instead.`
+      : `This meal was light on protein, and you're only at ${totalProtein}g of your ${targetProteinG}g target today — try to include a protein source (dal, eggs, paneer, chicken, fish) in your next meal.`;
+  }
+
+  if (!mealHasVeg) {
+    return "Good protein here — add a vegetable, salad, or fruit to your next meal to round out the day.";
+  }
+
+  return null;
 }
 
 /** Used when computeSaveDecision found a specific, high-impact food-

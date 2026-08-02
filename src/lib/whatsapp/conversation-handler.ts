@@ -18,6 +18,8 @@ import {
   formatMealLabel,
   avgProtein,
   avgCal,
+  avgCarbs,
+  avgFat,
   FoodAnalysisResult,
   MealType,
 } from "@/lib/ai/food-analyzer";
@@ -669,7 +671,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   /** Best-effort daily protein/calorie totals for the "Today so far" line.
    * Uses the midpoint of each meal's min/max range. Never throws — a
    * failure here should degrade to "no totals line", not break saving. */
-  async function getDailyTotals(): Promise<{ protein: number; calories: number } | null> {
+  async function getDailyTotals(): Promise<{ protein: number; calories: number; carbs: number; fat: number } | null> {
     try {
       // Contact's own local day, not the server runtime's (always UTC on
       // Cloudflare) — using the wrong day boundary here doesn't just
@@ -678,17 +680,23 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       const startOfDay = startOfLocalDayUTC(new Date(), contactTimezone ?? "Asia/Kolkata");
       const { data: todaysMeals, error } = await db
         .from("meal_logs")
-        .select("total_protein_min, total_protein_max, total_calories_min, total_calories_max")
+        .select(
+          "total_protein_min, total_protein_max, total_calories_min, total_calories_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max"
+        )
         .eq(isAdults ? "adults_contact_id" : "client_id", entityId)
         .gte("logged_at", startOfDay.toISOString());
       if (error || !todaysMeals) return null;
       let protein = 0;
       let calories = 0;
+      let carbs = 0;
+      let fat = 0;
       for (const m of todaysMeals as any[]) {
         protein += Math.round(((m.total_protein_min ?? 0) + (m.total_protein_max ?? 0)) / 2);
         calories += Math.round(((m.total_calories_min ?? 0) + (m.total_calories_max ?? 0)) / 2);
+        carbs += Math.round(((m.total_carbs_min ?? 0) + (m.total_carbs_max ?? 0)) / 2);
+        fat += Math.round(((m.total_fat_min ?? 0) + (m.total_fat_max ?? 0)) / 2);
       }
-      return { protein, calories };
+      return { protein, calories, carbs, fat };
     } catch (err) {
       console.error("[whatsapp] getDailyTotals failed:", err instanceof Error ? err.message : err);
       return null;
@@ -703,11 +711,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * lag was showing up as "Today so far" staying frozen at the previous
    * meal's totals right after saving a new one. */
   function addMealToTotals(
-    totals: { protein: number; calories: number } | null,
+    totals: { protein: number; calories: number; carbs: number; fat: number } | null,
     analysis: FoodAnalysisResult
-  ): { protein: number; calories: number } | null {
+  ): { protein: number; calories: number; carbs: number; fat: number } | null {
     if (!totals) return null;
-    return { protein: totals.protein + avgProtein(analysis), calories: totals.calories + avgCal(analysis) };
+    return {
+      protein: totals.protein + avgProtein(analysis),
+      calories: totals.calories + avgCal(analysis),
+      carbs: totals.carbs + avgCarbs(analysis),
+      fat: totals.fat + avgFat(analysis),
+    };
   }
 
   /** "End of day achievement moment" (see share-cards feature spec) —
@@ -1039,6 +1052,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     const decision = computeSaveDecision(analysis);
 
     if (decision.shouldAskClarification) {
+      // Marked here (covers both triggers — high-impact ambiguity AND
+      // plain low confidence) rather than only relying on
+      // has_high_impact_ambiguity, which a low-confidence-only pause
+      // leaves false — see this field's own doc comment.
+      analysis.clarification_was_asked = true;
       const clarificationMsg = decision.hasHighImpactAmbiguity
         ? buildHighImpactClarificationMessage(analysis, decision)
         : buildLowConfidenceClarificationMessage(decision);
@@ -1132,6 +1150,19 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       );
     }
 
+    // Preserve "this meal needed clarification" across the resolution —
+    // the corrected analysis above naturally comes back with high
+    // confidence (the correction resolved the ambiguity), so without
+    // explicitly carrying this forward, the fact that a question was ever
+    // asked would disappear from the saved record the moment it's
+    // answered. See clarification_was_asked's own doc comment.
+    if (opts.isClarificationResolution && previous?.clarification_was_asked) {
+      analysis.clarification_was_asked = true;
+      analysis.original_clarification_question = previous.clarification_question;
+      analysis.original_high_impact_ambiguity_reason = previous.high_impact_ambiguity_reason;
+      analysis.original_ambiguous_item_name = previous.foods?.find((f: any) => f?.is_ambiguous)?.name;
+    }
+
     if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
       await sendTextMessage(msg.from, buildClarificationMessage(seed));
       await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
@@ -1182,7 +1213,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (!totals || (totals.protein === 0 && totals.calories === 0)) {
       await sendTextMessage(msg.from, "No meals logged yet today.");
     } else {
-      await sendTextMessage(msg.from, `Today so far: ${totals.protein}g protein · ${totals.calories.toLocaleString("en-IN")} kcal.`);
+      await sendTextMessage(
+        msg.from,
+        `Today so far: ${totals.protein}g protein · ${totals.carbs}g carbs · ${totals.fat}g fat · ${totals.calories.toLocaleString("en-IN")} kcal.`
+      );
     }
     return;
   }
