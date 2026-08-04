@@ -180,7 +180,19 @@ function isWorkoutMessage(text: string) {
 }
 
 const GREETINGS = ["hi", "hello", "hey", "hii", "hlo", "namaste", "namaskar", "gm", "sup", "good morning", "good afternoon", "good evening"];
-const AFFIRMATIVES = ["yes", "y", "ok", "okay", "haan", "han", "ha", "correct", "right", "looks right", "looks good", "perfect", "sure", "yep", "yup", "save", "log it", "save it", "confirmed", "👍", "✅"];
+// Includes general appreciation/praise, not just literal confirmations —
+// a reply like "Brilliant 🙌" to a just-saved meal previously fell through
+// to the free-text correction handler (nothing else matched it), which
+// re-ran the AI on no new information and reported "I've updated..." even
+// though nothing had changed. Treated the same as "yes": acknowledged,
+// no re-analysis.
+const AFFIRMATIVES = [
+  "yes", "y", "ok", "okay", "haan", "han", "ha", "correct", "right", "looks right", "looks good", "perfect",
+  "sure", "yep", "yup", "save", "log it", "save it", "confirmed",
+  "brilliant", "great", "awesome", "amazing", "nice", "good", "cool", "wonderful", "excellent", "superb",
+  "thanks", "thank you", "thx", "ty", "nice one", "well done", "good job",
+  "👍", "✅", "🙌", "🎉", "😊", "🙏", "💪", "❤️",
+];
 
 // A bare negative ("no", "nope") is genuinely ambiguous — it could mean
 // "discard this" or "let me correct it" — so it's classified separately
