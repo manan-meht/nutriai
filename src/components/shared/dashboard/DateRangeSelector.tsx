@@ -6,12 +6,17 @@ import { DATE_RANGE_OPTIONS, dateRangeLabel, type DashboardDateRange } from "@nu
 interface Props {
   value: DashboardDateRange;
   onChange: (range: DashboardDateRange) => void;
+  /** Opts the dropdown panel into dark: classes — only ProfileDashboard's
+   * family_admin/participant callers set this; the gym/coach caller
+   * doesn't (see ProfileDashboardTheme.enableDarkMode). The trigger button
+   * itself already uses dark-aware CSS vars either way. */
+  dm?: boolean;
 }
 
 /** Compact dropdown used as the dashboard's single global date-range
  * control — no existing pattern for this in the codebase, so kept simple:
  * a button that opens a small menu, closes on outside click/Escape. */
-export function DateRangeSelector({ value, onChange }: Props) {
+export function DateRangeSelector({ value, onChange, dm }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -49,7 +54,7 @@ export function DateRangeSelector({ value, onChange }: Props) {
       {open && (
         <div
           role="listbox"
-          className="absolute right-0 z-20 mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-lg py-1.5 overflow-hidden"
+          className={`absolute right-0 z-20 mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-lg py-1.5 overflow-hidden ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}
         >
           {DATE_RANGE_OPTIONS.map((opt) => (
             <button
@@ -64,7 +69,7 @@ export function DateRangeSelector({ value, onChange }: Props) {
               className={`w-full text-left text-sm px-3.5 py-2 transition-colors ${
                 opt.value === value
                   ? "bg-[var(--color-dashboard-primary-light)] text-[var(--color-dashboard-primary)] font-semibold"
-                  : "text-gray-700 hover:bg-gray-50"
+                  : `text-gray-700 hover:bg-gray-50 ${dm ? "dark:text-gray-300 dark:hover:bg-white/5" : ""}`
               }`}
             >
               {opt.label}

@@ -16,8 +16,15 @@ export const FAMILY_ADMIN_THEME: ProfileDashboardTheme = {
   avatarTextClassName: "text-white",
   goalBadgeClassName: "text-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]",
   proteinTextClassName: "text-[var(--color-dashboard-primary)]",
-  pageBgClassName: "bg-[var(--color-dashboard-surface)]",
+  // --color-dashboard-page-bg (not the older --color-dashboard-surface,
+  // which admin/MyProgress also use and haven't been reviewed for dark
+  // mode) — already has a dark override in globals.css from the family
+  // dashboard redesign.
+  pageBgClassName: "bg-[var(--color-dashboard-page-bg)]",
   containerMaxWidthClassName: "max-w-4xl",
+  // See ProfileDashboardTheme.enableDarkMode's doc comment — COACH_THEME
+  // deliberately leaves this unset so gym stays light-only.
+  enableDarkMode: true,
 };
 
 export const COACH_THEME: ProfileDashboardTheme = {

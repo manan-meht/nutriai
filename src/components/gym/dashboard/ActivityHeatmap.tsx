@@ -5,9 +5,13 @@ import type { MealLog } from "@/app/(gym)/gym/dashboard/actions";
 interface Props {
   meals: MealLog[];
   days?: number;
+  /** Opts into dark: classes — only ProfileDashboard's family_admin/
+   * participant callers set this (see ProfileDashboardTheme.
+   * enableDarkMode); the gym/coach caller doesn't. */
+  dm?: boolean;
 }
 
-export function ActivityHeatmap({ meals, days = 30 }: Props) {
+export function ActivityHeatmap({ meals, days = 30, dm }: Props) {
   const today = new Date();
   const cells = Array.from({ length: days }, (_, i) => {
     const d = new Date();
@@ -20,7 +24,7 @@ export function ActivityHeatmap({ meals, days = 30 }: Props) {
   });
 
   function mealColor(count: number) {
-    if (count === 0) return "bg-gray-100";
+    if (count === 0) return `bg-gray-100 ${dm ? "dark:bg-white/10" : ""}`;
     if (count === 1) return "bg-purple-200";
     if (count === 2) return "bg-purple-400";
     return "bg-purple-600";
@@ -46,16 +50,16 @@ export function ActivityHeatmap({ meals, days = 30 }: Props) {
                 <div
                   key={cell.key}
                   title={`${cell.date.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · ${cell.mealCount} meal${cell.mealCount !== 1 ? "s" : ""}`}
-                  className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-md ${mealColor(cell.mealCount)} ${isToday ? "ring-2 ring-purple-400 ring-offset-1" : ""} transition-colors`}
+                  className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-md ${mealColor(cell.mealCount)} ${isToday ? `ring-2 ring-purple-400 ring-offset-1 ${dm ? "dark:ring-offset-[var(--color-dashboard-dark-card)]" : ""}` : ""} transition-colors`}
                 />
               );
             })}
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
+      <div className={`flex items-center gap-4 mt-3 text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded bg-gray-100 inline-block" /> No meals
+          <span className={`w-3 h-3 rounded bg-gray-100 inline-block ${dm ? "dark:bg-white/10" : ""}`} /> No meals
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-purple-400 inline-block" /> Meals logged

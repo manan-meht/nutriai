@@ -27,6 +27,11 @@ interface FoodBalanceScoreCardProps {
    * ShareCardsDashboardSection, rather than this component fetching it
    * independently — see that hook's own comment for why. */
   data: FoodBalanceDataState;
+  /** Opts into this card's dark: classes — only ProfileDashboard's
+   * family_admin/participant callers set this (matching
+   * ProfileDashboardTheme.enableDarkMode); the gym/coach caller doesn't,
+   * so this card stays exactly as it always looked there. */
+  dm?: boolean;
 }
 
 const SCORE_BAND_LABEL = [
@@ -50,52 +55,66 @@ function confidenceLabel(label: string): string {
 // feature's explicit "not a medical assessment" requirement. A soft 270°
 // ring rendered with plain SVG (no new charting dependency), matching how
 // MacroBarChart.tsx avoided pulling one in on the mobile side.
-function ScoreRing({ score }: { score: number }) {
+function ScoreRing({ score, dm }: { score: number; dm?: boolean }) {
   const radius = 54;
   const circumference = 2 * Math.PI * radius * 0.75; // 270 degrees
   const progress = (score / 100) * circumference;
+  // CSS vars (not hardcoded hex) only for the two colors that actually
+  // need a dark counterpart — --color-fbs-ring-track/--color-dashboard-
+  // primary already have dark overrides in globals.css from the family
+  // dashboard redesign. The score number's fill stays a plain switch since
+  // SVG can't take a Tailwind dark: class.
   return (
     <svg width="140" height="140" viewBox="0 0 140 140" role="img" aria-hidden="true">
       <g transform="rotate(135 70 70)">
-        <circle cx="70" cy="70" r={radius} fill="none" stroke="#EDE9F7" strokeWidth="12" strokeDasharray={`${circumference} 1000`} strokeLinecap="round" />
         <circle
           cx="70"
           cy="70"
           r={radius}
           fill="none"
-          stroke="#6750A4"
+          stroke={dm ? "var(--color-fbs-ring-track)" : "#EDE9F7"}
+          strokeWidth="12"
+          strokeDasharray={`${circumference} 1000`}
+          strokeLinecap="round"
+        />
+        <circle
+          cx="70"
+          cy="70"
+          r={radius}
+          fill="none"
+          stroke={dm ? "var(--color-dashboard-primary)" : "#6750A4"}
           strokeWidth="12"
           strokeDasharray={`${progress} 1000`}
           strokeLinecap="round"
           style={{ transition: "stroke-dasharray 0.6s ease" }}
         />
       </g>
-      <text x="70" y="76" textAnchor="middle" fontSize="28" fontWeight="700" fill="#111827">
+      <text x="70" y="76" textAnchor="middle" fontSize="28" fontWeight="700" fill={dm ? "var(--color-fbs-score-text)" : "#111827"}>
         {score}
       </text>
     </svg>
   );
 }
 
-function ScoreCardSkeleton() {
+function ScoreCardSkeleton({ dm }: { dm?: boolean }) {
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-5 animate-pulse" aria-hidden="true">
+    <div className={`bg-white border border-gray-100 rounded-2xl p-5 animate-pulse ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`} aria-hidden="true">
       <div className="flex items-center justify-between">
-        <div className="h-4 w-36 bg-gray-100 rounded" />
-        <div className="h-3 w-20 bg-gray-100 rounded" />
+        <div className={`h-4 w-36 bg-gray-100 rounded ${dm ? "dark:bg-white/10" : ""}`} />
+        <div className={`h-3 w-20 bg-gray-100 rounded ${dm ? "dark:bg-white/10" : ""}`} />
       </div>
       <div className="flex items-center gap-4 mt-3">
-        <div className="w-[140px] h-[140px] rounded-full bg-gray-100 shrink-0" />
+        <div className={`w-[140px] h-[140px] rounded-full bg-gray-100 shrink-0 ${dm ? "dark:bg-white/10" : ""}`} />
         <div className="flex-1 space-y-2">
-          <div className="h-4 w-40 bg-gray-100 rounded" />
-          <div className="h-3 w-full max-w-[220px] bg-gray-100 rounded" />
+          <div className={`h-4 w-40 bg-gray-100 rounded ${dm ? "dark:bg-white/10" : ""}`} />
+          <div className={`h-3 w-full max-w-[220px] bg-gray-100 rounded ${dm ? "dark:bg-white/10" : ""}`} />
         </div>
       </div>
     </div>
   );
 }
 
-export function FoodBalanceScoreCard({ contactId, clientId, data }: FoodBalanceScoreCardProps) {
+export function FoodBalanceScoreCard({ contactId, clientId, data, dm }: FoodBalanceScoreCardProps) {
   const result = data.status === "ready" ? data.result : null;
 
   // Fire the "viewed" analytics event once per (result) resolution, same
@@ -111,11 +130,11 @@ export function FoodBalanceScoreCard({ contactId, clientId, data }: FoodBalanceS
     );
   }, [result]);
 
-  if (data.status === "loading") return <ScoreCardSkeleton />;
+  if (data.status === "loading") return <ScoreCardSkeleton dm={dm} />;
   if (data.status === "error") {
     return (
-      <div className="bg-white border border-gray-100 rounded-2xl p-5">
-        <p className="text-sm text-gray-500">
+      <div className={`bg-white border border-gray-100 rounded-2xl p-5 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+        <p className={`text-sm text-gray-500 ${dm ? "dark:text-gray-400" : ""}`}>
           Your Food Balance Score is temporarily unavailable. Your meal history is safe. Please try again shortly.
         </p>
       </div>
@@ -127,20 +146,20 @@ export function FoodBalanceScoreCard({ contactId, clientId, data }: FoodBalanceS
     const { eligibleMealCount, requiredMealCount, distinctLoggingDays, requiredLoggingDays } = result.dataCoverage;
     const progressPct = Math.min(100, Math.round((eligibleMealCount / requiredMealCount) * 100));
     return (
-      <div className="bg-white border border-gray-100 rounded-2xl p-5">
-        <h3 className="text-base font-bold text-gray-900">Food Balance Score</h3>
-        <p className="text-sm font-semibold text-[#6750A4] mt-1">
+      <div className={`bg-white border border-gray-100 rounded-2xl p-5 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+        <h3 className={`text-base font-bold text-gray-900 ${dm ? "dark:text-white" : ""}`}>Food Balance Score</h3>
+        <p className={`text-sm font-semibold mt-1 ${dm ? "text-[var(--color-dashboard-primary)]" : "text-[#6750A4]"}`}>
           {result.status === "refreshing_data" ? "Refreshing your Food Balance Score" : "Learning your eating pattern"}
         </p>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className={`text-sm text-gray-500 mt-1 ${dm ? "dark:text-gray-400" : ""}`}>
           {result.status === "refreshing_data"
             ? "Log a few more recent meals so the score reflects your current eating pattern."
             : "Log a few more meals so Tistra can understand your nutrition and give you useful guidance."}
         </p>
-        <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
-          <div className="h-full bg-[#6750A4] rounded-full transition-all" style={{ width: `${progressPct}%` }} />
+        <div className={`mt-3 h-2 rounded-full bg-gray-100 overflow-hidden ${dm ? "dark:bg-white/10" : ""}`}>
+          <div className={`h-full rounded-full transition-all ${dm ? "bg-[var(--color-dashboard-primary)]" : "bg-[#6750A4]"}`} style={{ width: `${progressPct}%` }} />
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className={`text-xs text-gray-400 mt-2 ${dm ? "dark:text-gray-500" : ""}`}>
           {eligibleMealCount} of {requiredMealCount} meals logged · Logged across {distinctLoggingDays} of {requiredLoggingDays} days
         </p>
       </div>
@@ -152,49 +171,53 @@ export function FoodBalanceScoreCard({ contactId, clientId, data }: FoodBalanceS
   const confidenceBand = result.confidence >= 0.75 ? "high" : result.confidence >= 0.45 ? "moderate" : "still_learning";
 
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-5">
+    <div className={`bg-white border border-gray-100 rounded-2xl p-5 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-bold text-gray-900">Food Balance Score</h3>
-        <span className="text-xs font-medium text-gray-400">{confidenceLabel(confidenceBand)}</span>
+        <h3 className={`text-base font-bold text-gray-900 ${dm ? "dark:text-white" : ""}`}>Food Balance Score</h3>
+        <span className={`text-xs font-medium text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{confidenceLabel(confidenceBand)}</span>
       </div>
       <div className="flex items-center gap-4 mt-2">
-        <ScoreRing score={score} />
+        <ScoreRing score={score} dm={dm} />
         <div>
           <p
-            className="text-sm font-semibold text-gray-900"
+            className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}
             aria-label={`Food Balance Score: ${score} out of 100. ${label}. Based on meals logged over the last 14 days.`}
           >
             {label}
           </p>
           {result.status === "partially_personalized" && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className={`text-xs text-gray-500 mt-1 ${dm ? "dark:text-gray-400" : ""}`}>
               Add your height, weight, and activity level to personalize this score for your goal.
             </p>
           )}
-          <p className="text-xs text-gray-400 mt-1">Based on your meals from the last 14 days</p>
+          <p className={`text-xs text-gray-400 mt-1 ${dm ? "dark:text-gray-500" : ""}`}>Based on your meals from the last 14 days</p>
         </div>
       </div>
 
       {result.recommendations.length > 0 && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Top ways to improve</p>
+        <div className={`mt-4 pt-4 border-t border-gray-100 ${dm ? "dark:border-white/10" : ""}`}>
+          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 ${dm ? "dark:text-gray-400" : ""}`}>Top ways to improve</p>
           <ol className="space-y-2">
             {result.recommendations.map((rec, i) => (
               <li
                 key={rec.id}
-                className={`text-sm text-gray-700 rounded-xl p-3 ${i % 2 === 0 ? "bg-[var(--color-dashboard-primary-light)]" : "bg-gray-50"}`}
+                className={`text-sm text-gray-700 rounded-xl p-3 ${dm ? "dark:text-gray-300" : ""} ${
+                  i % 2 === 0
+                    ? `bg-[var(--color-dashboard-primary-light)]`
+                    : `bg-gray-50 ${dm ? "dark:bg-white/5" : ""}`
+                }`}
               >
-                <p className="font-semibold text-gray-900">{i + 1}. {rec.title}</p>
-                <p className="text-gray-600 mt-0.5">{rec.description}</p>
-                {rec.whyThisHelps && <p className="text-xs text-gray-400 mt-1">{rec.whyThisHelps}</p>}
-                <RecommendationFeedbackButtons rec={rec} contactId={contactId} clientId={clientId} />
+                <p className={`font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>{i + 1}. {rec.title}</p>
+                <p className={`text-gray-600 mt-0.5 ${dm ? "dark:text-gray-300" : ""}`}>{rec.description}</p>
+                {rec.whyThisHelps && <p className={`text-xs text-gray-400 mt-1 ${dm ? "dark:text-gray-500" : ""}`}>{rec.whyThisHelps}</p>}
+                <RecommendationFeedbackButtons rec={rec} contactId={contactId} clientId={clientId} dm={dm} />
               </li>
             ))}
           </ol>
         </div>
       )}
 
-      <p className="text-[11px] text-gray-400 -mx-5 -mb-5 mt-4 px-5 py-3 bg-gray-50 rounded-b-2xl border-t border-gray-100">
+      <p className={`text-[11px] text-gray-400 -mx-5 -mb-5 mt-4 px-5 py-3 bg-gray-50 rounded-b-2xl border-t border-gray-100 ${dm ? "dark:text-gray-500 dark:bg-white/5 dark:border-white/10" : ""}`}>
         This is not a medical assessment and may not capture everything you eat.
       </p>
     </div>
@@ -210,10 +233,12 @@ function RecommendationFeedbackButtons({
   rec,
   contactId,
   clientId,
+  dm,
 }: {
   rec: FoodBalanceRecommendation;
   contactId?: string;
   clientId?: string;
+  dm?: boolean;
 }) {
   const [submitted, setSubmitted] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -232,7 +257,7 @@ function RecommendationFeedbackButtons({
   }
 
   if (submitted) {
-    return <p className="text-xs text-gray-400 mt-2">Thanks — noted &ldquo;{submitted}.&rdquo;</p>;
+    return <p className={`text-xs text-gray-400 mt-2 ${dm ? "dark:text-gray-500" : ""}`}>Thanks — noted &ldquo;{submitted}.&rdquo;</p>;
   }
 
   return (
@@ -243,7 +268,7 @@ function RecommendationFeedbackButtons({
           type="button"
           disabled={submitting}
           onClick={() => handleFeedback(opt.value, opt.label)}
-          className="text-[11px] px-2 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-[#6750A4] hover:text-[#6750A4] transition-colors disabled:opacity-50"
+          className={`text-[11px] px-2 py-1 rounded-full border border-gray-200 text-gray-500 hover:border-[#6750A4] hover:text-[#6750A4] transition-colors disabled:opacity-50 ${dm ? "dark:border-white/15 dark:text-gray-400 dark:hover:border-[var(--color-dashboard-primary)] dark:hover:text-[var(--color-dashboard-primary)]" : ""}`}
         >
           {opt.label}
         </button>

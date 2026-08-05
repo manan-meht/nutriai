@@ -49,6 +49,14 @@ export interface ProfileDashboardTheme {
   proteinTextClassName: string;
   pageBgClassName: string;
   containerMaxWidthClassName: string;
+  /** Opts this role into the dark-mode `dark:` classes sprinkled through
+   * this component's own shared structural markup (health-nudge banner,
+   * greeting, metric cards, activity heatmap wrapper, recent meals list —
+   * everything not already covered by a themed className above). Only
+   * FAMILY_ADMIN_THEME sets this true today — COACH_THEME's hardcoded
+   * light Tailwind classes were never designed with a dark counterpart, so
+   * gym stays exactly as it looked before rather than going half-dark. */
+  enableDarkMode?: boolean;
 }
 
 /** Copy that should read differently depending on who's looking —
@@ -115,6 +123,8 @@ export function ProfileDashboard({
   const [macroTargetsRefreshKey, setMacroTargetsRefreshKey] = useState(0);
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+  // Gates every dark: class added below — see ProfileDashboardTheme.enableDarkMode's own doc comment.
+  const dm = theme.enableDarkMode;
 
   const foodBalanceProfile: FoodBalanceUserProfile | undefined = profile.nutritionGoals && profile.nutritionGoals.length > 0
     ? {
@@ -248,13 +258,13 @@ export function ProfileDashboard({
             so it's the first thing a caregiver/participant sees when
             something's missing. */}
         {missingHealthFields.length > 0 && permissions.canManageGoal && (
-          <div className="flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <p className="text-sm text-amber-800">
+          <div className={`flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 ${dm ? "dark:border-amber-500/30 dark:bg-amber-500/10" : ""}`}>
+            <p className={`text-sm text-amber-800 ${dm ? "dark:text-amber-300" : ""}`}>
               Add {joinWithAnd(missingHealthFields)} so Tistra can give more accurate insights.
             </p>
             <button
               onClick={() => setShowEdit(true)}
-              className="shrink-0 text-xs font-semibold text-amber-800 underline whitespace-nowrap"
+              className={`shrink-0 text-xs font-semibold text-amber-800 underline whitespace-nowrap ${dm ? "dark:text-amber-300" : ""}`}
             >
               Add details
             </button>
@@ -278,10 +288,10 @@ export function ProfileDashboard({
         <div>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold text-gray-900 leading-tight">{copy.greeting(firstName)}</h2>
-              <p className="text-xs text-gray-400">Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+              <h2 className={`text-lg font-bold text-gray-900 leading-tight ${dm ? "dark:text-white" : ""}`}>{copy.greeting(firstName)}</h2>
+              <p className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
             </div>
-            <DateRangeSelector value={dateRange} onChange={setDateRange} />
+            <DateRangeSelector value={dateRange} onChange={setDateRange} dm={dm} />
           </div>
           <div className="flex items-center gap-2 mt-3">
             <span className={`text-xs font-semibold ${theme.goalBadgeClassName} rounded-full px-3 py-1`}>
@@ -290,7 +300,7 @@ export function ProfileDashboard({
                 : "No goal set yet"}
             </span>
             {permissions.canManageGoal && (
-              <button onClick={() => setShowEdit(true)} className="text-xs font-medium text-gray-400 underline">
+              <button onClick={() => setShowEdit(true)} className={`text-xs font-medium text-gray-400 underline ${dm ? "dark:text-gray-500" : ""}`}>
                 Edit
               </button>
             )}
@@ -299,7 +309,7 @@ export function ProfileDashboard({
 
         {/* Section 2 — Food Balance Score / insights. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} />
+          <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
         )}
 
         {/* Section 2b — "Your wins" shareable accomplishment cards. */}
@@ -313,6 +323,7 @@ export function ProfileDashboard({
             meals={mealsInRange}
             days={rangeDays}
             targets={{ calories: calTarget, protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+            dm={dm}
           />
         )}
 
@@ -325,6 +336,7 @@ export function ProfileDashboard({
             value={`${mealsInRange.length}`}
             sub={`${daysLoggedInRange} of ${rangeDays} day${rangeDays === 1 ? "" : "s"}`}
             ok={rangeDays <= 1 ? undefined : daysLoggedInRange / rangeDays >= 0.7}
+            dm={dm}
           />
           <MetricCard
             icon="🌱"
@@ -333,6 +345,7 @@ export function ProfileDashboard({
             value={avgProtein > 0 ? `${avgProtein}g` : "—"}
             sub={`target: ${proteinTarget}g${isRecommendedProtein ? " (recommended)" : ""}`}
             ok={proteinOk ?? undefined}
+            dm={dm}
           />
           <MetricCard
             icon="🔥"
@@ -341,23 +354,24 @@ export function ProfileDashboard({
             value={avgCalories > 0 ? `${avgCalories}` : "—"}
             sub={calTarget ? `target: ≥${calTarget}` : "kcal"}
             ok={calOk ?? undefined}
+            dm={dm}
           />
         </div>
 
         {/* Section 5 — progress summary. */}
-        {insights && <ProgressInsights insights={insights} variant={role === "coach" ? "gym" : "adults"} />}
+        {insights && <ProgressInsights insights={insights} variant={role === "coach" ? "gym" : "adults"} dm={dm} />}
 
         {/* Section 6 — meal activity heatmap (fixed 30-day window). */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4">Meal activity – last 30 days</p>
-          <ActivityHeatmap meals={heatmapMeals as any} days={30} />
+        <div className={`bg-white rounded-2xl border border-gray-100 p-4 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4 ${dm ? "dark:text-gray-400" : ""}`}>Meal activity – last 30 days</p>
+          <ActivityHeatmap meals={heatmapMeals as any} days={30} dm={dm} />
         </div>
 
         {/* Section 7 — recent meals. */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent meals</p>
+          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 ${dm ? "dark:text-gray-400" : ""}`}>Recent meals</p>
           {meals.length === 0 ? (
-            <div className="text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100">
+            <div className={`text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100 ${dm ? "dark:text-gray-500 dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
               {copy.noMealsMessage}
             </div>
           ) : (
@@ -371,7 +385,7 @@ export function ProfileDashboard({
                 });
                 const emoji = MEAL_EMOJIS[meal.mealType] ?? "🍽️";
                 return (
-                  <div key={meal.id} className="flex items-start gap-3 bg-white rounded-xl border border-gray-100 p-3">
+                  <div key={meal.id} className={`flex items-start gap-3 bg-white rounded-xl border border-gray-100 p-3 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
                     {meal.imageUrl && permissions.canViewMealPhotos ? (
                       // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
                       <img
@@ -385,13 +399,13 @@ export function ProfileDashboard({
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className="text-sm font-medium text-gray-900 capitalize">{meal.mealType}</span>
-                        <span className="text-xs text-gray-400 shrink-0">{time}</span>
+                        <span className={`text-sm font-medium text-gray-900 capitalize ${dm ? "dark:text-white" : ""}`}>{meal.mealType}</span>
+                        <span className={`text-xs text-gray-400 shrink-0 ${dm ? "dark:text-gray-500" : ""}`}>{time}</span>
                       </div>
-                      <p className="text-xs text-gray-500 truncate">{meal.aiSummary ?? meal.foods.map((f: any) => f.name).join(", ")}</p>
+                      <p className={`text-xs text-gray-500 truncate ${dm ? "dark:text-gray-400" : ""}`}>{meal.aiSummary ?? meal.foods.map((f: any) => f.name).join(", ")}</p>
                       <div className="flex gap-3 mt-1">
                         <span className={`text-xs font-medium ${theme.proteinTextClassName}`}>{avgProt}g protein</span>
-                        <span className="text-xs text-gray-400">{avgCal} kcal</span>
+                        <span className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{avgCal} kcal</span>
                       </div>
                     </div>
                   </div>
@@ -402,7 +416,7 @@ export function ProfileDashboard({
           {visibleMealCount < meals.length && (
             <button
               onClick={() => setVisibleMealCount((c) => c + MEALS_PAGE_SIZE)}
-              className="w-full mt-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className={`w-full mt-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 ${dm ? "dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/5" : ""}`}
             >
               Show more
             </button>
@@ -468,12 +482,16 @@ const ICON_BADGE_CLASSES: Record<"purple" | "green" | "orange" | "blue", string>
 };
 
 function MetricCard({
-  icon, iconColor, label, value, sub, ok,
-}: { icon?: string; iconColor?: "purple" | "green" | "orange" | "blue"; label: string; value: string; sub?: string; ok?: boolean }) {
+  icon, iconColor, label, value, sub, ok, dm,
+}: { icon?: string; iconColor?: "purple" | "green" | "orange" | "blue"; label: string; value: string; sub?: string; ok?: boolean; dm?: boolean }) {
   return (
     <div
       className={`rounded-2xl border p-4 ${
-        ok === true ? "bg-green-50 border-green-100" : ok === false ? "bg-orange-50 border-orange-100" : "bg-white border-gray-100"
+        ok === true
+          ? `bg-green-50 border-green-100 ${dm ? "dark:bg-green-500/10 dark:border-green-500/20" : ""}`
+          : ok === false
+            ? `bg-orange-50 border-orange-100 ${dm ? "dark:bg-orange-500/10 dark:border-orange-500/20" : ""}`
+            : `bg-white border-gray-100 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`
       }`}
     >
       {icon && (
@@ -481,11 +499,19 @@ function MetricCard({
           {icon}
         </div>
       )}
-      <p className={`text-2xl font-bold mb-0.5 ${ok === true ? "text-green-700" : ok === false ? "text-orange-700" : "text-gray-900"}`}>
+      <p
+        className={`text-2xl font-bold mb-0.5 ${
+          ok === true
+            ? `text-green-700 ${dm ? "dark:text-green-400" : ""}`
+            : ok === false
+              ? `text-orange-700 ${dm ? "dark:text-orange-400" : ""}`
+              : `text-gray-900 ${dm ? "dark:text-white" : ""}`
+        }`}
+      >
         {value}
       </p>
-      <p className="text-xs font-medium text-gray-600">{label}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className={`text-xs font-medium text-gray-600 ${dm ? "dark:text-gray-300" : ""}`}>{label}</p>
+      {sub && <p className={`text-xs text-gray-400 mt-0.5 ${dm ? "dark:text-gray-500" : ""}`}>{sub}</p>}
     </div>
   );
 }

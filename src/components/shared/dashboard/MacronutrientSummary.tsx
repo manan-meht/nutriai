@@ -89,6 +89,10 @@ interface Props {
    * selection doesn't try to render hundreds of daily bars. */
   days: number;
   targets?: Partial<Record<MacroKey, number>>;
+  /** Opts into dark: classes — only ProfileDashboard's family_admin/
+   * participant callers set this (see ProfileDashboardTheme.
+   * enableDarkMode); the gym/coach caller doesn't. */
+  dm?: boolean;
 }
 
 /** The single unified macro section — replaces the old separate Protein
@@ -96,7 +100,7 @@ interface Props {
  * with its own mini chart; mobile shows four small pills plus one larger
  * detail chart for whichever macro is selected (Protein by default),
  * rather than stacking four full-height charts. */
-export function MacronutrientSummary({ meals, days, targets }: Props) {
+export function MacronutrientSummary({ meals, days, targets, dm }: Props) {
   const [selected, setSelected] = useState<MacroKey>("protein");
   const chartDays = Math.min(Math.max(days, 1), 30);
   const dayData = buildDayData(meals, chartDays);
@@ -115,18 +119,18 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
           the four-macro grid below rather than a fifth grid column, so it
           reads as the headline number rather than one more equal-weight
           macro. */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
+      <div className={`bg-white rounded-2xl border border-gray-100 p-4 mb-4 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Total calories</p>
-          <p className="text-xs text-gray-400">{rangeLabel}</p>
+          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest ${dm ? "dark:text-gray-400" : ""}`}>Total calories</p>
+          <p className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{rangeLabel}</p>
         </div>
-        <MacroCard macroKey="calories" average={averages.calories} target={targets?.calories} data={dayData} />
+        <MacroCard macroKey="calories" average={averages.calories} target={targets?.calories} data={dayData} dm={dm} />
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
+      <div className={`bg-white rounded-2xl border border-gray-100 p-4 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
         <div className="flex items-center justify-between mb-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Macronutrient summary</p>
-          <p className="text-xs text-gray-400">{rangeLabel}</p>
+          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest ${dm ? "dark:text-gray-400" : ""}`}>Macronutrient summary</p>
+          <p className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{rangeLabel}</p>
         </div>
 
       {/* Desktop / tablet: two cards per row (rather than cramming all four
@@ -136,7 +140,7 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
           below, which defeated the point of a "desktop" layout. */}
       <div className="hidden sm:grid grid-cols-2 xl:grid-cols-4 gap-3">
         {MACRO_KEYS.map((key) => (
-          <MacroCard key={key} macroKey={key} average={averages[key]} target={targets?.[key]} data={dayData} />
+          <MacroCard key={key} macroKey={key} average={averages[key]} target={targets?.[key]} data={dayData} dm={dm} />
         ))}
       </div>
 
@@ -151,10 +155,11 @@ export function MacronutrientSummary({ meals, days, targets }: Props) {
               target={targets?.[key]}
               active={key === selected}
               onClick={() => setSelected(key)}
+              dm={dm}
             />
           ))}
         </div>
-        <MacroDetailChart macroKey={selected} data={dayData} target={targets?.[selected]} />
+        <MacroDetailChart macroKey={selected} data={dayData} target={targets?.[selected]} dm={dm} />
       </div>
       </div>
     </>
@@ -166,13 +171,13 @@ function actualVsTargetOk(average: number, target?: number): boolean | null {
   return average >= target * 0.8;
 }
 
-function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; average: number; target?: number; data: any[] }) {
+function MacroCard({ macroKey, average, target, data, dm }: { macroKey: MacroKey; average: number; target?: number; data: any[]; dm?: boolean }) {
   const meta = MACRO_META[macroKey];
   const ok = actualVsTargetOk(average, target);
   return (
-    <div className="rounded-xl border border-gray-100 p-4">
+    <div className={`rounded-xl border border-gray-100 p-4 ${dm ? "dark:border-white/10" : ""}`}>
       <div className="flex items-center justify-between mb-1">
-        <p className="text-sm font-semibold text-gray-600">{meta.label}</p>
+        <p className={`text-sm font-semibold text-gray-600 ${dm ? "dark:text-gray-300" : ""}`}>{meta.label}</p>
         {ok !== null && (
           <span
             className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-[var(--color-status-good-dot)]" : "bg-[var(--color-status-steady-dot)]"}`}
@@ -180,12 +185,12 @@ function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; av
           />
         )}
       </div>
-      <p className="text-2xl font-bold text-gray-900 leading-tight">
+      <p className={`text-2xl font-bold text-gray-900 leading-tight ${dm ? "dark:text-white" : ""}`}>
         {average}
-        <span className="text-sm font-medium text-gray-400">{meta.unit}/day</span>
+        <span className={`text-sm font-medium text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{meta.unit}/day</span>
       </p>
       {target ? (
-        <p className="text-xs text-gray-400 mb-2">target {target}{meta.unit}</p>
+        <p className={`text-xs text-gray-400 mb-2 ${dm ? "dark:text-gray-500" : ""}`}>target {target}{meta.unit}</p>
       ) : (
         <p className="text-xs text-gray-400 mb-2">&nbsp;</p>
       )}
@@ -217,8 +222,8 @@ function MacroCard({ macroKey, average, target, data }: { macroKey: MacroKey; av
 }
 
 function MacroPill({
-  macroKey, average, target, active, onClick,
-}: { macroKey: MacroKey; average: number; target?: number; active: boolean; onClick: () => void }) {
+  macroKey, average, target, active, onClick, dm,
+}: { macroKey: MacroKey; average: number; target?: number; active: boolean; onClick: () => void; dm?: boolean }) {
   const meta = MACRO_META[macroKey];
   const ok = actualVsTargetOk(average, target);
   return (
@@ -226,17 +231,19 @@ function MacroPill({
       type="button"
       onClick={onClick}
       className={`rounded-xl px-2 py-2 text-left transition-colors ${
-        active ? "bg-[var(--color-dashboard-primary-light)] ring-1 ring-[var(--color-dashboard-primary)]/30" : "bg-gray-50"
+        active
+          ? "bg-[var(--color-dashboard-primary-light)] ring-1 ring-[var(--color-dashboard-primary)]/30"
+          : `bg-gray-50 ${dm ? "dark:bg-white/5" : ""}`
       }`}
     >
       <div className="flex items-center gap-1 mb-0.5">
-        <span className="text-[11px] font-semibold text-gray-600">{meta.short}</span>
+        <span className={`text-[11px] font-semibold text-gray-600 ${dm ? "dark:text-gray-300" : ""}`}>{meta.short}</span>
         {ok !== null && (
           <span className={`w-1.5 h-1.5 rounded-full ${ok ? "bg-[var(--color-status-good-dot)]" : "bg-[var(--color-status-steady-dot)]"}`} aria-hidden="true" />
         )}
       </div>
-      <p className="text-sm font-bold text-gray-900 leading-none">
-        {average}<span className="text-[10px] font-medium text-gray-400">{meta.unit}</span>
+      <p className={`text-sm font-bold text-gray-900 leading-none ${dm ? "dark:text-white" : ""}`}>
+        {average}<span className={`text-[10px] font-medium text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{meta.unit}</span>
       </p>
     </button>
   );
@@ -250,24 +257,31 @@ function MacroPill({
 const BAR_COLUMN_WIDTH = 36;
 const SCROLL_THRESHOLD = 10;
 
-function MacroDetailChart({ macroKey, data, target }: { macroKey: MacroKey; data: any[]; target?: number }) {
+function MacroDetailChart({ macroKey, data, target, dm }: { macroKey: MacroKey; data: any[]; target?: number; dm?: boolean }) {
   const meta = MACRO_META[macroKey];
   const max = Math.max(...data.map((d) => d[macroKey] as number), target ?? 0, 10);
   const scrollable = data.length > SCROLL_THRESHOLD;
+  // Recharts SVG props can't take a Tailwind dark: class — this component
+  // doesn't know the OS color scheme, only whether its caller opted into
+  // dark mode at all (dm), so it can't react live to a scheme change
+  // without a remount. Acceptable here: ProfileDashboardTheme.
+  // enableDarkMode is static per role, not a live toggle.
+  const axisColor = dm ? "#71717a" : "#9ca3af";
+  const gridColor = dm ? "rgba(255,255,255,0.08)" : "#f0f0f0";
 
   const chart = (
     <BarChart data={data} width={scrollable ? data.length * BAR_COLUMN_WIDTH : undefined} height={140} margin={{ top: 4, right: 0, left: -22, bottom: 0 }}>
-      <CartesianGrid vertical={false} stroke="#f0f0f0" />
-      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-      <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} domain={[0, max + Math.ceil(max * 0.2)]} />
+      <CartesianGrid vertical={false} stroke={gridColor} />
+      <XAxis dataKey="label" tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} />
+      <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} domain={[0, max + Math.ceil(max * 0.2)]} />
       <Tooltip
         content={({ active, payload }) => {
           if (!active || !payload?.length) return null;
           const d = payload[0].payload;
           return (
-            <div className="bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-lg text-xs">
-              <p className="font-semibold text-gray-900">{d[macroKey]}{meta.unit}</p>
-              <p className="text-gray-400">{d.mealCount} meal{d.mealCount !== 1 ? "s" : ""}</p>
+            <div className={`bg-white border border-gray-100 rounded-xl px-3 py-2 shadow-lg text-xs ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+              <p className={`font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>{d[macroKey]}{meta.unit}</p>
+              <p className={`text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{d.mealCount} meal{d.mealCount !== 1 ? "s" : ""}</p>
             </div>
           );
         }}
@@ -284,7 +298,7 @@ function MacroDetailChart({ macroKey, data, target }: { macroKey: MacroKey; data
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <p className="text-sm font-semibold text-gray-700">{meta.label} ({meta.unit})</p>
+        <p className={`text-sm font-semibold text-gray-700 ${dm ? "dark:text-gray-300" : ""}`}>{meta.label} ({meta.unit})</p>
         {target && <span className="text-xs font-medium" style={{ color: meta.color }}>Target: {target}{meta.unit}</span>}
       </div>
       {scrollable ? (

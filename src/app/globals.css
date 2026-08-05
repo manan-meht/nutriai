@@ -28,6 +28,7 @@
   --color-dashboard-page-bg: #FAFAFC;
   --color-dashboard-dark-card: #FFFFFF;
   --color-fbs-ring-track: #EDE9F7;
+  --color-fbs-score-text: #111827;
 }
 
 /* Family dashboard dark mode — not a plain inversion (see
@@ -42,6 +43,7 @@
     --color-dashboard-page-bg: #0B0B10;
     --color-dashboard-dark-card: #16151C;
     --color-fbs-ring-track: rgba(255, 255, 255, 0.08);
+    --color-fbs-score-text: #FFFFFF;
   }
 }
 
