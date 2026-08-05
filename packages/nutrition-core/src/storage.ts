@@ -57,3 +57,23 @@ export async function resolveSignedMealPhotoUrls(
 ): Promise<Array<string | undefined>> {
   return Promise.all(values.map((v) => resolveSignedMealPhotoUrl(admin, v, expiresInSeconds)));
 }
+
+export const CONTACT_AVATARS_BUCKET = "contact-avatars";
+
+/** Turns a stored adults_contacts.photo_url value (always a bare storage
+ * path — this bucket was private from the start, see
+ * 0049_contact_avatars.sql, so there's no legacy public-URL shape to
+ * detect/strip the way resolveSignedMealPhotoUrl has to). Same never-
+ * throws/undefined-on-failure contract, so a missing/broken avatar never
+ * blocks rendering the rest of a contact card — it just falls back to the
+ * initials placeholder. */
+export async function resolveSignedContactAvatarUrl(
+  admin: SupabaseClient,
+  photoUrl: string | null | undefined,
+  expiresInSeconds = 3600
+): Promise<string | undefined> {
+  if (!photoUrl) return undefined;
+  const { data, error } = await admin.storage.from(CONTACT_AVATARS_BUCKET).createSignedUrl(photoUrl, expiresInSeconds);
+  if (error || !data) return undefined;
+  return data.signedUrl;
+}

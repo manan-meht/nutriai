@@ -94,6 +94,8 @@ export interface ProfileDashboardProfile {
     | "healthy_aging"
   >;
   targetWeightKg?: number;
+  /** adults-only for now — gym clients have no avatar-upload flow yet. */
+  photoUrl?: string;
 }
 
 export interface ProfileDashboardData {
@@ -143,6 +145,7 @@ export function adaptAdultsContactDetails({ contact, meals }: AdultsContactDetai
       inviteAcceptedAt: contact.inviteAcceptedAt,
       relationshipType: contact.relationshipType,
       relationship: contact.relationship,
+      photoUrl: contact.photoUrl,
       timezone: contact.timezone,
       dateOfBirth: contact.dateOfBirth,
       metabolicEquationSex: contact.metabolicEquationSex,

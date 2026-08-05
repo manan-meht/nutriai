@@ -136,6 +136,22 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   goals: AdultsGoal[];
   mealCount: number;
   lastMealAt?: string;
+  /** Short-lived signed URL (see resolveSignedContactAvatarUrl), not the
+   * raw stored path — undefined when no photo has been uploaded, in which
+   * case the UI falls back to a colored-initials placeholder. */
+  photoUrl?: string;
+  /** Short-lived signed URL for the most recent logged meal's photo —
+   * undefined if that meal has no photo (or there are no meals yet), in
+   * which case the UI shows a placeholder rather than omitting the "Last
+   * meal" slot. Not the meal itself — just its thumbnail, for dashboard
+   * cards; the full meal list lives in AdultsContactDetails.meals. */
+  lastMealPhotoUrl?: string;
+  /** Total logged calories per day for the rolling 7 days ending today,
+   * oldest first, always 7 entries (0 for days with no meals) — feeds the
+   * family dashboard's MiniTrendChart sparkline. Optional only because
+   * mapContactRow is the sole computer of it (same convention as
+   * macroSummary above). */
+  last7DaysCalories?: number[];
   timezone: string;
   remindersEnabled: boolean;
   reminderTimes: string[];

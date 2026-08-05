@@ -6,17 +6,18 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
-import { removeContact, getOrCreateFamilyInvite, regenerateFamilyInvite, revokeFamilyInvite, markFamilyInviteLinkOpened } from "@/app/(adults)/adults/dashboard/actions";
+import { removeContact } from "@/app/(adults)/adults/dashboard/actions";
 import { AddContactModal } from "./AddContactModal";
 import { SelfSetupCard } from "./SelfSetupCard";
-import { InviteCard } from "@/components/shared/invites/InviteCard";
 import { effectiveFamilyLimit, familyLimitReachedMessage } from "@/lib/limits";
 import type { EntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { FAMILY_LIMIT_ENFORCEMENT_ENABLED, BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
 import { FeedbackModal } from "@/components/feedback/FeedbackModal";
 import { FeedbackIcon } from "@/components/feedback/FeedbackIcon";
 import { BetaBillingBanner } from "@/components/billing/BetaBillingBanner";
-import { NUTRITION_GOAL_LABELS } from "@/lib/food-balance/goal-options";
+import { FamilySummaryStrip } from "@/components/adults/dashboard/FamilySummaryStrip";
+import { AccountStatusPill } from "@/components/adults/dashboard/AccountStatusPill";
+import { FamilyHealthCard, type FamilyCardStatus } from "@/components/adults/dashboard/FamilyHealthCard";
 
 interface Props {
   caregiverName: string;
@@ -51,11 +52,7 @@ interface Props {
   isBillingWhitelisted?: boolean;
 }
 
-const RELATIONSHIP_EMOJI: Record<string, string> = {
-  son: "👨", daughter: "👩", spouse: "💑", parent: "👴", sibling: "🤝", friend: "😊", other: "🧑",
-};
-
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, pricing, selfPricing, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: Props) {
   // Opens the add-contact modal automatically right after a successful
   // checkout (see autoOpenAddModal's own doc comment) — only when there's
   // still nobody added yet, so this doesn't reopen the form on an account
@@ -74,6 +71,18 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const [showFeedback, setShowFeedback] = useState(false);
   const feedbackLinkRef = React.useRef<HTMLButtonElement>(null);
   const router = useRouter();
+
+  // Per-card Active/Focus/Reminder contribution, reported by each
+  // FamilyHealthCard once its own Food Balance Score fetch resolves (see
+  // FamilyHealthCard's onStatus prop) — the family summary strip's Focus/
+  // Reminder counts aren't knowable up front since they depend on data
+  // each card fetches independently.
+  const [cardStatuses, setCardStatuses] = useState<Record<string, FamilyCardStatus>>({});
+  const handleCardStatus = React.useCallback((contactId: string, status: FamilyCardStatus) => {
+    setCardStatuses((prev) => (prev[contactId]?.active === status.active && prev[contactId]?.hasFocus === status.hasFocus && prev[contactId]?.reminderPaused === status.reminderPaused
+      ? prev
+      : { ...prev, [contactId]: status }));
+  }, []);
 
   // Cleans the ?checkout=success param off the URL right after landing —
   // a pure navigation side effect (no setState), so a refresh doesn't
@@ -132,6 +141,22 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
     }
   }
 
+  // Shown when the "+" add action is tapped at the family-member limit —
+  // replaces the old dashboard's permanent full-width limit banner (see
+  // the family-dashboard-redesign spec: that messaging should only appear
+  // contextually, when someone actually tries to add another person).
+  function handleLimitReachedClick() {
+    const message = !isSelfPlan && isSubscriber
+      ? `${familyLimitReachedMessage(familyLimit)} Buy 1 more slot for $3.33/mo (or local equivalent)?`
+      : familyLimitReachedMessage(familyLimit);
+    if (!isSelfPlan && isSubscriber) {
+      if (window.confirm(message)) handleBuyCapacity();
+      return;
+    }
+    window.alert(message);
+    router.push("/billing/manage?module=adults");
+  }
+
   async function handleRemove(contact: AdultsContact) {
     if (!window.confirm(
       `Remove ${contact.fullName}? Their data will be preserved, but this frees up an active slot only — you can't add a replacement until next calendar month (removing doesn't refund this month's add quota).`
@@ -146,7 +171,6 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   }
 
   const activeCount = contacts.length;
-  const sendingData = contacts.filter((c) => c.mealCount > 0).length;
   const familyLimit = effectiveFamilyLimit(extraCapacity);
   const countLimitReached = FAMILY_LIMIT_ENFORCEMENT_ENABLED && activeCount >= familyLimit;
   const canAdd = !countLimitReached && !entitlement.isReadOnly;
@@ -162,51 +186,62 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
   const displayName = selfContactName || (!looksLikeEmailFragment ? caregiverName : "");
 
   return (
-    <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
+    <div className="min-h-screen bg-[var(--color-dashboard-page-bg)] relative overflow-x-hidden">
+      {/* Soft radial purple glow near the top of the page — dark mode only
+          (see globals.css's dashboard dark-mode block). Purely decorative,
+          sits behind all content. */}
+      <div
+        aria-hidden="true"
+        className="hidden dark:block pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] opacity-40"
+        style={{ background: "radial-gradient(ellipse at top, rgba(103,80,164,0.35), transparent 70%)" }}
+      />
+
       {/* Nav */}
-      <header className="bg-white border-b border-gray-100 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+      <header className="relative bg-white dark:bg-[var(--color-dashboard-dark-card)] border-b border-gray-100 dark:border-white/10 px-6 py-4">
+        <div className="max-w-[1050px] mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center overflow-hidden">
               <Image src="/logos/logo-purple.png" alt="" width={32} height={32} className="w-full h-full object-contain" />
             </div>
-            <span className="font-bold text-gray-900">Tistra Health</span>
+            <span className="font-bold text-gray-900 dark:text-white">Tistra Health</span>
           </Link>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500 hidden sm:block">{caregiverEmail}</span>
-            <Link href="/billing/manage?module=adults" className="text-sm text-gray-500 hover:text-gray-800 font-medium">
+            <span className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">{caregiverEmail}</span>
+            <Link href="/billing/manage?module=adults" className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white font-medium">
               Billing
             </Link>
             <button
               ref={feedbackLinkRef}
               type="button"
               onClick={() => setShowFeedback(true)}
-              className="text-sm text-gray-500 hover:text-gray-800 font-medium flex items-center gap-1.5"
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white font-medium flex items-center gap-1.5"
             >
               <FeedbackIcon className="w-4 h-4" />
               <span className="hidden sm:inline">Send Feedback</span>
             </button>
             <form action="/auth/signout" method="post">
-              <button type="submit" className="text-sm text-gray-500 hover:text-gray-800 font-medium">Sign out</button>
+              <button type="submit" className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 font-medium">Sign out</button>
             </form>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-start justify-between mb-8">
+      <main className="relative max-w-[1050px] mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <div className="flex items-start justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">
-              {displayName ? `Hi, ${displayName.split(" ")[0]} 👋` : isSelfPlan ? "Your health" : "Your family"}
+            <h1 className="text-[28px] leading-tight font-bold text-gray-900 dark:text-white mb-1">
+              {isSelfPlan ? "Your health" : "Family"}
             </h1>
-            <p className="text-gray-500 text-sm">
+            <p className="text-gray-500 dark:text-gray-400 text-[15px]">
               {activeCount === 0
                 ? isSelfPlan
                   ? "Add your details to get started."
                   : "Add someone to get started."
-                : isSelfPlan
-                  ? "Keeping an eye on your nutrition"
-                  : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
+                : displayName
+                  ? `Good morning, ${displayName.split(" ")[0]} 👋`
+                  : isSelfPlan
+                    ? "Keeping an eye on your nutrition"
+                    : `Keeping an eye on ${activeCount} person${activeCount !== 1 ? "s" : ""}`}
             </p>
           </div>
           {isSelfPlan
@@ -238,120 +273,36 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
           />
         )}
 
-        {!BILLING_AVAILABLE ? (
-          <>
-            <BetaBillingBanner sourcePage="adults_dashboard" className="mb-8" />
-            {countLimitReached && (
-              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-                {familyLimitReachedMessage(familyLimit)} <Link href="/pricing" className="underline font-medium">View plans</Link> to add more.
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            {entitlement.isReadOnly && (
-              <div className="mb-8 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
-                {isSelfPlan ? (
-                  <>Your free trial has ended. Your existing data is preserved and visible, but you can&apos;t generate new AI analyses until you <Link href="/billing/manage?module=adults" className="underline font-medium">subscribe</Link>.</>
-                ) : (
-                  <>Your free trial has ended. Your existing family members and their data are preserved and visible, but you
-                  can&apos;t add new family members or generate new AI analyses until you <Link href="/billing/manage?module=adults" className="underline font-medium">subscribe</Link>.</>
-                )}
-              </div>
-            )}
-
-            {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
-              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)] flex flex-wrap items-center justify-between gap-2">
-                <span>Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.</span>
-                {!isBillingWhitelisted && (
-                  <Link href="/billing/manage?module=adults" className="underline font-medium shrink-0">Manage or cancel</Link>
-                )}
-              </div>
-            )}
-
-            {!entitlement.isReadOnly && countLimitReached && (
-              <div className="mb-8 rounded-xl bg-[var(--color-dashboard-primary-light)] border border-[var(--color-dashboard-primary)]/20 px-4 py-3 text-sm text-[var(--color-dashboard-primary)]">
-                {!isSelfPlan && isSubscriber ? (
-                  <>
-                    {familyLimitReachedMessage(familyLimit)}{" "}
-                    <button
-                      type="button"
-                      onClick={handleBuyCapacity}
-                      disabled={buyingCapacity}
-                      className="underline font-medium disabled:opacity-50"
-                    >
-                      {buyingCapacity ? "Adding capacity…" : "Buy 1 more slot"}
-                    </button>
-                    {" "}for $3.33/mo (or local equivalent).
-                    {buyCapacityError && <div className="mt-1 text-red-700">{buyCapacityError}</div>}
-                  </>
-                ) : (
-                  <>
-                    {familyLimitReachedMessage(familyLimit)} <Link href="/billing/manage?module=adults" className="underline font-medium">Upgrade your plan</Link> to add more.
-                  </>
-                )}
-              </div>
-            )}
-
-            {isSubscriber ? (
-              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600 flex flex-wrap items-center justify-between gap-2">
-                <span>{isSelfPlan ? "Your plan covers your own tracking." : `Your plan includes up to ${familyLimit} family members.`}</span>
-                {isSelfPlan ? (
-                  <Link href="/billing/manage?module=adults" className="font-medium text-[var(--color-dashboard-primary)] underline">
-                    Want to add family too? →
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleBuyCapacity}
-                    disabled={buyingCapacity}
-                    className="font-medium text-[var(--color-dashboard-primary)] underline disabled:opacity-50"
-                  >
-                    {buyingCapacity ? "Adding capacity…" : `Need more than ${familyLimit}? Add capacity →`}
-                  </button>
-                )}
-              </div>
-            ) : requiresCardBeforeTrial ? (
-              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-                Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.{" "}
-                {isSelfPlan ? (
-                  <>Tracking is <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
-                  <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span> after that.</>
-                ) : (
-                  <>Family is <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
-                  <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span> after that.</>
-                )}
-              </div>
-            ) : isSelfPlan ? (
-              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-                Your first 14 days are free. After that, tracking is{" "}
-                <span className="font-semibold text-gray-800">{selfPricing.monthlyLabel}/month</span> or{" "}
-                <span className="font-semibold text-gray-800">{selfPricing.annualLabel}/year</span>.{" "}
-                <Link href="/billing/manage?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
-              </div>
-            ) : (
-              <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
-                Your first {familyLimit} family members are free for your first 14 days. After that, Family is{" "}
-                <span className="font-semibold text-gray-800">{pricing.monthlyLabel}/month</span> or{" "}
-                <span className="font-semibold text-gray-800">{pricing.annualLabel}/year</span>.{" "}
-                <Link href="/billing/manage?module=adults" className="underline font-medium text-[var(--color-dashboard-primary)]">See plans</Link>
-              </div>
-            )}
-          </>
-        )}
-
         {activeCount > 0 && (
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <StatCard label="People added" value={activeCount} />
-            <StatCard label="Sending meals" value={sendingData} />
-          </div>
+          <FamilySummaryStrip
+            people={contacts.map((c) => ({ id: c.id, fullName: c.fullName, photoUrl: c.photoUrl }))}
+            onAdd={isSelfPlan ? undefined : canAdd ? handleAddClick : handleLimitReachedClick}
+            activeCount={contacts.filter((c) => cardStatuses[c.id]?.active ?? c.mealCount > 0).length}
+            focusCount={contacts.filter((c) => cardStatuses[c.id]?.hasFocus).length}
+            reminderCount={contacts.filter((c) => cardStatuses[c.id]?.reminderPaused).length}
+          />
         )}
+
+        <div className="flex flex-wrap items-center gap-2 mb-8">
+          {!BILLING_AVAILABLE ? (
+            <BetaBillingBanner sourcePage="adults_dashboard" />
+          ) : (
+            <AccountStatusPill
+              isBillingWhitelisted={isBillingWhitelisted}
+              trialDaysRemaining={entitlement.status === "trialing" ? entitlement.trialDaysRemaining : undefined}
+              isReadOnly={entitlement.isReadOnly}
+            />
+          )}
+        </div>
+
+        {checkoutError && <p className="text-sm text-red-600 mb-6">{checkoutError}</p>}
+        {buyCapacityError && <p className="text-sm text-red-600 mb-6">{buyCapacityError}</p>}
 
         {activeCount === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="relative w-full max-w-[280px] aspect-square mb-8">
               <div className="absolute inset-0 bg-[var(--color-dashboard-primary-light)]/40 rounded-full blur-3xl opacity-60" />
-              <div className="relative w-full h-full rounded-full overflow-hidden border border-gray-100 bg-white shadow-[0_20px_40px_-12px_rgba(81,95,116,0.15)]">
+              <div className="relative w-full h-full rounded-full overflow-hidden border border-gray-100 dark:border-white/10 bg-white dark:bg-[var(--color-dashboard-dark-card)] shadow-[0_20px_40px_-12px_rgba(81,95,116,0.15)]">
                 <Image
                   src={isSelfPlan ? "/adults-empty-state-self.png" : "/adults-empty-state-family.png"}
                   alt=""
@@ -364,10 +315,10 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 {isSelfPlan ? "🥗" : "💜"}
               </div>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-3 tracking-tight">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight">
               {isSelfPlan ? "Add your details to get started" : "Add someone you care about"}
             </h2>
-            <p className="text-gray-500 text-base max-w-sm mb-8 leading-relaxed">
+            <p className="text-gray-500 dark:text-gray-400 text-base max-w-sm mb-8 leading-relaxed">
               {isSelfPlan
                 ? "Connect on WhatsApp and share a few details — your age, weight, and goals — so we can give you accurate protein and calorie targets instead of generic ones. Then just send meal photos and we'll track everything here."
                 : "Invite a parent, grandparent, or anyone you want to help stay healthy. They'll send meal photos on WhatsApp, and you'll track their nutrition here."}
@@ -393,43 +344,39 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can cancel anytime before then.
               </p>
             )}
-            {checkoutError && (
-              <p className="text-sm text-red-600 mt-3">{checkoutError}</p>
-            )}
             <div className="mt-10 flex gap-8 items-center justify-center text-gray-400">
               <span className="text-xs font-medium uppercase tracking-widest">Private &amp; secure</span>
               <span className="text-xs font-medium uppercase tracking-widest">Expert verified</span>
             </div>
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {contacts.map((contact) => (
-                <ContactCard
-                  key={contact.id}
-                  contact={contact}
-                  onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
-                  onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
-                  tistraWhatsAppNumber={tistraWhatsAppNumber}
-                />
-              ))}
-            </div>
-          </>
+          <div className="flex flex-col gap-4">
+            {contacts.map((contact) => (
+              <FamilyHealthCard
+                key={contact.id}
+                contact={contact}
+                onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)}
+                onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
+                tistraWhatsAppNumber={tistraWhatsAppNumber}
+                onStatus={handleCardStatus}
+              />
+            ))}
+          </div>
         )}
 
         {removedContacts.length > 0 && (
           <div className="mt-10">
             <button
               onClick={() => setShowPrevious((v) => !v)}
-              className="text-sm font-medium text-gray-500 hover:text-gray-800 mb-4"
+              className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white mb-4"
             >
               {showPrevious ? "Hide" : "Show"} {isSelfPlan ? "previous profile" : "previous family members"} ({removedContacts.length})
             </button>
             {showPrevious && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 opacity-70">
+              <div className="flex flex-col gap-4 opacity-70">
                 {removedContacts.map((contact) => (
                   <div key={contact.id} className="relative">
-                    <ContactCard contact={contact} onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)} />
+                    <FamilyHealthCard contact={contact} onOpen={() => router.push(`/adults/dashboard/contacts/${contact.id}`)} />
                     <span className="absolute top-3 right-3 text-xs font-medium px-2 py-1 rounded-full bg-gray-800 text-white">
                       Removed
                     </span>
@@ -463,216 +410,4 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
       )}
     </div>
   );
-}
-
-interface ContactCardProps {
-  contact: AdultsContact;
-  onOpen?: () => void;
-  onRemove?: () => void;
-  /** Digits-only bot number for the "reminders paused" + self reconnect
-   * link below — undefined if not configured. Only meaningful for the
-   * active-contacts list; the removed-contacts one doesn't pass it. */
-  tistraWhatsAppNumber?: string;
-}
-
-// Past this point since the contact's last inbound message, WhatsApp's own
-// customer-service window closes and meal reminders stop being delivered
-// (see send-meal-reminders/route.ts) — a genuinely different, more urgent
-// state than "never connected at all", so it gets its own badge/prompt
-// rather than being lumped in with "Accepted".
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-
-function ContactCard({ contact, onOpen, onRemove, tistraWhatsAppNumber }: ContactCardProps) {
-  // Lazy initializer, not a direct Date.now() call — react-hooks/purity
-  // forbids calling impure functions during render (see this session's
-  // FeedbackForm.tsx fix for the same pattern); this only needs to be
-  // "now enough", not live-ticking, so a value fixed at mount is fine.
-  const [now] = useState(() => Date.now());
-  const initials = contact.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-  const isActive = contact.mealCount > 0;
-  const inviteAccepted = !!contact.inviteAcceptedAt;
-  const invitePending = !!contact.inviteSentAt && !inviteAccepted;
-  const isStale = inviteAccepted && (!contact.lastMessageAt || now - new Date(contact.lastMessageAt).getTime() > STALE_AFTER_MS);
-  const isSelf = contact.relationshipType === "self";
-  const emoji = isSelf ? "🙋" : contact.relationship ? (RELATIONSHIP_EMOJI[contact.relationship] ?? "🧑") : "🧑";
-  const displayName = isSelf ? "You" : contact.fullName;
-
-  const lastMealLabel = contact.lastMealAt ? formatRelative(new Date(contact.lastMealAt)) : null;
-
-  return (
-    <div
-      className="bg-white rounded-2xl border border-gray-100 p-5 hover:border-[var(--color-dashboard-primary)] hover:shadow-md transition-all cursor-pointer text-left"
-      role={onOpen ? "button" : undefined}
-      tabIndex={onOpen ? 0 : undefined}
-      onClick={onOpen}
-      onKeyDown={onOpen ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } } : undefined}
-    >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-11 h-11 rounded-full bg-[var(--color-dashboard-primary-light)] flex items-center justify-center flex-shrink-0">
-              <span className="text-sm font-bold text-[var(--color-dashboard-primary)]">{initials}</span>
-            </div>
-            {isActive ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 border-2 border-white rounded-full" /> : invitePending ? <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-amber-400 border-2 border-white rounded-full" /> : null}
-          </div>
-          <div>
-            <p className="font-semibold text-gray-900 text-sm">{displayName}</p>
-            <p className="text-xs text-gray-400">
-              {emoji} {isSelf ? "Self-tracking" : contact.relationship ? contact.relationship.charAt(0).toUpperCase() + contact.relationship.slice(1) : "Contact"}
-              {contact.age ? `, ${contact.age}y` : ""}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            isStale ? "bg-amber-50 text-amber-700"
-            : isActive ? "bg-green-50 text-green-700"
-            : inviteAccepted ? "bg-blue-50 text-blue-700"
-            : invitePending ? "bg-amber-50 text-amber-700"
-            : "bg-gray-100 text-gray-500"
-          }`}>
-            {isStale ? "Reminders paused" : isActive ? "Active" : inviteAccepted ? "Accepted" : invitePending ? "Not connected yet" : "Not invited"}
-          </span>
-          {onRemove && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="text-xs text-gray-400 hover:text-red-600 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 rounded"
-              aria-label={`Remove ${contact.fullName}`}
-            >
-              Remove
-            </button>
-          )}
-        </div>
-      </div>
-
-      {isActive && (
-        <div className="flex items-center gap-2 mb-4 bg-green-50 rounded-xl px-3 py-2">
-          <span>🍽️</span>
-          <div>
-            <p className="text-xs font-medium text-green-800">
-              {isSelf
-                ? `You logged ${contact.mealCount} meal${contact.mealCount !== 1 ? "s" : ""} this week`
-                : `${contact.mealCount} meal${contact.mealCount !== 1 ? "s" : ""} logged`}
-            </p>
-            {lastMealLabel && <p className="text-xs text-green-600">Last: {lastMealLabel}</p>}
-          </div>
-        </div>
-      )}
-
-      {!isActive && !inviteAccepted && (
-        // Real WhatsApp-first invite, shown right in the list — not just a
-        // "we sent something" claim (see src/lib/invites). Stops click
-        // propagation so its buttons don't trigger the card's onOpen
-        // navigation. Shown for "self" too — that contact still needs its
-        // own WhatsApp number connected, same as any other (see the
-        // matching change in the self-plan add flow) — but self doesn't
-        // use InviteCard at all: getOrCreateFamilyInvite always creates a
-        // "family"-typed invite (regardless of the target's actual
-        // relationship), so its shareLink is always set, and InviteCard's
-        // own shareLink-vs-link fallback never actually reaches invite.link
-        // for a self contact — the button would open a recipient-less
-        // wa.me share link with no one sensible to pick, same bug as the
-        // mobile app's equivalent flow. A plain link straight to the bot's
-        // own number sidesteps that entirely.
-        <div className="mb-4" onClick={(e) => e.stopPropagation()}>
-          {isSelf ? (
-            <div className="rounded-xl bg-[var(--color-status-steady-bg)] px-3 py-2.5">
-              <p className="text-sm font-medium text-gray-700 mb-1">Connect your own WhatsApp number</p>
-              <p className="text-xs text-gray-500 mb-2">
-                This opens a WhatsApp chat with Tistra Health, ready to go — you&apos;ll see it connected here right away.
-              </p>
-              {tistraWhatsAppNumber && (
-                <a
-                  href={`https://wa.me/${tistraWhatsAppNumber}?text=${encodeURIComponent("Hi! I'm ready to start tracking my meals with Tistra Health 👋")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-2"
-                >
-                  Open WhatsApp to get started
-                </a>
-              )}
-            </div>
-          ) : (
-            <InviteCard
-              title="Ask them to start Tistra on WhatsApp"
-              description={`Send ${contact.fullName.split(" ")[0]} this link — they message the bot, and you'll see them connected here right away.`}
-              load={() => getOrCreateFamilyInvite(contact.id)}
-              regenerate={() => regenerateFamilyInvite(contact.id)}
-              revoke={() => revokeFamilyInvite(contact.id)}
-              onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
-            />
-          )}
-        </div>
-      )}
-
-      {isStale && (
-        // Distinct from the "never connected" InviteCard above — this
-        // contact has genuinely connected before, they've just gone quiet
-        // past WhatsApp's 24h customer-service window (see isStale's own
-        // comment). Family reuses the same underlying invite link (safe:
-        // the JOIN command just re-confirms an existing contact, doesn't
-        // create a duplicate) with "remind" framing; self gets a plain
-        // reconnect link instead, since self's JOIN handling always
-        // creates a *new* profile — reusing it on an already-linked
-        // contact would risk a duplicate.
-        <div className="mb-4" onClick={(e) => e.stopPropagation()}>
-          {isSelf ? (
-            <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2.5">
-              <p className="text-xs font-semibold text-amber-800 mb-1">
-                More than 24 hours have passed since you&apos;ve interacted with WhatsApp
-              </p>
-              <p className="text-xs text-amber-700 mb-2">Meal reminders won&apos;t be sent until you reconnect.</p>
-              {tistraWhatsAppNumber && (
-                <a
-                  href={`https://wa.me/${tistraWhatsAppNumber}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-amber-800 underline"
-                >
-                  Open WhatsApp
-                </a>
-              )}
-            </div>
-          ) : (
-            <InviteCard
-              title="Remind them to reopen Tistra on WhatsApp"
-              description={`More than 24 hours have passed since ${contact.fullName.split(" ")[0]} interacted with WhatsApp, so meal reminders won't be sent until they message the bot again.`}
-              load={() => getOrCreateFamilyInvite(contact.id)}
-              regenerate={() => regenerateFamilyInvite(contact.id)}
-              revoke={() => revokeFamilyInvite(contact.id)}
-              onLinkOpened={() => markFamilyInviteLinkOpened(contact.id)}
-            />
-          )}
-        </div>
-      )}
-
-      {contact.nutritionGoals && contact.nutritionGoals.length > 0 ? (
-        <div className="rounded-xl bg-[var(--color-dashboard-primary-light)] px-3 py-2">
-          <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] mb-0.5">
-            {contact.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")}
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-xl px-3 py-2 bg-gray-50 text-gray-400 text-xs">No goal set</div>
-      )}
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 px-5 py-4">
-      <p className="text-2xl font-bold text-gray-900 mb-1">{value}</p>
-      <p className="text-xs text-gray-500">{label}</p>
-    </div>
-  );
-}
-
-function formatRelative(date: Date): string {
-  const diffMins = Math.floor((Date.now() - date.getTime()) / 60000);
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.floor(diffHours / 24)}d ago`;
 }

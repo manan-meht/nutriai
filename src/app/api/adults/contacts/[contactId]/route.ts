@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import {
   updateContact,
   getContactDetails,
@@ -8,6 +8,7 @@ import {
   revokeFamilyInvite,
   markFamilyInviteLinkOpened,
 } from "@/app/(adults)/adults/dashboard/actions";
+import { CONTACT_AVATARS_BUCKET, resolveSignedContactAvatarUrl } from "@nutriai/nutrition-core";
 import { FOOD_BALANCE_SCORE_ENABLED, isMealSpecificRecommendationsEnabledFor } from "@/lib/billing/feature-flags";
 import { mapMealLogToFoodBalanceInput, mapRowToFoodBalanceProfile, resolveMacroTargets } from "@/lib/food-balance/adapter";
 import { personalizeFoodBalanceRecommendations } from "@/lib/food-balance/personalize";
@@ -100,6 +101,50 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .eq("caregiver_id", user.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
+  }
+
+  // Contact avatar upload — multipart/form-data (a real image file), not
+  // JSON like every other branch here, so this has to be checked before
+  // the generic request.json() parse below. Folded into this same route
+  // rather than a new file, same bundle-size reasoning as the rest of it.
+  if (new URL(request.url).searchParams.get("resource") === "avatar") {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const { data: owned } = await supabase
+      .from("adults_contacts")
+      .select("id")
+      .eq("id", contactId)
+      .eq("caregiver_id", user.id)
+      .maybeSingle();
+    if (!owned) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const formData = await request.formData().catch(() => null);
+    const file = formData?.get("photo");
+    if (!(file instanceof File)) return NextResponse.json({ error: "No photo provided" }, { status: 400 });
+    if (!file.type.startsWith("image/")) return NextResponse.json({ error: "File must be an image" }, { status: 400 });
+    // Generous but bounded — a phone camera photo is typically 2-8MB;
+    // this just guards against something wildly oversized.
+    if (file.size > 8 * 1024 * 1024) return NextResponse.json({ error: "Image is too large (max 8MB)" }, { status: 400 });
+
+    const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+    const path = `${contactId}/${Date.now()}.${extension}`;
+
+    const admin = createServiceClient();
+    const { error: uploadError } = await admin.storage
+      .from(CONTACT_AVATARS_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 });
+
+    const { error: updateError } = await admin
+      .from("adults_contacts")
+      .update({ photo_url: path })
+      .eq("id", contactId);
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
+
+    const photoUrl = await resolveSignedContactAvatarUrl(admin, path);
+    return NextResponse.json({ photoUrl });
   }
 
   const body = await request.json().catch(() => null);

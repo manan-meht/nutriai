@@ -2,6 +2,7 @@
 
 import React, { useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import Link from "next/link";
 import {
   recommendProteinGrams,
@@ -208,9 +209,15 @@ export function ProfileDashboard({
             </Link>
           )}
           <div className="flex items-center gap-3 flex-1">
-            <div className={`w-9 h-9 rounded-full ${theme.avatarBgClassName} flex items-center justify-center flex-shrink-0`}>
-              <span className={`text-sm font-bold ${theme.avatarTextClassName}`}>{initials}</span>
-            </div>
+            {profile.photoUrl ? (
+              <div className="relative w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                <Image src={profile.photoUrl} alt="" fill sizes="36px" className="object-cover" />
+              </div>
+            ) : (
+              <div className={`w-9 h-9 rounded-full ${theme.avatarBgClassName} flex items-center justify-center flex-shrink-0`}>
+                <span className={`text-sm font-bold ${theme.avatarTextClassName}`}>{initials}</span>
+              </div>
+            )}
             <div>
               <h1 className={`text-base font-bold ${theme.headerTextClassName} leading-tight`}>{profile.fullName}</h1>
               <p className={`text-xs ${theme.headerSubTextClassName}`}>

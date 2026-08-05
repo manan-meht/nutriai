@@ -5,6 +5,7 @@ import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
 import { applyExplicitPreferences, type FoodPreferenceSelections } from "@/lib/food-preferences";
 import { getOrCreateFamilyInvite } from "@/lib/invites";
+import { CONTACT_AVATARS_BUCKET, resolveSignedContactAvatarUrl } from "@nutriai/nutrition-core";
 
 export const runtime = "edge";
 
@@ -23,6 +24,7 @@ export const runtime = "edge";
 //   GET /adults/contacts/:contactId/food-preferences
 //   PATCH /adults/contacts/:contactId/food-preferences
 //   GET /adults/contacts/:contactId/invite            (get-or-create)
+//   PATCH /adults/contacts/:contactId/avatar          (multipart photo upload)
 //
 // Temporary Access Codes (mobile equivalent of the web app's
 // generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction
@@ -242,6 +244,40 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     return NextResponse.json({});
+  }
+
+  // Contact avatar upload — multipart/form-data (a real image file), not
+  // JSON like every other branch here. Mirrors the main web app's
+  // /api/adults/contacts/[contactId]?resource=avatar handler.
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "avatar") {
+    const { data: owned } = await auth.supabase
+      .from("adults_contacts")
+      .select("id")
+      .eq("id", path[1])
+      .eq("caregiver_id", auth.user.id)
+      .maybeSingle();
+    if (!owned) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const formData = await request.formData().catch(() => null);
+    const file = formData?.get("photo");
+    if (!(file instanceof File)) return NextResponse.json({ error: "No photo provided" }, { status: 400 });
+    if (!file.type.startsWith("image/")) return NextResponse.json({ error: "File must be an image" }, { status: 400 });
+    if (file.size > 8 * 1024 * 1024) return NextResponse.json({ error: "Image is too large (max 8MB)" }, { status: 400 });
+
+    const extension = file.type.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+    const avatarPath = `${path[1]}/${Date.now()}.${extension}`;
+
+    const admin = createServiceClient();
+    const { error: uploadError } = await admin.storage
+      .from(CONTACT_AVATARS_BUCKET)
+      .upload(avatarPath, file, { contentType: file.type, upsert: false });
+    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 400 });
+
+    const { error: updateError } = await admin.from("adults_contacts").update({ photo_url: avatarPath }).eq("id", path[1]);
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
+
+    const photoUrl = await resolveSignedContactAvatarUrl(admin, avatarPath);
+    return NextResponse.json({ photoUrl });
   }
 
   if (path.length !== 2 || path[0] !== "contacts") {

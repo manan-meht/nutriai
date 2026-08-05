@@ -42,6 +42,31 @@ async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
   return res.json();
 }
 
+/** Separate from apiRequest — that helper always sets Content-Type:
+ * application/json whenever a body is present, which would break a
+ * multipart upload (fetch needs to set its own Content-Type with the
+ * multipart boundary, which only happens automatically when nothing else
+ * sets that header first). Used for the contact-avatar upload — see
+ * ContactAvatarPicker's doc comment for why this takes a local file URI
+ * rather than a File/Blob (React Native has neither). */
+async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new ApiError(401, "Not authenticated");
+
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${session.access_token}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error ?? res.statusText);
+  }
+
+  return res.json();
+}
+
 // ---- Types mirroring apps/mobile-api's JSON responses ----
 // (Deliberately kept local rather than importing @nutriai/nutrition-core,
 // even though this app now has build-time access to that workspace
@@ -142,6 +167,9 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   heightCm?: number;
   mealCount: number;
   lastMealAt?: string;
+  /** Short-lived signed URL — undefined when no photo has been uploaded,
+   * in which case the UI falls back to a colored-initials placeholder. */
+  photoUrl?: string;
   macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
   goals: Goal[];
   trackedBiomarkers: string[];
@@ -476,6 +504,16 @@ export const api = {
   getFamilyInvite: (contactId: string) => apiFetch<InviteSummary>(`/adults/contacts/${contactId}/invite`),
   updateAdultsContact: (contactId: string, body: unknown) =>
     apiRequest<{ id: string }>(`/adults/contacts/${contactId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  /** `imageUri` is a local file:// URI from expo-image-picker — React
+   * Native's fetch accepts { uri, name, type } in place of a real
+   * File/Blob for FormData entries (there's no File/Blob for an on-device
+   * photo in RN the way there is in a browser). */
+  uploadContactAvatar: (contactId: string, imageUri: string, mimeType: string) => {
+    const formData = new FormData();
+    const extension = mimeType.split("/")[1]?.replace("jpeg", "jpg") || "jpg";
+    formData.append("photo", { uri: imageUri, name: `avatar.${extension}`, type: mimeType } as any);
+    return apiUpload<{ photoUrl: string }>(`/adults/contacts/${contactId}/avatar`, formData);
+  },
   createGymClient: (body: unknown) =>
     apiRequest<{ id: string }>("/gym/clients", { method: "POST", body: JSON.stringify(body) }),
   updateGymClient: (clientId: string, body: unknown) =>

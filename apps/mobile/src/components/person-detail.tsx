@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { FlatList, Linking, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Linking, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 
 import { AccessCodeCard } from './access-code-card';
@@ -23,8 +24,16 @@ import { calculateEnergyTargetRange, proteinTargetG, mapDerivedToLegacyActivityL
 import { buildMealShareData } from '@/lib/meal-share/types';
 import { inviteStatusFor, type InviteStatus } from '@/lib/invite-status';
 
+function initialsFor(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
 interface PersonLike extends FoodBalanceProfileFields {
   fullName: string;
+  /** Short-lived signed URL — undefined falls back to colored initials.
+   * adults-only for now (see PersonCard's identical field). */
+  photoUrl?: string;
   age?: number;
   gender?: string;
   weightKg?: number;
@@ -87,6 +96,47 @@ export function PersonDetail({
   const [sharingMeal, setSharingMeal] = useState<MealLog | null>(null);
   const MEALS_PAGE_SIZE = 10;
   const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
+
+  // Contact avatar — adults-only (foodBalanceQuery only has contactId for
+  // adults, never for gym clients). Local state so the new photo shows
+  // immediately after upload without waiting for the parent screen to
+  // refetch the whole contact.
+  const [photoOverride, setPhotoOverride] = useState<{ contactId: string; url: string } | null>(null);
+  const photoUrl =
+    photoOverride && 'contactId' in foodBalanceQuery && photoOverride.contactId === foodBalanceQuery.contactId
+      ? photoOverride.url
+      : person.photoUrl;
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  async function handleChangePhoto() {
+    if (!('contactId' in foodBalanceQuery) || uploadingPhoto) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to add a profile photo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setUploadingPhoto(true);
+    try {
+      const { photoUrl: uploaded } = await api.uploadContactAvatar(
+        foodBalanceQuery.contactId,
+        asset.uri,
+        asset.mimeType ?? 'image/jpeg'
+      );
+      setPhotoOverride({ contactId: foodBalanceQuery.contactId, url: uploaded });
+    } catch (err) {
+      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Could not upload photo.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
 
   const latestBiomarker = biomarkers?.[biomarkers.length - 1];
 
@@ -203,6 +253,23 @@ export function PersonDetail({
             )}
 
             <View>
+              {'contactId' in foodBalanceQuery && (
+                <Pressable onPress={handleChangePhoto} disabled={uploadingPhoto} style={styles.avatarRow}>
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.avatarLarge} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.avatarLarge, { backgroundColor: theme.backgroundSelected }]}>
+                      <ThemedText type="default" style={styles.avatarLargeText}>
+                        {initialsFor(person.fullName)}
+                      </ThemedText>
+                    </View>
+                  )}
+                  <ThemedText type="link" style={styles.avatarLink}>
+                    {uploadingPhoto ? 'Uploading…' : photoUrl ? 'Change photo' : 'Add photo'}
+                  </ThemedText>
+                </Pressable>
+              )}
+
               <ThemedText type="title" style={styles.name}>
                 {person.fullName}
               </ThemedText>
@@ -538,6 +605,10 @@ function HealthCard({
 const styles = StyleSheet.create({
   list: { padding: Spacing.three, paddingBottom: Spacing.four },
   sections: { gap: Spacing.four, marginBottom: Spacing.two },
+  avatarRow: { alignItems: 'center', marginBottom: Spacing.two },
+  avatarLarge: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.half },
+  avatarLargeText: { fontWeight: '700', fontSize: 28 },
+  avatarLink: { fontSize: 14 },
   name: { fontSize: 24, lineHeight: 30, marginBottom: Spacing.half },
   subtitle: { marginBottom: Spacing.three },
   goalPill: { alignSelf: 'flex-start', borderRadius: Spacing.four, paddingHorizontal: Spacing.three, paddingVertical: Spacing.one, marginTop: Spacing.two },

@@ -88,3 +88,29 @@ export function computeMacroWindowSummaries(
     week: { ...week, calories: Math.round(week.calories), proteinG: Math.round(week.proteinG), carbsG: Math.round(week.carbsG), fatG: Math.round(week.fatG) },
   };
 }
+
+/** Total logged calories per day for a rolling 7-day window ending today
+ * (oldest first) — feeds the family dashboard's MiniTrendChart sparkline.
+ * A rolling window, not the Monday-start calendar week computeMacroWindow
+ * Summaries uses above, since a trend line reads oddly resetting to empty
+ * every Monday. Days with no meals come back as 0, not omitted, so the
+ * chart's x-axis stays evenly spaced. */
+export function computeDailyCalories(meals: MealMacroRow[], timezone: string, now: Date = new Date()): number[] {
+  const nowKey = localDateKey(now, timezone);
+  const days = 7;
+  const byDayUtcMidnight = new Map<number, number>();
+  for (let i = 0; i < days; i++) {
+    byDayUtcMidnight.set(nowKey.utcMidnight - i * 86_400_000, 0);
+  }
+
+  for (const m of meals) {
+    const mealKey = localDateKey(new Date(m.logged_at), timezone);
+    if (!byDayUtcMidnight.has(mealKey.utcMidnight)) continue;
+    const calories = midpoint(m.total_calories_min, m.total_calories_max);
+    byDayUtcMidnight.set(mealKey.utcMidnight, (byDayUtcMidnight.get(mealKey.utcMidnight) ?? 0) + calories);
+  }
+
+  return [...byDayUtcMidnight.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, calories]) => Math.round(calories));
+}

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { AdultsContact } from "@/app/(adults)/adults/dashboard/actions";
 import { getFoodPreferences } from "@/app/(adults)/adults/dashboard/actions";
 import { COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 import { NutritionGoalFields, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
 import { NutritionTargetsCard } from "@/components/shared/dashboard/NutritionTargetsCard";
 import { FoodPreferencesEditor } from "@/components/adults/FoodPreferencesEditor";
+import { ContactAvatar } from "@/components/shared/dashboard/ContactAvatar";
 import type { DietaryProfile } from "@/lib/dietary-profile";
 
 interface Props {
@@ -40,6 +41,42 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
   const [foodPrefsExpanded, setFoodPrefsExpanded] = useState(false);
   const [dietaryProfile, setDietaryProfile] = useState<DietaryProfile | null>(null);
   const [loadingDietaryProfile, setLoadingDietaryProfile] = useState(false);
+
+  const [photoUrl, setPhotoUrl] = useState(contact.photoUrl);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Plain <input type="file" accept="image/*"> rather than any native
+  // camera API — on a phone browser this alone already offers "Camera" as
+  // one of the picker options (the OS adds it), so there's no need for a
+  // separate capture-vs-library affordance; on desktop it's just a normal
+  // file picker. Uploads through the same plain-HTTP-route pattern as the
+  // rest of this modal (see fetchJson's doc comment) rather than a Server
+  // Action, since this needs multipart/form-data for the file itself.
+  async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setPhotoError(null);
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const res = await fetch(`/api/adults/contacts/${contact.id}?resource=avatar`, { method: "PATCH", body: formData });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.photoUrl) {
+        setPhotoError(json?.error ?? "Couldn't upload that photo. Please try again.");
+        return;
+      }
+      setPhotoUrl(json.photoUrl);
+    } catch {
+      setPhotoError("Couldn't reach the server. Please try again.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
 
   async function toggleFoodPrefs() {
     const next = !foodPrefsExpanded;
@@ -131,6 +168,27 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
         </div>
 
         <div className="space-y-3">
+          <div className="flex items-center gap-4">
+            <ContactAvatar photoUrl={photoUrl} fullName={fullName || contact.fullName} size="lg" ringed />
+            <div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingPhoto}
+                className="text-sm font-medium text-[var(--color-dashboard-primary)] disabled:opacity-50"
+              >
+                {uploadingPhoto ? "Uploading…" : photoUrl ? "Change photo" : "Add photo"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                className="hidden"
+              />
+              {photoError && <p className="text-xs text-[var(--color-status-support-text)] mt-1">{photoError}</p>}
+            </div>
+          </div>
           <Field label="Name">
             <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} />
           </Field>

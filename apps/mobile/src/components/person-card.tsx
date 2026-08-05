@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import { bandLabelFor } from './food-balance-score-card';
 import { ThemedText } from './themed-text';
@@ -32,6 +33,7 @@ function initialsFor(fullName: string): string {
  * the API doesn't actually provide (no compliance %, alerts, etc.). */
 export function PersonCard({
   fullName,
+  photoUrl,
   subtitle,
   mealCount,
   lastMealAt,
@@ -43,6 +45,10 @@ export function PersonCard({
   invite,
 }: {
   fullName: string;
+  /** Short-lived signed URL — undefined falls back to colored initials,
+   * the same industry-standard pattern as the web dashboard's
+   * ContactAvatar. */
+  photoUrl?: string;
   subtitle?: string;
   mealCount: number;
   lastMealAt?: string;
@@ -133,11 +139,15 @@ export function PersonCard({
     <Pressable onPress={onPress} onLongPress={onLongPress} style={dimmed ? styles.dimmed : undefined}>
       <ThemedView type="backgroundElement" style={styles.card}>
         <View style={styles.header}>
-          <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
-            <ThemedText type="default" style={styles.avatarText}>
-              {initialsFor(fullName)}
-            </ThemedText>
-          </View>
+          {photoUrl ? (
+            <Image source={{ uri: photoUrl }} style={styles.avatar} contentFit="cover" />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
+              <ThemedText type="default" style={styles.avatarText}>
+                {initialsFor(fullName)}
+              </ThemedText>
+            </View>
+          )}
           <View style={styles.headerText}>
             <ThemedText type="default" style={styles.name}>
               {fullName}

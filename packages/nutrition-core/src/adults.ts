@@ -1,12 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
-import { resolveSignedMealPhotoUrls } from "./storage";
-import { computeMacroWindowSummaries } from "./macro-summary";
+import { resolveSignedMealPhotoUrls, resolveSignedContactAvatarUrl } from "./storage";
+import { computeMacroWindowSummaries, computeDailyCalories } from "./macro-summary";
 import type { AdultsContact, AdultsContactDetails, AdultsMealLog } from "./types";
 
 interface ContactMealSummary {
   count: number;
   lastAt?: string;
+  /** Raw stored path/URL of the most recent meal's photo (first row, since
+   * fetchMealsByContact orders by logged_at desc) — signed in bulk by
+   * fetchLastMealPhotosByContact, same pattern as fetchAvatarsByContact.
+   * Undefined if that meal has no photo, in which case the dashboard shows
+   * a placeholder rather than omitting the "Last meal" slot entirely. */
+  lastImageUrl?: string;
   mealRows: Array<{
     logged_at: string;
     total_calories_min: number | null;
@@ -20,7 +26,13 @@ interface ContactMealSummary {
   }>;
 }
 
-function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary>, lastMessageByContact: Record<string, string> = {}): AdultsContact {
+function mapContactRow(
+  c: any,
+  mealsByContact: Record<string, ContactMealSummary>,
+  lastMessageByContact: Record<string, string> = {},
+  photoUrlByContact: Record<string, string> = {},
+  lastMealPhotoByContact: Record<string, string> = {}
+): AdultsContact {
   return {
     id: c.id,
     workspaceId: c.workspace_id,
@@ -41,7 +53,10 @@ function mapContactRow(c: any, mealsByContact: Record<string, ContactMealSummary
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     mealCount: mealsByContact[c.id]?.count ?? 0,
     lastMealAt: mealsByContact[c.id]?.lastAt,
+    photoUrl: photoUrlByContact[c.id],
+    lastMealPhotoUrl: lastMealPhotoByContact[c.id],
     macroSummary: computeMacroWindowSummaries(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
+    last7DaysCalories: computeDailyCalories(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
     timezone: c.timezone ?? "Asia/Kolkata",
     remindersEnabled: c.reminders_enabled ?? false,
     reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],
@@ -77,7 +92,7 @@ async function fetchMealsByContact(supabase: SupabaseClient, contactIds: string[
   const { data: meals } = await supabase
     .from("meal_logs")
     .select(
-      "adults_contact_id, logged_at, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max"
+      "adults_contact_id, logged_at, image_url, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max"
     )
     .in("adults_contact_id", contactIds)
     .order("logged_at", { ascending: false });
@@ -86,12 +101,25 @@ async function fetchMealsByContact(supabase: SupabaseClient, contactIds: string[
   for (const m of meals ?? []) {
     if (!m.adults_contact_id) continue;
     if (!mealsByContact[m.adults_contact_id]) {
-      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at, mealRows: [] };
+      mealsByContact[m.adults_contact_id] = { count: 0, lastAt: m.logged_at, lastImageUrl: m.image_url ?? undefined, mealRows: [] };
     }
     mealsByContact[m.adults_contact_id].count++;
     mealsByContact[m.adults_contact_id].mealRows.push(m);
   }
   return mealsByContact;
+}
+
+/** Signs the most recent meal photo (see ContactMealSummary.lastImageUrl)
+ * per contact in one batch, same pattern as fetchAvatarsByContact — meal-
+ * photos is a private bucket (0040_private_meal_photos.sql). */
+async function fetchLastMealPhotosByContact(admin: SupabaseClient, mealsByContact: Record<string, ContactMealSummary>): Promise<Record<string, string>> {
+  const contactIds = Object.keys(mealsByContact);
+  const signedUrls = await resolveSignedMealPhotoUrls(admin, contactIds.map((id) => mealsByContact[id].lastImageUrl));
+  const byContact: Record<string, string> = {};
+  contactIds.forEach((id, i) => {
+    if (signedUrls[i]) byContact[id] = signedUrls[i] as string;
+  });
+  return byContact;
 }
 
 /** whatsapp_conversations has RLS enabled with no policies (service-role
@@ -111,6 +139,19 @@ async function fetchLastMessageByContact(admin: SupabaseClient, contactIds: stri
   return byContact;
 }
 
+/** contact-avatars is a private bucket from the outset (see
+ * 0049_contact_avatars.sql) — resolves every contact's stored photo_url
+ * path to a short-lived signed URL in one batch, service-role only, same
+ * convention as fetchLastMessageByContact. */
+async function fetchAvatarsByContact(admin: SupabaseClient, contacts: any[]): Promise<Record<string, string>> {
+  const signedUrls = await Promise.all(contacts.map((c) => resolveSignedContactAvatarUrl(admin, c.photo_url)));
+  const byContact: Record<string, string> = {};
+  contacts.forEach((c, i) => {
+    if (signedUrls[i]) byContact[c.id] = signedUrls[i] as string;
+  });
+  return byContact;
+}
+
 /** Active (non-removed) contacts for a workspace. `supabase` should be an
  * RLS-scoped client (cookie- or bearer-token-authenticated) — this only
  * returns what that client's policies allow. `admin` is a service-role
@@ -127,11 +168,13 @@ export async function getContacts(workspaceId: string, supabase: SupabaseClient,
   if (!contacts?.length) return [];
 
   const contactIds = contacts.map((c: any) => c.id);
-  const [mealsByContact, lastMessageByContact] = await Promise.all([
-    fetchMealsByContact(supabase, contactIds),
+  const mealsByContact = await fetchMealsByContact(supabase, contactIds);
+  const [lastMessageByContact, photoUrlByContact, lastMealPhotoByContact] = await Promise.all([
     fetchLastMessageByContact(admin, contactIds),
+    fetchAvatarsByContact(admin, contacts),
+    fetchLastMealPhotosByContact(admin, mealsByContact),
   ]);
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact));
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact, photoUrlByContact, lastMealPhotoByContact));
 }
 
 /** Previously-removed family members — data preserved and viewable, but they
@@ -147,11 +190,13 @@ export async function getRemovedContacts(workspaceId: string, supabase: Supabase
   if (!contacts?.length) return [];
 
   const contactIds = contacts.map((c: any) => c.id);
-  const [mealsByContact, lastMessageByContact] = await Promise.all([
-    fetchMealsByContact(supabase, contactIds),
+  const mealsByContact = await fetchMealsByContact(supabase, contactIds);
+  const [lastMessageByContact, photoUrlByContact, lastMealPhotoByContact] = await Promise.all([
     fetchLastMessageByContact(admin, contactIds),
+    fetchAvatarsByContact(admin, contacts),
+    fetchLastMealPhotosByContact(admin, mealsByContact),
   ]);
-  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact));
+  return contacts.map((c: any) => mapContactRow(c, mealsByContact, lastMessageByContact, photoUrlByContact, lastMealPhotoByContact));
 }
 
 /** A single contact's profile plus recent meal history, scoped to the
@@ -195,8 +240,12 @@ export async function getContactDetails(
   const mealsByContact: Record<string, ContactMealSummary> = {
     [contactId]: { count: mealsRes.data?.length ?? 0, lastAt: mealsRes.data?.[0]?.logged_at, mealRows: mealsRes.data ?? [] },
   };
-  const lastMessageByContact = await fetchLastMessageByContact(admin, [contactId]);
-  const contact = mapContactRow(c, mealsByContact, lastMessageByContact);
+  const [lastMessageByContact, photoUrlByContact, lastMealPhotoByContact] = await Promise.all([
+    fetchLastMessageByContact(admin, [contactId]),
+    fetchAvatarsByContact(admin, [c]),
+    fetchLastMealPhotosByContact(admin, mealsByContact),
+  ]);
+  const contact = mapContactRow(c, mealsByContact, lastMessageByContact, photoUrlByContact, lastMealPhotoByContact);
 
   const rawMeals = mealsRes.data ?? [];
   const [corrections, signedImageUrls] = await Promise.all([

@@ -356,6 +356,7 @@ export default function AdultsContactListScreen() {
         renderItem={({ item }) => (
           <PersonCard
             fullName={item.fullName}
+            photoUrl={item.photoUrl}
             subtitle={subtitleFor(item)}
             mealCount={item.mealCount}
             lastMealAt={item.lastMealAt}
@@ -411,6 +412,7 @@ export default function AdultsContactListScreen() {
                     <PersonCard
                       key={contact.id}
                       fullName={contact.fullName}
+                      photoUrl={contact.photoUrl}
                       subtitle={subtitleFor(contact)}
                       mealCount={contact.mealCount}
                       lastMealAt={contact.lastMealAt}

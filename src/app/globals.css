@@ -23,6 +23,26 @@
   --color-status-support-bg: #FBEAEA;
   --color-status-support-text: #9B4A44;
   --color-status-support-dot: #E8A19C;
+
+  /* Family dashboard (AdultsDashboardClient) — light mode. */
+  --color-dashboard-page-bg: #FAFAFC;
+  --color-dashboard-dark-card: #FFFFFF;
+  --color-fbs-ring-track: #EDE9F7;
+}
+
+/* Family dashboard dark mode — not a plain inversion (see
+   family-dashboard-redesign spec): near-black page with a soft purple
+   glow, elevated charcoal cards, translucent purple/amber tints rather
+   than flat dark fills. Scoped to this page's own CSS vars (dashboard-*)
+   rather than a site-wide dark theme, since no other page has dark-mode
+   styling yet — see AdultsDashboardClient's own radial-glow header. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-dashboard-primary-light: rgba(103, 80, 164, 0.18);
+    --color-dashboard-page-bg: #0B0B10;
+    --color-dashboard-dark-card: #16151C;
+    --color-fbs-ring-track: rgba(255, 255, 255, 0.08);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
