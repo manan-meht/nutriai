@@ -193,6 +193,15 @@ export interface AdultsContact extends FoodBalanceProfileFields {
    * blocks meal reminders (see send-meal-reminders/route.ts). Undefined if
    * the contact has no conversation row yet. */
   lastMessageAt?: string;
+  /** Short-lived signed URL for the most recent logged meal's photo —
+   * undefined if that meal has no photo or there are no meals yet, in
+   * which case the UI shows a placeholder. Mirrors the web dashboard's
+   * identical field (see AdultsContact in @nutriai/nutrition-core). */
+  lastMealPhotoUrl?: string;
+  /** Total logged calories per day for the rolling 7 days ending today,
+   * oldest first, always 7 entries (0 for days with no meals) — feeds
+   * FamilyHealthCard's calorie trend sparkline. */
+  last7DaysCalories?: number[];
 }
 
 export interface MealLog {

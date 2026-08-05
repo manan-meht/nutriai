@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Purchases from 'react-native-purchases';
 
 import { Collapsible } from '@/components/ui/collapsible';
-import { PersonCard } from '@/components/person-card';
+import { FamilyHealthCard, type FamilyCardStatus } from '@/components/family-health-card';
+import { FamilyAvatarStack } from '@/components/family-avatar-stack';
 import { EmptyState, ErrorState, LoadingState } from '@/components/screen-states';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,12 +14,12 @@ import { useAuth } from '@/lib/auth-context';
 import { api, type AdultsContact } from '@/lib/api';
 import { inviteStatusFor } from '@/lib/invite-status';
 import { displayEmail } from '@/lib/auth';
-import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
 import { hasActiveEntitlement } from '@/lib/purchases';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { PushPermissionCard } from '@/components/push-permission-card';
+import { useTheme } from '@/hooks/use-theme';
 
 // The RevenueCat entitlement + offering identifiers for the "buy 1 more
 // slot" add-on (adults_additional_person, see this repo's RevenueCat setup
@@ -58,17 +59,6 @@ type State =
 // button entirely once the limit is reached instead.
 const FAMILY_MEMBER_LIMIT = 2;
 
-const RELATIONSHIP_LABELS: Record<string, string> = {
-  self: 'You',
-  family_caregiver: 'Family member',
-};
-
-function subtitleFor(contact: AdultsContact): string {
-  const relationship = contact.relationship || RELATIONSHIP_LABELS[contact.relationshipType] || 'Family member';
-  const goal = contact.nutritionGoals?.length ? contact.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(', ') : undefined;
-  return goal ? `${relationship} · ${goal}` : relationship;
-}
-
 function firstNameFromSession(email?: string | null): string {
   // displayEmail strips the "+nutriai-adults" product scope tag (see
   // scopedEmail in @/lib/auth) before deriving a name from it — without
@@ -80,6 +70,7 @@ function firstNameFromSession(email?: string | null): string {
 
 export default function AdultsContactListScreen() {
   const { session } = useAuth();
+  const theme = useTheme();
   // Only ever set (to "1") the one time (app)/index.tsx's product picker
   // routes here right after someone picks "Self" for a brand-new signup —
   // see getAdultsWorkspace's own doc comment for why this needs to reach
@@ -89,7 +80,20 @@ export default function AdultsContactListScreen() {
   const { self: selfParam, justPurchased } = useLocalSearchParams<{ self?: string; justPurchased?: string }>();
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
-  const [buyingCapacity, setBuyingCapacity] = useState(false);
+  const [, setBuyingCapacity] = useState(false);
+
+  // Per-card Active/Focus/Reminder contribution, reported by each
+  // FamilyHealthCard once its own Food Balance Score fetch resolves —
+  // mirrors the web dashboard's identical cardStatuses state
+  // (AdultsDashboardClient.tsx).
+  const [cardStatuses, setCardStatuses] = useState<Record<string, FamilyCardStatus>>({});
+  const handleCardStatus = useCallback((contactId: string, status: FamilyCardStatus) => {
+    setCardStatuses((prev) =>
+      prev[contactId]?.active === status.active && prev[contactId]?.hasFocus === status.hasFocus && prev[contactId]?.reminderPaused === status.reminderPaused
+        ? prev
+        : { ...prev, [contactId]: status }
+    );
+  }, []);
 
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
@@ -270,6 +274,28 @@ export default function AdultsContactListScreen() {
   const familyLimit = FAMILY_MEMBER_LIMIT + Math.max(0, state.extraCapacity);
   const canAdd = state.contacts.length < familyLimit;
 
+  // Shown when the "+" add action in the family summary strip is tapped at
+  // the family-member limit — mirrors the web dashboard's
+  // handleLimitReachedClick (contextual, not a permanent banner).
+  // Reuses the `plan` captured above (plain string, not read from `state`
+  // inside the closure) — same reason handleAddPress takes `plan` as a
+  // parameter instead of reading state.plan directly: TS can't retain
+  // state's 'ready'-status narrowing inside a nested function closure.
+  function handleLimitReachedPress() {
+    const message =
+      plan === 'self'
+        ? "You've reached the limit for this account."
+        : `You've reached the limit of ${familyLimit} family member${familyLimit === 1 ? '' : 's'} for this account.`;
+    if (plan !== 'self') {
+      Alert.alert('Limit reached', `${message} Buy 1 more slot?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Buy 1 more slot', onPress: handleBuyCapacity },
+      ]);
+    } else {
+      Alert.alert('Limit reached', message);
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
       <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
@@ -282,50 +308,65 @@ export default function AdultsContactListScreen() {
           <>
             {state.contacts.length > 0 && (
               <View style={styles.header}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Good morning, {firstName}
-                </ThemedText>
                 <ThemedText type="subtitle" style={styles.headline}>
-                  {state.plan === 'self' ? 'Your dashboard' : 'Who would you like to check in on?'}
+                  {state.plan === 'self' ? 'You' : 'Family'}
                 </ThemedText>
-                <ThemedText type="default" themeColor="textSecondary">
-                  {state.plan === 'self'
-                    ? 'Tap below to view your meals, progress, and recommendations.'
-                    : 'Choose a family member to view their meals, progress, and recommendations.'}
+                <ThemedText type="small" themeColor="textSecondary">
+                  Good morning, {firstName} 👋
                 </ThemedText>
-                {state.plan !== 'self' && (
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
-                    Tip: press and hold a family member to remove them.
-                  </ThemedText>
-                )}
               </View>
             )}
+
+            {state.contacts.length > 0 && (
+              <View style={[styles.summaryStrip, { backgroundColor: theme.backgroundElement }]}>
+                <FamilyAvatarStack
+                  people={state.contacts.map((c) => ({ id: c.id, fullName: c.fullName, photoUrl: c.photoUrl }))}
+                  onAdd={state.plan === 'self' ? undefined : canAdd ? () => handleAddPress(state.plan, state.requiresCardBeforeTrial) : handleLimitReachedPress}
+                />
+                <View style={styles.summaryStats}>
+                  {[
+                    { label: 'Active', value: state.contacts.filter((c) => cardStatuses[c.id]?.active ?? c.mealCount > 0).length },
+                    { label: 'Focus', value: state.contacts.filter((c) => cardStatuses[c.id]?.hasFocus).length },
+                    { label: 'Reminder', value: state.contacts.filter((c) => cardStatuses[c.id]?.reminderPaused).length },
+                  ].map((stat, i) => (
+                    <View key={stat.label} style={[styles.summaryStatItem, i > 0 && { borderLeftWidth: 1, borderLeftColor: theme.backgroundSelected }]}>
+                      <ThemedText type="smallBold" style={styles.summaryStatValue}>
+                        {stat.value}
+                      </ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary" style={styles.summaryStatLabel}>
+                        {stat.label}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
             {state.plan === 'family' && <PushPermissionCard message="when a loved one logs a meal" />}
-            {state.isBillingWhitelisted ? (
-              // Takes priority over every other banner — a whitelisted
-              // test account should never see payment prompts or a trial
-              // countdown, since neither is real for this account.
-              <ThemedView type="backgroundElement" style={styles.trialBanner}>
-                <ThemedText type="small">You have a whitelisted test account — no payment is needed to use Tistra Health.</ThemedText>
-              </ThemedView>
-            ) : stillRequiresCardAfterPurchase ? (
-              <ThemedView type="backgroundElement" style={styles.trialBanner}>
-                <ThemedText type="small">Confirming your subscription — this can take a few seconds…</ThemedText>
-              </ThemedView>
-            ) : state.requiresCardBeforeTrial ? (
-              <ThemedView type="backgroundElement" style={styles.trialBanner}>
-                <ThemedText type="small">
-                  Add a payment method to start your free 14-day trial — you won&apos;t be charged until it ends, and you can
-                  cancel anytime before then.
-                </ThemedText>
-              </ThemedView>
-            ) : state.entitlementStatus === 'trialing' && state.trialDaysRemaining !== null ? (
-              <ThemedView type="backgroundElement" style={styles.trialBanner}>
-                <ThemedText type="small">
-                  Free trial — {state.trialDaysRemaining} day{state.trialDaysRemaining === 1 ? '' : 's'} remaining.
-                </ThemedText>
-              </ThemedView>
-            ) : null}
+
+            {(() => {
+              // Same priority order as before (whitelisted > confirming
+              // purchase > requires card > trialing), just a single compact
+              // pill now instead of a full-width banner — mirrors the web
+              // dashboard's AccountStatusPill.tsx.
+              const pill = state.isBillingWhitelisted
+                ? { text: '✓ Test account' }
+                : stillRequiresCardAfterPurchase
+                  ? { text: 'Confirming your subscription…' }
+                  : state.requiresCardBeforeTrial
+                    ? { text: 'Add a payment method to start your trial' }
+                    : state.entitlementStatus === 'trialing' && state.trialDaysRemaining !== null
+                      ? { text: `Trial · ${state.trialDaysRemaining} day${state.trialDaysRemaining === 1 ? '' : 's'} left` }
+                      : null;
+              if (!pill) return null;
+              return (
+                <View style={[styles.statusPill, { backgroundColor: theme.backgroundSelected }]}>
+                  <ThemedText type="small" style={{ color: theme.primary, fontWeight: '600' }}>
+                    {pill.text}
+                  </ThemedText>
+                </View>
+              );
+            })()}
           </>
         }
         ListEmptyComponent={
@@ -354,16 +395,11 @@ export default function AdultsContactListScreen() {
           )
         }
         renderItem={({ item }) => (
-          <PersonCard
-            fullName={item.fullName}
-            photoUrl={item.photoUrl}
-            subtitle={subtitleFor(item)}
-            mealCount={item.mealCount}
-            lastMealAt={item.lastMealAt}
-            macroSummary={item.macroSummary}
-            scoreQuery={{ contactId: item.id }}
+          <FamilyHealthCard
+            contact={item}
             onPress={() => router.push(`/adults/${item.id}`)}
             onLongPress={() => confirmRemove(item)}
+            onStatus={handleCardStatus}
             invite={(() => {
               const status = inviteStatusFor(item);
               return status === 'connected'
@@ -385,41 +421,11 @@ export default function AdultsContactListScreen() {
                 </ThemedText>
               </Pressable>
             )}
-            {state.contacts.length > 0 && !canAdd && (
-              <View style={styles.limitReachedCard}>
-                <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
-                  {state.plan === 'self'
-                    ? "You've reached the limit for this account."
-                    : `You've reached the limit of ${familyLimit} family member${familyLimit === 1 ? '' : 's'} for this account.`}
-                </ThemedText>
-                {state.plan !== 'self' && (
-                  <Pressable onPress={handleBuyCapacity} disabled={buyingCapacity} style={styles.buyCapacityButton}>
-                    {buyingCapacity ? (
-                      <ActivityIndicator />
-                    ) : (
-                      <ThemedText type="smallBold" style={styles.buyCapacityText}>
-                        Buy 1 more slot
-                      </ThemedText>
-                    )}
-                  </Pressable>
-                )}
-              </View>
-            )}
             {state.removedContacts.length > 0 && (
               <View style={styles.removedSection}>
                 <Collapsible title={`Previous family members (${state.removedContacts.length})`}>
                   {state.removedContacts.map((contact) => (
-                    <PersonCard
-                      key={contact.id}
-                      fullName={contact.fullName}
-                      photoUrl={contact.photoUrl}
-                      subtitle={subtitleFor(contact)}
-                      mealCount={contact.mealCount}
-                      lastMealAt={contact.lastMealAt}
-                      scoreQuery={{ contactId: contact.id }}
-                      onPress={() => router.push(`/adults/${contact.id}`)}
-                      dimmed
-                    />
+                    <FamilyHealthCard key={contact.id} contact={contact} onPress={() => router.push(`/adults/${contact.id}`)} dimmed />
                   ))}
                 </Collapsible>
               </View>
@@ -445,15 +451,30 @@ export default function AdultsContactListScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { paddingVertical: Spacing.three, flexGrow: 1 },
-  header: { paddingHorizontal: Spacing.three, marginBottom: Spacing.three, gap: Spacing.one },
-  trialBanner: {
+  header: { paddingHorizontal: Spacing.three, marginBottom: Spacing.two, gap: Spacing.half },
+  headline: { fontSize: 28, lineHeight: 32 },
+  summaryStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginHorizontal: Spacing.three,
     marginBottom: Spacing.three,
     padding: Spacing.three,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.three,
+    gap: Spacing.two,
   },
-  headline: { fontSize: 24, lineHeight: 30, marginVertical: Spacing.one },
-  hint: { marginTop: Spacing.one, fontStyle: 'italic' },
+  summaryStats: { flexDirection: 'row', alignItems: 'center' },
+  summaryStatItem: { alignItems: 'center', paddingHorizontal: Spacing.two },
+  summaryStatValue: { fontSize: 16 },
+  summaryStatLabel: { fontSize: 10 },
+  statusPill: {
+    alignSelf: 'flex-start',
+    marginHorizontal: Spacing.three,
+    marginBottom: Spacing.three,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+  },
   addCard: {
     borderRadius: Spacing.three,
     borderWidth: 2,
@@ -463,27 +484,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.four,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  limitReachedCard: {
-    borderRadius: Spacing.three,
-    marginHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  limitReachedText: {
-    textAlign: 'center',
-  },
-  buyCapacityButton: {
-    marginTop: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Spacing.two,
-    backgroundColor: '#5715CE',
-  },
-  buyCapacityText: {
-    color: '#ffffff',
   },
   addCardText: {
     fontWeight: '700',
