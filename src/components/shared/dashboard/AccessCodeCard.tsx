@@ -79,7 +79,10 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke,
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between gap-3 p-5 text-left"
       >
-        <span className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>Allow {personName} to see their data</span>
+        <span className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>
+          Allow {personName}
+          {" "}to see their data
+        </span>
         <svg
           className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""} ${dm ? "dark:text-gray-500" : ""}`}
           fill="none"
@@ -92,9 +95,15 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke,
 
       {expanded && (
         <div className="px-5 pb-5">
+          {/* {" "} after the interpolation, not a plain source space — a
+              literal space right after {personName} on the same JSX line
+              gets silently dropped by Next's SWC compiler (confirmed via a
+              direct render test: renders "NametextTextTextcan see..." with
+              no gap), unlike Babel which preserves it. */}
           <p className={`text-sm text-gray-500 mb-4 ${dm ? "dark:text-gray-400" : ""}`}>
-            {personName} can see their own data on a private link — you&apos;ll need to send them a one-time code so
-            they can open it. Generate a code below and share it with them.
+            {personName}{" "}
+            can see their own data on a private link — you&apos;ll need to send them a one-time code so they can
+            open it. Generate a code below and share it with them.
           </p>
 
           {!result && (
