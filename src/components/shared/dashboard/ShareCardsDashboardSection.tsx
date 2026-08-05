@@ -6,13 +6,13 @@ import type { FoodBalanceDataState } from "@/lib/food-balance/use-food-balance-d
 import { YourWinsSection } from "./YourWinsSection";
 import { AchievementsModal } from "./AchievementsModal";
 
-function WinsSkeleton() {
+function WinsSkeleton({ dm }: { dm?: boolean }) {
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5 animate-pulse" aria-hidden="true">
-      <div className="h-4 w-24 bg-gray-100 rounded mb-3" />
+    <div className={`rounded-2xl border border-gray-100 bg-white p-5 animate-pulse ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`} aria-hidden="true">
+      <div className={`h-4 w-24 bg-gray-100 rounded mb-3 ${dm ? "dark:bg-white/10" : ""}`} />
       <div className="flex gap-3">
-        <div className="w-48 h-20 bg-gray-100 rounded-2xl shrink-0" />
-        <div className="w-32 h-20 bg-gray-100 rounded-2xl shrink-0" />
+        <div className={`w-48 h-20 bg-gray-100 rounded-2xl shrink-0 ${dm ? "dark:bg-white/10" : ""}`} />
+        <div className={`w-32 h-20 bg-gray-100 rounded-2xl shrink-0 ${dm ? "dark:bg-white/10" : ""}`} />
       </div>
     </div>
   );
@@ -25,8 +25,10 @@ function WinsSkeleton() {
  * loading/error/ready states so this section can show its own properly-
  * sized skeleton instead of popping in once the (now-shared) fetch
  * resolves. */
-export function ShareCardsDashboardSection(params: ({ contactId: string } | { clientId: string }) & { data: FoodBalanceDataState }) {
-  const { data } = params;
+export function ShareCardsDashboardSection(
+  params: ({ contactId: string } | { clientId: string }) & { data: FoodBalanceDataState; dm?: boolean }
+) {
+  const { data, dm } = params;
   const basePath = "contactId" in params ? `/api/adults/contacts/${params.contactId}` : `/api/gym/clients/${params.clientId}`;
   const fetchedCards = data.status === "ready" ? data.cards : null;
   // A dismissal is the only local mutation this section ever needs — kept
@@ -51,7 +53,7 @@ export function ShareCardsDashboardSection(params: ({ contactId: string } | { cl
     }
   }
 
-  if (data.status === "loading") return <WinsSkeleton />;
+  if (data.status === "loading") return <WinsSkeleton dm={dm} />;
   if (cards === null) return null;
 
   return (
@@ -60,9 +62,10 @@ export function ShareCardsDashboardSection(params: ({ contactId: string } | { cl
         cards={selectDashboardCards(cards)}
         onViewAll={() => setShowAll(true)}
         onDismissForever={handleDismissForever}
+        dm={dm}
       />
       {showAll && (
-        <AchievementsModal cards={cards} onClose={() => setShowAll(false)} onDismissForever={handleDismissForever} />
+        <AchievementsModal cards={cards} onClose={() => setShowAll(false)} onDismissForever={handleDismissForever} dm={dm} />
       )}
     </>
   );

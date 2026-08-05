@@ -15,6 +15,10 @@ interface AccessCodeCardProps {
   onGenerate: (ttlHours: 1 | 24) => Promise<ActionResult>;
   onRegenerate: (ttlHours: 1 | 24) => Promise<ActionResult>;
   onRevoke: () => Promise<{ ok: boolean }>;
+  /** Opts into dark: classes — only the adults contact page sets this
+   * (matching ProfileDashboardTheme.enableDarkMode); the gym client page
+   * doesn't, so this card stays exactly as it looked there. */
+  dm?: boolean;
 }
 
 /** Built from `personName` alone (never passed in as a function prop) —
@@ -35,7 +39,7 @@ function buildWhatsAppMessage(personName: string, formattedCode: string): string
  * sent anywhere except the copy-to-clipboard/WhatsApp-message actions the
  * person explicitly clicks — never logged (see the server actions this
  * calls, which only ever return it once at generation time). */
-export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke }: AccessCodeCardProps) {
+export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke, dm }: AccessCodeCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [result, setResult] = useState<AccessCodeResult | null>(null);
   const [ttlHours, setTtlHours] = useState<1 | 24>(24);
@@ -70,14 +74,14 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
   }
 
   return (
-    <div className="rounded-xl border border-gray-200">
+    <div className={`rounded-xl border border-gray-200 ${dm ? "dark:border-white/10 dark:bg-[var(--color-dashboard-dark-card)]" : ""}`}>
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between gap-3 p-5 text-left"
       >
-        <span className="text-sm font-semibold text-gray-900">Allow {personName} to see their data</span>
+        <span className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>Allow {personName} to see their data</span>
         <svg
-          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""} ${dm ? "dark:text-gray-500" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -88,7 +92,7 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
 
       {expanded && (
         <div className="px-5 pb-5">
-          <p className="text-sm text-gray-500 mb-4">
+          <p className={`text-sm text-gray-500 mb-4 ${dm ? "dark:text-gray-400" : ""}`}>
             {personName} can see their own data on a private link — you&apos;ll need to send them a one-time code so
             they can open it. Generate a code below and share it with them.
           </p>
@@ -96,11 +100,11 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
           {!result && (
             <>
               <div className="flex items-center gap-3 mb-4">
-                <label className="text-xs text-gray-500">Expires in</label>
+                <label className={`text-xs text-gray-500 ${dm ? "dark:text-gray-400" : ""}`}>Expires in</label>
                 <select
                   value={ttlHours}
                   onChange={(e) => setTtlHours(Number(e.target.value) as 1 | 24)}
-                  className="text-sm rounded-lg border border-gray-200 px-2 py-1.5"
+                  className={`text-sm rounded-lg border border-gray-200 px-2 py-1.5 ${dm ? "dark:border-white/10 dark:bg-white/5 dark:text-white" : ""}`}
                 >
                   <option value={24}>24 hours</option>
                   <option value={1}>1 hour</option>
@@ -119,8 +123,8 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
           {result && (
             <div className="space-y-3">
               <div className="text-center">
-                <p className="text-2xl font-bold tracking-widest text-gray-900">{result.formattedCode}</p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className={`text-2xl font-bold tracking-widest text-gray-900 ${dm ? "dark:text-white" : ""}`}>{result.formattedCode}</p>
+                <p className={`text-xs text-gray-400 mt-1 ${dm ? "dark:text-gray-500" : ""}`}>
                   This code works once and expires {new Date(result.expiresAt).toLocaleString()}. Only share it with{" "}
                   {personName}.
                 </p>
@@ -128,13 +132,13 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => copyText(result.code, "code")}
-                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className={`rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 ${dm ? "dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : ""}`}
                 >
                   {copied === "code" ? "Copied!" : "Copy code"}
                 </button>
                 <button
                   onClick={() => copyText(buildWhatsAppMessage(personName, result.formattedCode), "message")}
-                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  className={`rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 ${dm ? "dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : ""}`}
                 >
                   {copied === "message" ? "Copied!" : "Copy WhatsApp message"}
                 </button>
@@ -143,14 +147,14 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
                 <button
                   onClick={() => run(onRegenerate)}
                   disabled={loading}
-                  className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className={`rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 ${dm ? "dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : ""}`}
                 >
                   Regenerate code
                 </button>
                 <button
                   onClick={handleRevoke}
                   disabled={loading}
-                  className="rounded-lg border border-red-200 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  className={`rounded-lg border border-red-200 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50 ${dm ? "dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10" : ""}`}
                 >
                   Revoke code
                 </button>
@@ -158,7 +162,7 @@ export function AccessCodeCard({ personName, onGenerate, onRegenerate, onRevoke 
             </div>
           )}
 
-          {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+          {error && <p className={`text-sm text-red-600 mt-3 ${dm ? "dark:text-red-400" : ""}`}>{error}</p>}
         </div>
       )}
     </div>

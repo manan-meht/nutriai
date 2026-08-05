@@ -20,6 +20,7 @@ export function YourWinsSection({
   onViewAll,
   onDismissForever,
   sourceSurface = "dashboard",
+  dm,
 }: {
   cards: EarnedShareCard[];
   onViewAll?: () => void;
@@ -27,14 +28,18 @@ export function YourWinsSection({
    * which wires this to the `?resource=share-card-dismiss` PATCH. */
   onDismissForever?: (conceptId: string) => void;
   sourceSurface?: SourceSurface;
+  /** Opts into dark: classes — only ProfileDashboard's family_admin/
+   * participant callers set this (see ProfileDashboardTheme.
+   * enableDarkMode); the gym/coach caller doesn't. */
+  dm?: boolean;
 }) {
   const [openCard, setOpenCard] = useState<EarnedShareCard | null>(null);
 
   if (cards.length === 0) {
     return (
-      <div className="rounded-2xl border border-gray-100 bg-white p-5">
-        <h3 className="text-sm font-semibold text-gray-900 mb-1">Your wins</h3>
-        <p className="text-sm text-gray-500">
+      <div className={`rounded-2xl border border-gray-100 bg-white p-5 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+        <h3 className={`text-sm font-semibold text-gray-900 mb-1 ${dm ? "dark:text-white" : ""}`}>Your wins</h3>
+        <p className={`text-sm text-gray-500 ${dm ? "dark:text-gray-400" : ""}`}>
           Keep logging meals and Tistra will turn your progress into shareable wins.
         </p>
       </div>
@@ -44,9 +49,9 @@ export function YourWinsSection({
   const [featured, ...rest] = cards;
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-5">
+    <div className={`rounded-2xl border border-gray-100 bg-white p-5 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-900">Your wins</h3>
+        <h3 className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>Your wins</h3>
         {onViewAll && (
           <button
             onClick={onViewAll}
@@ -70,6 +75,7 @@ export function YourWinsSection({
           onClose={() => setOpenCard(null)}
           onDismissForever={onDismissForever}
           sourceSurface={sourceSurface}
+          dm={dm}
         />
       )}
     </div>
@@ -115,11 +121,13 @@ export function ShareCardModal({
   onClose,
   onDismissForever,
   sourceSurface = "dashboard",
+  dm,
 }: {
   card: EarnedShareCard;
   onClose: () => void;
   onDismissForever?: (conceptId: string) => void;
   sourceSurface?: SourceSurface;
+  dm?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState<"share" | "download" | null>(null);
@@ -185,7 +193,7 @@ export function ShareCardModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={handleNotNow}>
-      <div className="bg-white rounded-3xl p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+      <div className={`bg-white rounded-3xl p-5 max-w-sm w-full ${dm ? "dark:bg-[var(--color-dashboard-dark-card)]" : ""}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-center mb-4">
           <ShareCardPreview ref={cardRef} card={card} />
         </div>
@@ -193,7 +201,7 @@ export function ShareCardModal({
           <button
             onClick={handleDownload}
             disabled={busy !== null}
-            className="rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className={`rounded-lg border border-gray-200 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 ${dm ? "dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/5" : ""}`}
           >
             {busy === "download" ? "Saving…" : "Download card"}
           </button>
@@ -206,11 +214,11 @@ export function ShareCardModal({
           </button>
         </div>
         <div className="flex items-center justify-center gap-4 mt-3">
-          <button onClick={handleNotNow} className="text-xs text-gray-400 hover:text-gray-600">
+          <button onClick={handleNotNow} className={`text-xs text-gray-400 hover:text-gray-600 ${dm ? "dark:text-gray-500 dark:hover:text-gray-300" : ""}`}>
             Not now
           </button>
           {onDismissForever && (
-            <button onClick={handleDismissForever} className="text-xs text-gray-400 hover:text-gray-600">
+            <button onClick={handleDismissForever} className={`text-xs text-gray-400 hover:text-gray-600 ${dm ? "dark:text-gray-500 dark:hover:text-gray-300" : ""}`}>
               Don&apos;t show this one again
             </button>
           )}

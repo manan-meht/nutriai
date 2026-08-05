@@ -314,7 +314,7 @@ export function ProfileDashboard({
 
         {/* Section 2b — "Your wins" shareable accomplishment cards. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} />
+          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
         )}
 
         {/* Section 3 — macronutrient summary. */}

@@ -47,28 +47,28 @@ export function FoodPreferencesEditor({ contactId, initialProfile }: { contactId
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 p-5">
-      <h3 className="text-sm font-semibold text-gray-900 mb-1">Food preferences</h3>
-      <p className="text-sm text-gray-500 mb-4">
+    <div className="rounded-xl border border-gray-200 dark:border-white/10 dark:bg-[var(--color-dashboard-dark-card)] p-5">
+      <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Food preferences</h3>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Tistra learns from the meals you log, but you can change these preferences anytime.
       </p>
       <div className="space-y-3">
         {OPTIONS.map((option) => (
-          <label key={option.key} className="flex items-center gap-2 text-sm text-gray-700">
+          <label key={option.key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
               checked={selections[option.key] ?? false}
               onChange={(e) => handleToggle(option.key, e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 accent-[var(--color-dashboard-primary)]"
+              className="w-4 h-4 rounded border-gray-300 dark:border-white/20 accent-[var(--color-dashboard-primary)]"
             />
             {option.label}
           </label>
         ))}
       </div>
       <div className="mt-3 text-xs h-4">
-        {saving && <span className="text-gray-400">Saving…</span>}
-        {saved && !saving && <span className="text-green-600">Saved</span>}
-        {error && <span className="text-red-600">{error}</span>}
+        {saving && <span className="text-gray-400 dark:text-gray-500">Saving…</span>}
+        {saved && !saving && <span className="text-green-600 dark:text-green-400">Saved</span>}
+        {error && <span className="text-red-600 dark:text-red-400">{error}</span>}
       </div>
     </div>
   );

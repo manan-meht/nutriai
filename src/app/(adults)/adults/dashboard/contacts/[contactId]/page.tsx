@@ -20,6 +20,13 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
   return (
     <>
       <ContactDashboard {...details} />
+      {/* Full-width dark background — a max-w-3xl div alone only colors its
+          own constrained column, leaving the page's default white body
+          visible at the edges on anything wider than that (and, since this
+          is the last thing on the page, "hanging" visibly below
+          ContactDashboard's own full-bleed dark background on any viewport
+          where this section ends up shorter). */}
+      <div className="bg-[var(--color-dashboard-page-bg)]">
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
         {/* Once the user has interacted with (saved) a food preference at
             least once, this moves into the Edit Contact modal instead —
@@ -37,8 +44,10 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
             onGenerate={generateAccessCodeAction.bind(null, contactId)}
             onRegenerate={regenerateAccessCodeAction.bind(null, contactId)}
             onRevoke={revokeAccessCodeAction.bind(null, contactId)}
+            dm
           />
         )}
+      </div>
       </div>
     </>
   );
