@@ -7,7 +7,7 @@ import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorksp
 import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient";
 import { displayEmail } from "@/lib/auth";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
-import { isBillingWhitelisted } from "@/lib/billing/feature-flags";
+import { isBillingWhitelisted, isBillingWhitelistLabelHidden } from "@/lib/billing/feature-flags";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -112,7 +112,14 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
       tistraWhatsAppNumber={process.env.TISTRA_WHATSAPP_NUMBER}
       requiresCardBeforeTrial={requiresCardBeforeTrial}
       autoOpenAddModal={justCheckedOut && entitlement.status === "trialing"}
-      isBillingWhitelisted={isBillingWhitelisted(user.email)}
+      // The "Test account" pill is display-only — entitlement bypass itself
+      // (getEntitlementSnapshot below) always uses the real
+      // isBillingWhitelisted(user.email), unaffected by this. Only whether
+      // the pill is SHOWN is suppressed for accounts in the separate
+      // hide-label allowlist (see isBillingWhitelistLabelHidden's own
+      // comment — a demo/recording account that still needs to be exempt
+      // from paywalls but shouldn't visibly look like a test account).
+      isBillingWhitelisted={isBillingWhitelisted(user.email) && !isBillingWhitelistLabelHidden(user.email)}
     />
   );
 }

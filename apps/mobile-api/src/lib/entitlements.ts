@@ -73,6 +73,20 @@ function isBillingWhitelisted(email: string | null | undefined): boolean {
   return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
 }
 
+/** Mirrors the main web app's isBillingWhitelistLabelHidden — stays
+ * billing-whitelisted (enforcement bypass below is unaffected) but the
+ * "Test account" pill on the mobile dashboard is suppressed for these
+ * accounts specifically. Same env var name as the web app so one value
+ * covers both, same caveat as BILLING_TEST_WHITELIST_EMAILS above: this
+ * app is deployed independently, so it still needs setting here too. */
+function isBillingWhitelistLabelHidden(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.BILLING_TEST_WHITELIST_HIDE_LABEL_EMAILS;
+  if (!raw) return false;
+  const normalized = email.trim().toLowerCase().replace(/\+nutriai-[^@]+(?=@)/, "");
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
 export async function getEntitlementSnapshot(
   workspaceId: string,
   module: EntitlementModule,
@@ -98,6 +112,8 @@ export async function getEntitlementSnapshot(
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
       module === "adults" &&
       core.status === "not_started",
-    isBillingWhitelisted: whitelisted,
+    // Display-only — isReadOnly/requiresCardBeforeTrial above always use
+    // the real `whitelisted`, so enforcement bypass is unaffected by this.
+    isBillingWhitelisted: whitelisted && !isBillingWhitelistLabelHidden(ownerEmail),
   };
 }

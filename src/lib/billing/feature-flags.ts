@@ -75,6 +75,21 @@ export function isBillingWhitelisted(email: string | null | undefined): boolean 
   return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
 }
 
+/** Comma-separated emails (case-insensitive) that stay billing-whitelisted
+ * (see isBillingWhitelisted above — trial/paywall enforcement is still
+ * fully bypassed) but should NOT show the "Test account" pill on the
+ * dashboard — a demo/screen-recording account that needs to look like a
+ * normal account visually while still never hitting a paywall. Same
+ * scope-tag-stripping normalization as isBillingWhitelisted, since this is
+ * meant to be checked against the same email that function is. */
+export function isBillingWhitelistLabelHidden(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const raw = process.env.BILLING_TEST_WHITELIST_HIDE_LABEL_EMAILS;
+  if (!raw) return false;
+  const normalized = email.trim().toLowerCase().replace(/\+nutriai-[^@]+(?=@)/, "");
+  return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
+}
+
 export const STRIPE_CHECKOUT_ENABLED = flag(process.env.NEXT_PUBLIC_STRIPE_CHECKOUT_ENABLED, true);
 
 /** International (non-launch-country) USD billing via Stripe. Off would
