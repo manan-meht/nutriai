@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FoodKnowledgeEntry } from "@/app/(admin)/admin/actions";
 import { upsertFoodKnowledgeEntry, archiveFoodKnowledgeEntry } from "@/app/(admin)/admin/actions";
 
-const CATEGORIES = ["protein_anchor", "partial_protein", "vegetable_fiber", "carb_base", "fat_source", "enjoyment_food", "sugary_drink", "mixed_meal", "unknown"];
+const CATEGORIES = ["protein_anchor", "partial_protein", "vegetable_fiber", "fruit", "carb_base", "fat_source", "enjoyment_food", "sugary_drink", "mixed_meal", "unknown"];
 const RELEVANCE = ["none", "low", "medium", "high"];
 
 export function FoodKnowledgeTable({

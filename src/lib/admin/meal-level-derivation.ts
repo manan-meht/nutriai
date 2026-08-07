@@ -72,12 +72,18 @@ export function deriveMealLevelFields(items: DerivableFoodItem[]): DerivedMealLe
   const proteinAnchorStatus: PresenceStatus = hasProtein ? "present" : hasPartialProtein ? "partial" : "missing";
 
   const vegetableFiberStatus: PresenceStatus = categories.includes("vegetable_fiber") ? "present" : "missing";
+  const hasFruit = categories.includes("fruit");
 
   const carbItemCount = categories.filter((c) => c === "carb_base").length;
   const carbStatus: CarbStatus = carbItemCount === 0 ? "missing" : carbItemCount / items.length >= 0.5 ? "dominant" : "present";
 
-  const isStrong = proteinAnchorStatus === "present" && vegetableFiberStatus === "present";
-  const needsSupport = proteinAnchorStatus === "missing" && vegetableFiberStatus === "missing";
+  // Fruit is tracked as its own category (distinct from vegetable_fiber and
+  // carb_base — see food-categories.ts) but still counts toward meal
+  // balance as a produce contribution, so a fruit-only meal isn't scored
+  // the same as one with no produce at all.
+  const hasProduce = vegetableFiberStatus === "present" || hasFruit;
+  const isStrong = proteinAnchorStatus === "present" && hasProduce;
+  const needsSupport = proteinAnchorStatus === "missing" && !hasProduce;
   const mealBalanceStatus: BalanceStatus = isStrong ? "strong" : needsSupport ? "needs_support" : "moderate";
 
   return {

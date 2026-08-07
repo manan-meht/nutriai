@@ -10,6 +10,7 @@ export const FOOD_CATEGORIES = [
   "protein_anchor",
   "partial_protein",
   "vegetable_fiber",
+  "fruit",
   "carb_base",
   "fat_source",
   "enjoyment_food",
