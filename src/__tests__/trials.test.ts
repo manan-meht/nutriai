@@ -164,7 +164,7 @@ describe("entitlements — trial lifecycle", () => {
     expect(snapshot.isReadOnly).toBe(true);
   });
 
-  it("startTrialIfNeeded: writes trial_start_at/trial_end_at exactly 14 days apart, in UTC ISO", async () => {
+  it("startTrialIfNeeded: writes trial_start_at/trial_end_at exactly 30 days apart for gym (Coach), in UTC ISO", async () => {
     jest.resetModules();
     const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
     setClock(new Date("2026-01-01T00:00:00.000Z"));
@@ -182,6 +182,24 @@ describe("entitlements — trial lifecycle", () => {
     expect(written.workspace_id).toBe("ws-1");
     expect(written.owner_id).toBe("owner-1");
     expect(written.module).toBe("gym");
+    expect(written.trial_start_at).toBe("2026-01-01T00:00:00.000Z");
+    // Coach (gym) trial length is 30 days — see TRIAL_LENGTH_DAYS_BY_MODULE.
+    expect(written.trial_end_at).toBe("2026-01-31T00:00:00.000Z");
+  });
+
+  it("startTrialIfNeeded: writes trial_start_at/trial_end_at exactly 14 days apart for adults (Self/Family), in UTC ISO", async () => {
+    jest.resetModules();
+    const { __setClockOverrideForTests: setClock } = await import("@/lib/time/clock");
+    setClock(new Date("2026-01-01T00:00:00.000Z"));
+    const upsertCalls: any[] = [];
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () => makeFakeServiceClient({ row: null, upsertCalls }),
+    }));
+    const { startTrialIfNeeded } = await import("@/lib/entitlements/entitlements");
+
+    await startTrialIfNeeded("ws-1", "owner-1", "adults");
+
+    const written = upsertCalls[0];
     expect(written.trial_start_at).toBe("2026-01-01T00:00:00.000Z");
     expect(written.trial_end_at).toBe("2026-01-15T00:00:00.000Z");
   });

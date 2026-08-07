@@ -15,13 +15,28 @@ export type BillingInterval = "monthly" | "annual";
  * different amounts — see SELF_PRICING vs PRICING.adults below, and
  * createCheckoutSession's `pricingTier` computation, which is the only
  * place this distinction is ever made. Never used for entitlement
- * bookkeeping, RLS, or anything besides "which price ID to charge." */
-export type BillingPricingTier = BillingModule | "self" | "additional_person";
+ * bookkeeping, RLS, or anything besides "which price ID to charge."
+ *
+ * "additional_person" is used for the Stripe/global path, where the
+ * add-on's amount is identical across family/coach in every non-IN market —
+ * one shared price ID per market is enough. "additional_person_family"/
+ * "additional_person_coach" exist only for the Razorpay/IN path, where the
+ * amounts genuinely differ per plan (see ADDITIONAL_PERSON_PRICE.IN) and so
+ * need distinct Razorpay Plan objects/price IDs. */
+export type BillingPricingTier = BillingModule | "self" | "additional_person" | "additional_person_family" | "additional_person_coach";
 
 export interface PricePoint {
   /** Integer minor units (cents/paise) — e.g. 999 = $9.99. */
   amountMinorUnits: number;
   currency: string; // ISO 4217
+  /** Present only when a limited-time launch/introductory price is active —
+   * the non-discounted reference price to show crossed out. amountMinorUnits
+   * always stays the one true "what's actually charged" figure (used as-is
+   * by validatePriceSelection/checkout/price-ID lookups below); this field
+   * is display-only. Removing a launch offer later is a one-line change
+   * (drop this field, bump amountMinorUnits to the standard price) — no UI
+   * changes needed, since display logic only checks whether this is set. */
+  standardAmountMinorUnits?: number;
 }
 
 type MarketPricing = Record<BillingModule, Record<BillingInterval, PricePoint>>;
@@ -59,14 +74,19 @@ export const PRICING: Record<BillingMarket, MarketPricing> = {
       annual: { amountMinorUnits: 39900, currency: "AUD" },
     },
   },
+  // India launch pricing. Family annual and Self annual (see SELF_PRICING
+  // below) currently bill the discounted "India launch" amount — see
+  // standardAmountMinorUnits on PricePoint for how the crossed-out
+  // reference price and eventual removal of the launch offer both work.
+  // Coach has no launch discount.
   IN: {
     adults: {
-      monthly: { amountMinorUnits: 39900, currency: "INR" },
-      annual: { amountMinorUnits: 399900, currency: "INR" },
+      monthly: { amountMinorUnits: 49900, currency: "INR" },
+      annual: { amountMinorUnits: 299900, currency: "INR", standardAmountMinorUnits: 399900 },
     },
     gym: {
-      monthly: { amountMinorUnits: 129900, currency: "INR" },
-      annual: { amountMinorUnits: 1299900, currency: "INR" },
+      monthly: { amountMinorUnits: 99900, currency: "INR" },
+      annual: { amountMinorUnits: 899900, currency: "INR" },
     },
   },
   // INTL: every country outside the 4 launch markets. Always USD, same
@@ -92,27 +112,52 @@ export const SELF_PRICING: Record<BillingMarket, Record<BillingInterval, PricePo
   US: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } },
   SG: { monthly: { amountMinorUnits: 690, currency: "SGD" }, annual: { amountMinorUnits: 6900, currency: "SGD" } },
   AU: { monthly: { amountMinorUnits: 799, currency: "AUD" }, annual: { amountMinorUnits: 7900, currency: "AUD" } },
-  IN: { monthly: { amountMinorUnits: 19900, currency: "INR" }, annual: { amountMinorUnits: 199900, currency: "INR" } },
+  // India launch pricing — annual bills the discounted launch price today;
+  // see standardAmountMinorUnits on PricePoint.
+  IN: { monthly: { amountMinorUnits: 29900, currency: "INR" }, annual: { amountMinorUnits: 179900, currency: "INR", standardAmountMinorUnits: 249900 } },
   INTL: { monthly: { amountMinorUnits: 499, currency: "USD" }, annual: { amountMinorUnits: 4900, currency: "USD" } },
 };
 
+export type BillingPlan = "self" | "family" | "coach";
+
+/** Plan (not just BillingPlan) that has an additional-person/client concept
+ * — Self is always exactly 1 person, so it's excluded here. */
+export type AdditionalCapacityPlan = "family" | "coach";
+
 /** Additional tracked person, billed per-person, on top of a plan's base
  * included count — real, confirmed prices (matches the founding-member
- * marketing table's US$3.33/mo). Shared across family/coach since the "add
- * one more person" concept and price are identical for both; only the
- * base included count (see PEOPLE_INCLUDED) differs per plan. Self has no
- * additional-person concept at all (always exactly 1 person). Wired into
- * checkout via BillingPricingTier "additional_person" — see
- * purchaseAdditionalCapacity in src/app/actions/checkout.ts. */
-export const ADDITIONAL_PERSON_PRICE: Record<BillingMarket, Record<BillingInterval, PricePoint>> = {
-  US: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
-  SG: { monthly: { amountMinorUnits: 430, currency: "SGD" }, annual: { amountMinorUnits: 4300, currency: "SGD" } },
-  AU: { monthly: { amountMinorUnits: 499, currency: "AUD" }, annual: { amountMinorUnits: 4990, currency: "AUD" } },
-  IN: { monthly: { amountMinorUnits: 12900, currency: "INR" }, annual: { amountMinorUnits: 129000, currency: "INR" } },
-  INTL: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+ * marketing table's US$3.33/mo). Identical between family/coach in every
+ * market except IN, where each is set proportionally to its own plan's base
+ * price (see PEOPLE_INCLUDED for the base included count each is added on
+ * top of). Wired into checkout via BillingPricingTier "additional_person"
+ * (Stripe, shared across plans) or "additional_person_family"/
+ * "additional_person_coach" (Razorpay/IN, where the amounts actually
+ * differ) — see purchaseAdditionalCapacity in src/app/actions/checkout.ts. */
+export const ADDITIONAL_PERSON_PRICE: Record<BillingMarket, Record<AdditionalCapacityPlan, Record<BillingInterval, PricePoint>>> = {
+  US: {
+    family: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+    coach: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+  },
+  SG: {
+    family: { monthly: { amountMinorUnits: 430, currency: "SGD" }, annual: { amountMinorUnits: 4300, currency: "SGD" } },
+    coach: { monthly: { amountMinorUnits: 430, currency: "SGD" }, annual: { amountMinorUnits: 4300, currency: "SGD" } },
+  },
+  AU: {
+    family: { monthly: { amountMinorUnits: 499, currency: "AUD" }, annual: { amountMinorUnits: 4990, currency: "AUD" } },
+    coach: { monthly: { amountMinorUnits: 499, currency: "AUD" }, annual: { amountMinorUnits: 4990, currency: "AUD" } },
+  },
+  // India: proportional to each plan's own base price (see PRICING.IN /
+  // SELF_PRICING.IN above) rather than shared flat — Family +₹249/mo
+  // (~50% of its ₹499 base), Coach +₹199/mo (~20% of its ₹999 base).
+  IN: {
+    family: { monthly: { amountMinorUnits: 24900, currency: "INR" }, annual: { amountMinorUnits: 249000, currency: "INR" } },
+    coach: { monthly: { amountMinorUnits: 19900, currency: "INR" }, annual: { amountMinorUnits: 199000, currency: "INR" } },
+  },
+  INTL: {
+    family: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+    coach: { monthly: { amountMinorUnits: 333, currency: "USD" }, annual: { amountMinorUnits: 3330, currency: "USD" } },
+  },
 };
-
-export type BillingPlan = "self" | "family" | "coach";
 
 /** Base tracked-people count included in each plan before add-on pricing
  * kicks in. "family"/"coach" match the existing hardcoded limits in
@@ -128,8 +173,24 @@ export function getSelfPrice(market: BillingMarket, interval: BillingInterval): 
   return SELF_PRICING[market][interval];
 }
 
-export function getAdditionalPersonPrice(market: BillingMarket, interval: BillingInterval): PricePoint {
-  return ADDITIONAL_PERSON_PRICE[market][interval];
+export function getAdditionalPersonPrice(market: BillingMarket, plan: AdditionalCapacityPlan, interval: BillingInterval): PricePoint {
+  return ADDITIONAL_PERSON_PRICE[market][plan][interval];
+}
+
+// Trial length by module — "adults" covers both Self and Family workspaces
+// (both get 14 days, so no further split is needed there), "gym" is Coach
+// (30 days). Global, not India-specific: applies to every market. Lives
+// here (not entitlements.ts) because entitlements.ts transitively imports
+// server-only code (next/headers via @/lib/supabase/server) and this table
+// needs to be importable from client components (e.g. IndiaPricingSection)
+// that only need the plain numbers, not the server-side entitlement logic.
+export const TRIAL_LENGTH_DAYS_BY_MODULE: Record<BillingModule, number> = {
+  adults: 14,
+  gym: 30,
+};
+
+export function trialLengthMs(module: BillingModule): number {
+  return TRIAL_LENGTH_DAYS_BY_MODULE[module] * 24 * 60 * 60 * 1000;
 }
 
 export const INTL_USD_DISCLOSURE =
@@ -150,6 +211,32 @@ export function formatMinorUnits(amountMinorUnits: number, currency: string): st
   const amount = amountMinorUnits / 100;
   return new Intl.NumberFormat("en", { style: "currency", currency }).format(amount);
 }
+
+/** Same idea as formatMinorUnits, but whole-rupee (no ".00") for INR —
+ * e.g. ₹1,799 rather than ₹1,799.00 — matching how India prices are
+ * actually communicated. Every other currency keeps formatMinorUnits'
+ * standard 2-decimal formatting; call sites that don't know the currency
+ * ahead of time can call this unconditionally, since it only special-cases
+ * INR and otherwise delegates straight to formatMinorUnits. */
+export function formatPriceForDisplay(amountMinorUnits: number, currency: string): string {
+  if (currency === "INR") {
+    const amount = amountMinorUnits / 100;
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
+  }
+  return formatMinorUnits(amountMinorUnits, currency);
+}
+
+/** India consumer prices are already GST-inclusive gross amounts — this is
+ * the one place this disclosure copy lives, reused everywhere an India
+ * price is shown, so a customer is never shown a base price only to have
+ * 18% added at checkout. No GST filing/accounting logic here — display copy
+ * only; actual tax accounting is handled by the payment provider/billing
+ * system separately. */
+export const INDIA_TAX_INCLUSIVE_NOTE = "Including applicable taxes";
+
+/** Display label for a plan's IN annual price when a launch offer is active
+ * (i.e. standardAmountMinorUnits is set) — the one place this copy lives. */
+export const INDIA_LAUNCH_PRICE_LABEL = "India launch price";
 
 /**
  * Server-side validation for checkout: rejects any client-supplied

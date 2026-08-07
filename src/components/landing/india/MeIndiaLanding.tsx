@@ -8,6 +8,7 @@ import { ProductMechanicSteps } from "@/components/landing/shared/ProductMechani
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
 import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
+import { IndiaPricingSection } from "@/components/pricing/IndiaPricingSection";
 
 export function MeIndiaLanding() {
   const signupUrl =
@@ -112,6 +113,16 @@ export function MeIndiaLanding() {
           />
         </div>
       </section>
+
+      {/* ── Pricing ──────────────────────────────────────────────────────── */}
+      <IndiaPricingSection
+        plan="self"
+        sourcePage="me_india"
+        signupUrl={signupUrl}
+        onSignupClick={handleCta}
+        waitlistHref="mailto:tistrahealth@gmail.com?subject=Join%20the%20India%20Personal%20waitlist"
+        waitlistLabel="Join the India personal waitlist"
+      />
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-24 px-6 text-center bg-white">

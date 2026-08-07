@@ -125,13 +125,24 @@ describe("monetary values are integer minor units, never floats", () => {
     expect(getPrice("US", "adults", "annual").amountMinorUnits).toBe(9900);
   });
 
-  it("India Coaching: ₹1,299/mo = 129900 paise, ₹12,999/yr = 1299900 paise", () => {
-    expect(getPrice("IN", "gym", "monthly").amountMinorUnits).toBe(129900);
-    expect(getPrice("IN", "gym", "annual").amountMinorUnits).toBe(1299900);
+  it("India Coach: ₹999/mo = 99900 paise, ₹8,999/yr = 899900 paise, no launch discount", () => {
+    expect(getPrice("IN", "gym", "monthly").amountMinorUnits).toBe(99900);
+    expect(getPrice("IN", "gym", "annual").amountMinorUnits).toBe(899900);
+    expect(getPrice("IN", "gym", "annual").standardAmountMinorUnits).toBeUndefined();
   });
 
-  it("annual pricing is presented as roughly 2 months free vs. monthly", () => {
-    for (const market of markets) {
+  it("India Family: ₹499/mo, ₹2,999/yr launch price crossed out against ₹3,999/yr standard", () => {
+    expect(getPrice("IN", "adults", "monthly").amountMinorUnits).toBe(49900);
+    expect(getPrice("IN", "adults", "annual").amountMinorUnits).toBe(299900);
+    expect(getPrice("IN", "adults", "annual").standardAmountMinorUnits).toBe(399900);
+  });
+
+  it("annual pricing is presented as roughly 2 months free vs. monthly, outside India", () => {
+    // India Family currently bills its discounted launch annual price
+    // (~50% off monthly x12) rather than the ~2-months-free convention
+    // every other market/plan follows — see the India launch-pricing test
+    // below for that market's own expectations.
+    for (const market of markets.filter((m) => m !== "IN")) {
       for (const billingModule of ["adults", "gym"] as const) {
         const savings = annualSavingsFraction(market, billingModule);
         // ~2 free months out of 12 ≈ 16.7% — allow a reasonable band since
@@ -140,6 +151,17 @@ describe("monetary values are integer minor units, never floats", () => {
         expect(savings).toBeLessThan(0.25);
       }
     }
+  });
+
+  it("India Coach annual savings still falls in the standard ~2-months-free band (no launch discount)", () => {
+    const savings = annualSavingsFraction("IN", "gym");
+    expect(savings).toBeGreaterThan(0.1);
+    expect(savings).toBeLessThan(0.25);
+  });
+
+  it("India Family annual launch price is a much steeper discount than the standard band", () => {
+    const savings = annualSavingsFraction("IN", "adults");
+    expect(savings).toBeGreaterThan(0.4);
   });
 });
 

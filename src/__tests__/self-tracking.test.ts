@@ -18,11 +18,13 @@ describe("self-tracking pricing config", () => {
     expect(PEOPLE_INCLUDED.coach).toBe(5);
   });
 
-  it("has self pricing and an additional-person price for every existing market", () => {
+  it("has self pricing and an additional-person price for every existing market and plan", () => {
     for (const market of Object.keys(PRICING) as (keyof typeof PRICING)[]) {
       expect(SELF_PRICING[market].monthly.amountMinorUnits).toBeGreaterThan(0);
       expect(SELF_PRICING[market].annual.amountMinorUnits).toBeGreaterThan(0);
-      expect(ADDITIONAL_PERSON_PRICE[market].monthly.amountMinorUnits).toBeGreaterThan(0);
+      for (const plan of ["family", "coach"] as const) {
+        expect(ADDITIONAL_PERSON_PRICE[market][plan].monthly.amountMinorUnits).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -36,7 +38,7 @@ describe("self-tracking pricing config", () => {
 
   it("getSelfPrice/getAdditionalPersonPrice return the configured currency per market", () => {
     expect(getSelfPrice("IN", "monthly").currency).toBe("INR");
-    expect(getAdditionalPersonPrice("US", "annual").currency).toBe("USD");
+    expect(getAdditionalPersonPrice("US", "family", "annual").currency).toBe("USD");
   });
 
   it("existing family/coach pricing is untouched by the self-plan addition", () => {

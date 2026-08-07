@@ -2,10 +2,10 @@
 
 import { headers } from "next/headers";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getEntitlementSnapshot, getExistingProviderCustomerId, recordCheckoutIntent, TRIAL_LENGTH_MS, type EntitlementModule } from "@/lib/entitlements/entitlements";
+import { getEntitlementSnapshot, getExistingProviderCustomerId, recordCheckoutIntent, trialLengthMs, type EntitlementModule } from "@/lib/entitlements/entitlements";
 import { resolveBillingMarket, getIpCountry, requestOrigin } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
-import { getPrice, getSelfPrice, getAdditionalPersonPrice, type BillingInterval, type BillingMarket } from "@/lib/billing/pricing";
+import { getPrice, getSelfPrice, getAdditionalPersonPrice, type BillingInterval, type BillingMarket, type AdditionalCapacityPlan } from "@/lib/billing/pricing";
 import { getProviderForMarket, providerNameForMarket, getProviderByName, isStoreManagedProvider } from "@/lib/billing/provider-registry";
 import type { PaymentProviderName } from "@/lib/billing/provider";
 import { getStripePriceId } from "@/lib/billing/providers/stripe-price-ids";
@@ -28,10 +28,18 @@ export interface CheckoutPreview {
  * begin at the end of the existing 14-day trial whenever the selected
  * provider supports delayed billing"). The browser never supplies a price;
  * getPrice() below is the only source of the amount actually charged.
+ *
+ * `forceMarket`, when supplied, bypasses the usual IP/cookie resolution —
+ * used exclusively by retryCheckoutAsGlobalPricing below, for the "your
+ * India-priced checkout didn't go through — continue at the standard
+ * international price" recovery flow (see that function's own doc). Never
+ * exposed as a client-settable parameter beyond that one server action; the
+ * public entry point for ordinary checkout always resolves market itself.
  */
 export async function createCheckoutSession(
   module: EntitlementModule,
-  interval: BillingInterval
+  interval: BillingInterval,
+  forceMarket?: BillingMarket
 ): Promise<CheckoutPreview> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -49,7 +57,7 @@ export async function createCheckoutSession(
   const headerStore = await headers();
   const ipCountry = getIpCountry(headerStore);
   const confirmedCountry = await getConfirmedBillingCountry();
-  const { market } = resolveBillingMarket({ confirmedCountry, ipCountry });
+  const market = forceMarket ?? resolveBillingMarket({ confirmedCountry, ipCountry }).market;
 
   const price = isSelfPlan ? getSelfPrice(market, interval) : getPrice(market, module, interval);
   const providerName = providerNameForMarket(market);
@@ -61,15 +69,15 @@ export async function createCheckoutSession(
   // on); defer the first charge to when that trial was already going to
   // end. "not_started" — this workspace has never started a trial at all
   // (the new card-first flow: checkout itself is what starts the trial),
-  // so give it a fresh 14-day trial from today, sourced from Stripe's own
-  // subscription_data.trial_end via applyProviderSubscriptionSnapshot once
-  // the webhook confirms it — never from a pre-existing trialEndAt, since
-  // there isn't one yet.
+  // so give it a fresh trial (length per TRIAL_LENGTH_DAYS_BY_MODULE) from
+  // today, sourced from Stripe's own subscription_data.trial_end via
+  // applyProviderSubscriptionSnapshot once the webhook confirms it — never
+  // from a pre-existing trialEndAt, since there isn't one yet.
   const delayBillingUntil =
     entitlement.status === "trialing"
       ? entitlement.trialEndAt
       : entitlement.status === "not_started"
-      ? freshTrialEndDate().toISOString()
+      ? freshTrialEndDate(module).toISOString()
       : null;
 
   const existingCustomerId = await getExistingProviderCustomerId(workspace.id, module);
@@ -118,6 +126,33 @@ export async function createCheckoutSession(
     currency: price.currency,
     interval,
   };
+}
+
+/**
+ * Recovery path for spec §7: a visitor saw India pricing (IP-based display
+ * default) but their payment method isn't India-eligible, so the India
+ * checkout attempt didn't go through. Re-runs createCheckoutSession for the
+ * exact same module/interval — preserving Self/Family/Coach, monthly/
+ * annual, and trial eligibility exactly, since those are already
+ * createCheckoutSession's only real parameters — but forces the market to
+ * INTL (global USD) instead of re-resolving from IP/cookie, so the customer
+ * isn't routed back into the same India/Razorpay path they just failed.
+ * Never mentions VPN; the friendly copy lives in the calling UI.
+ *
+ * Caveat: today's Razorpay integration creates a hosted subscription link
+ * (short_url) server-side and has no client-side decline callback wired up
+ * (see razorpay-provider.ts's createCheckoutSession — CheckoutParams'
+ * successUrl/cancelUrl are Stripe-only fields today). This action is ready
+ * to be called the moment a decline signal exists — e.g. once Razorpay's
+ * client-side Checkout.js is integrated for a synchronous failure handler,
+ * or from a manual "this didn't work" link — but nothing in this codebase
+ * yet triggers it automatically. Flagged in the completion report.
+ */
+export async function retryCheckoutAsGlobalPricing(
+  module: EntitlementModule,
+  interval: BillingInterval
+): Promise<CheckoutPreview> {
+  return createCheckoutSession(module, interval, "INTL");
 }
 
 export interface PurchaseAdditionalCapacityResult {
@@ -176,11 +211,23 @@ export async function purchaseAdditionalCapacity(
   // defaults rather than throwing if an old row somehow predates that.
   const market = (entitlement.billing_market as BillingMarket | null) ?? "INTL";
   const interval = (entitlement.billing_interval as BillingInterval | null) ?? "monthly";
-  const price = getAdditionalPersonPrice(market, interval);
+  // "adults" module covers both Family workspaces and (rarely, for this
+  // action) Self — Self has no additional-capacity concept and callers
+  // never offer it there, so mapping adults->family here is always correct
+  // for any request that actually reaches this far.
+  const additionalCapacityPlan: AdditionalCapacityPlan = module === "adults" ? "family" : "coach";
+  const price = getAdditionalPersonPrice(market, additionalCapacityPlan, interval);
 
   const providerName = entitlement.payment_provider as PaymentProviderName;
   const provider = await getProviderByName(providerName);
-  const priceId = providerName === "stripe" ? getStripePriceId(market, "additional_person", interval) : getRazorpayPlanId("additional_person", interval);
+  // Stripe's add-on amount is identical across family/coach in every
+  // non-IN market, so one shared "additional_person" price ID per market is
+  // enough there. Razorpay (IN-only) needs the plan-specific tier since the
+  // amounts genuinely differ — see BillingPricingTier's own doc.
+  const priceId =
+    providerName === "stripe"
+      ? getStripePriceId(market, "additional_person", interval)
+      : getRazorpayPlanId(additionalCapacityPlan === "family" ? "additional_person_family" : "additional_person_coach", interval);
 
   try {
     const { newTotalQuantity } = await provider.addAdditionalCapacity({
@@ -207,21 +254,21 @@ export async function purchaseAdditionalCapacity(
   }
 }
 
-/** A fresh 14-day trial end for the "card collected, checkout starts the
- * trial" flow — anchored to the start of tomorrow (UTC) plus 14 days,
- * rather than `now + 14*24h`, so Stripe's own Checkout page always shows
- * "14 days free" rather than "13 days free". Stripe computes its displayed
- * trial length as floor(seconds-until-trial-end / 86400) at the moment the
- * checkout page actually renders — by which point some time has always
- * elapsed since this function ran (network round trip to the browser), so
- * an exact `now + 14 days` reliably reads as one day short. Anchoring to
- * tomorrow's start banks the rest of today as slack, guaranteeing at least
- * a full 14 days remain no matter when today this runs or how long the
- * page takes to load. */
-function freshTrialEndDate(): Date {
+/** A fresh trial end (length per TRIAL_LENGTH_DAYS_BY_MODULE) for the "card
+ * collected, checkout starts the trial" flow — anchored to the start of
+ * tomorrow (UTC) plus the trial length, rather than `now + N*24h`, so
+ * Stripe's own Checkout page always shows the full "N days free" rather than
+ * "N-1 days free". Stripe computes its displayed trial length as
+ * floor(seconds-until-trial-end / 86400) at the moment the checkout page
+ * actually renders — by which point some time has always elapsed since this
+ * function ran (network round trip to the browser), so an exact `now + N
+ * days` reliably reads as one day short. Anchoring to tomorrow's start banks
+ * the rest of today as slack, guaranteeing at least a full N days remain no
+ * matter when today this runs or how long the page takes to load. */
+function freshTrialEndDate(module: EntitlementModule): Date {
   const now = new Date();
   const startOfTomorrowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  return new Date(startOfTomorrowUTC + TRIAL_LENGTH_MS);
+  return new Date(startOfTomorrowUTC + trialLengthMs(module));
 }
 
 async function getWorkspaceForModule(module: EntitlementModule, userId: string) {

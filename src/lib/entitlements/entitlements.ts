@@ -9,14 +9,21 @@ import {
   isBillingWhitelisted,
 } from "@/lib/billing/feature-flags";
 import type { BillingMarket, BillingInterval } from "@/lib/billing/pricing";
+import { TRIAL_LENGTH_DAYS_BY_MODULE, trialLengthMs } from "@/lib/billing/pricing";
 import type { PaymentProviderName, ProviderSubscriptionSnapshot } from "@/lib/billing/provider";
 import { sendWelcomeEmail } from "@/lib/billing/welcome-email";
 import { getEntitlementSnapshot as getEntitlementSnapshotCore } from "@nutriai/nutrition-core";
 import type { EntitlementModule, EntitlementStatus } from "@nutriai/nutrition-core";
 
 export type { EntitlementModule, EntitlementStatus };
+// Re-exported for existing/server call sites — see pricing.ts's own doc for
+// why the actual definition lives there (client-bundle safety).
+export { TRIAL_LENGTH_DAYS_BY_MODULE, trialLengthMs };
 
-export const TRIAL_LENGTH_DAYS = 14;
+// Back-compat for any remaining callers that haven't been migrated to the
+// per-module helpers above — equals the Family/Self (adults) trial length,
+// the value both of those plans have always used.
+export const TRIAL_LENGTH_DAYS = TRIAL_LENGTH_DAYS_BY_MODULE.adults;
 export const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
 
 export interface EntitlementSnapshot {
@@ -33,7 +40,8 @@ export interface EntitlementSnapshot {
 }
 
 /**
- * Starts a 14-day trial for (workspaceId, module) if one hasn't started yet.
+ * Starts a trial (see TRIAL_LENGTH_DAYS_BY_MODULE for the length per
+ * module) for (workspaceId, module) if one hasn't started yet.
  * Idempotent and concurrency-safe: relies on the (workspace_id, module)
  * unique constraint from migration 0001 via an upsert with
  * ignoreDuplicates — the first caller wins, every subsequent call for the
@@ -48,7 +56,7 @@ export async function startTrialIfNeeded(
 ): Promise<void> {
   const admin = createServiceClient();
   const startedAt = now();
-  const endsAt = new Date(startedAt.getTime() + TRIAL_LENGTH_MS);
+  const endsAt = new Date(startedAt.getTime() + trialLengthMs(module));
 
   const { error } = await admin
     .from("entitlements")

@@ -8,6 +8,7 @@ import { ProductMechanicSteps } from "@/components/landing/shared/ProductMechani
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
 import { getSignupUrl, trackLandingEvent, storeLandingAttribution } from "@/lib/landing/routes";
+import { IndiaPricingSection } from "@/components/pricing/IndiaPricingSection";
 
 export function CoachIndiaLanding() {
   const signupUrl = getSignupUrl({ product: "gym", source: "coach_india", variant: "immersive", productParam: "coach" });
@@ -109,6 +110,16 @@ export function CoachIndiaLanding() {
           />
         </div>
       </section>
+
+      {/* ── Pricing ──────────────────────────────────────────────────────── */}
+      <IndiaPricingSection
+        plan="coach"
+        sourcePage="coach_india"
+        signupUrl={signupUrl}
+        onSignupClick={handleCta}
+        waitlistHref="mailto:tistrahealth@gmail.com?subject=Join%20the%20India%20Coach%20waitlist"
+        waitlistLabel="Join the India Coach waitlist"
+      />
 
       {/* ── CTA ───────────────────────────────────────────────────────────── */}
       <section className="py-24 px-6 text-center">
