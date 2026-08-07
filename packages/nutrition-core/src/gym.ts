@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
 import { resolveSignedMealPhotoUrls } from "./storage";
-import { computeMacroWindowSummaries } from "./macro-summary";
+import { computeMacroWindowSummaries, computeRollingWeekMealCount } from "./macro-summary";
 import type { BiomarkerLog, ClientDetails, GymClient, MealLog, WorkoutLog } from "./types";
 
 // gym_clients has no timezone column (unlike adults_contacts) — this fixed
@@ -43,6 +43,7 @@ function mapClientRow(c: any, mealsByClient: Record<string, ClientMealSummary>):
     mealCount: mealsByClient[c.id]?.count ?? 0,
     lastMealAt: mealsByClient[c.id]?.lastAt,
     macroSummary: computeMacroWindowSummaries(mealsByClient[c.id]?.mealRows ?? [], DEFAULT_TIMEZONE),
+    last7DaysMealCount: computeRollingWeekMealCount(mealsByClient[c.id]?.mealRows ?? [], DEFAULT_TIMEZONE),
     trackedBiomarkers: c.tracked_biomarkers ?? [],
     dateOfBirth: c.date_of_birth ?? undefined,
     metabolicEquationSex: c.metabolic_equation_sex ?? undefined,

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchHumanCorrectionsByMealLogId } from "./human-corrections";
 import { resolveSignedMealPhotoUrls, resolveSignedContactAvatarUrl } from "./storage";
-import { computeMacroWindowSummaries, computeDailyCalories } from "./macro-summary";
+import { computeMacroWindowSummaries, computeDailyCalories, computeRollingWeekMealCount } from "./macro-summary";
 import type { AdultsContact, AdultsContactDetails, AdultsMealLog } from "./types";
 
 interface ContactMealSummary {
@@ -57,6 +57,7 @@ function mapContactRow(
     lastMealPhotoUrl: lastMealPhotoByContact[c.id],
     macroSummary: computeMacroWindowSummaries(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
     last7DaysCalories: computeDailyCalories(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
+    last7DaysMealCount: computeRollingWeekMealCount(mealsByContact[c.id]?.mealRows ?? [], c.timezone ?? "Asia/Kolkata"),
     timezone: c.timezone ?? "Asia/Kolkata",
     remindersEnabled: c.reminders_enabled ?? false,
     reminderTimes: Array.isArray(c.reminder_times) ? c.reminder_times : ["08:00", "12:00", "19:00"],

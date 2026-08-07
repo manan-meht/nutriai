@@ -114,3 +114,22 @@ export function computeDailyCalories(meals: MealMacroRow[], timezone: string, no
     .sort(([a], [b]) => a - b)
     .map(([, calories]) => Math.round(calories));
 }
+
+/** Total meal count for a rolling 7-day window ending today — a true
+ * rolling window (like computeDailyCalories above), not the Monday-start
+ * calendar week computeMacroWindowSummaries uses, so the count shifts by
+ * one day at a time rather than jumping back to 0 every Monday. Reuses the
+ * same day-bucketing as computeDailyCalories rather than that function's
+ * per-day array, since callers here only need the single rolling total
+ * (e.g. the mobile app's dynamic launcher icon). */
+export function computeRollingWeekMealCount(meals: MealMacroRow[], timezone: string, now: Date = new Date()): number {
+  const nowKey = localDateKey(now, timezone);
+  const windowStartUtcMidnight = nowKey.utcMidnight - 6 * 86_400_000;
+
+  let count = 0;
+  for (const m of meals) {
+    const mealKey = localDateKey(new Date(m.logged_at), timezone);
+    if (mealKey.utcMidnight >= windowStartUtcMidnight && mealKey.utcMidnight <= nowKey.utcMidnight) count++;
+  }
+  return count;
+}

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 // DarkTheme/DefaultTheme/ThemeProvider used to be re-exported from
 // expo-router itself (SDK 57) — the SDK 54 version this app is now pinned
@@ -14,6 +15,7 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { configurePurchases, logOutPurchases } from '@/lib/purchases';
 import { checkForUpdate } from '@/lib/check-for-update';
+import { updateAppIconForWeeklyActivity } from '@/lib/dynamic-app-icon';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -65,6 +67,21 @@ function RootNavigator() {
       logOutPurchases();
     }
   }, [session?.user.id]);
+
+  // Refreshes the Android launcher icon (empty/starting-to-fill/filling-up/
+  // full bowl) from the trailing week's meal-sharing activity — once as
+  // soon as a session exists, and again on every subsequent foreground
+  // (mirrors checkForUpdate's cadence), so the icon reflects reasonably
+  // fresh data without a per-screen refetch. No-op on iOS and while
+  // signed out — see dynamic-app-icon.ts.
+  useEffect(() => {
+    if (!session) return;
+    updateAppIconForWeeklyActivity();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') updateAppIconForWeeklyActivity();
+    });
+    return () => subscription.remove();
+  }, [session]);
 
   // Keep the native splash screen up (see AnimatedSplashOverlay) rather
   // than flashing the login screen for a moment while the stored session

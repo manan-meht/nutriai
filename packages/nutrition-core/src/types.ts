@@ -152,6 +152,11 @@ export interface AdultsContact extends FoodBalanceProfileFields {
    * mapContactRow is the sole computer of it (same convention as
    * macroSummary above). */
   last7DaysCalories?: number[];
+  /** Meal count for a true rolling 7-day window ending today (see
+   * computeRollingWeekMealCount) — distinct from macroSummary.week's
+   * Monday-reset calendar-week count. Optional for the same reason as
+   * last7DaysCalories above. */
+  last7DaysMealCount?: number;
   timezone: string;
   remindersEnabled: boolean;
   reminderTimes: string[];
@@ -227,6 +232,10 @@ export interface GymClient extends FoodBalanceProfileFields {
    * computed against a fixed default — see computeMacroWindowSummaries's
    * caller in gym.ts — rather than a per-client one). */
   macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
+  /** See AdultsContact.last7DaysMealCount's identical doc — gym_clients has
+   * no timezone column, so this is computed against the same fixed default
+   * as macroSummary (see computeRollingWeekMealCount's caller in gym.ts). */
+  last7DaysMealCount?: number;
 }
 
 export interface MealLog {

@@ -38,7 +38,24 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "expo-dynamic-app-icon",
+        {
+          "bowlEmpty": {
+            "image": "./assets/images/dynamic-icon/bowl-empty.png"
+          },
+          "bowlQuarter": {
+            "image": "./assets/images/dynamic-icon/bowl-quarter.png"
+          },
+          "bowlHalf": {
+            "image": "./assets/images/dynamic-icon/bowl-half.png"
+          },
+          "bowlFull": {
+            "image": "./assets/images/dynamic-icon/bowl-full.png"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -202,6 +202,10 @@ export interface AdultsContact extends FoodBalanceProfileFields {
    * oldest first, always 7 entries (0 for days with no meals) — feeds
    * FamilyHealthCard's calorie trend sparkline. */
   last7DaysCalories?: number[];
+  /** Meal count for a true rolling 7-day window ending today — distinct
+   * from macroSummary.week's Monday-reset calendar-week count. Drives the
+   * dynamic launcher icon (see lib/dynamic-app-icon.ts). */
+  last7DaysMealCount?: number;
 }
 
 export interface MealLog {
@@ -252,6 +256,9 @@ export interface GymClient extends FoodBalanceProfileFields {
   mealCount: number;
   lastMealAt?: string;
   macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
+  /** Meal count for a true rolling 7-day window ending today — see
+   * AdultsContact.last7DaysMealCount's identical doc. */
+  last7DaysMealCount?: number;
   goals: Goal[];
   trackedBiomarkers: string[];
   /** Set once a client has been removed (soft-deleted) — only present on
