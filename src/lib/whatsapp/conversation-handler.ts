@@ -49,6 +49,7 @@ import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/l
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { sendPushNotificationToProfile } from "@/lib/notifications/push";
+import { resolveSignedMealPhotoUrl } from "@nutriai/nutrition-core";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
@@ -92,6 +93,58 @@ function admin() {
 // gendered/neutral as stored and pass through unchanged. Returns null for
 // "other", an unset relationship, or an unrecognized value — callers
 // should fall back to the contact's first name in that case.
+/** Signed-URL lifetime for a meal photo attached to a push notification.
+ * Longer than the 1-hour dashboard default (resolveSignedMealPhotoUrl) on
+ * purpose: a notification can sit unopened in the shade overnight, and the
+ * OS fetches the image at *display* time, so a 1-hour link would routinely
+ * expire into a missing thumbnail. 24 hours is still short enough that a
+ * link leaked out of a notification payload stops working within a day. */
+const MEAL_PHOTO_PUSH_URL_TTL_SECONDS = 24 * 60 * 60;
+
+/** "a lunch" / "an omelette"-style article, so the notification title reads
+ * naturally for both consonant- and vowel-initial meal labels. */
+function aOrAn(word: string): string {
+  return /^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`;
+}
+
+/** Rounds a min/max estimate into the compact "480–600" (or plain "520"
+ * when the range collapses) form used throughout notification copy. */
+function formatEstimateRange(min: number | undefined, max: number | undefined): string | null {
+  const lo = Math.round(min ?? 0);
+  const hi = Math.round(max ?? 0);
+  if (!lo && !hi) return null;
+  return lo === hi ? `${lo}` : `${lo}–${hi}`;
+}
+
+/** Builds the notification body: what was eaten, then the two numbers a
+ * caregiver actually acts on (calories and protein). Food names come from
+ * the analysis's structured items rather than analysis.summary, which is
+ * conversational WhatsApp prose ("Nice — that looks like…") and reads badly
+ * truncated on a lock screen. Caps the list at three items so the body
+ * stays inside the ~2 lines Android/iOS show collapsed.
+ *
+ * Exported for tests. */
+export function summariseMealForNotification(analysis: FoodAnalysisResult): string {
+  const names = (analysis.foods ?? []).map((f) => f.name).filter(Boolean);
+  const shown = names.slice(0, 3).join(", ");
+  const remainder = names.length - 3;
+  const foodPart = shown
+    ? remainder > 0
+      ? `${shown} +${remainder} more`
+      : shown
+    : analysis.summary;
+
+  const parts: string[] = [];
+  if (foodPart) parts.push(foodPart);
+
+  const calories = formatEstimateRange(analysis.total_calories_min, analysis.total_calories_max);
+  if (calories) parts.push(`~${calories} kcal`);
+  const protein = formatEstimateRange(analysis.total_protein_min, analysis.total_protein_max);
+  if (protein) parts.push(`${protein}g protein`);
+
+  return parts.join(" · ");
+}
+
 export function relationshipLabelForNotification(
   relationship: string | null | undefined,
   gender: string | null | undefined
@@ -826,7 +879,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     await recordMealSubmissionForReview(analysis, mealRow.id);
-    await notifyCaregiverOfFamilyMeal(resolvedLabel);
+    await notifyCaregiverOfFamilyMeal(resolvedLabel, analysis);
     await updateDietaryProfileForSavedMeal(db, isAdults, entityId, analysis);
     return mealRow.id;
   }
@@ -868,7 +921,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * Best-effort and fully swallowed: a push failure must never affect the
    * WhatsApp save-confirmation flow that calls this.
    */
-  async function notifyCaregiverOfFamilyMeal(resolvedLabel: MealType): Promise<void> {
+  async function notifyCaregiverOfFamilyMeal(
+    resolvedLabel: MealType,
+    analysis?: FoodAnalysisResult
+  ): Promise<void> {
     try {
       if (!isAdults) return;
       if (adultsContact.relationship_type === "self") return;
@@ -880,12 +936,31 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       if (workspace?.plan !== "family") return;
 
       const who = relationshipLabelForNotification(adultsContact.relationship, adultsContact.gender);
-      const body = who ? `Your ${who} just logged a ${resolvedLabel}.` : `${firstName} just logged a ${resolvedLabel}.`;
+      // Title carries who + which meal (the old body's entire content), which
+      // frees the body to carry what they actually ate — the part a caregiver
+      // glancing at a lock screen wants without opening the app.
+      const title = who
+        ? `Your ${who} logged ${aOrAn(resolvedLabel)}`
+        : `${firstName} logged ${aOrAn(resolvedLabel)}`;
+      const body = analysis
+        ? summariseMealForNotification(analysis)
+        : who
+          ? `Your ${who} just logged a ${resolvedLabel}.`
+          : `${firstName} just logged a ${resolvedLabel}.`;
+
+      const imageUrl = analysis?.image_url
+        ? await resolveSignedMealPhotoUrl(db, analysis.image_url, MEAL_PHOTO_PUSH_URL_TTL_SECONDS)
+        : undefined;
 
       await sendPushNotificationToProfile(trainerId, {
-        title: "Meal logged",
+        title,
         body,
-        data: { type: "meal_logged", adultsContactId: entityId, workspaceId },
+        imageUrl,
+        // imageUrl is mirrored into data so the in-app notification list /
+        // tap handler can show the same thumbnail without re-signing, and
+        // so iOS (no service extension yet — see PushNotificationPayload)
+        // still has the photo available to the JS side.
+        data: { type: "meal_logged", adultsContactId: entityId, workspaceId, imageUrl },
       });
     } catch (err) {
       console.error("[whatsapp] notifyCaregiverOfFamilyMeal failed:", err instanceof Error ? err.message : err);

@@ -58,6 +58,37 @@ describe("sendPushNotificationToProfile", () => {
     expect(body[0]).toMatchObject({ to: "ExponentPushToken[aaa]", title: "Meal logged", body: "Alex just logged a lunch." });
   });
 
+  it("attaches richContent.image and mutableContent when an imageUrl is supplied", async () => {
+    mockEq.mockResolvedValue({ data: [{ expo_push_token: "ExponentPushToken[aaa]" }], error: null });
+    const fetchSpy = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    global.fetch = fetchSpy as any;
+
+    await sendPushNotificationToProfile("profile-1", {
+      title: "Your daughter logged a lunch",
+      body: "Dal, rice, salad · ~480–600 kcal · 22–28g protein",
+      imageUrl: "https://example.supabase.co/storage/v1/object/sign/meal-photos/x.jpg?token=abc",
+      data: { type: "meal_logged" },
+    });
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(body[0].richContent).toEqual({
+      image: "https://example.supabase.co/storage/v1/object/sign/meal-photos/x.jpg?token=abc",
+    });
+    expect(body[0].mutableContent).toBe(true);
+  });
+
+  it("omits richContent entirely when no imageUrl is supplied", async () => {
+    mockEq.mockResolvedValue({ data: [{ expo_push_token: "ExponentPushToken[aaa]" }], error: null });
+    const fetchSpy = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    global.fetch = fetchSpy as any;
+
+    await sendPushNotificationToProfile("profile-1", { title: "t", body: "b" });
+
+    const body = JSON.parse(fetchSpy.mock.calls[0][1].body);
+    expect(body[0]).not.toHaveProperty("richContent");
+    expect(body[0]).not.toHaveProperty("mutableContent");
+  });
+
   it("returns 0 and swallows the error when the token lookup fails", async () => {
     mockEq.mockResolvedValue({ data: null, error: { message: "db error" } });
     const fetchSpy = jest.fn();
