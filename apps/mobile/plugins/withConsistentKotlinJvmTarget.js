@@ -16,18 +16,23 @@ const GRADLE_SNIPPET = `
 // Injected by withConsistentKotlinJvmTarget.js (see apps/mobile/plugins) —
 // forces every subproject's Kotlin/Java compile tasks to JVM target 17,
 // working around expo-dynamic-app-icon's own build.gradle hardcoding 11.
-subprojects { subproject ->
-  afterEvaluate {
-    if (subproject.hasProperty('android')) {
-      tasks.withType(JavaCompile).configureEach {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-      }
-      tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions {
-          jvmTarget = "17"
-        }
-      }
+// tasks.withType(...).configureEach is already a lazy, deferred API — it
+// configures each task at task-creation time regardless of when this block
+// itself runs — so this deliberately does NOT wrap it in afterEvaluate.
+// (An earlier version did wrap it in subprojects { afterEvaluate { ... } },
+// which crashed with "Cannot run Project.afterEvaluate(Closure) when the
+// project is already evaluated" — Expo's own autolinking settings-plugin
+// had already finished evaluating at least one subproject by the time this
+// root build.gradle got to this line, so registering a new afterEvaluate
+// hook on it was too late. configureEach has no such timing dependency.)
+subprojects {
+  tasks.withType(JavaCompile).configureEach {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+  }
+  tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+      jvmTarget = "17"
     }
   }
 }
