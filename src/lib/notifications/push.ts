@@ -21,6 +21,24 @@ export interface PushNotificationPayload {
   /** Arbitrary JSON delivered to the app alongside the notification —
    * e.g. { type: "meal_logged", contactId } so a tap could deep-link. */
   data?: Record<string, unknown>;
+  /** Optional thumbnail shown inside the notification itself (Expo's
+   * `richContent.image`). Must be a URL the *device's OS* can fetch
+   * unauthenticated at delivery time — for meal photos that means a signed
+   * Supabase Storage URL with an expiry comfortably longer than the
+   * notification is likely to sit unopened (see resolveSignedMealPhotoUrl
+   * and notifyCaregiverOfFamilyMeal's MEAL_PHOTO_PUSH_URL_TTL_SECONDS).
+   *
+   * Platform reality, so nobody debugs this twice:
+   * - Android: Expo forwards this as FCM's `notification.image`, and
+   *   expo-notifications renders it as the notification's large icon (a
+   *   thumbnail beside the text), not a full-width expanded picture.
+   * - iOS: APNs only attaches remote images via a Notification Service
+   *   Extension, which this app does not currently ship — so the image is
+   *   silently ignored there and the title/body still render normally.
+   *   `mutableContent` is set below so it starts working the moment an
+   *   extension is added, with no server change.
+   */
+  imageUrl?: string;
 }
 
 function serviceClient(): SupabaseClient {
@@ -60,6 +78,15 @@ export async function sendPushNotificationToProfile(
       title: payload.title,
       body: payload.body,
       data: payload.data ?? {},
+      ...(payload.imageUrl
+        ? {
+            richContent: { image: payload.imageUrl },
+            // Required for iOS to hand the notification to a Notification
+            // Service Extension before display; harmless on Android and
+            // harmless on iOS builds with no extension installed.
+            mutableContent: true,
+          }
+        : {}),
     }));
 
     const res = await fetch(EXPO_PUSH_API, {
