@@ -10,17 +10,24 @@ import { api } from './api';
 // plugin config) since the plugin doesn't support per-platform icon sets,
 // but setAppIcon() below is simply never called on iOS.
 
-type BowlIconName = 'bowlEmpty' | 'bowlQuarter' | 'bowlHalf' | 'bowlFull';
+// Names must exactly match app.json's expo-dynamic-app-icon plugin config,
+// AND be lowercase-only with no uppercase letters — the plugin uses these
+// keys verbatim as Android mipmap resource file names, and Android's
+// resource compiler rejects any file-based resource name containing
+// anything outside [a-z0-9_] (an earlier camelCase version of these names,
+// e.g. "bowlHalf", failed the production build with "'H' is not a valid
+// file-based resource name character").
+type BowlIconName = 'bowl_empty' | 'bowl_quarter' | 'bowl_half' | 'bowl_full';
 
 /** Bands over the trailing-7-day total meal count across every person the
  * account tracks (all family members / gym clients combined — not just the
  * signed-in user's own logging). Thresholds confirmed with product: empty
  * at 0, then roughly <1/day, ~1/day, 2+/day. */
 function bowlIconForWeeklyMealCount(mealCount: number): BowlIconName {
-  if (mealCount <= 0) return 'bowlEmpty';
-  if (mealCount <= 6) return 'bowlQuarter';
-  if (mealCount <= 13) return 'bowlHalf';
-  return 'bowlFull';
+  if (mealCount <= 0) return 'bowl_empty';
+  if (mealCount <= 6) return 'bowl_quarter';
+  if (mealCount <= 13) return 'bowl_half';
+  return 'bowl_full';
 }
 
 /** Sums last7DaysMealCount — a true rolling 7-day window ending today (see

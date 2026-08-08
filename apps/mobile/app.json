@@ -42,16 +42,16 @@
       [
         "expo-dynamic-app-icon",
         {
-          "bowlEmpty": {
+          "bowl_empty": {
             "image": "./assets/images/dynamic-icon/bowl-empty.png"
           },
-          "bowlQuarter": {
+          "bowl_quarter": {
             "image": "./assets/images/dynamic-icon/bowl-quarter.png"
           },
-          "bowlHalf": {
+          "bowl_half": {
             "image": "./assets/images/dynamic-icon/bowl-half.png"
           },
-          "bowlFull": {
+          "bowl_full": {
             "image": "./assets/images/dynamic-icon/bowl-full.png"
           }
         }
