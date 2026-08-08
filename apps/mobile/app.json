@@ -39,6 +39,7 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-notifications",
+      "./plugins/withConsistentKotlinJvmTarget",
       [
         "expo-dynamic-app-icon",
         {
