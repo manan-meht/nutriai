@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
 import { now } from "@/lib/time/clock";
 import {
@@ -83,11 +84,11 @@ export async function startTrialIfNeeded(
 export async function getEntitlementSnapshot(
   workspaceId: string,
   module: EntitlementModule,
-  /** Owner's email, checked against BILLING_TEST_WHITELIST_EMAILS — pass
-   * this whenever the caller has it (page.tsx server components do, from
-   * the authenticated user) so internal test accounts never go read-only
-   * regardless of trial/subscription status. Omit only where the caller
-   * genuinely doesn't have an email (whitelisting simply won't apply). */
+  /** Owner's email, checked against BILLING_TEST_WHITELIST_EMAILS. Purely an
+   * optimisation now: when the caller already has it (page.tsx server
+   * components do, from the authenticated user) it saves the lookup below.
+   * Omitting it no longer disables whitelisting — see
+   * lookupOwnerEmail. */
   ownerEmail?: string | null
 ): Promise<EntitlementSnapshot> {
   const admin = createServiceClient();
@@ -95,21 +96,60 @@ export async function getEntitlementSnapshot(
 
   const perModuleEnforcementEnabled = module === "adults" ? FAMILY_TRIAL_ENFORCEMENT_ENABLED : GYM_TRIAL_ENFORCEMENT_ENABLED;
 
-  return {
-    ...core,
-    // During Beta (BILLING_AVAILABLE off), billing is not available at all,
-    // so no workspace is ever read-only regardless of trial/entitlement
-    // status — status is still computed and displayed for banners/countdowns,
-    // it just never blocks actions. Once billing launches, the master switch
-    // and per-module enforcement flags below take over as before. Whitelisted
-    // test accounts are exempt the same way, regardless of BILLING_AVAILABLE.
-    isReadOnly:
-      !isBillingWhitelisted(ownerEmail) &&
-      BILLING_AVAILABLE &&
-      SUBSCRIPTION_ENFORCEMENT_ENABLED &&
-      perModuleEnforcementEnabled &&
-      (core.status === "expired" || core.status === "cancelled"),
-  };
+  // During Beta (BILLING_AVAILABLE off), billing is not available at all, so
+  // no workspace is ever read-only regardless of trial/entitlement status —
+  // status is still computed and displayed for banners/countdowns, it just
+  // never blocks actions. Once billing launches, the master switch and
+  // per-module enforcement flags below take over as before.
+  const wouldEnforce =
+    BILLING_AVAILABLE &&
+    SUBSCRIPTION_ENFORCEMENT_ENABLED &&
+    perModuleEnforcementEnabled &&
+    (core.status === "expired" || core.status === "cancelled");
+
+  // Whitelisted accounts are exempt regardless of BILLING_AVAILABLE. The
+  // owner's email is resolved here rather than trusted from the caller
+  // because four call sites (the WhatsApp handler most damagingly) simply
+  // never passed it, so isBillingWhitelisted(undefined) returned false and
+  // every whitelisted user was enforced anyway — a real user was blocked
+  // mid-conversation 90 seconds after their trial lapsed. Deriving it from
+  // entitlements.owner_id makes the exemption impossible to forget.
+  //
+  // Only looked up when enforcement would otherwise bite, so the common
+  // path (trialing/active, or Beta) costs no extra query.
+  const isReadOnly = wouldEnforce && !isBillingWhitelisted(ownerEmail ?? (await lookupOwnerEmail(admin, workspaceId, module)));
+
+  return { ...core, isReadOnly };
+}
+
+/** The workspace owner's email, for the whitelist check in
+ * getEntitlementSnapshot. Returns null (never throws) if the entitlement or
+ * profile row can't be read — a lookup failure then means "not whitelisted",
+ * i.e. enforcement proceeds exactly as it would have before. */
+async function lookupOwnerEmail(
+  admin: SupabaseClient,
+  workspaceId: string,
+  module: EntitlementModule
+): Promise<string | null> {
+  try {
+    const { data } = await admin
+      .from("entitlements")
+      .select("owner_id")
+      .eq("workspace_id", workspaceId)
+      .eq("module", module)
+      .maybeSingle();
+    if (!data?.owner_id) return null;
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("email")
+      .eq("id", data.owner_id)
+      .maybeSingle();
+    return profile?.email ?? null;
+  } catch (err) {
+    console.error("[entitlements] owner email lookup failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /**

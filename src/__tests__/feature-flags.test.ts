@@ -136,3 +136,109 @@ describe("isBillingWhitelisted", () => {
     expect(isBillingWhitelisted("test@example.com")).toBe(false);
   });
 });
+
+// The whitelist used to be applied only when a caller passed ownerEmail as
+// getEntitlementSnapshot's third argument. Four call sites never did — the
+// WhatsApp handler among them — so isBillingWhitelisted(undefined) returned
+// false and whitelisted users were enforced anyway. A real user was cut off
+// mid-conversation 90 seconds after their trial lapsed. The owner's email is
+// now resolved from entitlements.owner_id when the caller doesn't supply it.
+describe("getEntitlementSnapshot — whitelist applies without an explicit ownerEmail", () => {
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_BILLING_AVAILABLE;
+    delete process.env.BILLING_TEST_WHITELIST_EMAILS;
+    jest.resetModules();
+  });
+
+  const expiredTrialRow = {
+    status: "trialing",
+    trial_start_at: "2026-01-01T00:00:00.000Z",
+    trial_end_at: "2026-01-31T00:00:00.000Z",
+    current_period_end: null,
+    owner_id: "owner-1",
+  };
+
+  /** Fake supporting both the two-eq entitlements query and the one-eq
+   * profiles lookup, by making every eq() also terminal. */
+  function makeFakeServiceClient(row: any, profileEmail: string | null, onProfileQuery?: () => void) {
+    return {
+      from: (table: string) => {
+        if (table === "profiles") onProfileQuery?.();
+        const result = table === "profiles" ? { email: profileEmail } : row;
+        const node: any = {
+          maybeSingle: async () => ({ data: result }),
+          eq: () => node,
+          select: () => node,
+        };
+        return node;
+      },
+    };
+  }
+
+  it("exempts a whitelisted owner even though the caller passed no email", async () => {
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
+    process.env.BILLING_TEST_WHITELIST_EMAILS = "vip@example.com";
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () => makeFakeServiceClient(expiredTrialRow, "vip@example.com"),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    const snapshot = await getEntitlementSnapshot("ws-1", "adults");
+    expect(snapshot.status).toBe("expired");
+    expect(snapshot.isReadOnly).toBe(false);
+  });
+
+  it("still enforces an expired owner who is not whitelisted", async () => {
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
+    process.env.BILLING_TEST_WHITELIST_EMAILS = "vip@example.com";
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () => makeFakeServiceClient(expiredTrialRow, "someone-else@example.com"),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    expect((await getEntitlementSnapshot("ws-1", "adults")).isReadOnly).toBe(true);
+  });
+
+  it("skips the owner lookup entirely when enforcement would not bite anyway", async () => {
+    // Beta (billing unavailable) — nobody is read-only, so the extra query
+    // must not run on the common path.
+    let profileQueries = 0;
+    jest.resetModules();
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () => makeFakeServiceClient(expiredTrialRow, "vip@example.com", () => { profileQueries++; }),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    expect((await getEntitlementSnapshot("ws-1", "adults")).isReadOnly).toBe(false);
+    expect(profileQueries).toBe(0);
+  });
+
+  it("falls back to enforcing when only the owner lookup fails, rather than granting free access", async () => {
+    process.env.NEXT_PUBLIC_BILLING_AVAILABLE = "true";
+    process.env.BILLING_TEST_WHITELIST_EMAILS = "vip@example.com";
+    jest.resetModules();
+    // The entitlements read succeeds; only the profiles lookup blows up.
+    jest.doMock("@/lib/supabase/server", () => ({
+      createServiceClient: () => ({
+        from: (table: string) => {
+          if (table === "profiles") throw new Error("db down");
+          const node: any = {
+            maybeSingle: async () => ({ data: expiredTrialRow }),
+            eq: () => node,
+            select: () => node,
+          };
+          return node;
+        },
+      }),
+    }));
+    const { getEntitlementSnapshot } = await import("@/lib/entitlements/entitlements");
+
+    const snapshot = await getEntitlementSnapshot("ws-1", "adults");
+    expect(snapshot.status).toBe("expired");
+    // Unknown email means "not whitelisted" — enforcement proceeds exactly
+    // as it would have before, rather than failing open.
+    expect(snapshot.isReadOnly).toBe(true);
+  });
+});
