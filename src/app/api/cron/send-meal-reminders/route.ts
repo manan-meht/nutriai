@@ -22,6 +22,9 @@ import {
 import { buildMealNutritionHistory } from "@/lib/food-balance/meal-nutrient-recommendations";
 import { readTodaysMealRecommendationClaim, computeFreshMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
 import { calculateMacroTargets } from "@nutriai/health-scoring";
+// Safe to import (unlike food-analyzer.ts): a pure predicate module with no
+// Gemini SDK dependency — see its own module doc.
+import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -462,6 +465,20 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
   for (const conv of stale ?? []) {
     const pending = conv.pending_meal;
     if (!pending) {
+      skipped++;
+      continue;
+    }
+
+    // A pending meal the analyzer never managed to read any food out of is
+    // dropped rather than force-saved — see analysisHasFoodContent. This
+    // sweep commits pending_meal to meal_logs unreviewed, so without the
+    // guard a failed analysis became a junk meal row plus a WhatsApp
+    // message quoting the model's error text back as the meal's contents.
+    if (!analysisHasFoodContent(pending)) {
+      await db
+        .from("whatsapp_conversations")
+        .update({ state: "idle", pending_meal: null, updated_at: new Date().toISOString() })
+        .eq("id", conv.id);
       skipped++;
       continue;
     }

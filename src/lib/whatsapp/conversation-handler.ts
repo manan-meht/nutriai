@@ -23,6 +23,7 @@ import {
   FoodAnalysisResult,
   MealType,
 } from "@/lib/ai/food-analyzer";
+import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
 import { fetchTodaysFocusInputs, type TodaysFocusContactType } from "@/lib/food-balance/todays-focus-data";
@@ -93,6 +94,19 @@ function admin() {
 // gendered/neutral as stored and pass through unchanged. Returns null for
 // "other", an unset relationship, or an unrecognized value — callers
 // should fall back to the contact's first name in that case.
+/** Conversation states that mean "the bot asked something and is waiting on
+ * this user's reply". Used by the entitlement gate to let an already-started
+ * exchange finish after a trial lapses, rather than swallowing the reply and
+ * stranding the meal — see the gate's own comment for the production
+ * incident that motivated this. */
+const IN_FLIGHT_CONVERSATION_STATES = new Set([
+  "awaiting_confirmation",
+  "awaiting_clarification",
+  "awaiting_correction",
+  "awaiting_correction_confirmation",
+  "awaiting_skip_or_correction",
+]);
+
 /** Signed-URL lifetime for a meal photo attached to a push notification.
  * Longer than the 1-hour dashboard default (resolveSignedMealPhotoUrl) on
  * purpose: a notification can sit unopened in the shade overnight, and the
@@ -894,6 +908,13 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * does the equivalent for the "nobody sent anything else at all" case,
    * but as a standalone route it can't reuse this closure. */
   async function saveBestGuessForClarification(pending: PendingMeal): Promise<void> {
+    // Never commit an analysis that never identified any food — see
+    // analysisHasFoodContent. Discard it instead of logging the model's
+    // failure text as a meal.
+    if (!analysisHasFoodContent(pending)) {
+      await setConvState("idle", null);
+      return;
+    }
     const resolvedLabel = resolveMealLabel(pending.meal_type, new Date(), contactTimezone);
     const savedMealId = await saveMeal(pending, resolvedLabel);
     await sendTextMessage(
@@ -1376,8 +1397,20 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Block new AI meal analysis (the costly path) once the owner's trial or
   // subscription has lapsed. Greetings, workout logging, and "show today"
   // above are unaffected — they don't call the AI analyzer.
+  //
+  // Conversations already mid-flow are also let through. A trial can lapse
+  // in the gap between the bot asking a clarifying question and the user
+  // answering it (observed in production: the question went out at 10:29,
+  // the trial ended at 10:33, the answer at 10:35 hit this gate). Blocking
+  // there swallowed the answer, left the meal stuck in
+  // awaiting_clarification, and let the stale-clarification sweep
+  // force-save it minutes later from an unresolved best guess. Letting an
+  // in-flight exchange finish costs at most one more analyzer call — the
+  // meal it belongs to was already analysed before the lapse — and it can
+  // only be reached by a user who was mid-conversation, not by anyone
+  // starting a new meal.
   const entitlement = await getEntitlementSnapshot(workspaceId, isAdults ? "adults" : "gym");
-  if (entitlement.isReadOnly && peekState !== "processing") {
+  if (entitlement.isReadOnly && peekState !== "processing" && !IN_FLIGHT_CONVERSATION_STATES.has(peekState)) {
     await sendTextMessage(
       msg.from,
       "This account's free trial has ended, so I can't analyze new meals right now. Please ask the person who set this up to subscribe — your past meals are still safe and visible in the dashboard."
