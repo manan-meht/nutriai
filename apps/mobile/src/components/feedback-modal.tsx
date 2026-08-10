@@ -55,11 +55,20 @@ export function FeedbackModal({ visible, onClose }: { visible: boolean; onClose:
     try {
       // Platform + version, so a bug report doesn't start with "which build
       // are you on?". Matches the shape mobile-api logs into user_agent.
+      //
+      // The build number comes from Constants.platform, NOT
+      // Constants.expoConfig.{android.versionCode,ios.buildNumber}: expoConfig
+      // is the *manifest*, which an OTA update can replace after install, so
+      // those fields can report a build the user isn't actually running —
+      // precisely the thing this string exists to pin down. Constants.platform
+      // reads the embedded native values (Info.plist CFBundleVersion on iOS,
+      // android.versionCode on Android), which never drift from the installed
+      // binary. See https://docs.expo.dev/versions/v57.0.0/sdk/constants/.
       const version = Constants.expoConfig?.version ?? 'unknown';
       const build =
         Platform.OS === 'android'
-          ? Constants.expoConfig?.android?.versionCode
-          : Constants.expoConfig?.ios?.buildNumber;
+          ? Constants.platform?.android?.versionCode
+          : Constants.platform?.ios?.buildNumber;
       const client = `${Platform.OS} ${version}${build ? ` (${build})` : ''}`;
 
       await api.submitFeedback(feedbackType as FeedbackType, trimmed, client);
