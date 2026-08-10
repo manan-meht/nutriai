@@ -77,6 +77,23 @@ async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
 // packages/health-scoring type carries. Decoupling the wire contract from
 // the domain types is the point, not something to "fix" by importing.)
 
+/** Mirrors the categories the web feedback form offers (see the main app's
+ * src/lib/feedback/types.ts) and mobile-api's /me/feedback validation.
+ * Kept in this file's local-types spirit rather than imported. */
+export type FeedbackType = "general" | "feature_request" | "bug" | "ai_inaccurate" | "billing" | "other";
+
+export const FEEDBACK_TYPE_OPTIONS: Array<{ value: FeedbackType; label: string }> = [
+  { value: "general", label: "General feedback" },
+  { value: "feature_request", label: "Feature request" },
+  { value: "bug", label: "Something is not working" },
+  { value: "ai_inaccurate", label: "AI or meal analysis was inaccurate" },
+  { value: "billing", label: "Billing or account issue" },
+  { value: "other", label: "Other" },
+];
+
+export const FEEDBACK_MESSAGE_MIN_LENGTH = 10;
+export const FEEDBACK_MESSAGE_MAX_LENGTH = 2000;
+
 export interface Goal {
   id: string;
   goalType: string;
@@ -553,5 +570,14 @@ export const api = {
     apiRequest<{ ok: true }>("/me/push-token", {
       method: "POST",
       body: JSON.stringify({ expoPushToken, platform }),
+    }),
+
+  /** In-app feedback. The email/name/account type are all derived from the
+   * bearer token server-side, so nothing identifying is sent from here —
+   * only what the user typed, plus a platform/version string for triage. */
+  submitFeedback: (feedbackType: FeedbackType, message: string, client: string) =>
+    apiRequest<{ ok: true }>("/me/feedback", {
+      method: "POST",
+      body: JSON.stringify({ feedbackType, message, client }),
     }),
 };

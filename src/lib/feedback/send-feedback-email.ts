@@ -14,6 +14,12 @@ export interface FeedbackEmailPayload {
   submittedAt: Date;
 }
 
+const SOURCE_LABELS: Record<FeedbackSource, string> = {
+  dashboard: "Dashboard",
+  website: "Website",
+  mobile: "Mobile app",
+};
+
 const ACCOUNT_TYPE_LABELS: Record<FeedbackAccountType, string> = {
   family: "Family",
   coach: "Coach",
@@ -38,7 +44,7 @@ export async function sendFeedbackEmail(payload: FeedbackEmailPayload): Promise<
 
   const rows: Array<[string, string]> = [
     ["Category", typeLabel],
-    ["Source", payload.source === "dashboard" ? "Dashboard" : "Website"],
+    ["Source", SOURCE_LABELS[payload.source] ?? payload.source],
   ];
   if (payload.accountType) rows.push(["Account type", ACCOUNT_TYPE_LABELS[payload.accountType]]);
   if (payload.fullName) rows.push(["Name", sanitizeLine(payload.fullName)]);

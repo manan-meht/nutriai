@@ -51,4 +51,27 @@ describe("Feedback entry point visibility", () => {
     const gymUsage = read("src/components/gym/GymDashboardClient.tsx");
     expect(gymUsage).toMatch(/product="gym"/);
   });
+
+  // The mobile app shipped with no in-app feedback path at all — only the
+  // Helpful/Not-helpful pills on Food Balance recommendations, which is a
+  // different feature. These guard the entry point on each list screen.
+  it("mobile adults and gym list screens both have a Send feedback trigger", () => {
+    for (const path of [
+      "apps/mobile/src/app/(app)/adults/index.tsx",
+      "apps/mobile/src/app/(app)/gym/index.tsx",
+    ]) {
+      const src = read(path);
+      expect(src).toMatch(/Send feedback/);
+      expect(src).toMatch(/FeedbackModal/);
+      expect(src).toMatch(/setShowFeedback\(true\)/);
+    }
+  });
+
+  it("the mobile feedback modal posts to mobile-api rather than the public web endpoint", () => {
+    const modal = read("apps/mobile/src/components/feedback-modal.tsx");
+    expect(modal).toMatch(/api\.submitFeedback/);
+
+    const client = read("apps/mobile/src/lib/api.ts");
+    expect(client).toMatch(/"\/me\/feedback"/);
+  });
 });

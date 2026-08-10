@@ -57,9 +57,12 @@ describe("validateFeedbackSubmission — required-field validation", () => {
     expect(validateFeedbackSubmission({ ...validBase, source: "carrier-pigeon" }).ok).toBe(false);
   });
 
-  it("accepts both valid sources", () => {
+  it("accepts every valid source, including the mobile app", () => {
     expect(validateFeedbackSubmission({ ...validBase, source: "dashboard" })).toEqual({ ok: true });
     expect(validateFeedbackSubmission({ ...validBase, source: "website" })).toEqual({ ok: true });
+    // Added alongside the in-app feedback entry point — see migration 0051
+    // for why mobile is its own source rather than folded into "dashboard".
+    expect(validateFeedbackSubmission({ ...validBase, source: "mobile" })).toEqual({ ok: true });
   });
 });
 

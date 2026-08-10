@@ -7,6 +7,7 @@ import { Collapsible } from '@/components/ui/collapsible';
 import { FamilyHealthCard, type FamilyCardStatus } from '@/components/family-health-card';
 import { FamilyAvatarStack } from '@/components/family-avatar-stack';
 import { EmptyState, ErrorState, LoadingState } from '@/components/screen-states';
+import { FeedbackModal } from '@/components/feedback-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -78,6 +79,7 @@ export default function AdultsContactListScreen() {
   // (refresh, etc.): mobile-api's markWorkspaceSelfPlan is a no-op once the
   // workspace is already "self".
   const { self: selfParam, justPurchased } = useLocalSearchParams<{ self?: string; justPurchased?: string }>();
+  const [showFeedback, setShowFeedback] = useState(false);
   const [state, setState] = useState<State>({ status: 'loading' });
   const [refreshing, setRefreshing] = useState(false);
   const [, setBuyingCapacity] = useState(false);
@@ -433,17 +435,26 @@ export default function AdultsContactListScreen() {
           </>
         }
       />
-      <Pressable
-        style={styles.signOutButton}
-        onPress={() => {
-          clearLastDashboardChoice();
-          supabase.auth.signOut();
-        }}
-      >
-        <ThemedText type="small" themeColor="textSecondary">
-          Sign out
-        </ThemedText>
-      </Pressable>
+      <View style={styles.footerRow}>
+        <Pressable style={styles.footerButton} onPress={() => setShowFeedback(true)}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Send feedback
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          style={styles.footerButton}
+          onPress={() => {
+            clearLastDashboardChoice();
+            supabase.auth.signOut();
+          }}
+        >
+          <ThemedText type="small" themeColor="textSecondary">
+            Sign out
+          </ThemedText>
+        </Pressable>
+      </View>
+
+      <FeedbackModal visible={showFeedback} onClose={() => setShowFeedback(false)} />
     </ThemedView>
   );
 }
@@ -491,5 +502,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   removedSection: { marginTop: Spacing.three, marginHorizontal: Spacing.three },
-  signOutButton: { alignItems: 'center', padding: Spacing.three },
+  footerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: Spacing.three },
+  footerButton: { alignItems: 'center', padding: Spacing.three },
 });
