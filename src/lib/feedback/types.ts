@@ -22,7 +22,11 @@ export const FEEDBACK_TYPE_LABELS: Record<FeedbackType, string> = Object.fromEnt
 export const FEEDBACK_MESSAGE_MIN_LENGTH = 10;
 export const FEEDBACK_MESSAGE_MAX_LENGTH = 2000;
 
-export type FeedbackSource = "dashboard" | "website";
+/** "dashboard" = signed-in web app, "website" = public marketing pages,
+ * "mobile" = the Android/iOS app (see apps/mobile-api's /feedback route).
+ * Kept distinct from "dashboard" so a bug report's platform is knowable
+ * without guessing from the user agent — see migration 0051. */
+export type FeedbackSource = "dashboard" | "website" | "mobile";
 export type FeedbackAccountType = "family" | "coach" | "self";
 
 export interface FeedbackSubmitRequest {

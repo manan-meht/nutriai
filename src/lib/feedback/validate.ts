@@ -23,7 +23,7 @@ export function validateFeedbackSubmission(input: {
     return { ok: false, error: `Message must be between ${FEEDBACK_MESSAGE_MIN_LENGTH} and ${FEEDBACK_MESSAGE_MAX_LENGTH} characters.` };
   }
 
-  if (input.source !== "dashboard" && input.source !== "website") {
+  if (input.source !== "dashboard" && input.source !== "website" && input.source !== "mobile") {
     return { ok: false, error: "Invalid request." };
   }
 
