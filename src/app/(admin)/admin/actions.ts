@@ -174,6 +174,7 @@ export interface MealReviewDetail {
     vegetableFiberStatus: string;
     carbStatus: string;
     mealBalanceStatus: string;
+    micronutrientStatus: string;
     homeCookedLikelihood: string;
     enjoymentFoodPresent: boolean;
     sugaryDrinkPresent: boolean;
@@ -205,6 +206,7 @@ export interface MealReviewDetail {
     correctedCarbStatus: string | null;
     correctedMealBalanceStatus: string | null;
     correctedHomeCookedLikelihood: string | null;
+    correctedMicronutrientStatus: string | null;
     correctedEnjoymentFoodPresent: boolean | null;
     correctedSugaryDrinkPresent: boolean | null;
     correctedFriedFoodPresent: boolean | null;
@@ -335,6 +337,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           carbStatus: classification.carb_status,
           mealBalanceStatus: classification.meal_balance_status,
           homeCookedLikelihood: classification.home_cooked_likelihood,
+          micronutrientStatus: classification.micronutrient_status ?? "unknown",
           enjoymentFoodPresent: classification.enjoyment_food_present,
           sugaryDrinkPresent: classification.sugary_drink_present,
           friedFoodPresent: classification.fried_food_present,
@@ -376,6 +379,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
           correctedCarbStatus: latestReview.corrected_carb_status,
           correctedMealBalanceStatus: latestReview.corrected_meal_balance_status,
           correctedHomeCookedLikelihood: latestReview.corrected_home_cooked_likelihood,
+          correctedMicronutrientStatus: latestReview.corrected_micronutrient_status,
           correctedEnjoymentFoodPresent: latestReview.corrected_enjoyment_food_present,
           correctedSugaryDrinkPresent: latestReview.corrected_sugary_drink_present,
           correctedFriedFoodPresent: latestReview.corrected_fried_food_present,
@@ -421,7 +425,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
 // Save / escalate review
 // -----------------------------------------------------------------------
 
-const REVIEW_STATUSES = ["correct", "partially_correct", "incorrect", "unclear_photo", "not_food", "duplicate", "escalated"] as const;
+const REVIEW_STATUSES = ["correct", "partially_correct", "incorrect", "unclear_image", "unclear_photo", "no_photo", "not_food", "duplicate", "escalated"] as const;
 const PRESENCE_STATUSES = ["missing", "partial", "present", "unknown"] as const;
 const CARB_STATUSES = ["missing", "present", "dominant", "unknown"] as const;
 const BALANCE_STATUSES = ["needs_support", "moderate", "strong", "unknown"] as const;
@@ -445,6 +449,7 @@ export interface SaveReviewInput {
   correctedCarbStatus?: (typeof CARB_STATUSES)[number];
   correctedMealBalanceStatus?: (typeof BALANCE_STATUSES)[number];
   correctedHomeCookedLikelihood?: (typeof LIKELIHOODS)[number];
+  correctedMicronutrientStatus?: (typeof PRESENCE_STATUSES)[number];
   correctedEnjoymentFoodPresent?: boolean;
   correctedSugaryDrinkPresent?: boolean;
   correctedFriedFoodPresent?: boolean;
@@ -502,6 +507,7 @@ export async function saveHumanReview(input: SaveReviewInput): Promise<{ reviewI
     corrected_carb_status: input.correctedCarbStatus ?? null,
     corrected_meal_balance_status: input.correctedMealBalanceStatus ?? null,
     corrected_home_cooked_likelihood: input.correctedHomeCookedLikelihood ?? null,
+    corrected_micronutrient_status: input.correctedMicronutrientStatus ?? null,
     corrected_enjoyment_food_present: input.correctedEnjoymentFoodPresent ?? null,
     corrected_sugary_drink_present: input.correctedSugaryDrinkPresent ?? null,
     corrected_fried_food_present: input.correctedFriedFoodPresent ?? null,

@@ -6,6 +6,7 @@ import { StatusBadge, priorityMood, reviewStatusMood } from "@/components/admin/
 import { ReviewForm } from "@/components/admin/ReviewForm";
 import { FoodKnowledgeTable } from "@/components/admin/FoodKnowledgeTable";
 import { ModelQualityView } from "@/components/admin/ModelQualityView";
+import { queueQueryString } from "@/lib/admin/queue-query";
 
 // All four admin views (meal review queue, meal review detail, food
 // knowledge base, model quality) are combined into this single route.
@@ -41,7 +42,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   if (tab === "food-knowledge") return <FoodKnowledgeTab q={sp.q} />;
   if (tab === "model-quality") return <ModelQualityTab />;
-  if (sp.id) return <MealReviewDetailTab mealSubmissionId={sp.id} />;
+  if (sp.id) return <MealReviewDetailTab mealSubmissionId={sp.id} returnQuery={queueQueryString(sp)} />;
   return <MealReviewQueueTab sp={sp} />;
 }
 
@@ -63,15 +64,20 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
     return <p className="text-sm text-[var(--color-status-support-text)]">{result.error}</p>;
   }
 
-  // Preserves every other filter/sort param already in the URL, only
-  // swapping `page` — same querystring the filter form itself submits to.
+  // Every link out of the queue carries the current filter/sort/page state
+  // so it survives the round trip. Previously the row links were a bare
+  // `/admin?id=<id>`, so opening a meal and coming back reset the queue to
+  // the default "pending / newest / page 1" — the filters were only ever
+  // sticky as long as you never clicked anything.
+  const filterQuery = queueQueryString(sp);
+
   function pageHref(page: number): string {
-    const params = new URLSearchParams();
-    for (const [key, value] of Object.entries(sp)) {
-      if (key !== "page" && value) params.set(key, value);
-    }
-    if (page > 1) params.set("page", String(page));
-    return `/admin?${params.toString()}`;
+    return `/admin?${queueQueryString(sp, { page: page > 1 ? String(page) : undefined })}`;
+  }
+
+  /** Detail link that can find its way back to this exact queue view. */
+  function reviewHref(id: string): string {
+    return `/admin?id=${id}${filterQuery ? `&${filterQuery}` : ""}`;
   }
 
   return (
@@ -117,7 +123,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
             {result.items.map((item) => (
               <Link
                 key={item.id}
-                href={`/admin?id=${item.id}`}
+                href={reviewHref(item.id)}
                 className="block bg-white rounded-2xl border border-gray-100 p-4 active:bg-gray-50 transition-colors"
               >
                 <div className="flex gap-3">
@@ -196,7 +202,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                     </td>
                     <td className="p-3 text-gray-500 whitespace-nowrap">{item.anonymizedUserId}</td>
                     <td className="p-3">
-                      <Link href={`/admin?id=${item.id}`} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
+                      <Link href={reviewHref(item.id)} className="text-[var(--color-dashboard-primary)] text-sm font-medium">
                         Review
                       </Link>
                     </td>
@@ -227,13 +233,20 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
   );
 }
 
-async function MealReviewDetailTab({ mealSubmissionId }: { mealSubmissionId: string }) {
+async function MealReviewDetailTab({
+  mealSubmissionId,
+  returnQuery,
+}: {
+  mealSubmissionId: string;
+  returnQuery: string;
+}) {
   const detail = await getMealReviewDetail(mealSubmissionId);
   if ("error" in detail) notFound();
+  const backHref = returnQuery ? `/admin?${returnQuery}` : "/admin";
   return (
     <div className="space-y-4">
-      <Link href="/admin" className="text-sm text-[var(--color-dashboard-primary)] font-medium">← Back to queue</Link>
-      <ReviewForm detail={detail} />
+      <Link href={backHref} className="text-sm text-[var(--color-dashboard-primary)] font-medium">← Back to queue</Link>
+      <ReviewForm detail={detail} returnQuery={returnQuery} />
     </div>
   );
 }

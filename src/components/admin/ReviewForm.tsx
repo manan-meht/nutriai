@@ -5,15 +5,19 @@ import { useRouter } from "next/navigation";
 import type { MealReviewDetail, SaveReviewInput, CorrectedFoodItem } from "@/app/(admin)/admin/actions";
 import { saveHumanReview, escalateReview, getNextPendingMealId } from "@/app/(admin)/admin/actions";
 import { StatusBadge, reviewStatusMood } from "@/components/admin/StatusBadge";
-import { FOOD_CATEGORIES } from "@/lib/admin/food-categories";
+import {
+  FOOD_CATEGORIES,
+  foodCategoryLabel,
+  REVIEW_STATUS_OPTIONS,
+  reviewStatusLabel,
+  MICRONUTRIENT_STATUSES,
+} from "@/lib/admin/food-categories";
 import { deriveMealLevelFields } from "@/lib/admin/meal-level-derivation";
 import { likelihoodToBoolean, directionToHealthy, aiFoodCategoryToKnowledgeCategory } from "@/lib/admin/ai-item-prefill";
 
-const REVIEW_STATUS_OPTIONS = ["correct", "partially_correct", "incorrect", "unclear_photo", "not_food", "duplicate", "escalated"];
-
 type Detail = Exclude<MealReviewDetail, { error: string }>;
 
-export function ReviewForm({ detail }: { detail: Detail }) {
+export function ReviewForm({ detail, returnQuery = "" }: { detail: Detail; returnQuery?: string }) {
   const router = useRouter();
   const { submission, classification, latestReview, mealLog, knownFoods } = detail;
   const [saving, setSaving] = useState(false);
@@ -33,6 +37,11 @@ export function ReviewForm({ detail }: { detail: Detail }) {
   const [enjoyment, setEnjoyment] = useState(latestReview?.correctedEnjoymentFoodPresent ?? classification?.enjoymentFoodPresent ?? false);
   const [sugaryDrink, setSugaryDrink] = useState(latestReview?.correctedSugaryDrinkPresent ?? classification?.sugaryDrinkPresent ?? false);
   const [friedFood, setFriedFood] = useState(latestReview?.correctedFriedFoodPresent ?? classification?.friedFoodPresent ?? false);
+  // Reviewer-set rather than derived: the knowledge base has no per-food
+  // micronutrient attribute to roll up from (see food-categories.ts).
+  const [micronutrientStatus, setMicronutrientStatus] = useState(
+    latestReview?.correctedMicronutrientStatus ?? classification?.micronutrientStatus ?? "unknown"
+  );
   const [suggestion, setSuggestion] = useState(latestReview?.correctedSuggestion ?? classification?.suggestedNextStep ?? "");
   const [notes, setNotes] = useState(latestReview?.reviewNotes ?? "");
 
@@ -174,6 +183,7 @@ export function ReviewForm({ detail }: { detail: Detail }) {
       correctedFriedFoodPresent: friedFood,
       correctedUltraProcessedLikelihood: derived.ultraProcessedLikelihood,
       correctedHealthierDirectionSignal: derived.healthierDirectionSignal,
+      correctedMicronutrientStatus: micronutrientStatus as SaveReviewInput["correctedMicronutrientStatus"],
       correctedSuggestion: suggestion || undefined,
       reviewNotes: notes || undefined,
     };
@@ -192,10 +202,10 @@ export function ReviewForm({ detail }: { detail: Detail }) {
       const next = await getNextPendingMealId(submission.id);
       setSaving(false);
       if (!("error" in next) && next.id) {
-        router.push(`/admin?id=${next.id}`);
+        router.push(`/admin?id=${next.id}${returnQuery ? `&${returnQuery}` : ""}`);
         return;
       }
-      router.push("/admin");
+      router.push(returnQuery ? `/admin?${returnQuery}` : "/admin");
       return;
     }
     setSaving(false);
@@ -343,7 +353,7 @@ export function ReviewForm({ detail }: { detail: Detail }) {
                   reviewStatus === opt ? "border-transparent" : "border-gray-200 text-gray-500"
                 }`}
               >
-                {reviewStatus === opt ? <StatusBadge label={opt.replace("_", " ")} mood={reviewStatusMood(opt)} /> : opt.replace("_", " ")}
+                {reviewStatus === opt ? <StatusBadge label={reviewStatusLabel(opt)} mood={reviewStatusMood(opt)} /> : reviewStatusLabel(opt)}
               </button>
             ))}
           </div>
@@ -492,7 +502,7 @@ export function ReviewForm({ detail }: { detail: Detail }) {
 
           <div className="flex gap-4 text-sm text-gray-600">
             <label className="flex items-center gap-1.5">
-              <input type="checkbox" checked={enjoyment} onChange={(e) => setEnjoyment(e.target.checked)} /> Enjoyment food
+              <input type="checkbox" checked={enjoyment} onChange={(e) => setEnjoyment(e.target.checked)} /> Treat food
             </label>
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={sugaryDrink} onChange={(e) => setSugaryDrink(e.target.checked)} /> Sugary drink
@@ -502,10 +512,33 @@ export function ReviewForm({ detail }: { detail: Detail }) {
             </label>
           </div>
 
+          <Field label="Micronutrients">
+            <select
+              value={micronutrientStatus}
+              onChange={(e) => setMicronutrientStatus(e.target.value)}
+              className={inputClass}
+            >
+              {MICRONUTRIENT_STATUSES.map((opt) => (
+                <option key={opt} value={opt} className="capitalize">
+                  {opt}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">
+              Your own call — unlike the derived fields above, this isn&rsquo;t rolled up from the items,
+              and the model doesn&rsquo;t estimate it yet.
+            </p>
+          </Field>
+
           <Field label="Corrected coaching suggestion">
             <textarea value={suggestion} onChange={(e) => setSuggestion(e.target.value)} rows={2} className={inputClass} />
             <p className="text-xs text-gray-400 mt-1">
               Use non-judgmental language. Avoid &ldquo;bad food,&rdquo; &ldquo;cheat meal,&rdquo; &ldquo;unhealthy,&rdquo; &ldquo;failed,&rdquo; or &ldquo;poor choice.&rdquo;
+            </p>
+            <p className="text-xs text-gray-500 mt-1.5 bg-gray-50 border border-gray-100 rounded-lg p-2">
+              <strong className="font-medium">Applies to this meal only.</strong> Saving rewrites what this
+              person sees for this meal on their dashboard. It does <em>not</em> feed back into future
+              classifications — nothing reads past corrections when analysing a new photo yet.
             </p>
           </Field>
 
