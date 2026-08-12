@@ -1,0 +1,71 @@
+diff --git a/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconModule.kt b/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconModule.kt
+index bb1c096..939eb53 100644
+--- a/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconModule.kt
++++ b/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconModule.kt
+@@ -14,29 +14,57 @@ class ExpoDynamicAppIconModule : Module() {
+   override fun definition() = ModuleDefinition {
+     Name("ExpoDynamicAppIcon")
+ 
++    // PATCHED (see apps/mobile/patches) — upstream enabled the new alias here
++    // but only queued the previous component for disabling, applying it later
++    // in the activity's onPause via an in-memory list. That left BOTH launcher
++    // components enabled in between, and if the process died before onPause
++    // ever ran (swipe-away, OS kill, crash) the old one was never disabled at
++    // all — producing a permanent duplicate launcher icon for one installed
++    // app. This does the swap synchronously instead, and sweeps every other
++    // known alias so an already-duplicated install self-heals on the next call.
+     Function("setAppIcon") { name: String ->
+       try {
+-        var newIcon:String = context.packageName + ".MainActivity" + name
+-        var currentIcon:String = if(!SharedObject.icon.isEmpty()) SharedObject.icon else context.packageName + ".MainActivity"
+-
+-        SharedObject.packageName = context.packageName
+-        SharedObject.pm = pm
++        val pkg = context.packageName
++        val defaultComponent = "$pkg.MainActivity"
++        val newIcon = if (name.isEmpty() || name == "DEFAULT") defaultComponent else defaultComponent + name
+ 
++        // Enable the target BEFORE disabling anything else: a moment with zero
++        // enabled launcher components can make the launcher drop the app
++        // entirely, which is far worse than a sub-millisecond overlap.
+         pm.setComponentEnabledSetting(
+-          ComponentName(context.packageName, newIcon),
++          ComponentName(pkg, newIcon),
+           PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+           PackageManager.DONT_KILL_APP
+         )
+ 
+-        SharedObject.classesToKill.add(currentIcon)
++        // Every activity/alias this package declares whose name is the default
++        // component or one of its icon aliases. MATCH_DISABLED_COMPONENTS is
++        // required or the currently-disabled ones are invisible here.
++        val flags = PackageManager.GET_ACTIVITIES or PackageManager.MATCH_DISABLED_COMPONENTS
++        val activities = pm.getPackageInfo(pkg, flags).activities ?: emptyArray()
++
++        for (activity in activities) {
++          val cls = activity.name ?: continue
++          if (cls != defaultComponent && !cls.startsWith(defaultComponent)) continue
++          if (cls == newIcon) continue
++          pm.setComponentEnabledSetting(
++            ComponentName(pkg, cls),
++            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
++            PackageManager.DONT_KILL_APP
++          )
++        }
++
++        SharedObject.packageName = pkg
++        SharedObject.pm = pm
+         SharedObject.icon = newIcon
++        // Nothing is deferred to onPause any more; make sure a queue left over
++        // from a previous (unpatched) run can't disable the active icon later.
++        SharedObject.classesToKill.clear()
+ 
+         return@Function name
+       } catch (e: Exception) {
+         return@Function false
+       }
+-
+-      return@Function false
+     }
+ 
+     Function("getAppIcon") {

@@ -56,6 +56,15 @@
             "image": "./assets/images/dynamic-icon/bowl-full.png"
           }
         }
+      ],
+      [
+        "./plugins/withAdaptiveDynamicIcons",
+        {
+          "bowl_empty": {},
+          "bowl_quarter": {},
+          "bowl_half": {},
+          "bowl_full": {}
+        }
       ]
     ],
     "experiments": {
