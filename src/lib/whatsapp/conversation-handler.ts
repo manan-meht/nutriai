@@ -52,6 +52,8 @@ import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messag
 import { trackInviteEvent } from "@/lib/invites/analytics";
 import { sendPushNotificationToProfile } from "@/lib/notifications/push";
 import { resolveSignedMealPhotoUrl } from "@nutriai/nutrition-core";
+import { after } from "next/server";
+import { buildCoachingSuggestion } from "@/lib/rag/coaching-suggestions";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
@@ -894,9 +896,92 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
 
     await recordMealSubmissionForReview(analysis, mealRow.id);
+    scheduleCoachingSuggestion(mealRow.id, analysis);
     await notifyCaregiverOfFamilyMeal(resolvedLabel, analysis);
     await updateDietaryProfileForSavedMeal(db, isAdults, entityId, analysis);
     return mealRow.id;
+  }
+
+  /**
+   * Produces the meal's coaching line via retrieval-augmented generation,
+   * AFTER the WhatsApp reply has already gone out.
+   *
+   * Deliberately not awaited into the reply path. Retrieval needs to know
+   * what the food is, so it can only run once analysis is done — which
+   * makes it a second round trip no matter what: ~540ms to embed the meal
+   * plus ~900ms to generate, measured. Folding that into the reply would
+   * take a ~2.9s WhatsApp response to ~4.3s. Nothing renders the coaching
+   * line inline today, so there is no reason for the user to wait for it.
+   *
+   * next/server's after() (Next 16) is what keeps the work alive past the
+   * response — on Cloudflare Pages an unawaited promise is killed the
+   * moment the response returns, so a bare fire-and-forget would silently
+   * do nothing in production. Wrapped in try/catch because after() throws
+   * outside a request context (the stale-clarification cron sweep reaches
+   * this same code path); if it is unavailable the meal simply keeps the
+   * rule-engine line written below.
+   */
+  function scheduleCoachingSuggestion(mealLogId: string, analysis: FoodAnalysisResult): void {
+    // Every line below is best-effort. This is called from inside saveMeal,
+    // so anything that throws synchronously here — a storage client that
+    // rejects the call shape, after() outside a request context — would
+    // abort the meal save itself and leave the conversation stuck. A
+    // coaching line is never worth that.
+    try {
+      scheduleCoachingSuggestionUnsafe(mealLogId, analysis);
+    } catch (err) {
+      console.error("[rag] scheduling coaching suggestion failed:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  function scheduleCoachingSuggestionUnsafe(mealLogId: string, analysis: FoodAnalysisResult): void {
+    const classified = classifyMeal({
+      id: mealLogId,
+      loggedAt: new Date().toISOString(),
+      mealType: analysis.meal_type,
+      foods: analysis.foods,
+      aiSummary: analysis.summary,
+    });
+    const rulesFallback = classified.suggestedNextStep;
+
+    const upgrade = async () => {
+      try {
+        const result = await buildCoachingSuggestion(
+          db,
+          {
+            foods: analysis.foods.map((f) => f.name).filter(Boolean),
+            mealType: analysis.meal_type,
+            proteinAnchorStatus: classified.proteinAnchorStatus,
+            vegetableFiberStatus: classified.vegetableFiberStatus,
+            carbStatus: classified.carbPresent ? "present" : "missing",
+            mealBalanceStatus: classified.mealBalanceStatus,
+          },
+          rulesFallback
+        );
+        await db
+          .from("meal_logs")
+          .update({ coaching_suggestion: result.text, coaching_suggestion_source: result.source })
+          .eq("id", mealLogId);
+      } catch (err) {
+        console.error("[rag] coaching suggestion upgrade failed:", err instanceof Error ? err.message : err);
+      }
+    };
+
+    // Write the rule-engine line straight away so the meal always has one,
+    // then let after() replace it with the retrieved/generated version.
+    void db
+      .from("meal_logs")
+      .update({ coaching_suggestion: rulesFallback, coaching_suggestion_source: "rules" })
+      .eq("id", mealLogId)
+      .then(undefined, (err: unknown) =>
+        console.error("[rag] rules-fallback write failed:", err instanceof Error ? err.message : err)
+      );
+
+    try {
+      after(upgrade);
+    } catch (err) {
+      console.warn("[rag] after() unavailable, keeping rule-engine suggestion:", err instanceof Error ? err.message : err);
+    }
   }
 
   /** Force-saves a meal that's been sitting in "awaiting_clarification"
