@@ -214,11 +214,11 @@ export function ReviewForm({ detail, returnQuery = "" }: { detail: Detail; retur
   }
 
   async function handleMarkUnclear() {
-    setReviewStatus("unclear_photo");
+    setReviewStatus("unclear_image");
     setSaving(true);
-    const result = await saveHumanReview({ ...buildInput(), reviewStatus: "unclear_photo" });
+    const result = await saveHumanReview({ ...buildInput(), reviewStatus: "unclear_image" });
     setSaving(false);
-    setMessage("error" in result ? result.error : "Marked as unclear photo.");
+    setMessage("error" in result ? result.error : "Marked as unclear image.");
     router.refresh();
   }
 

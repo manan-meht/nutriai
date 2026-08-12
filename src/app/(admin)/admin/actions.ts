@@ -425,7 +425,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
 // Save / escalate review
 // -----------------------------------------------------------------------
 
-const REVIEW_STATUSES = ["correct", "partially_correct", "incorrect", "unclear_image", "unclear_photo", "no_photo", "not_food", "duplicate", "escalated"] as const;
+const REVIEW_STATUSES = ["correct", "partially_correct", "incorrect", "unclear_image", "no_photo", "not_food", "duplicate", "escalated"] as const;
 const PRESENCE_STATUSES = ["missing", "partial", "present", "unknown"] as const;
 const CARB_STATUSES = ["missing", "present", "dominant", "unknown"] as const;
 const BALANCE_STATUSES = ["needs_support", "moderate", "strong", "unknown"] as const;

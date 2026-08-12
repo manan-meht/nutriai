@@ -4,7 +4,7 @@
 // field (an unset corrected field means the reviewer didn't judge that
 // dimension, not that the AI was right).
 
-export type ReviewStatus = "correct" | "partially_correct" | "incorrect" | "unclear_photo" | "not_food" | "duplicate" | "escalated";
+export type ReviewStatus = "correct" | "partially_correct" | "incorrect" | "unclear_image" | "no_photo" | "not_food" | "duplicate" | "escalated";
 
 export interface ReviewedMealForMetrics {
   reviewStatus: ReviewStatus;
@@ -99,7 +99,14 @@ export function computeModelQualityMetrics(rows: ReviewedMealForMetrics[]): Mode
     pctCorrect: pct((r) => r.reviewStatus === "correct"),
     pctPartiallyCorrect: pct((r) => r.reviewStatus === "partially_correct"),
     pctIncorrect: pct((r) => r.reviewStatus === "incorrect"),
-    pctUnclearOrNotFood: pct((r) => r.reviewStatus === "unclear_photo" || r.reviewStatus === "not_food"),
+    // Every verdict that says "this submission couldn't be judged" —
+    // previously only matched 'unclear_photo', so the 'unclear_image' and
+    // 'no_photo' verdicts added in 0052 were silently missing from this
+    // figure. Kept as one bucket because the metric answers "how much of
+    // the queue was ungradeable", not why.
+    pctUnclearOrNotFood: pct(
+      (r) => r.reviewStatus === "unclear_image" || r.reviewStatus === "no_photo" || r.reviewStatus === "not_food"
+    ),
     proteinAccuracy: fieldAccuracy(rows, "aiProteinStatus", "correctedProteinStatus"),
     vegetableFiberAccuracy: fieldAccuracy(rows, "aiVegStatus", "correctedVegStatus"),
     carbAccuracy: fieldAccuracy(rows, "aiCarbStatus", "correctedCarbStatus"),

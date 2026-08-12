@@ -60,15 +60,16 @@ export function foodCategoryLabel(value: string): string {
 export const MICRONUTRIENT_STATUSES = ["unknown", "missing", "partial", "present"] as const;
 export type MicronutrientStatus = (typeof MICRONUTRIENT_STATUSES)[number];
 
-/** Verdicts a reviewer can record. 'unclear_photo' predates
- * 'unclear_image'/'no_photo' (migration 0052) and is kept because 16
- * reviews already carry it. */
+/** Verdicts a reviewer can record. 'unclear_photo' was merged into
+ * 'unclear_image' by migration 0053 — two options meaning the same thing
+ * got applied inconsistently and undercounted in every grouping.
+ * 'no_photo' stays separate: no image submitted at all is a different
+ * situation from one that can't be read. */
 export const REVIEW_STATUS_OPTIONS = [
   "correct",
   "partially_correct",
   "incorrect",
   "unclear_image",
-  "unclear_photo",
   "no_photo",
   "not_food",
   "duplicate",
@@ -80,7 +81,6 @@ export const REVIEW_STATUS_LABELS: Record<string, string> = {
   partially_correct: "Partially correct",
   incorrect: "Incorrect",
   unclear_image: "Unclear image",
-  unclear_photo: "Unclear photo (legacy)",
   no_photo: "No photo",
   not_food: "Not food",
   duplicate: "Duplicate",
