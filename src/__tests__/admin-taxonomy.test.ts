@@ -20,6 +20,13 @@ const migration = readFileSync(
   "utf8"
 );
 
+/** 0053 supersedes 0052's review_status constraint (it merged
+ * unclear_photo into unclear_image), so verdicts are checked against it. */
+const verdictMigration = readFileSync(
+  join(__dirname, "..", "..", "supabase", "migrations", "0053_merge_unclear_review_statuses.sql"),
+  "utf8"
+);
+
 describe("food categories", () => {
   it("offers graded fat sources", () => {
     expect(FOOD_CATEGORIES).toContain("fat_source_good");
@@ -62,10 +69,14 @@ describe("review verdicts", () => {
     expect(REVIEW_STATUS_OPTIONS).toContain("unclear_image");
   });
 
-  it("keeps unclear_photo, which 16 existing reviews already use", () => {
-    expect(REVIEW_STATUS_OPTIONS).toContain("unclear_photo");
-    // Marked so the two near-identical options are tellable apart in the UI.
-    expect(REVIEW_STATUS_LABELS.unclear_photo).toMatch(/legacy/i);
+  it("has a single unclear verdict — unclear_photo was merged away in 0053", () => {
+    expect(REVIEW_STATUS_OPTIONS).toContain("unclear_image");
+    expect(REVIEW_STATUS_OPTIONS).not.toContain("unclear_photo");
+    expect(REVIEW_STATUS_LABELS.unclear_image).toBe("Unclear image");
+  });
+
+  it("keeps no_photo distinct — nothing submitted is not the same as unreadable", () => {
+    expect(REVIEW_STATUS_OPTIONS).toContain("no_photo");
   });
 
   it("labels every verdict without a raw underscore", () => {
@@ -77,8 +88,12 @@ describe("review verdicts", () => {
 
   it("stays in step with the migration's check constraint", () => {
     for (const status of REVIEW_STATUS_OPTIONS) {
-      expect(migration).toContain(`'${status}'`);
+      expect(verdictMigration).toContain(`'${status}'`);
     }
+  });
+
+  it("0053 rewrites the old rows rather than orphaning them", () => {
+    expect(verdictMigration).toMatch(/update human_meal_reviews[\s\S]*unclear_image[\s\S]*unclear_photo/i);
   });
 });
 
