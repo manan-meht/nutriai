@@ -69,3 +69,90 @@ index bb1c096..939eb53 100644
      }
  
      Function("getAppIcon") {
+diff --git a/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconReactActivityLifecycleListener.kt b/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconReactActivityLifecycleListener.kt
+index 390c85b..694728f 100644
+--- a/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconReactActivityLifecycleListener.kt
++++ b/node_modules/expo-dynamic-app-icon/android/src/main/java/expo/modules/dynamicappicon/ExpoDynamicAppIconReactActivityLifecycleListener.kt
+@@ -19,6 +19,82 @@ object SharedObject {
+ 
+ class ExpoDynamicAppIconReactActivityLifecycleListener : ReactActivityLifecycleListener {
+ 
++  // PATCHED (see patches/) — self-heal on every activity creation.
++  //
++  // The unpatched module (shipped up to versionCode 34) enabled a new
++  // launcher alias immediately but deferred disabling the previous component
++  // to onPause below, so any install whose process died in between is left
++  // with TWO enabled launcher components — the app appears twice in the
++  // launcher, permanently. The patched setAppIcon() sweeps this up, but it
++  // only runs when the JS side calls it, which today requires a signed-in
++  // session and two successful API calls. A signed-out, offline, or
++  // API-erroring launch would never heal.
++  //
++  // This runs natively at activity creation — before sign-in, with no
++  // network — and enforces the one invariant that matters: exactly one
++  // enabled launcher component. It never changes WHICH icon is shown on a
++  // healthy install (0 or 1 enabled components short-circuits), so the
++  // JS-side icon choice stays authoritative.
++  override fun onCreate(activity: Activity, savedInstanceState: Bundle?) {
++    try {
++      val pm = activity.packageManager
++      val pkg = activity.packageName
++      val defaultComponent = "$pkg.MainActivity"
++
++      // MATCH_DISABLED_COMPONENTS is required or currently-disabled aliases
++      // are invisible here.
++      val flags = PackageManager.GET_ACTIVITIES or PackageManager.MATCH_DISABLED_COMPONENTS
++      val activities = pm.getPackageInfo(pkg, flags).activities ?: return
++
++      // The default component plus the icon aliases the config plugin
++      // generates (all named "<pkg>.MainActivity<iconName>").
++      val launcherComponents = activities.filter { info ->
++        val cls = info.name ?: return@filter false
++        cls == defaultComponent || cls.startsWith(defaultComponent)
++      }
++      if (launcherComponents.size < 2) return
++
++      // Effective enabled state: an explicit PackageManager setting wins;
++      // COMPONENT_ENABLED_STATE_DEFAULT falls back to the manifest value
++      // (android:enabled), which ActivityInfo.enabled reflects.
++      val enabled = launcherComponents.filter { info ->
++        when (pm.getComponentEnabledSetting(ComponentName(pkg, info.name))) {
++          PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
++          PackageManager.COMPONENT_ENABLED_STATE_DISABLED -> false
++          else -> info.enabled
++        }
++      }
++      if (enabled.size == 1) return
++
++      if (enabled.isEmpty()) {
++        // No enabled launcher component at all — the app has vanished from
++        // the launcher. Restore the default icon.
++        pm.setComponentEnabledSetting(
++          ComponentName(pkg, defaultComponent),
++          PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
++          PackageManager.DONT_KILL_APP
++        )
++        return
++      }
++
++      // Two or more enabled. An enabled alias was an explicit icon choice;
++      // an enabled default component alongside it is the leftover the
++      // unpatched code failed to disable — so prefer keeping an alias.
++      val keep = enabled.firstOrNull { it.name != defaultComponent }?.name ?: defaultComponent
++      for (info in enabled) {
++        if (info.name == keep) continue
++        pm.setComponentEnabledSetting(
++          ComponentName(pkg, info.name),
++          PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
++          PackageManager.DONT_KILL_APP
++        )
++      }
++      SharedObject.icon = keep
++    } catch (e: Exception) {
++      // Launcher-icon housekeeping must never affect startup.
++    }
++  }
++
+   override fun onPause(activity: Activity) {
+     SharedObject.classesToKill.forEach{ cls ->
+       if(SharedObject.pm != null){
