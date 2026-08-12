@@ -4,8 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FoodKnowledgeEntry } from "@/app/(admin)/admin/actions";
 import { upsertFoodKnowledgeEntry, archiveFoodKnowledgeEntry } from "@/app/(admin)/admin/actions";
+import { FOOD_CATEGORIES, foodCategoryLabel } from "@/lib/admin/food-categories";
 
-const CATEGORIES = ["protein_anchor", "partial_protein", "vegetable_fiber", "fruit", "carb_base", "fat_source", "enjoyment_food", "sugary_drink", "mixed_meal", "unknown"];
+// Single source of truth shared with the review form and the DB check
+// constraint (migration 0052) — this list used to be duplicated here and
+// had already drifted out of step with the review console.
+const CATEGORIES = FOOD_CATEGORIES;
 const RELEVANCE = ["none", "low", "medium", "high"];
 
 export function FoodKnowledgeTable({
@@ -68,7 +72,7 @@ export function FoodKnowledgeTable({
                   <td className="p-3 font-medium text-gray-900">{e.foodName}</td>
                   <td className="p-3 text-gray-500">{e.aliases.join(", ") || "—"}</td>
                   <td className="p-3 text-gray-500">{e.region ?? "—"}</td>
-                  <td className="p-3 text-gray-600 capitalize">{e.category.replace("_", " ")}</td>
+                  <td className="p-3 text-gray-600">{foodCategoryLabel(e.category)}</td>
                   <td className="p-3 text-gray-600 capitalize">{e.proteinRelevance}</td>
                   <td className="p-3 text-gray-600 capitalize">{e.fiberRelevance}</td>
                   <td className="p-3 text-gray-400">{new Date(e.updatedAt).toLocaleDateString()}</td>
@@ -175,9 +179,9 @@ function FoodEntryModal({
           </Field>
           <div className="grid grid-cols-3 gap-3">
             <Field label="Category">
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className={`${inputClass} capitalize`}>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputClass}>
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c.replace("_", " ")}</option>
+                  <option key={c} value={c}>{foodCategoryLabel(c)}</option>
                 ))}
               </select>
             </Field>
