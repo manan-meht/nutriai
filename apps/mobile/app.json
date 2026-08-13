@@ -60,10 +60,18 @@
       [
         "./plugins/withAdaptiveDynamicIcons",
         {
-          "bowl_empty": {},
-          "bowl_quarter": {},
-          "bowl_half": {},
-          "bowl_full": {}
+          "bowl_empty": {
+            "image": "./assets/images/dynamic-icon/bowl-empty.png"
+          },
+          "bowl_quarter": {
+            "image": "./assets/images/dynamic-icon/bowl-quarter.png"
+          },
+          "bowl_half": {
+            "image": "./assets/images/dynamic-icon/bowl-half.png"
+          },
+          "bowl_full": {
+            "image": "./assets/images/dynamic-icon/bowl-full.png"
+          }
         }
       ]
     ],
