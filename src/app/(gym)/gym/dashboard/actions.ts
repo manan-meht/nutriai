@@ -108,6 +108,10 @@ export interface MealLog {
   totalFiberMax: number;
   aiSummary?: string;
   imageUrl?: string;
+  /** Retrieval-backed coaching line written after the meal was saved (see
+   * src/lib/rag/coaching-suggestions.ts). Absent on meals logged before the
+   * feature, or when the write hasn't landed yet. */
+  coachingSuggestion?: string;
   /** Present when a Tistra reviewer has corrected this meal's classification
    * via the Meal Review Console — dashboards should prefer this over the
    * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
@@ -227,6 +231,7 @@ export async function getClientDetails(clientId: string): Promise<ClientDetails 
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
     imageUrl: signedImageUrls[i],
+    coachingSuggestion: m.coaching_suggestion ?? undefined,
     humanCorrection: corrections[m.id],
   }));
 

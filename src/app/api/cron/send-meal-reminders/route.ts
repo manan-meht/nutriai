@@ -20,6 +20,9 @@ import {
   type TodaysFocusCandidate,
 } from "@/lib/food-balance/todays-focus";
 import { buildMealNutritionHistory } from "@/lib/food-balance/meal-nutrient-recommendations";
+// SDK-free by design (plain fetch) — this route must stay clear of the
+// Gemini SDK for bundle-size reasons; see the note at the top of this file.
+import { upgradeTodaysFocusCopy } from "@/lib/rag/todays-focus-copy";
 import { readTodaysMealRecommendationClaim, computeFreshMealRecommendation } from "@/lib/food-balance/daily-meal-recommendation";
 import { calculateMacroTargets } from "@nutriai/health-scoring";
 // Safe to import (unlike food-analyzer.ts): a pure predicate module with no
@@ -237,7 +240,23 @@ async function buildTodaysFocusLine(
       return undefined;
     }
 
-    const message = renderTodayFocusMessage(top, elig.todaysFocusStyle);
+    // Reviewer-voice rewording of the template — decisions above stay
+    // deterministic; only the phrasing is upgraded, and only for the
+    // categories with a direct corpus analog. Falls back to the template
+    // on any failure (see upgradeTodaysFocusCopy). Only applied to the
+    // concise style: the explanatory style appends a hand-authored "why"
+    // clause the rewording can't be allowed to restate or contradict.
+    let message = renderTodayFocusMessage(top, elig.todaysFocusStyle);
+    let messageVariant = top.messageVariant;
+    if (elig.todaysFocusStyle !== "explanatory") {
+      const reworded = await upgradeTodaysFocusCopy(db, top);
+      if (reworded) {
+        message = `*Today's focus:* ${reworded}`;
+        // Suffix (rather than replace) so the review console can compare
+        // template vs reviewer-voice delivery rates per variant.
+        messageVariant = `${top.messageVariant}+rag`;
+      }
+    }
 
     const { data: inserted, error: insertError } = await db
       .from("todays_focus_recommendations")
@@ -253,7 +272,7 @@ async function buildTodaysFocusLine(
         analysis_window_days: TODAYS_FOCUS_ANALYSIS_WINDOW_DAYS,
         supporting_metrics: top.supportingMetrics,
         goal: goal ?? null,
-        message_variant: top.messageVariant,
+        message_variant: messageVariant,
         message_text: message,
         suggested_food_ids: top.suggestedFoodIds,
         is_scheduled: true,

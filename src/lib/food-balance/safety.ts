@@ -1,10 +1,10 @@
 /** Safety guard for Food Balance Recommendation copy — general wellness/
- * habit coaching only, never disease-specific or prescriptive. This is a
- * defensive check over hand-authored templates (see personalize.ts and
- * generate.ts), not a filter on LLM free-text — nothing in this feature
- * lets a model write recommendation copy directly, so this exists to
- * catch a careless future template edit, not to sanitize live model
- * output. */
+ * habit coaching only, never disease-specific or prescriptive. Originally
+ * a defensive check over hand-authored templates (see personalize.ts and
+ * generate.ts); since the reviewer-voice rewording of Today's Focus
+ * (src/lib/rag/todays-focus-copy.ts) it ALSO gates model-reworded lines,
+ * whose callers fall back to the hand-authored template on failure — so
+ * these patterns now guard live model output, not just template edits. */
 const BANNED_PHRASES: RegExp[] = [
   /\blower\s+(your\s+)?blood\s+sugar\b/i,
   /\breduce\s+(your\s+)?ldl\b/i,
