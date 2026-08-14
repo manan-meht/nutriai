@@ -27,6 +27,9 @@ export interface ProfileDashboardMeal {
   totalFiberMax: number;
   aiSummary?: string;
   imageUrl?: string;
+  /** Retrieval-backed coaching line for this meal, when one has been
+   * produced (see src/lib/rag/coaching-suggestions.ts). */
+  coachingSuggestion?: string;
   humanCorrection?: HumanCorrectionFields;
 }
 
@@ -126,6 +129,7 @@ function adaptMeal(m: AdultsMealLog | GymMealLog, profileId: string): ProfileDas
     totalFiberMax: m.totalFiberMax,
     aiSummary: m.aiSummary,
     imageUrl: m.imageUrl,
+    coachingSuggestion: m.coachingSuggestion,
     humanCorrection: m.humanCorrection,
   };
 }

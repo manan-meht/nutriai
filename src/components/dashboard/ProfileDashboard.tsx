@@ -407,6 +407,15 @@ export function ProfileDashboard({
                         <span className={`text-xs font-medium ${theme.proteinTextClassName}`}>{avgProt}g protein</span>
                         <span className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{avgCal} kcal</span>
                       </div>
+                      {/* Coaching line grounded in reviewer-approved copy —
+                          written after save by the WhatsApp path, so older
+                          meals simply don't have one. Not truncated: unlike
+                          the summary above, the advice is the content. */}
+                      {meal.coachingSuggestion && (
+                        <p className={`text-xs text-emerald-700 mt-1 ${dm ? "dark:text-emerald-400" : ""}`}>
+                          🌱 {meal.coachingSuggestion}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
