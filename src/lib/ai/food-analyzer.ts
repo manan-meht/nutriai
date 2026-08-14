@@ -302,6 +302,22 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
 }
 Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
 
+/** Cap on Gemini's internal reasoning tokens per analysis. Unset, the model
+ * chooses its own budget and spent 1,000–4,600 thinking tokens per real
+ * meal photo — ~60-70% of a 12-19s median response. 512 measured ~9s median
+ * on the same photos. The trade-off is deliberate and product-approved:
+ * 512 asks fewer clarifying questions than full thinking (4/9 vs 9/9 on a
+ * hard-photo benchmark, see the Aug 2026 thinking-budget review), accepted
+ * in exchange for halving every user's wait. Recorded per-classification
+ * as ANALYZER_MODEL_VERSION so the admin review console's human corrections
+ * can measure the real accuracy cost — revisit against that data before
+ * changing this number in either direction. */
+const THINKING_BUDGET = 512;
+
+/** Written to ai_meal_classifications.model_version so review-console
+ * corrections can be sliced by analyzer configuration, not just model name. */
+export const ANALYZER_MODEL_VERSION = `thinking-${THINKING_BUDGET}`;
+
 export async function analyzeFood(input: {
   text?: string;
   imageBuffer?: Uint8Array;
@@ -316,7 +332,14 @@ export async function analyzeFood(input: {
   // outright exception on at least one real photo — a failure mode never
   // exercised by the earlier photo-only testing. Needs a proper text-path
   // comparison before trying a faster model again.
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    // thinkingConfig postdates @google/generative-ai@0.24 (the SDK is
+    // deprecated and no longer gains types), but the SDK serializes
+    // generationConfig into the request verbatim and the v1beta REST API
+    // accepts it — verified against production photos before shipping.
+    generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
+  });
 
   let textPrompt = SYSTEM_PROMPT;
   if (input.correctionContext) {
