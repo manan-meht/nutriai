@@ -22,6 +22,7 @@ import {
   avgFat,
   FoodAnalysisResult,
   MealType,
+  ANALYZER_MODEL_VERSION,
 } from "@/lib/ai/food-analyzer";
 import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
@@ -1068,6 +1069,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       await db.from("ai_meal_classifications").insert({
         meal_submission_id: submission.id,
         model_name: "gemini-2.5-flash",
+        // The analyzer's thinking-budget configuration, so the review
+        // console's human corrections can be compared across budgets —
+        // this is the measurement the 512 decision explicitly deferred to.
+        model_version: ANALYZER_MODEL_VERSION,
         prompt_version: "v2",
         taxonomy_version: "v1",
         food_knowledge_base_version: "v1",
