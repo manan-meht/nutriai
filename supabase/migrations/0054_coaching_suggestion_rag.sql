@@ -148,3 +148,9 @@ update human_meal_reviews
 -- has no place in a migration). Until that runs, every row has a null
 -- embedding and is therefore invisible to match_coaching_suggestions —
 -- retrieval simply finds nothing and callers fall back to the rule engine.
+
+-- Internal corpus containing reviewer-authored copy — same access posture
+-- as every other review table (see migration 0013): RLS enabled with no
+-- policies, so anon/authenticated keys get nothing and only the
+-- service-role client (which bypasses RLS) can read or write it.
+alter table coaching_suggestions enable row level security;
