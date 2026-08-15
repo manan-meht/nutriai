@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";

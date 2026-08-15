@@ -16,7 +16,6 @@ import { queueQueryString } from "@/lib/admin/queue-query";
 // bundle over Cloudflare's 25MiB platform limit. One route keeps the same
 // features/URLs-as-state (tab + id are just search params) at a fraction
 // of the bundle cost.
-export const runtime = "edge";
 
 const MEAL_TYPES = ["breakfast", "lunch", "snack", "dinner", "unknown"];
 const SOURCES = ["whatsapp", "dashboard", "app", "unknown"];

@@ -1,4 +1,3 @@
-export const runtime = "edge";
 
 import { NextRequest, NextResponse } from "next/server";
 import { stripeProvider } from "@/lib/billing/providers/stripe-provider";

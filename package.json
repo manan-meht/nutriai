@@ -10,13 +10,15 @@
     "postinstall": "patch-package",
     "dev": "next dev --port 3001",
     "build": "next build",
-    "pages:build": "npx @cloudflare/next-on-pages",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
     "test:watch": "jest --watch",
     "type-check": "tsc --noEmit",
-    "migrate:backfill-trials": "tsx scripts/backfill-trials.ts"
+    "migrate:backfill-trials": "tsx scripts/backfill-trials.ts",
+    "worker:build": "opennextjs-cloudflare build",
+    "worker:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "worker:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -45,8 +47,9 @@
     "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
+    "@opennextjs/cloudflare": "^1.20.2",
     "@types/jest": "^30.0.0",
+    "esbuild": "^0.25.4",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "patch-package": "^8.0.1",
