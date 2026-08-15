@@ -613,7 +613,16 @@ async function fetchWeeklyWinsTargets(db: ReturnType<typeof createServiceClient>
   return [...map(adults, "adults"), ...map(gym, "gym")];
 }
 
+/** Paused by product decision (Aug 15, 2026): the weekly "🎉 You earned a
+ * share card" WhatsApp message is not being sent for now. Kill-switch
+ * rather than deletion so the picker/copy/tests stay intact and turning it
+ * back on is a one-line change. Share cards themselves still generate and
+ * remain visible on /my-progress — only the proactive WhatsApp mention is
+ * off. */
+const WEEKLY_WINS_WHATSAPP_ENABLED = false;
+
 async function runWeeklyWinsShareCards(db: ReturnType<typeof createServiceClient>) {
+  if (!WEEKLY_WINS_WHATSAPP_ENABLED) return;
   const now = new Date();
   const targets = await fetchWeeklyWinsTargets(db);
 
