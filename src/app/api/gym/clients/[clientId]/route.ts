@@ -17,7 +17,6 @@ import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 // uses this same fallback rather than guessing per-client.
 const GYM_DEFAULT_TIMEZONE = "Asia/Kolkata";
 
-export const runtime = "edge";
 
 // Plain HTTP route instead of a Server Action — same reasoning as
 // src/app/api/adults/contacts/[contactId]/route.ts (Server Actions on this

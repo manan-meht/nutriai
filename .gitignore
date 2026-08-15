@@ -8,3 +8,6 @@ node_modules/
 *.tsbuildinfo
 apps/mobile/*.aab
 .expo/
+.open-next
+.dev.vars
+.wrangler

@@ -19,7 +19,6 @@ import { calculateFoodBalanceScore, type NutritionGoal } from "@nutriai/health-s
 import { getEarnedCards, type ShareCardComponentScores } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 
-export const runtime = "edge";
 
 // Plain HTTP route instead of a Server Action — Server Actions on this
 // deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently

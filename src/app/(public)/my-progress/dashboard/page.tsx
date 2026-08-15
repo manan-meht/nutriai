@@ -1,5 +1,4 @@
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
 
 import { redirect } from "next/navigation";
 import { END_USER_DASHBOARD_ENABLED, PARENT_DASHBOARD_ACCESS_ENABLED } from "@/lib/billing/feature-flags";

@@ -6,7 +6,6 @@ import { validateFeedbackSubmission, isSuspiciouslyFast } from "@/lib/feedback/v
 import type { FeedbackAccountType, FeedbackSubmitRequest } from "@/lib/feedback/types";
 import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 
-export const runtime = "edge";
 
 // GET (?resource=dashboard-href) folded in from the deleted standalone
 // /api/dashboard-href route — unrelated to feedback, but each standalone

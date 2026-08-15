@@ -1,0 +1,19 @@
+{
+  // Workers deployment for the Next.js app via @opennextjs/cloudflare.
+  // Deploy with: npm run deploy (opennextjs-cloudflare build && deploy).
+  // Secrets (GEMINI_API_KEY, SUPABASE_SERVICE_ROLE_KEY, ...) live in the
+  // Worker's secrets store — set via `wrangler secret put`, same write-only
+  // posture as the old Pages project.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nutriai-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
