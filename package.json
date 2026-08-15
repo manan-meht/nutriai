@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "patch-package",
+    "postinstall": "patch-package || test -n \"$CF_PAGES\"",
     "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",
