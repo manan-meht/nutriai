@@ -86,10 +86,12 @@ export function FeedbackModal({ visible, onClose }: { visible: boolean; onClose:
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
+      {/* "padding" on BOTH platforms: the old `undefined` on Android relied
+          on the window resizing under the keyboard (adjustResize), which no
+          longer happens inside a transparent Modal under Android 15+
+          edge-to-edge — the keyboard simply overlaid the message field and
+          hid what you were typing. */}
+      <KeyboardAvoidingView behavior="padding" style={styles.backdrop}>
         <ThemedView type="background" style={styles.sheet}>
           <View style={styles.header}>
             <ThemedText type="subtitle">{success ? 'Thank you' : 'Send feedback'}</ThemedText>
