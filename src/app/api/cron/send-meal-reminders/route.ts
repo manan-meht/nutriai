@@ -66,16 +66,24 @@ function formatStaleMealLabel(mealType: MealTypeLabel): string {
 // sendContactInvite (adults dashboard actions.ts): prefer an approved
 // template once one exists, fall back to free-form (works only within the
 // 24h window) until then.
+/** Second template variable when there's no Today's Focus line this
+ * morning — Meta rejects template sends with empty parameters, so the slot
+ * always carries something coaching-shaped. */
+const REMINDER_TEMPLATE_FOCUS_FALLBACK =
+  "Aim for a protein source and some vegetables or fruit in your meals today.";
+
 async function sendReminder(to: string, displayName: string, reminderTime: string, todaysFocusLine?: string): Promise<void> {
   const templateName = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
   if (templateName) {
-    // Approved WhatsApp templates have fixed, pre-approved content — a
-    // per-morning personalized line can't be appended to one without
-    // getting the template re-approved for a variable body, so Today's
-    // Focus is simply skipped (not appended, not sent separately) whenever
-    // this path is active. Free-form sends (the else branch, used within
-    // the 24h customer-service window) are the only path that supports it.
-    await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [displayName]);
+    // The approved template (tistra_meal_reminder) has TWO body variables:
+    // {{1}} the display name, {{2}} a coaching line — designed that way
+    // precisely so the per-morning Today's Focus survives the template
+    // path (a fixed-body template would silently drop it). Any template
+    // configured here MUST accept exactly these two parameters.
+    await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [
+      displayName,
+      todaysFocusLine ?? REMINDER_TEMPLATE_FOCUS_FALLBACK,
+    ]);
   } else {
     const base = buildReminderMessage(displayName, reminderTime);
     await sendTextMessage(to, todaysFocusLine ? `${base}\n\n${todaysFocusLine}` : base);
