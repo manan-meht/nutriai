@@ -50,6 +50,10 @@ interface NutritionGoalFieldsProps {
   /** Defaults to "they" (family/client with no name typed yet) when
    * omitted. */
   personDisplay?: PersonDisplay;
+  /** person-form renders Target weight next to the Weight field (product
+   * decision: the two belong together) and hides this copy so the field
+   * isn't shown twice. */
+  hideTargetWeight?: boolean;
 }
 
 // Ported from nutriai-fresh's old apps/mobile/src/components/NutritionGoalFields.tsx
@@ -75,7 +79,7 @@ interface NutritionGoalFieldsProps {
 // those used to duplicate the age/gender fields already collected earlier
 // in the same form. Age and gender (already on the person) are used
 // directly for all calculations now.
-export function NutritionGoalFields({ value, onChange, personDisplay = { type: 'they' } }: NutritionGoalFieldsProps) {
+export function NutritionGoalFields({ value, onChange, personDisplay = { type: 'they' }, hideTargetWeight }: NutritionGoalFieldsProps) {
   const theme = useTheme();
   const showStrengthExercise = value.nutritionGoals.some((g) => goalUsesResistanceTraining(g));
   const hasAnyGoal = value.nutritionGoals.length > 0;
@@ -165,15 +169,21 @@ export function NutritionGoalFields({ value, onChange, personDisplay = { type: '
             onSelect={(v) => set('weeklyModerateActivity', v)}
           />
 
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Target weight (kg) — optional</Text>
-          <TextInput
-            value={value.targetWeightKg}
-            onChangeText={(t) => set('targetWeightKg', t)}
-            placeholder="65"
-            placeholderTextColor={theme.textSecondary}
-            keyboardType="numeric"
-            style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
-          />
+          {/* Hidden when the host form renders Target weight beside the
+              Weight field instead (see person-form's hideTargetWeight). */}
+          {!hideTargetWeight && (
+            <>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Target weight (kg) — optional</Text>
+              <TextInput
+                value={value.targetWeightKg}
+                onChangeText={(t) => set('targetWeightKg', t)}
+                placeholder="65"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="numeric"
+                style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+              />
+            </>
+          )}
 
           {showStrengthExercise && (
             <>
