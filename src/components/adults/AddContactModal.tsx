@@ -1,9 +1,27 @@
 "use client";
 
 import React, { useState } from "react";
-import { addContact } from "@/app/(adults)/adults/dashboard/actions";
+import { addContact, updateFoodPreferences } from "@/app/(adults)/adults/dashboard/actions";
 import { guessTimezoneFromCountryCode, COMMON_TIMEZONES } from "@/lib/reminders/timezone";
 import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from "@/components/shared/dashboard/NutritionGoalFields";
+import type { FoodPreferenceSelections } from "@/lib/dietary-profile";
+
+/** Neutral (third-person-safe) labels for the sign-up food-preference
+ * toggles — the post-signup FoodPreferencesEditor uses first-person "I am
+ * vegan" copy, which reads wrong when a caregiver is adding someone else.
+ * Keys map 1:1 onto FoodPreferenceSelections, so saving goes through the
+ * exact same updateFoodPreferences path the editor uses. */
+const FOOD_PREFERENCE_OPTIONS: Array<{ key: keyof FoodPreferenceSelections; label: string }> = [
+  { key: "isVegan", label: "Vegan" },
+  { key: "eatsVegetarian", label: "Vegetarian" },
+  { key: "eatsEggs", label: "Eats eggs" },
+  { key: "eatsChicken", label: "Eats chicken" },
+  { key: "eatsFishOrSeafood", label: "Eats fish or seafood" },
+  { key: "eatsRedMeat", label: "Eats red meat" },
+  { key: "avoidsDairy", label: "Avoids dairy" },
+  { key: "avoidsLactose", label: "Avoids lactose" },
+  { key: "avoidsPork", label: "Avoids pork" },
+];
 
 const DEFAULT_REMINDER_TIMES: [string, string, string] = ["08:00", "12:00", "19:00"];
 
@@ -54,6 +72,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
   const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(DEFAULT_REMINDER_TIMES);
 
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(EMPTY_NUTRITION_GOAL_FIELDS);
+  const [foodPrefs, setFoodPrefs] = useState<FoodPreferenceSelections>({});
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +106,16 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
       if (result.error) {
         setError(result.error);
         return;
+      }
+      // Best-effort: the contact exists either way, and preferences remain
+      // editable from the dashboard — a failure here should never undo or
+      // block a successful add.
+      if (result.contactId && Object.keys(foodPrefs).length > 0) {
+        try {
+          await updateFoodPreferences(result.contactId, foodPrefs);
+        } catch (prefErr) {
+          console.error("[addContact] saving food preferences failed:", prefErr);
+        }
       }
       setSuccess({ name: fullName, whatsapp, isSelf });
       onAdded();
@@ -221,6 +250,13 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
             <Field label="Weight (kg)">
               <input value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="58" type="number" step="0.1" className={inp} />
             </Field>
+            <Field label="Target weight (kg)">
+              <input
+                value={goalFields.targetWeightKg}
+                onChange={(e) => setGoalFields({ ...goalFields, targetWeightKg: e.target.value })}
+                placeholder="55" type="number" step="0.1" className={inp}
+              />
+            </Field>
             <Field label="Height (cm)">
               <input value={heightCm} onChange={(e) => setHeightCm(e.target.value)} placeholder="160" type="number" className={inp} />
             </Field>
@@ -287,8 +323,31 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
         <NutritionGoalFields
           value={goalFields}
           onChange={setGoalFields}
+          hideTargetWeight
           personDisplay={relationship === "self" ? { type: "self" } : fullName.trim() ? { type: "name", name: fullName.trim().split(" ")[0] } : { type: "they" }}
         />
+
+        <section>
+          <h3 className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-1">
+            Food preferences <span className="text-gray-400 normal-case font-normal">— optional</span>
+          </h3>
+          <p className="text-xs text-gray-400 mb-4">
+            What kind of foods {relationship === "self" ? "do you" : fullName.trim() ? `does ${fullName.trim().split(" ")[0]}` : "do they"} eat? Used to keep meal suggestions relevant.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+            {FOOD_PREFERENCE_OPTIONS.map((o) => (
+              <label key={o.key} className="flex items-center gap-2 text-sm text-gray-700 py-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!foodPrefs[o.key]}
+                  onChange={(e) => setFoodPrefs({ ...foodPrefs, [o.key]: e.target.checked })}
+                  className="w-4 h-4 rounded border-gray-300 accent-[var(--color-dashboard-primary)]"
+                />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </section>
 
         {error && <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">{error}</p>}
 

@@ -43,6 +43,11 @@ interface NutritionGoalFieldsProps {
   /** Defaults to "they" (family/client with no name typed yet) when
    * omitted. */
   personDisplay?: PersonDisplay;
+  /** The add-contact form renders its own Target weight input beside the
+   * Weight field (product decision: the two belong together); this hides
+   * the copy that historically lived among the activity questions so the
+   * field isn't shown twice. Edit flows keep the original placement. */
+  hideTargetWeight?: boolean;
 }
 
 const inp = "w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
@@ -122,7 +127,7 @@ function AnswerCards<V extends string>({
  * in the same form. Age and gender (already on the contact) are used
  * directly for all calculations now — see
  * src/lib/food-balance/adapter.ts's metabolicSexFromGender. */
-export function NutritionGoalFields({ value, onChange, personDisplay = { type: "they" } }: NutritionGoalFieldsProps) {
+export function NutritionGoalFields({ value, onChange, personDisplay = { type: "they" }, hideTargetWeight }: NutritionGoalFieldsProps) {
   const showStrengthExercise = value.nutritionGoals.some((g) => goalUsesResistanceTraining(g));
   const hasAnyGoal = value.nutritionGoals.length > 0;
   const [showBreathingHelp, setShowBreathingHelp] = useState(false);
@@ -230,16 +235,18 @@ export function NutritionGoalFields({ value, onChange, personDisplay = { type: "
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Target weight (kg) — optional</label>
-            <input
-              type="number"
-              step="0.1"
-              value={value.targetWeightKg}
-              onChange={(e) => set("targetWeightKg", e.target.value)}
-              className={inp}
-            />
-          </div>
+          {!hideTargetWeight && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Target weight (kg) — optional</label>
+              <input
+                type="number"
+                step="0.1"
+                value={value.targetWeightKg}
+                onChange={(e) => set("targetWeightKg", e.target.value)}
+                className={inp}
+              />
+            </div>
+          )}
 
           {showStrengthExercise && (
             <div>

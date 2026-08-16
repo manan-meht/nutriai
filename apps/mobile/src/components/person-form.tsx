@@ -3,7 +3,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndic
 
 import { useTheme } from '@/hooks/use-theme';
 import { Spacing } from '@/constants/theme';
-import { api } from '@/lib/api';
+import { api, type FoodPreferenceSelections } from '@/lib/api';
 import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFieldsValue } from './nutrition-goal-fields';
 import { NutritionTargetsCard } from './nutrition-targets-card';
 import { FoodPreferencesEditor } from './food-preferences-editor';
@@ -13,6 +13,23 @@ const PRIMARY = '#5715CE';
 const ERROR_COLOR = '#D92D20';
 
 const DEFAULT_REMINDER_TIMES: [string, string, string] = ['08:00', '12:00', '19:00'];
+
+/** Sign-up food-preference options with neutral (third-person-safe) labels
+ * — FoodPreferencesEditor's "I am vegan" copy reads wrong when a caregiver
+ * is adding someone else. Keys map 1:1 onto FoodPreferenceSelections and
+ * save through the exact same updateAdultsFoodPreferences endpoint the
+ * editor uses, so an add-time choice and a later edit are equivalent. */
+const ADD_FOOD_PREFERENCE_OPTIONS: Array<{ key: keyof FoodPreferenceSelections; label: string }> = [
+  { key: 'isVegan', label: 'Vegan' },
+  { key: 'eatsVegetarian', label: 'Vegetarian' },
+  { key: 'eatsEggs', label: 'Eats eggs' },
+  { key: 'eatsChicken', label: 'Eats chicken' },
+  { key: 'eatsFishOrSeafood', label: 'Eats fish or seafood' },
+  { key: 'eatsRedMeat', label: 'Eats red meat' },
+  { key: 'avoidsDairy', label: 'Avoids dairy' },
+  { key: 'avoidsLactose', label: 'Avoids lactose' },
+  { key: 'avoidsPork', label: 'Avoids pork' },
+];
 
 export interface PersonFormInitialValues {
   fullName?: string;
@@ -84,6 +101,10 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   const [error, setError] = useState<string | null>(null);
   const [targetsExpanded, setTargetsExpanded] = useState(false);
   const [foodPrefsExpanded, setFoodPrefsExpanded] = useState(false);
+  /** Add-mode only (adults): selections saved right after the contact is
+   * created, via the same endpoint the edit-mode FoodPreferencesEditor
+   * uses (which needs an existing contactId, so it can't render here). */
+  const [addFoodPrefs, setAddFoodPrefs] = useState<FoodPreferenceSelections>({});
 
   async function handleSubmit() {
     setError(null);
@@ -113,6 +134,15 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         body.whatsappNumber = `+${countryCode}${whatsapp.replace(/\D/g, '')}`;
         if (product === 'adults') {
           const created = await api.createAdultsContact(body);
+          // Best-effort: the contact exists either way and preferences stay
+          // editable from the edit screen — never fail the add over this.
+          if (Object.keys(addFoodPrefs).length > 0) {
+            try {
+              await api.updateAdultsFoodPreferences(created.id, addFoodPrefs);
+            } catch (prefErr) {
+              console.warn('[person-form] saving food preferences failed:', prefErr);
+            }
+          }
           onSuccess({ id: created.id, fullName, isSelf });
           return;
         } else {
@@ -245,6 +275,21 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
           </Field>
         </View>
         <View style={styles.half}>
+          <Field label="Target weight (kg)" color={theme.textSecondary}>
+            <TextInput
+              value={goalFields.targetWeightKg}
+              onChangeText={(t) => setGoalFields({ ...goalFields, targetWeightKg: t })}
+              placeholder="65"
+              placeholderTextColor={theme.placeholder}
+              keyboardType="numeric"
+              style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+            />
+          </Field>
+        </View>
+      </View>
+
+      <View style={styles.row}>
+        <View style={styles.half}>
           <Field label="Height (cm)" color={theme.textSecondary}>
             <TextInput
               value={heightCm}
@@ -256,6 +301,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
             />
           </Field>
         </View>
+        <View style={styles.half} />
       </View>
 
       {product === 'adults' && (
@@ -309,6 +355,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       <NutritionGoalFields
         value={goalFields}
         onChange={setGoalFields}
+        hideTargetWeight
         personDisplay={
           product === 'adults' && relationship === 'self'
             ? { type: 'self' }
@@ -351,6 +398,42 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               )}
             </>
           )}
+        </>
+      )}
+
+      {/* Sign-up-only food preferences (edit mode has the full
+          FoodPreferencesEditor above, which needs an existing contactId). */}
+      {product === 'adults' && mode === 'add' && (
+        <>
+          <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+          <Text style={[styles.sectionTitle, { color: PRIMARY }]}>Food preferences</Text>
+          <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 12 }}>
+            What kind of foods {relationship === 'self' ? 'do you' : fullName.trim() ? `does ${fullName.trim().split(' ')[0]}` : 'do they'} eat? Optional — keeps meal suggestions relevant.
+          </Text>
+          {ADD_FOOD_PREFERENCE_OPTIONS.map((option) => {
+            const checked = !!addFoodPrefs[option.key];
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => setAddFoodPrefs({ ...addFoodPrefs, [option.key]: !checked })}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 9 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked }}
+              >
+                <View
+                  style={{
+                    width: 20, height: 20, borderRadius: 5, borderWidth: 2, marginRight: 10,
+                    alignItems: 'center', justifyContent: 'center',
+                    borderColor: checked ? PRIMARY : theme.backgroundSelected,
+                    backgroundColor: checked ? PRIMARY : 'transparent',
+                  }}
+                >
+                  {checked && <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>✓</Text>}
+                </View>
+                <Text style={{ color: theme.text, fontSize: 14 }}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
         </>
       )}
 
