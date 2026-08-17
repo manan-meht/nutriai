@@ -89,6 +89,25 @@ export function getProductMarketingUrl(product: ProductType, path = "/"): string
 }
 
 /**
+ * Absolute URL into the Coach product, which lives on its own domain.
+ *
+ * Distinct from getProductMarketingUrl: that one deliberately stays on the
+ * current origin when separate domains aren't configured, which is right
+ * for a marketing cross-link but wrong here. Coaching is being split out of
+ * Tistra Health entirely (Aug 2026) — Health signup offers only the two
+ * adult products, and anything coach-related leaves the domain — so this
+ * always returns the coach host in production. Local development still
+ * falls back to ?product=gym on the same origin, since there's only one
+ * dev server.
+ */
+export function getCoachAppUrl(path = "/"): string {
+  if (process.env.NODE_ENV === "development") {
+    return `${path}${path.includes("?") ? "&" : "?"}product=gym`;
+  }
+  return `https://${getProductDomain("gym")}${path}`;
+}
+
+/**
  * Builds the URL to switch to the other product.
  * In production: switches domain.
  * In local dev: uses ?product= query param on the same origin.

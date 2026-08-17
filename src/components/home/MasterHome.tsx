@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MarketingHeader } from "./MarketingHeader";
 import { MarketingFooter } from "./MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
+import { getCoachAppUrl } from "@/lib/product/resolve-product";
 import { UseCaseCards, type UseCaseCard } from "@/components/landing/shared/UseCaseCards";
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
@@ -23,7 +24,8 @@ const USE_CASES: UseCaseCard[] = [
     cta: "Explore Family",
   },
   {
-    href: "/coach",
+    // Leaves this domain: coaching is its own product now (Aug 2026).
+    href: getCoachAppUrl("/"),
     icon: "🏋️",
     title: "Coach",
     description: "Track client meals without chasing food logs.",
@@ -281,7 +283,7 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                   Family →
                 </Link>
                 <Link
-                  href="/coach"
+                  href={getCoachAppUrl("/")}
                   className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
                 >
                   Coach →
