@@ -1,30 +1,32 @@
 import type { Metadata } from "next";
-import { GymImmersiveLanding } from "@/components/landing/immersive/GymImmersiveLanding";
-import { EXPERIMENT_IDS } from "@/lib/experiments/landing-page-experiment";
-import { MarketingHeader } from "@/components/home/MarketingHeader";
+import { CoachLanding } from "@/components/landing/coach/CoachLanding";
 
 export function generateMetadata(): Metadata {
   return {
-    title: "Tistra Coach | AI Food Logging for Coaches",
+    title: "Tistra Coach | Run your coaching practice",
     description:
-      "Clients send meal photos on WhatsApp. Tistra estimates nutrition and helps coaches see who needs attention.",
+      "Get discovered by new clients, fill your calendar with travel-aware scheduling, take payment automatically, and track every client's progress. Built for coaches in Singapore.",
     alternates: { canonical: "/coach" },
     icons: { icon: "/logos/logo-purple.png" },
   };
 }
 
-// Clean, stable route for the coach/trainer/gym marketing flow — the
-// existing coach.tistrahealth.com subdomain and the neutral-host `/` with
-// ?product=gym keep working unchanged (see resolve-product.ts); this is an
-// additive route, not a replacement.
+// The Tistra Coach product page, served at coach.tistrahealth.com and at
+// /coach on the neutral host.
 //
-// Deliberately static — see the comment in ../family/page.tsx for why
-// (Cloudflare Pages edge-function bundle size limit).
+// Replaces GymImmersiveLanding (Aug 2026). That page sold nutrition
+// tracking as the whole product — "clients send meal photos, you see who
+// needs attention" — which is why the coach product had seven signups and
+// not one client between them: it only pays off for a coach who ALREADY
+// has a full roster and a logging habit to enforce. Tistra Coach sells the
+// business itself (discovery, scheduling, payments, progress) and presents
+// nutrition as one capability, which is also what the product now is.
+//
+// MarketingHeader isn't used here: that's Tistra Health's nav, and this is
+// a separate product with its own brand. CoachLanding brings its own.
+//
+// Deliberately static — see ../family/page.tsx for the bundle-size
+// reasoning that applies to every marketing route.
 export default function CoachMarketingPage() {
-  return (
-    <>
-      <MarketingHeader variant="coach" />
-      <GymImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.gym} showNav={false} />
-    </>
-  );
+  return <CoachLanding />;
 }
