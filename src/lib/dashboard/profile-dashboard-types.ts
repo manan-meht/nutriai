@@ -30,6 +30,9 @@ export interface ProfileDashboardMeal {
   /** Retrieval-backed coaching line for this meal, when one has been
    * produced (see src/lib/rag/coaching-suggestions.ts). */
   coachingSuggestion?: string;
+  /** Family-loop: the emoji the viewing caregiver already sent for this
+   * meal (adults product only — gym has no reactions). */
+  myReaction?: string;
   humanCorrection?: HumanCorrectionFields;
 }
 
@@ -130,6 +133,7 @@ function adaptMeal(m: AdultsMealLog | GymMealLog, profileId: string): ProfileDas
     aiSummary: m.aiSummary,
     imageUrl: m.imageUrl,
     coachingSuggestion: m.coachingSuggestion,
+    myReaction: (m as { myReaction?: string }).myReaction,
     humanCorrection: m.humanCorrection,
   };
 }

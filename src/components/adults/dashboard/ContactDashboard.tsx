@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import type { AdultsContactDetails } from "@/app/(adults)/adults/dashboard/actions";
+import { reactToMeal } from "@/app/(adults)/adults/dashboard/actions";
 import { EditContactModal } from "@/components/adults/dashboard/EditContactModal";
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { adaptAdultsContactDetails } from "@/lib/dashboard/profile-dashboard-types";
@@ -40,6 +41,7 @@ export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
       backHref="/adults/dashboard"
       theme={FAMILY_ADMIN_THEME}
       copy={FAMILY_ADMIN_COPY}
+      onReactToMeal={(mealId, emoji) => reactToMeal(contact.id, mealId, emoji)}
       invite={{
         load: () => fetchInviteJson(`/api/adults/contacts/${contact.id}?resource=invite`),
         regenerate: () => fetchInviteJson(`/api/adults/contacts/${contact.id}?resource=invite`, { method: "PATCH" }),
