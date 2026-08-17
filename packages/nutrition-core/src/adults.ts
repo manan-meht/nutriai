@@ -249,8 +249,21 @@ export async function getContactDetails(
   const contact = mapContactRow(c, mealsByContact, lastMessageByContact, photoUrlByContact, lastMealPhotoByContact);
 
   const rawMeals = mealsRes.data ?? [];
-  const [corrections, signedImageUrls] = await Promise.all([
+  const [corrections, signedImageUrls, myReactions] = await Promise.all([
     fetchHumanCorrectionsByMealLogId(admin, rawMeals.map((m: any) => m.id)),
+    // Which meals this caregiver already reacted to (family loop, see
+    // meal_reactions / migration 0055). Service client: the table is
+    // RLS-locked to server code. Best-effort — an error (e.g. the table
+    // not existing yet on an older environment) just means no reactions.
+    (async (): Promise<Record<string, string>> => {
+      if (rawMeals.length === 0) return {};
+      const { data } = await admin
+        .from("meal_reactions")
+        .select("meal_log_id, emoji")
+        .eq("reactor_profile_id", user.id)
+        .in("meal_log_id", rawMeals.map((m: any) => m.id));
+      return Object.fromEntries((data ?? []).map((r: any) => [r.meal_log_id, r.emoji]));
+    })(),
     // meal-photos is a private bucket (see 0040_private_meal_photos.sql) —
     // resolve each stored path/legacy-URL to a short-lived signed URL here,
     // server-side with the service-role client, rather than exposing the
@@ -276,6 +289,8 @@ export async function getContactDetails(
     totalFiberMax: m.total_fiber_max ?? 0,
     aiSummary: m.ai_summary,
     imageUrl: signedImageUrls[i],
+    coachingSuggestion: m.coaching_suggestion ?? undefined,
+    myReaction: myReactions[m.id],
     humanCorrection: corrections[m.id],
   }));
 

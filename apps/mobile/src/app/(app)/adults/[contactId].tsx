@@ -63,6 +63,7 @@ export default function AdultsContactDetailScreen() {
         }}
         foodPreferencesContactId={contactId}
         tistraWhatsAppNumber={state.tistraWhatsAppNumber}
+        onReactToMeal={(mealLogId, emoji) => api.reactToAdultsMeal(contactId, mealLogId, emoji)}
       />
     </>
   );
