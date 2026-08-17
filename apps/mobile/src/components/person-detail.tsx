@@ -67,6 +67,7 @@ export function PersonDetail({
   accessCode,
   foodPreferencesContactId,
   tistraWhatsAppNumber,
+  onReactToMeal,
 }: {
   person: PersonLike;
   meals: MealLog[];
@@ -88,11 +89,35 @@ export function PersonDetail({
   /** Adults-only "Food preferences" editor (no gym equivalent on web
    * either) — only the adults detail screen passes this. */
   foodPreferencesContactId?: string;
+  /** Family-loop reactions (adults-only; the gym screen doesn't pass it).
+   * First reaction on a meal sends the contact a WhatsApp "seen by
+   * family" line; hidden automatically on self-tracked contacts. */
+  onReactToMeal?: (mealLogId: string, emoji: '👍' | '🎉' | '❤️') => Promise<{ emoji?: string; error?: string }>;
 }) {
   const theme = useTheme();
   const inviteStatusForPerson = inviteStatusFor(person);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; meal: MealLog } | null>(null);
+  // Optimistic family-loop reaction state, seeded from the server's
+  // myReaction per meal; a tap flips instantly, rolls back on failure.
+  const [reactions, setReactions] = useState<Record<string, string>>(() =>
+    Object.fromEntries(meals.filter((m) => m.myReaction).map((m) => [m.id, m.myReaction!]))
+  );
+  const reactionsEnabled = !!onReactToMeal && person.relationshipType !== 'self';
+
+  async function handleReact(mealId: string, emoji: '👍' | '🎉' | '❤️') {
+    setReactions((prev) => ({ ...prev, [mealId]: emoji }));
+    try {
+      const result = await onReactToMeal!(mealId, emoji);
+      if (result.error) throw new Error(result.error);
+    } catch {
+      setReactions((prev) => {
+        const next = { ...prev };
+        delete next[mealId];
+        return next;
+      });
+    }
+  }
   const [sharingMeal, setSharingMeal] = useState<MealLog | null>(null);
   const MEALS_PAGE_SIZE = 10;
   const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
@@ -430,6 +455,39 @@ export function PersonDetail({
             <ThemedText type="small" themeColor="textSecondary">
               {Math.round((item.totalProteinMin + item.totalProteinMax) / 2)}g protein · {Math.round((item.totalCaloriesMin + item.totalCaloriesMax) / 2)} kcal
             </ThemedText>
+            {item.coachingSuggestion && (
+              <ThemedText type="small" style={{ color: '#059669' }}>
+                🌱 {item.coachingSuggestion}
+              </ThemedText>
+            )}
+            {reactionsEnabled && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                {(['👍', '🎉', '❤️'] as const).map((emoji) => {
+                  const active = reactions[item.id] === emoji;
+                  return (
+                    <Pressable
+                      key={emoji}
+                      onPress={() => handleReact(item.id, emoji)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`React ${emoji} to this meal`}
+                      style={{
+                        paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, borderWidth: 1,
+                        borderColor: active ? '#5715CE' : 'transparent',
+                        backgroundColor: active ? 'rgba(87,21,206,0.12)' : 'rgba(128,128,128,0.08)',
+                        opacity: active ? 1 : 0.65,
+                      }}
+                    >
+                      <ThemedText style={{ fontSize: 13, lineHeight: 16 }}>{emoji}</ThemedText>
+                    </Pressable>
+                  );
+                })}
+                {reactions[item.id] && (
+                  <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 11 }}>
+                    sent on WhatsApp
+                  </ThemedText>
+                )}
+              </View>
+            )}
           </ThemedView>
         )}
       />

@@ -181,6 +181,27 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ code, formattedCode: formatAccessCode(code), expiresAt });
   }
 
+  //   POST /adults/contacts/:contactId/meal-reactions  { mealLogId, emoji }
+  // Family-loop reaction — mirrors the web dashboard's reactToMeal action;
+  // see src/lib/meal-reactions.ts for the send-once/dedupe rules.
+  if (path.length === 3 && path[0] === "contacts" && path[2] === "meal-reactions") {
+    const body = await request.json().catch(() => null);
+    const { reactToMeal, REACTION_EMOJIS } = await import("@/lib/meal-reactions");
+    if (!body?.mealLogId || !REACTION_EMOJIS.includes(body?.emoji)) {
+      return NextResponse.json({ error: "mealLogId and a valid emoji are required" }, { status: 400 });
+    }
+    const result = await reactToMeal({
+      supabase: auth.supabase,
+      admin: createServiceClient(),
+      reactorProfileId: auth.user.id,
+      contactId: path[1],
+      mealLogId: body.mealLogId,
+      emoji: body.emoji,
+    });
+    if (result.error) return NextResponse.json(result, { status: 400 });
+    return NextResponse.json(result);
+  }
+
   if (path.length !== 1 || path[0] !== "contacts") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

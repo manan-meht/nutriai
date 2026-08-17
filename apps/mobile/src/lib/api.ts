@@ -242,6 +242,10 @@ export interface MealLog {
   totalFiberMax: number;
   aiSummary?: string;
   imageUrl?: string;
+  /** Retrieval-backed coaching line for this meal, when one exists. */
+  coachingSuggestion?: string;
+  /** Family-loop: the emoji this caregiver already sent for this meal. */
+  myReaction?: string;
 }
 
 export interface AdultsContactDetails {
@@ -531,6 +535,14 @@ export const api = {
     apiFetch<DietaryProfile>(`/adults/contacts/${contactId}/food-preferences`),
   updateAdultsFoodPreferences: (contactId: string, selections: FoodPreferenceSelections) =>
     apiRequest<{}>(`/adults/contacts/${contactId}/food-preferences`, { method: "PATCH", body: JSON.stringify(selections) }),
+
+  /** Family-loop reaction — first reaction on a meal sends the contact a
+   * WhatsApp "seen by family" line; emoji changes update silently. */
+  reactToAdultsMeal: (contactId: string, mealLogId: string, emoji: "👍" | "🎉" | "❤️") =>
+    apiRequest<{ emoji?: string; error?: string }>(`/adults/contacts/${contactId}/meal-reactions`, {
+      method: "POST",
+      body: JSON.stringify({ mealLogId, emoji }),
+    }),
 
   createAdultsContact: (body: unknown) =>
     apiRequest<{ id: string }>("/adults/contacts", { method: "POST", body: JSON.stringify(body) }),

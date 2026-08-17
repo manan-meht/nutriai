@@ -188,6 +188,12 @@ export interface AdultsMealLog {
   totalFiberMax: number;
   aiSummary?: string;
   imageUrl?: string;
+  /** Retrieval-backed coaching line written after the meal was saved (see
+   * the web app's src/lib/rag/coaching-suggestions.ts). */
+  coachingSuggestion?: string;
+  /** Family-loop: the emoji the viewing caregiver already sent for this
+   * meal, if any (see meal_reactions, migration 0055). */
+  myReaction?: string;
   humanCorrection?: HumanCorrectionFields;
 }
 
