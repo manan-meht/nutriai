@@ -65,6 +65,9 @@ export interface AdultsMealLog {
    * src/lib/rag/coaching-suggestions.ts). Absent on meals logged before the
    * feature, or when the write hasn't landed yet. */
   coachingSuggestion?: string;
+  /** The emoji this caregiver already sent for this meal, if any — the
+   * family-loop reaction (see reactToMeal). */
+  myReaction?: string;
   /** Present when a Tistra reviewer has corrected this meal's classification
    * via the Meal Review Console — dashboards should prefer this over the
    * raw AI/heuristic classification. See src/lib/nutrition/human-corrections.ts. */
@@ -214,8 +217,21 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
   };
 
   const rawMeals = mealsRes.data ?? [];
-  const [corrections, signedImageUrls] = await Promise.all([
+  const [corrections, signedImageUrls, myReactions] = await Promise.all([
     fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id)),
+    // Which meals this caregiver already reacted to — drives the meal
+    // card's 👍/🎉/❤️ selected state. Service client: meal_reactions is
+    // RLS-locked to server code only (migration 0055). Tolerates the
+    // table not existing yet (pre-migration deploys) by returning {}.
+    (async (): Promise<Record<string, string>> => {
+      if (rawMeals.length === 0) return {};
+      const { data } = await createServiceClient()
+        .from("meal_reactions")
+        .select("meal_log_id, emoji")
+        .eq("reactor_profile_id", user.id)
+        .in("meal_log_id", rawMeals.map((m: any) => m.id));
+      return Object.fromEntries((data ?? []).map((r: any) => [r.meal_log_id, r.emoji]));
+    })(),
     // meal-photos is a private bucket (see
     // supabase/migrations/0040_private_meal_photos.sql) — resolve each
     // stored path/legacy-URL to a short-lived signed URL server-side with
@@ -243,6 +259,7 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
     aiSummary: m.ai_summary,
     imageUrl: signedImageUrls[i],
     coachingSuggestion: m.coaching_suggestion ?? undefined,
+    myReaction: myReactions[m.id],
     humanCorrection: corrections[m.id],
   }));
 
@@ -632,6 +649,87 @@ export async function updateFoodPreferences(
 
   if (error) return { error: error.message };
   return {};
+}
+
+/** Family-loop reaction: caregiver taps 👍/🎉/❤️ on a meal card and the
+ * contact gets a WhatsApp line ("Manan saw your lunch and sent you a 🎉").
+ * The retention thesis: for most contacts the reward for logging is being
+ * seen by family, not macros — this closes that loop.
+ *
+ * Send-once rule: only the FIRST reaction on a meal triggers WhatsApp;
+ * changing the emoji later updates the stored reaction silently, so
+ * toggling can never spam the contact. Delivery is best-effort — a send
+ * outside the contact's 24h WhatsApp session window fails quietly (Meta
+ * rejects free-form there), which is acceptable: reactions to *fresh*
+ * meals, the moment that matters, always have an open window because the
+ * contact just messaged the bot. */
+export async function reactToMeal(
+  contactId: string,
+  mealLogId: string,
+  emoji: "👍" | "🎉" | "❤️"
+): Promise<{ error?: string; emoji?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Ownership check through the RLS-scoped user client, same pattern as
+  // updateFoodPreferences: only this caregiver's own contact resolves.
+  const { data: contact, error: contactError } = await supabase
+    .from("adults_contacts")
+    .select("id, full_name, whatsapp_number, relationship_type")
+    .eq("id", contactId)
+    .eq("caregiver_id", user.id)
+    .single();
+  if (contactError || !contact) return { error: "Contact not found" };
+
+  const { data: meal, error: mealError } = await supabase
+    .from("meal_logs")
+    .select("id, meal_type, adults_contact_id")
+    .eq("id", mealLogId)
+    .eq("adults_contact_id", contactId)
+    .single();
+  if (mealError || !meal) return { error: "Meal not found" };
+
+  const admin = createServiceClient();
+  const { error: insertError } = await admin
+    .from("meal_reactions")
+    .insert({ meal_log_id: mealLogId, reactor_profile_id: user.id, emoji });
+
+  if (insertError) {
+    // Unique violation = this caregiver already reacted to this meal —
+    // update the emoji, but never resend WhatsApp (the send-once rule).
+    if (insertError.code === "23505") {
+      await admin
+        .from("meal_reactions")
+        .update({ emoji, updated_at: new Date().toISOString() })
+        .eq("meal_log_id", mealLogId)
+        .eq("reactor_profile_id", user.id);
+      return { emoji };
+    }
+    return { error: insertError.message };
+  }
+
+  // First reaction on this meal — send the WhatsApp line, best-effort.
+  try {
+    const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle();
+    const rawName = profile?.full_name ?? "";
+    const caregiverName = rawName && !/[@+]/.test(rawName) ? rawName.split(" ")[0] : "Your family member";
+    const { buildReactionMessage } = await import("@/lib/whatsapp/reaction-message");
+    const { sendTextMessage } = await import("@/lib/whatsapp/client");
+    const mealLabel = (meal.meal_type && meal.meal_type !== "other" ? meal.meal_type : "meal").toLowerCase();
+    await sendTextMessage(contact.whatsapp_number, buildReactionMessage({ caregiverName, mealLabel, emoji }));
+    await admin
+      .from("meal_reactions")
+      .update({ whatsapp_delivered: true })
+      .eq("meal_log_id", mealLogId)
+      .eq("reactor_profile_id", user.id);
+  } catch (err) {
+    // Most commonly the 24h window being closed on an older meal — the
+    // reaction is still recorded; nothing user-facing to surface.
+    console.error("[reactToMeal] WhatsApp send failed:", err instanceof Error ? err.message : err);
+  }
+
+  return { emoji };
 }
 
 export async function getFoodPreferences(contactId: string): Promise<import("@/lib/dietary-profile").DietaryProfile> {

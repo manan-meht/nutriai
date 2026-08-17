@@ -101,7 +101,13 @@ export interface ProfileDashboardProps {
    * (e.g. the coach product's biomarkers section) — rendered inside the
    * same <main> container, after workouts/recent meals. */
   extraSections?: ReactNode;
+  /** Family-loop reactions (adults product only — omit for gym/self views):
+   * when provided, each meal card shows 👍/🎉/❤️ buttons; the first tap on
+   * a meal sends the contact a WhatsApp line via reactToMeal. */
+  onReactToMeal?: (mealId: string, emoji: "👍" | "🎉" | "❤️") => Promise<{ error?: string; emoji?: string }>;
 }
+
+const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
 
 export function ProfileDashboard({
   role,
@@ -113,6 +119,7 @@ export function ProfileDashboard({
   invite,
   renderEditModal,
   extraSections,
+  onReactToMeal,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -120,6 +127,31 @@ export function ProfileDashboard({
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; shareData: MealShareData | null } | null>(null);
   const MEALS_PAGE_SIZE = 10;
   const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
+  // Optimistic reaction state, seeded from the server-fetched myReaction on
+  // each meal — a tap flips instantly; the server call follows behind.
+  const [reactions, setReactions] = useState<Record<string, string>>(() =>
+    Object.fromEntries(meals.filter((m) => m.myReaction).map((m) => [m.id, m.myReaction!]))
+  );
+
+  // Reactions make no sense on your own meals ("you saw your own lunch") —
+  // shown only when the host wired the callback AND this isn't a self view.
+  const reactionsEnabled = !!onReactToMeal && profile.relationshipType !== "self";
+
+  async function handleReact(mealId: string, emoji: "👍" | "🎉" | "❤️") {
+    setReactions((prev) => ({ ...prev, [mealId]: emoji }));
+    try {
+      const result = await onReactToMeal!(mealId, emoji);
+      if (result.error) throw new Error(result.error);
+    } catch {
+      // Roll back the optimistic flip; no toast — a failed reaction is
+      // never worth interrupting the caregiver over.
+      setReactions((prev) => {
+        const next = { ...prev };
+        delete next[mealId];
+        return next;
+      });
+    }
+  }
   const [macroTargetsRefreshKey, setMacroTargetsRefreshKey] = useState(0);
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
@@ -415,6 +447,37 @@ export function ProfileDashboard({
                         <p className={`text-xs text-emerald-700 mt-1 ${dm ? "dark:text-emerald-400" : ""}`}>
                           🌱 {meal.coachingSuggestion}
                         </p>
+                      )}
+                      {/* Family-loop reactions: first tap on a meal sends
+                          the contact a WhatsApp "seen by family" line;
+                          switching emoji later just updates the record. */}
+                      {reactionsEnabled && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          {REACTION_EMOJIS.map((emoji) => {
+                            const active = reactions[meal.id] === emoji;
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={() => handleReact(meal.id, emoji)}
+                                aria-label={`React ${emoji} to this meal`}
+                                aria-pressed={active}
+                                className={`text-sm leading-none rounded-full px-2 py-1 border transition-colors ${
+                                  active
+                                    ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]"
+                                    : `border-gray-150 bg-gray-50 opacity-60 hover:opacity-100 ${dm ? "dark:bg-white/5 dark:border-white/10" : ""}`
+                                }`}
+                              >
+                                {emoji}
+                              </button>
+                            );
+                          })}
+                          {reactions[meal.id] && (
+                            <span className={`text-[11px] text-gray-400 ml-1 ${dm ? "dark:text-gray-500" : ""}`}>
+                              sent to {profile.fullName.split(" ")[0]} on WhatsApp
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
