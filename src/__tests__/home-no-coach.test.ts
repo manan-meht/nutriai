@@ -76,3 +76,41 @@ describe("Tistra Health surfaces do not advertise coaching", () => {
     expect(page).toMatch(/CoachLanding/);
   });
 });
+
+// The mobile app is a Tistra Health surface too, and its sign-in screen had
+// its own coach path — a /login?product=coach deep link presented "Sign in
+// to your coaching account" and scoped the email to the gym product, long
+// after the product picker stopped offering it. Read from disk rather than
+// imported: jest's @/ alias points at the web app's src, and these are
+// React Native screens.
+const MOBILE = path.join(__dirname, "..", "..", "apps", "mobile", "src");
+const readMobile = (p: string) => fs.readFileSync(path.join(MOBILE, p), "utf-8");
+
+describe("mobile app auth screens offer no coach path", () => {
+  it.each(["app/login.tsx", "app/signup.tsx"])("%s has no coach product", (file) => {
+    const body = code(readMobile(file));
+    expect(body).not.toMatch(/coach/i);
+    // The gym scope was how a coach sign-in reached a different account.
+    expect(body).not.toMatch(/'gym'/);
+  });
+
+  it.each(["app/login.tsx", "app/signup.tsx"])("%s still offers both adult products", (file) => {
+    const body = code(readMobile(file));
+    expect(body).toMatch(/self: \{ scopeAs: 'adults'/);
+    expect(body).toMatch(/family: \{ scopeAs: 'adults'/);
+  });
+
+  it("the product picker offers only the two adult products", () => {
+    const picker = code(readMobile("components/product-picker.tsx"));
+    const options = picker.slice(picker.indexOf("const OPTIONS"), picker.indexOf("];", picker.indexOf("const OPTIONS")));
+    expect((options.match(/key: '/g) ?? []).length).toBe(2);
+    expect(options).not.toMatch(/coach/i);
+  });
+
+  it("an unknown product param falls through to the picker", () => {
+    // This is what makes a stale ?product=coach deep link safe rather than
+    // a crash or a silent wrong-account sign-in.
+    expect(readMobile("app/login.tsx")).toMatch(/!\(product in PRODUCT_CONFIG\)/);
+    expect(readMobile("app/login.tsx")).toMatch(/Redirect href="\/select-product"/);
+  });
+});
