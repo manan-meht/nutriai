@@ -3,6 +3,7 @@ import { calculateAvailableSlots, type AvailableSlot, type WorkingRule } from ".
 import { rankCoaches, type RankableCoach } from "./ranking";
 import { haversineKm } from "./travel/provider";
 import { CLUB_MARKET } from "./config";
+import { resolveCoachPhoto } from "./placeholder-photos";
 
 // Consumer-side discovery and booking reads.
 //
@@ -152,7 +153,7 @@ export async function discoverCoaches(
       coachProfileId: c.id,
       displayName: c.display_name,
       headline: c.headline,
-      photoUrl: c.photo_url,
+      photoUrl: resolveCoachPhoto(c.photo_url, mySkills.map((s) => s.slug)),
       // Neighbourhood only — never the street address (privacy rule).
       neighbourhood: primary?.neighbourhood ?? null,
       skills: mySkills.map((s) => s.name),
@@ -213,7 +214,7 @@ export async function getCoachPublicProfile(
 
   const [services, skills, locations, travel, reviews] = await Promise.all([
     admin.from("coach_services").select("id, name, description, duration_minutes, price_cents, currency, travel_enabled").eq("coach_profile_id", c.id).eq("is_active", true).order("price_cents"),
-    admin.from("coach_skills").select("club_skills(name)").eq("coach_profile_id", c.id),
+    admin.from("coach_skills").select("club_skills(name, slug)").eq("coach_profile_id", c.id),
     admin.from("coach_locations").select("neighbourhood, is_primary").eq("coach_profile_id", c.id).eq("is_active", true),
     admin.from("coach_travel_rules").select("travel_enabled").eq("coach_profile_id", c.id).maybeSingle(),
     admin.from("club_reviews").select("id, rating, body, tags, created_at, profiles!club_reviews_client_profile_id_fkey(full_name)").eq("coach_profile_id", c.id).eq("moderation_status", "published").order("created_at", { ascending: false }).limit(10),
@@ -226,7 +227,13 @@ export async function getCoachPublicProfile(
     displayName: c.display_name,
     headline: c.headline,
     bio: c.bio,
-    photoUrl: c.photo_url,
+    photoUrl: resolveCoachPhoto(
+      c.photo_url,
+      (skills.data ?? []).map((s: any) => {
+        const k = Array.isArray(s.club_skills) ? s.club_skills[0] : s.club_skills;
+        return k?.slug;
+      })
+    ),
     yearsCoaching: c.years_coaching,
     languages: Array.isArray(c.languages) ? c.languages : [],
     neighbourhood: primary?.neighbourhood ?? null,
