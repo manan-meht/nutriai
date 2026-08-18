@@ -35,7 +35,9 @@ export default async function SignupPage({
   );
 
   const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
-  let next = params.next ?? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard");
+  // Same as the login page: "gym" is Tistra Coach, whose home is the Coach
+  // OS, not the older /gym/dashboard nutrition view.
+  let next = params.next ?? (product === "gym" ? "/coach/dashboard" : "/adults/dashboard");
   // Carries a /pricing plan/interval choice through signup so the dashboard
   // (which starts checkout — see requiresCardBeforeTrial) knows what to
   // check the new workspace out for, instead of defaulting to "monthly".
@@ -46,7 +48,8 @@ export default async function SignupPage({
     next = `${next}${next.includes("?") ? "&" : "?"}${extra.toString()}`;
   }
 
-  const title = "Create a Tistra Health account";
+  const title =
+    product === "gym" ? "Create a Tistra Coach account" : "Create a Tistra Health account";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">

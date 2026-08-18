@@ -35,9 +35,15 @@ export default async function LoginPage({
   );
 
   const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
-  const next = params.next ?? (product === "gym" ? "/gym/dashboard" : "/adults/dashboard");
+  // The "gym" product is Tistra Coach, and its home is the Coach OS
+  // (/coach/dashboard) — NOT /gym/dashboard, which is the older
+  // nutrition-tracking dashboard. Sending a coach there after sign-in
+  // dropped them into the wrong product entirely.
+  const next = params.next ?? (product === "gym" ? "/coach/dashboard" : "/adults/dashboard");
 
-  const title = "Sign in to Tistra Health";
+  // Coaching is a separate product on its own domain, so this shared page
+  // must introduce itself as whichever product the visitor came for.
+  const title = product === "gym" ? "Sign in to Tistra Coach" : "Sign in to Tistra Health";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">

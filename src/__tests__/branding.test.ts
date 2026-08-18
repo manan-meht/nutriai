@@ -18,12 +18,9 @@ const src = (relPath: string) => fs.readFileSync(path.join(__dirname, "..", relP
 // "Tistra Family" stays banned everywhere: that consolidation still holds.
 const CUSTOMER_FACING_FILES = [
   "app/layout.tsx",
-  "app/(public)/login/page.tsx",
-  "app/(public)/signup/page.tsx",
   "app/(adults)/adults/dashboard/actions.ts",
   "components/landing/shared/LandingNav.tsx",
   "components/landing/shared/LandingFooter.tsx",
-  "components/auth/AuthForm.tsx",
   "components/gym/GymDashboardClient.tsx",
   "components/adults/AdultsDashboardClient.tsx",
   "components/adults/AddContactModal.tsx",
@@ -40,6 +37,16 @@ const COACH_PRODUCT_FILES = [
   "app/(public)/page.tsx",
   "app/(public)/coach/page.tsx",
   "components/landing/coach/CoachLanding.tsx",
+];
+
+/** Shared auth surfaces: one route serves BOTH products, branding itself
+ * from the resolved product. They must name each product correctly — a
+ * coach signing in on coach.tistrahealth.com being greeted by "Tistra
+ * Health" is the bug this pins (found in production, Aug 2026). */
+const DUAL_PRODUCT_FILES = [
+  "app/(public)/login/page.tsx",
+  "app/(public)/signup/page.tsx",
+  "components/auth/AuthForm.tsx",
 ];
 
 describe("branding: legacy product names removed from customer-facing surfaces", () => {
@@ -71,6 +78,27 @@ describe("branding: legacy product names removed from customer-facing surfaces",
   // why nobody used it).
   it.each(COACH_PRODUCT_FILES)("%s carries Tistra Coach branding", (relPath) => {
     expect(src(relPath)).toMatch(/Tistra Coach/);
+  });
+
+  it.each(DUAL_PRODUCT_FILES)("%s brands both products, not just one", (relPath) => {
+    const contents = src(relPath);
+    expect(contents).toMatch(/Tistra Coach/);
+    expect(contents).toMatch(/Tistra Health/);
+    expect(contents).not.toMatch(/Tistra Family/);
+  });
+
+  // Signing in as a coach must land in the Coach OS, not the older
+  // /gym/dashboard nutrition view — the other half of the same production
+  // bug, and the half a branding check alone would have missed.
+  //
+  // Comments are stripped first: these files legitimately *explain* the
+  // old path in prose, and a naive substring check flags that as the bug
+  // it is describing.
+  it.each(DUAL_PRODUCT_FILES)("%s sends coaches to the Coach OS", (relPath) => {
+    const code = src(relPath)
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/.*$/gm, "$1");
+    expect(code).not.toMatch(/["'`]\/gym\/dashboard/);
   });
 
   it("the coach landing does not lead with nutrition tracking", () => {
