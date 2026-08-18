@@ -3,11 +3,15 @@ import Link from "next/link";
 import { MarketingHeader } from "./MarketingHeader";
 import { MarketingFooter } from "./MarketingFooter";
 import { Reveal } from "@/components/motion/Reveal";
-import { getCoachAppUrl } from "@/lib/product/resolve-product";
 import { UseCaseCards, type UseCaseCard } from "@/components/landing/shared/UseCaseCards";
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
 
+// Coaching is not offered here. It is its own product on its own domain
+// (coach.tistrahealth.com) with its own marketplace, so Tistra Health's
+// homepage advertises only the two adult products — self and family — plus
+// the invited-user path. Anything coach-facing on this page sent people
+// into a signup that no longer exists for them. See home-no-coach.test.ts.
 const USE_CASES: UseCaseCard[] = [
   {
     href: "/me",
@@ -22,14 +26,6 @@ const USE_CASES: UseCaseCard[] = [
     title: "Family",
     description: "Support a loved one’s nutrition from anywhere.",
     cta: "Explore Family",
-  },
-  {
-    // Leaves this domain: coaching is its own product now (Aug 2026).
-    href: getCoachAppUrl("/"),
-    icon: "🏋️",
-    title: "Coach",
-    description: "Track client meals without chasing food logs.",
-    cta: "Explore Coach",
   },
   {
     // Not a product to "explore" like the other three — this routes
@@ -63,8 +59,8 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                 Understand nutrition from a simple WhatsApp photo.
               </h1>
               <p className="text-lg text-gray-600">
-                Tistra Health turns meal photos into simple nutrition insights for families, coaches, and
-                individuals.
+                Tistra Health turns meal photos into simple nutrition insights for individuals and
+                families.
               </p>
               <p className="text-sm text-gray-500">
                 Built for real home-cooked meals, mixed plates, snacks, drinks, and everyday portions.
@@ -281,12 +277,6 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                   className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
                 >
                   Family →
-                </Link>
-                <Link
-                  href={getCoachAppUrl("/")}
-                  className="border-2 border-[#6750A4] text-[#4F378A] hover:bg-[#F3EEFB] px-6 py-3 rounded-full font-semibold transition-colors"
-                >
-                  Coach →
                 </Link>
                 <Link
                   href="/my-progress"

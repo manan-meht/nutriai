@@ -3,7 +3,7 @@ import Link from "next/link";
 export type MarketingFooterVariant = "home" | "family" | "coach" | "me";
 
 const TAGLINE: Record<MarketingFooterVariant, string> = {
-  home: "Simple nutrition awareness for everyday people, families, and coaches.",
+  home: "Simple nutrition awareness for everyday people and families.",
   family: "Simple nutrition visibility for the people you care about.",
   coach: "Effortless accountability for modern fitness coaching.",
   me: "Healthy habits, simplified. Stress-free awareness for your daily routine.",
@@ -13,9 +13,10 @@ const TAGLINE: Record<MarketingFooterVariant, string> = {
 // /me) — only the tagline below "Tistra Health" varies per page; the
 // copyright is identical everywhere. The "switch to coaching view"
 // prompt only makes sense on a page that isn't already the coaching view,
-// so it's hidden on both the home and coach variants; on /coach the
-// cross-link instead points visitors toward the non-coaching products
-// (Family, Me) rather than back to the page they're already on.
+// The Health variants no longer cross-link to coaching at all: coaching is
+// a separate product on its own domain and is not offered from here (Aug
+// 2026). The coach variant still points back toward Family/Me, since a
+// coach browsing their own product may well track themselves too.
 export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }) {
   return (
     <footer className="border-t border-gray-200 py-12 px-6 text-sm text-gray-500">
@@ -39,14 +40,7 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
               </Link>
             </div>
           </div>
-        ) : variant !== "home" && (
-          <div className="flex flex-col gap-1 text-xs">
-            <span className="text-gray-400">Are you a trainer or fitness professional?</span>
-            <Link href="/coach" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">
-              Switch to the coaching view →
-            </Link>
-          </div>
-        )}
+        ) : null}
 
         <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
           <span>©2026 Tistra Pte Ltd</span>

@@ -84,7 +84,6 @@ export function MarketingHeader({ variant, homeHref: initialHomeHref = "/" }: Ma
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           <Link href="/me" className="text-gray-600 hover:text-[#4F378A]">For Me</Link>
           <Link href="/family" className="text-gray-600 hover:text-[#4F378A]">Family</Link>
-          <Link href="/coach" className="text-gray-600 hover:text-[#4F378A]">Coach</Link>
           <Link href="/pricing" className="text-gray-600 hover:text-[#4F378A]">Pricing</Link>
         </nav>
         {variant === "home" ? (
