@@ -23,8 +23,11 @@ const THEME = {
     accentText: "text-[#6750A4]",
     accentBorder: "border-[#6750A4]",
     ring: "focus:ring-[#6750A4]",
-    label: "Tistra Health",
-    dashboardUrl: "/gym/dashboard",
+    // The "gym" product is Tistra Coach — its own product on its own
+    // domain — and its home is the Coach OS, not the older
+    // /gym/dashboard nutrition view.
+    label: "Tistra Coach",
+    dashboardUrl: "/coach/dashboard",
     switchUrl: (mode: Mode) => (mode === "signin" ? "/gym/signup" : "/gym/login"),
   },
   adults: {
