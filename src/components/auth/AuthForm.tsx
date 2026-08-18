@@ -3,9 +3,9 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { scopedEmail } from "@/lib/auth";
+import { scopedEmail, type AuthSurface } from "@/lib/auth";
 
-type Product = "gym" | "adults";
+type Product = AuthSurface;
 type Mode = "signin" | "signup";
 
 interface AuthFormProps {
@@ -38,6 +38,19 @@ const THEME = {
     label: "Tistra Health",
     dashboardUrl: "/adults/dashboard",
     switchUrl: (mode: Mode) => (mode === "signin" ? "/signup" : "/login"),
+  },
+  // Tistra Club, the consumer marketplace. Its accent is the marketplace
+  // purple from CLUB_TOKENS rather than the shared marketing purple, so the
+  // sign-in screen matches the app a visitor is signing in to.
+  club: {
+    accent: "bg-[#630ED4] hover:bg-[#4F0BAA] focus-visible:ring-[#630ED4]",
+    accentText: "text-[#630ED4]",
+    accentBorder: "border-[#630ED4]",
+    ring: "focus:ring-[#630ED4]",
+    label: "Tistra Club",
+    dashboardUrl: "/club",
+    switchUrl: (mode: Mode) =>
+      mode === "signin" ? "/signup?product=club" : "/login?product=club",
   },
 } as const;
 

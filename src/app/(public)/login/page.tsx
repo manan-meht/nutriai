@@ -6,6 +6,17 @@ import Link from "next/link";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
+import type { AuthSurface } from "@/lib/auth";
+
+/** Which auth surface this request belongs to. Kept separate from
+ * ProductType: Tistra Club is a third sign-in surface, not a third value of
+ * the gym/adults product used throughout the workspace code. */
+function resolveAuthSurface(hostname: string, params: URLSearchParams): AuthSurface {
+  if (hostname.split(":")[0].toLowerCase().startsWith("club.")) return "club";
+  if (params.get("product") === "club") return "club";
+  return resolveProductFromHostname(hostname, params) ?? "adults";
+}
+
 
 interface LoginPageProps {
   searchParams?: Promise<Record<string, string>>;
@@ -18,8 +29,8 @@ export async function generateMetadata({ searchParams }: LoginPageProps): Promis
   const rawParams = new URLSearchParams(
     Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string")
   );
-  const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
-  return { icons: { icon: faviconForProduct(product) } };
+  const surface = resolveAuthSurface(hostname, rawParams);
+  return { icons: { icon: faviconForProduct(surface === "club" ? "adults" : surface) } };
 }
 
 export default async function LoginPage({
@@ -34,16 +45,19 @@ export default async function LoginPage({
       .filter((e): e is [string, string] => typeof e[1] === "string")
   );
 
-  const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
+  const product = resolveAuthSurface(hostname, rawParams);
   // The "gym" product is Tistra Coach, and its home is the Coach OS
   // (/coach/dashboard) — NOT /gym/dashboard, which is the older
   // nutrition-tracking dashboard. Sending a coach there after sign-in
   // dropped them into the wrong product entirely.
-  const next = params.next ?? (product === "gym" ? "/coach/dashboard" : "/adults/dashboard");
+  const next = params.next ?? (product === "gym" ? "/coach/dashboard" : product === "club" ? "/club" : "/adults/dashboard");
 
   // Coaching is a separate product on its own domain, so this shared page
   // must introduce itself as whichever product the visitor came for.
-  const title = product === "gym" ? "Sign in to Tistra Coach" : "Sign in to Tistra Health";
+  const title =
+    product === "gym" ? "Sign in to Tistra Coach"
+    : product === "club" ? "Sign in to Tistra Club"
+    : "Sign in to Tistra Health";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">

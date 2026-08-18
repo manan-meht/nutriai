@@ -6,6 +6,17 @@ import Link from "next/link";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
+import type { AuthSurface } from "@/lib/auth";
+
+/** Which auth surface this request belongs to. Kept separate from
+ * ProductType: Tistra Club is a third sign-in surface, not a third value of
+ * the gym/adults product used throughout the workspace code. */
+function resolveAuthSurface(hostname: string, params: URLSearchParams): AuthSurface {
+  if (hostname.split(":")[0].toLowerCase().startsWith("club.")) return "club";
+  if (params.get("product") === "club") return "club";
+  return resolveProductFromHostname(hostname, params) ?? "adults";
+}
+
 
 interface SignupPageProps {
   searchParams?: Promise<Record<string, string>>;
@@ -18,8 +29,8 @@ export async function generateMetadata({ searchParams }: SignupPageProps): Promi
   const rawParams = new URLSearchParams(
     Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string")
   );
-  const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
-  return { icons: { icon: faviconForProduct(product) } };
+  const surface = resolveAuthSurface(hostname, rawParams);
+  return { icons: { icon: faviconForProduct(surface === "club" ? "adults" : surface) } };
 }
 
 export default async function SignupPage({
@@ -34,10 +45,10 @@ export default async function SignupPage({
       .filter((e): e is [string, string] => typeof e[1] === "string")
   );
 
-  const product = resolveProductFromHostname(hostname, rawParams) ?? "adults";
+  const product = resolveAuthSurface(hostname, rawParams);
   // Same as the login page: "gym" is Tistra Coach, whose home is the Coach
   // OS, not the older /gym/dashboard nutrition view.
-  let next = params.next ?? (product === "gym" ? "/coach/dashboard" : "/adults/dashboard");
+  let next = params.next ?? (product === "gym" ? "/coach/dashboard" : product === "club" ? "/club" : "/adults/dashboard");
   // Carries a /pricing plan/interval choice through signup so the dashboard
   // (which starts checkout — see requiresCardBeforeTrial) knows what to
   // check the new workspace out for, instead of defaulting to "monthly".
@@ -49,7 +60,9 @@ export default async function SignupPage({
   }
 
   const title =
-    product === "gym" ? "Create a Tistra Coach account" : "Create a Tistra Health account";
+    product === "gym" ? "Create a Tistra Coach account"
+    : product === "club" ? "Create a Tistra Club account"
+    : "Create a Tistra Health account";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
