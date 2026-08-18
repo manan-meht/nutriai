@@ -15,7 +15,18 @@ export async function POST(request: Request) {
   // tistra_last_product cookie middleware already sets whenever a user
   // visits /adults/dashboard or /gym/dashboard instead.
   const lastProduct = (await cookies()).get("tistra_last_product")?.value;
-  const loginPath = lastProduct === "adults" ? "/adults/login" : "/gym/login";
+  let loginPath = lastProduct === "adults" ? "/adults/login" : "/gym/login";
+
+  // Tistra Club runs on its own host, so bouncing a club member to a
+  // product login on the main domain would strand them. A form may post a
+  // relative destination instead; only relative paths are accepted, so the
+  // field can't be used as an open redirect.
+  const form = await request.formData().catch(() => null);
+  const requested = form?.get("redirectTo");
+  const isRelative = typeof requested === "string" && requested.startsWith("/") && !requested.startsWith("//");
+  if (isRelative) {
+    return NextResponse.redirect(new URL(requested, url.origin), 303);
+  }
 
   // Explicit 303 (See Other) — without it, NextResponse.redirect defaults to
   // 307, which preserves the original POST method, so the browser would

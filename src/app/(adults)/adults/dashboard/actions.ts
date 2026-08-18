@@ -217,7 +217,13 @@ export async function getContactDetails(contactId: string): Promise<AdultsContac
   };
 
   const rawMeals = mealsRes.data ?? [];
-  const [corrections, signedImageUrls, myReactions] = await Promise.all([
+  // NOTE: the names below must line up with the promise order in the
+  // array. They did not once before: the reactions lookup was inserted in
+  // the middle of what had been a two-promise array without renaming, so
+  // `signedImageUrls` silently held the reactions map and every meal photo
+  // came back undefined. `any`-typed rows meant neither indexing mistake
+  // was a type error. See adults-meal-mapping.test.ts.
+  const [corrections, myReactions, signedImageUrls] = await Promise.all([
     fetchHumanCorrectionsByMealLogId(rawMeals.map((m: any) => m.id)),
     // Which meals this caregiver already reacted to — drives the meal
     // card's 👍/🎉/❤️ selected state. Service client: meal_reactions is

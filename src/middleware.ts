@@ -33,6 +33,31 @@ export async function middleware(request: NextRequest) {
   // Handling the redirect here instead costs nothing extra (middleware is
   // already one shared Function on every request) and removes those 4
   // routes entirely.
+  // Tistra Club (the consumer marketplace) lives on its own host. Rewrite
+  // rather than redirect, so the URL a visitor sees stays
+  // club.tistrahealth.com/... instead of leaking the internal /club prefix.
+  // Auth, static assets and API routes are excluded: they're shared across
+  // every product and must resolve to their real paths.
+  const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  if (host.startsWith("club.")) {
+    const { pathname } = request.nextUrl;
+    const isShared =
+      pathname.startsWith("/club") ||
+      pathname.startsWith("/api") ||
+      pathname.startsWith("/auth") ||
+      pathname.startsWith("/login") ||
+      pathname.startsWith("/signup") ||
+      pathname.startsWith("/_next") ||
+      pathname.startsWith("/privacy") ||
+      pathname.startsWith("/terms") ||
+      /\.[a-z0-9]+$/i.test(pathname); // files (favicon, images, …)
+    if (!isShared) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/club${pathname === "/" ? "" : pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
+
   const productLoginSignupMatch = request.nextUrl.pathname.match(/^\/(adults|gym)\/(login|signup)\/?$/);
   if (productLoginSignupMatch) {
     const [, product, mode] = productLoginSignupMatch;

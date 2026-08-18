@@ -26,4 +26,5 @@ export const CLUB_TOKENS = {
   warningContainer: "#FFF0D4",
   error: "#BA1A1A",
   errorContainer: "#FFDAD6",
+  onErrorContainer: "#410002",
 } as const;

@@ -9,13 +9,17 @@ import { useSearchParams } from "next/navigation";
 
 function ForgotPasswordForm() {
   const searchParams = useSearchParams();
-  const product = searchParams.get("product") === "adults" ? "adults" : "gym";
+  // Club shares the base (unscoped) identity with Coach, so the reset must
+  // use the same untagged email — but the "back to sign in" link has to
+  // return a club member to the club login, not the coach one.
+  const raw = searchParams.get("product");
+  const product = raw === "adults" ? "adults" : raw === "club" ? "club" : "gym";
   const accentText = product === "gym" ? "text-purple-600" : "text-rose-600";
   const accentRing = product === "gym" ? "focus:ring-purple-500" : "focus:ring-rose-500";
   const accentBtn = product === "gym"
     ? "bg-purple-600 hover:bg-purple-700"
     : "bg-rose-600 hover:bg-rose-700";
-  const loginUrl = product === "gym" ? "/gym/login" : "/adults/login";
+  const loginUrl = product === "club" ? "/login?product=club" : product === "gym" ? "/gym/login" : "/adults/login";
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
