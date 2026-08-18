@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
 import { ClubChrome, StickyAction } from "@/components/club/ClubChrome";
+import { CoachPhotoPager } from "@/components/club/CoachPhotoPager";
 import { getCoachPublicProfile } from "@/lib/club/discovery";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { formatMoney } from "@/lib/club/config";
@@ -19,25 +20,20 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
     <ClubChrome hideNav>
       <Link href="/club" className="text-sm" style={{ color: T.onSurfaceVariant }}>← Back</Link>
 
-      <div className="mt-4 flex items-start gap-4">
-        {coach.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed storage URL
-          <img src={coach.photoUrl} alt="" className="h-20 w-20 rounded-2xl object-cover" />
-        ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-2xl text-2xl font-semibold"
-               style={{ backgroundColor: T.primaryContainer, color: T.primary }} aria-hidden="true">
-            {coach.displayName.split(" ").map((p) => p[0]).slice(0,2).join("")}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-[-0.01em]">{coach.displayName}</h1>
-          <p className="mt-0.5 text-sm" style={{ color: T.onSurfaceVariant }}>{coach.headline}</p>
-          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" style={{ color: T.onSurfaceVariant }}>
-            <span>{coach.ratingAverage ? `★ ${coach.ratingAverage} (${coach.reviewCount})` : "New coach"}</span>
-            {coach.neighbourhood && <span>{coach.neighbourhood}</span>}
-            {coach.identityVerified && <span style={{ color: T.success }}>✓ Verified</span>}
-          </p>
-        </div>
+      {/* Photo-led hero, matching the discovery feed — arriving from a
+          large card onto a thumbnail read as a different product. */}
+      <div className="-mx-5 mt-3 overflow-hidden sm:mx-0 sm:rounded-3xl">
+        <CoachPhotoPager photos={coach.photos} name={coach.displayName} eager aspectClassName="aspect-[4/3]" />
+      </div>
+
+      <div className="mt-4">
+        <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.015em]">{coach.displayName}</h1>
+        <p className="mt-1 text-[15px]" style={{ color: T.onSurfaceVariant }}>{coach.headline}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" style={{ color: T.onSurfaceVariant }}>
+          <span>{coach.ratingAverage ? `★ ${coach.ratingAverage} (${coach.reviewCount})` : "New coach"}</span>
+          {coach.neighbourhood && <span>{coach.neighbourhood}</span>}
+          {coach.identityVerified && <span style={{ color: T.success }}>✓ Verified</span>}
+        </p>
       </div>
 
       {coach.bio && <p className="mt-6 text-[15px] leading-7" style={{ color: T.onSurfaceVariant }}>{coach.bio}</p>}

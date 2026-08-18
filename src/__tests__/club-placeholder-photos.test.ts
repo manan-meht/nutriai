@@ -46,3 +46,31 @@ describe("placeholder coach photos", () => {
     expect(rows.filter((r) => r.includes("Getty Images"))).toEqual([]);
   });
 });
+
+describe("placeholder galleries", () => {
+  it("gives a coach one image per discipline they teach", () => {
+    const { resolveCoachGallery } = require("@/lib/club/placeholder-photos");
+    expect(resolveCoachGallery([], null, ["muay-thai", "boxing"])).toEqual([
+      "/club/coaches/muay-thai.webp",
+      "/club/coaches/boxing.webp",
+    ]);
+  });
+
+  it("never pads with a discipline the coach does not teach", () => {
+    const { resolveCoachGallery } = require("@/lib/club/placeholder-photos");
+    const gallery = resolveCoachGallery([], null, ["running"], 3);
+    expect(gallery).toEqual(["/club/coaches/running.webp"]);
+  });
+
+  it("puts the coach's own photos first and never mixes in stand-ins", () => {
+    const { resolveCoachGallery, isPlaceholderPhoto } = require("@/lib/club/placeholder-photos");
+    const gallery = resolveCoachGallery(["https://s.test/b.jpg"], "https://s.test/a.jpg", ["yoga"]);
+    expect(gallery[0]).toBe("https://s.test/a.jpg");
+    expect(gallery.some(isPlaceholderPhoto)).toBe(false);
+  });
+
+  it("always returns something to show", () => {
+    const { resolveCoachGallery } = require("@/lib/club/placeholder-photos");
+    expect(resolveCoachGallery([], null, []).length).toBeGreaterThan(0);
+  });
+});

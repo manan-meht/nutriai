@@ -68,6 +68,38 @@ export function resolveCoachPhoto(
   return GENERIC;
 }
 
+/**
+ * Resolves a small gallery for a coach, for the swipeable discovery card.
+ *
+ * A coach's own uploaded media always comes first and is never mixed with
+ * stand-ins — a card either shows real photos of a real coach, or it shows
+ * clearly generic discipline imagery. Interleaving the two would imply the
+ * stock shots were theirs.
+ */
+export function resolveCoachGallery(
+  ownPhotos: string[],
+  photoUrl: string | null | undefined,
+  skillSlugs: Array<string | null | undefined>,
+  count = 3
+): string[] {
+  const own = [photoUrl, ...ownPhotos].filter((u): u is string => !!u);
+  if (own.length > 0) return own.slice(0, Math.max(count, own.length));
+  if (!PLACEHOLDER_PHOTOS_ENABLED) return [];
+
+  // One image per discipline the coach actually teaches, in their order.
+  // Deliberately NOT padded out to `count` with unrelated disciplines: a
+  // running coach with an acrobatics photo in their gallery reads as a
+  // mistake, and padding would make every card end on the same image.
+  const gallery: string[] = [];
+  for (const slug of skillSlugs) {
+    if (!slug || !AVAILABLE.has(slug)) continue;
+    const url = `${BASE}/${slug}.webp`;
+    if (!gallery.includes(url)) gallery.push(url);
+    if (gallery.length === count) break;
+  }
+  return gallery.length > 0 ? gallery : [GENERIC];
+}
+
 /** True when the returned photo is a stand-in rather than the coach's own —
  * lets a surface label it, and keeps callers from having to string-match on
  * the path. */
