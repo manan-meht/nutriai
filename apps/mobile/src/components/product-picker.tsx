@@ -7,8 +7,18 @@ import { ThemedView } from './themed-view';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+// 'coach' stays in the type — stored product intent and post-login routing
+// still understand it — but it is no longer OFFERED here (see OPTIONS).
 export type ProductKey = 'self' | 'family' | 'coach';
 
+/**
+ * Coaching was removed from this picker in Aug 2026: it became its own
+ * product on its own domain (coach.tistrahealth.com), so the Tistra Health
+ * app offers only the two adult products. The card's artwork and the
+ * 'coach' key are intentionally left in place rather than deleted, so
+ * re-introducing a coach path (or handling an existing coach account that
+ * signs in here) doesn't need this file reconstructed.
+ */
 const OPTIONS: Array<{
   key: ProductKey;
   image: number;
@@ -27,12 +37,6 @@ const OPTIONS: Array<{
     title: 'For my family',
     subtitle: 'Support a parent, partner, or child.',
   },
-  {
-    key: 'coach',
-    image: require('@/assets/images/onboarding/coach.png'),
-    title: 'For my clients',
-    subtitle: 'Use Tistra Health as a coach, trainer, or gym.',
-  },
 ];
 
 // Shared by select-product.tsx (pre-login: which scoped account to sign
@@ -42,7 +46,7 @@ const OPTIONS: Array<{
 // than two differently-styled pickers for what reads as the same choice to
 // the user. Post-login, "self" and "family" both resolve to the same
 // /adults route (there's no further distinction to make once already
-// authenticated); kept as three options anyway for one consistent design.
+// authenticated); both are offered anyway for one consistent design.
 export function ProductPicker({
   headline,
   subhead,

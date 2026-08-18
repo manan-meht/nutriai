@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+import { getCoachAppUrl } from "@/lib/product/resolve-product";
 
 interface GetStartedModalProps {
   onClose: () => void;
@@ -35,13 +36,10 @@ const SIGNUP_OPTIONS = [
     description: "Support aging parents or family members through simple WhatsApp meal updates.",
     cta: "Continue for family",
   },
-  {
-    href: getSignupUrl({ product: "gym", source: "home_get_started", variant: "standard", productParam: "coach" }),
-    icon: "🏋️",
-    title: "For Coaches",
-    description: "See which clients need a nutrition check-in this week.",
-    cta: "Continue for coaching",
-  },
+  // Coaching is no longer a Tistra Health signup path (Aug 2026): it is its
+  // own product on its own domain, so Health's sign-up offers only the two
+  // adult products. Coaches reach their product via the Coach link in the
+  // marketing nav, which leaves this domain — see getCoachAppUrl().
 ];
 
 const SIGNIN_OPTIONS = [
@@ -60,11 +58,14 @@ const SIGNIN_OPTIONS = [
     cta: "Sign in for family",
   },
   {
-    href: getLoginUrl({ product: "gym", source: "home_sign_in" }),
+    // Kept in SIGN-IN (unlike sign-up) so existing coaches aren't stranded
+    // by the split — but it crosses to the coach domain rather than logging
+    // them in here.
+    href: getCoachAppUrl("/login"),
     icon: "🏋️",
     title: "For Coaches",
-    description: "See which clients need a nutrition check-in this week.",
-    cta: "Sign in as a coach",
+    description: "Coaching now has its own home — we'll take you there.",
+    cta: "Go to Tistra Coach",
   },
   {
     // Not a caregiver/coach login at all — this is the OTP-verified

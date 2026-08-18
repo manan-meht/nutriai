@@ -13,6 +13,7 @@ import {
 } from "@/lib/experiments/landing-page-experiment";
 import { createClient } from "@/lib/supabase/server";
 import { UnifiedHome } from "@/components/home/UnifiedHome";
+import { CoachLanding } from "@/components/landing/coach/CoachLanding";
 import { MasterHome } from "@/components/home/MasterHome";
 import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 import nextDynamic from "next/dynamic";
@@ -28,11 +29,6 @@ const UNIFIED_HOME_ENABLED = process.env.NEXT_PUBLIC_UNIFIED_HOME_ENABLED !== "f
 // — off by default so it can be reviewed before replacing the existing
 // unified chooser.
 const NEW_MASTER_HOME_ENABLED = process.env.NEXT_PUBLIC_NEW_TISTRA_HOMEPAGE_ENABLED === "true";
-
-const GymImmersiveLanding = nextDynamic(
-  () => import("@/components/landing/immersive/GymImmersiveLanding").then((m) => ({ default: m.GymImmersiveLanding })),
-  { ssr: true }
-);
 
 const AdultsImmersiveLanding = nextDynamic(
   () => import("@/components/landing/immersive/AdultsImmersiveLanding").then((m) => ({ default: m.AdultsImmersiveLanding })),
@@ -80,10 +76,13 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
   const product = explicitProduct ?? (process.env.NEXT_PUBLIC_PRODUCT as ProductType | undefined) ?? "gym";
 
   if (product === "gym") {
+    // Tistra Coach — the coaching business platform, not a food-logging
+    // tool. Matches CoachLanding's positioning (see that component's note
+    // on why the previous nutrition-first framing was replaced).
     return {
-      title: "Tistra Health — Nutrition coaching built for Indian trainers",
+      title: "Tistra Coach | Run your coaching practice",
       description:
-        "Your clients log meals from WhatsApp. AI identifies dal, roti, sabzi and more. You see who needs attention — all in one coach dashboard.",
+        "Get discovered by new clients, fill your calendar with travel-aware scheduling, take payment automatically, and track every client's progress. Built for coaches in Singapore.",
       alternates: { canonical: "/" },
       icons: { icon: faviconForProduct("gym") },
     };
@@ -160,5 +159,10 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
   if (product === "adults") {
     return <AdultsImmersiveLanding variant="immersive" experimentId={experimentId} />;
   }
-  return <GymImmersiveLanding variant="immersive" experimentId={experimentId} />;
+  // The "gym" product is now Tistra Coach — a separate product on its own
+  // domain (coach.tistrahealth.com), so the coach host's root serves the
+  // Coach page rather than Tistra Health's nutrition-tracking pitch. The
+  // landing-page experiment doesn't apply here: it was built to compare
+  // variants of GymImmersiveLanding, which this replaces.
+  return <CoachLanding />;
 }
