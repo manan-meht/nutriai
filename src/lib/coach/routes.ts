@@ -31,6 +31,24 @@ export function isCoachHost(hostname: string | null | undefined): boolean {
   return resolveProductFromHostnameOnly((hostname ?? "").split(":")[0].toLowerCase()) === "gym";
 }
 
+/** Local development, where one server answers for every product and there
+ * is no coach hostname unless you go out of your way to use one. */
+export function isLocalDevHost(hostname: string | null | undefined): boolean {
+  const host = (hostname ?? "").split(":")[0].toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
+}
+
+/** Whether Coach OS's clean URLs should resolve on this host.
+ *
+ * In production that means the coach host only — /dashboard on
+ * tistrahealth.com must not silently open the coach product. Locally it
+ * also means plain localhost, because the alternative is that every
+ * un-prefixed link in Coach OS 404s in development while working in
+ * production, which is a trap rather than a safeguard. */
+export function servesCoachApp(hostname: string | null | undefined): boolean {
+  return isCoachHost(hostname) || isLocalDevHost(hostname);
+}
+
 /** "/dashboard" or "/clients/abc" -> true; "/india" or "/" -> false. */
 export function isCoachAppPath(pathname: string): boolean {
   return SEGMENTS.has(pathname.split("/")[1] ?? "");

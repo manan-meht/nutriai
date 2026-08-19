@@ -213,6 +213,21 @@ describe("Coach OS URLs carry no /coach prefix", () => {
     expect(isCoachHost("tistra.club")).toBe(false);
   });
 
+  it("resolves clean coach URLs in local dev, but never on the Health host", () => {
+    // One dev server answers for every product, so without this every
+    // un-prefixed Coach OS link 404s locally while working in production —
+    // a trap rather than a safeguard. tistrahealth.com must still never
+    // open the coach product from /dashboard.
+    const { servesCoachApp, isLocalDevHost } = require("@/lib/coach/routes");
+    expect(isLocalDevHost("localhost:3001")).toBe(true);
+    expect(isLocalDevHost("127.0.0.1")).toBe(true);
+    expect(servesCoachApp("localhost:3001")).toBe(true);
+    expect(servesCoachApp("coach.tistra.club")).toBe(true);
+    expect(servesCoachApp("tistrahealth.com")).toBe(false);
+    expect(servesCoachApp("tistra.club")).toBe(false);
+    expect(isLocalDevHost("notlocalhost.com")).toBe(false);
+  });
+
   it("Coach OS components link without the prefix", () => {
     for (const f of fs.readdirSync(path.join(__dirname, "..", "components", "coach"))) {
       if (!f.endsWith(".tsx")) continue;

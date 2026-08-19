@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { isClubHost, isClubWwwHost, isLegacyCoachHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
-import { isCoachHost, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
+import { servesCoachApp, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -81,7 +81,7 @@ export async function middleware(request: NextRequest) {
   // Coach OS from the root of the coach host, same shape as the club but
   // limited to the app's own segments — /coach also has real marketing
   // pages (/coach/india, /coach/add-users) that must keep working.
-  if (isCoachHost(host) && !isSharedPath) {
+  if (servesCoachApp(host) && !isSharedPath) {
     if (isPrefixedCoachAppPath(pathname)) {
       const url = request.nextUrl.clone();
       url.pathname = pathname.slice("/coach".length);
