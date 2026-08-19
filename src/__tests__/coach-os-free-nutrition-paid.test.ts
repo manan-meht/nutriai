@@ -76,3 +76,31 @@ describe("the standalone gym dashboard no longer exists", () => {
     expect(legacy).not.toMatch(/GymDashboardClient/);
   });
 });
+
+describe("the two client lists are labelled, not silently merged", () => {
+  // The identity decision (Aug 2026) was to defer merging: a matching
+  // WhatsApp number is not treated as proof of the same person, because
+  // household numbers are shared and meal photos are health data. What the
+  // product owes a coach instead is an explanation of where each kind of
+  // client lives.
+  const clientsList = fs.readFileSync(
+    path.join(__dirname, "..", "components", "coach", "CoachClients.tsx"),
+    "utf-8"
+  );
+  const nutrition = read("nutrition/page.tsx");
+
+  it("the booking list points at nutrition", () => {
+    expect(clientsList).toMatch(/href="\/coach\/nutrition"/);
+    expect(clientsList).toMatch(/Booking clients/);
+  });
+
+  it("the nutrition list points back at bookings", () => {
+    expect(nutrition).toMatch(/href="\/coach\/clients"/);
+  });
+
+  it("nothing auto-links the two on a phone number", () => {
+    for (const body of [clientsList, nutrition]) {
+      expect(body).not.toMatch(/autoLink|matchByPhone|linkByWhatsapp/i);
+    }
+  });
+});

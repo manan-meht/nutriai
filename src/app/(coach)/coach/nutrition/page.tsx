@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -83,6 +84,17 @@ export default async function CoachNutritionPage({
       coachName={coachProfile?.displayName ?? profileRow?.full_name ?? "Coach"}
       photoUrl={coachProfile?.photoUrl}
     >
+      {/* The reverse of the note on the Clients page: each list says where
+          the other is, so a coach who can't find someone gets an answer
+          rather than assuming the list is broken. */}
+      <p className="mb-6 text-sm" style={{ color: "#4A4455" }}>
+        People you track by WhatsApp, whether or not they have booked with you.{" "}
+        <Link href="/coach/clients" className="underline underline-offset-2" style={{ color: "#630ED4" }}>
+          Booking clients
+        </Link>{" "}
+        are listed separately.
+      </p>
+
       <GymDashboardClient
         coachName={profileRow?.full_name ?? ""}
         coachEmail={user.email ?? ""}
