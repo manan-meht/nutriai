@@ -123,7 +123,9 @@ async function searchWithPlaces(q: string, limit: number, key: string): Promise<
       },
       body: JSON.stringify({
         textQuery: q,
-        includedRegionCodes: [CLUB_MARKET.countryCode.toLowerCase()],
+        // searchText takes a single `regionCode`; `includedRegionCodes` is
+        // the autocomplete endpoint's field and is rejected here.
+        regionCode: CLUB_MARKET.countryCode.toLowerCase(),
         maxResultCount: limit,
         languageCode: "en",
       }),

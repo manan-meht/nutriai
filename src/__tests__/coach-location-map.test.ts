@@ -146,7 +146,13 @@ describe("address search", () => {
   it("scopes results to the market's country", () => {
     // Otherwise a common street name returns the same road abroad.
     const g = src("lib/club/geocode.ts");
-    expect(g).toMatch(/includedRegionCodes/);
+    expect(g).toMatch(/regionCode: CLUB_MARKET\.countryCode\.toLowerCase\(\)/);
+    // includedRegionCodes belongs to the autocomplete endpoint and is
+    // rejected by searchText with INVALID_ARGUMENT. Checked against code
+    // with comments stripped — the line above explains the field, and
+    // would otherwise trip its own ban.
+    const code = g.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/includedRegionCodes/);
     expect(g).toMatch(/components=country:\$\{CLUB_MARKET\.countryCode\}/);
   });
 
