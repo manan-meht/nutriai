@@ -31,7 +31,7 @@ export async function holdSlotAction(formData: FormData) {
 
   const profileId = await currentProfileId();
   if (!profileId) {
-    redirect(`/login?product=club&next=${encodeURIComponent(`/club/coaches/${coachProfileId}/book?service=${serviceId}`)}`);
+    redirect(`/login?product=club&next=${encodeURIComponent(`/coaches/${coachProfileId}/book?service=${serviceId}`)}`);
   }
 
   const admin = createServiceClient();
@@ -39,7 +39,7 @@ export async function holdSlotAction(formData: FormData) {
   const slots = await getBookableSlots(admin, coachProfileId, serviceId);
   const match = slots.find((s) => s.startsAt.getTime() === startsAt.getTime());
   if (!match) {
-    redirect(`/club/coaches/${coachProfileId}/book?service=${serviceId}&error=gone`);
+    redirect(`/coaches/${coachProfileId}/book?service=${serviceId}&error=gone`);
   }
 
   const held = await createHold(admin, {
@@ -52,10 +52,10 @@ export async function holdSlotAction(formData: FormData) {
 
   if (!held.ok) {
     const reason = held.reason === "slot_taken" ? "gone" : "failed";
-    redirect(`/club/coaches/${coachProfileId}/book?service=${serviceId}&error=${reason}`);
+    redirect(`/coaches/${coachProfileId}/book?service=${serviceId}&error=${reason}`);
   }
 
-  redirect(`/club/checkout/${held.holdId}`);
+  redirect(`/checkout/${held.holdId}`);
 }
 
 /** Pays for a held slot and confirms the booking. */
@@ -74,13 +74,13 @@ export async function payAction(formData: FormData) {
     .maybeSingle();
   // A hold belonging to someone else is treated as missing, not as a
   // permission error — no probing another client's checkout.
-  if (!hold || hold.client_profile_id !== profileId) redirect("/club");
+  if (!hold || hold.client_profile_id !== profileId) redirect("/");
 
   const [{ data: service }, { data: coach }] = await Promise.all([
     admin.from("coach_services").select("price_cents, currency, skill_id").eq("id", hold.service_id).maybeSingle(),
     admin.from("coach_profiles").select("cancellation_full_refund_hours, cancellation_partial_refund_percent").eq("id", hold.coach_profile_id).maybeSingle(),
   ]);
-  if (!service || !coach) redirect(`/club/checkout/${holdId}?error=failed`);
+  if (!service || !coach) redirect(`/checkout/${holdId}?error=failed`);
 
   const result = await checkout(admin, {
     holdId,
@@ -98,10 +98,10 @@ export async function payAction(formData: FormData) {
     } satisfies CancellationPolicySnapshot,
   });
 
-  if (!result.ok) redirect(`/club/checkout/${holdId}?error=${encodeURIComponent(result.message)}`);
+  if (!result.ok) redirect(`/checkout/${holdId}?error=${encodeURIComponent(result.message)}`);
 
-  revalidatePath("/club/bookings");
-  redirect(`/club/bookings/${result.bookingId}?new=1`);
+  revalidatePath("/bookings");
+  redirect(`/bookings/${result.bookingId}?new=1`);
 }
 
 /** Abandons checkout, freeing the slot immediately rather than waiting for
@@ -109,12 +109,12 @@ export async function payAction(formData: FormData) {
 export async function releaseHoldAction(formData: FormData) {
   const holdId = String(formData.get("holdId") ?? "");
   const profileId = await currentProfileId();
-  if (!profileId) redirect("/club");
+  if (!profileId) redirect("/");
 
   const admin = createServiceClient();
   const { data: hold } = await admin.from("booking_holds").select("client_profile_id").eq("id", holdId).maybeSingle();
   if (hold?.client_profile_id === profileId) await releaseHold(admin, holdId);
-  redirect("/club");
+  redirect("/");
 }
 
 /** Client-initiated cancellation. The refund is computed from the policy
@@ -122,7 +122,7 @@ export async function releaseHoldAction(formData: FormData) {
 export async function cancelBookingAction(formData: FormData) {
   const bookingId = String(formData.get("bookingId") ?? "");
   const profileId = await currentProfileId();
-  if (!profileId) redirect("/club");
+  if (!profileId) redirect("/");
 
   const admin = createServiceClient();
   const { data: booking } = await admin
@@ -130,8 +130,8 @@ export async function cancelBookingAction(formData: FormData) {
     .select("id, client_profile_id, status, starts_at, price_cents, travel_fee_cents, cancellation_policy_snapshot")
     .eq("id", bookingId)
     .maybeSingle();
-  if (!booking || booking.client_profile_id !== profileId) redirect("/club/bookings");
-  if (booking.status !== "CONFIRMED") redirect(`/club/bookings/${bookingId}`);
+  if (!booking || booking.client_profile_id !== profileId) redirect("/bookings");
+  if (booking.status !== "CONFIRMED") redirect(`/bookings/${bookingId}`);
 
   const paidCents = booking.price_cents + (booking.travel_fee_cents ?? 0);
   const refund = calculateRefund({
@@ -168,6 +168,6 @@ export async function cancelBookingAction(formData: FormData) {
     }
   }
 
-  revalidatePath("/club/bookings");
-  redirect(`/club/bookings/${bookingId}`);
+  revalidatePath("/bookings");
+  redirect(`/bookings/${bookingId}`);
 }

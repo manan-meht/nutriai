@@ -74,3 +74,69 @@ describe("every surface uses the shared check", () => {
     expect(mw).toMatch(/308/);
   });
 });
+
+describe("club URLs carry no /club prefix", () => {
+  const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf-8");
+  const CLUB_UI = [
+    "components/club/ClubChrome.tsx",
+    "components/club/CoachCardList.tsx",
+    "app/(club)/club/page.tsx",
+    "app/(club)/club/coaches/[coachId]/page.tsx",
+    "app/(club)/club/coaches/[coachId]/book/page.tsx",
+    "app/(club)/club/checkout/[holdId]/page.tsx",
+    "app/(club)/club/bookings/page.tsx",
+    "app/(club)/club/bookings/[bookingId]/page.tsx",
+    "app/(club)/club/profile/page.tsx",
+    "app/(club)/club/actions.ts",
+  ];
+
+  it.each(CLUB_UI)("%s links without the prefix", (file) => {
+    const src = read(file);
+    // Import paths (@/lib/club/...) are not URLs; only quoted/templated
+    // absolute paths and encoded next= params count.
+    const urls = [
+      ...src.matchAll(/href=(?:"([^"]*)"|\{`([^`]*)`\})/g),
+      ...src.matchAll(/redirect\(\s*(?:"([^"]*)"|`([^`]*)`)/g),
+    ].map((m) => m[1] ?? m[2] ?? "");
+    const leaked = urls.filter((u) => u === "/club" || u.startsWith("/club/") || u.startsWith("/club?"));
+    expect(leaked).toEqual([]);
+    expect(src).not.toMatch(/%2Fclub/);
+  });
+
+  it("the discovery tab points at the root", () => {
+    expect(read("components/club/ClubChrome.tsx")).toMatch(/href: "\/"/);
+  });
+
+  it("placeholder photos live outside the /club namespace", () => {
+    // /club/coaches/<file>.webp would share a namespace with the
+    // /coaches/<id> profile routes once the prefix is stripped.
+    expect(read("lib/club/placeholder-photos.ts")).toMatch(/const BASE = "\/coach-photos"/);
+    expect(fs.existsSync(path.join(__dirname, "..", "..", "public", "club"))).toBe(false);
+  });
+});
+
+describe("middleware canonicalises club URLs", () => {
+  const mw = fs.readFileSync(path.join(__dirname, "..", "middleware.ts"), "utf-8");
+
+  it("redirects a leaked /club link on a club host instead of rewriting it", () => {
+    // A rewrite would leave /club in the address bar, and every link the
+    // page then renders would inherit it.
+    expect(mw).toMatch(/pathname === "\/club" \|\| pathname\.startsWith\("\/club\/"\)/);
+    expect(mw).toMatch(/NextResponse\.redirect\(url, 308\)/);
+  });
+
+  it("rewrites clean paths into the /club route group", () => {
+    expect(mw).toMatch(/url\.pathname = `\/club\$\{pathname === "\/" \? "" : pathname\}`/);
+    expect(mw).toMatch(/NextResponse\.rewrite\(url\)/);
+  });
+
+  it("sends /club on a non-club host to the club's own origin", () => {
+    expect(mw).toMatch(/CLUB_CANONICAL_ORIGIN/);
+  });
+
+  it("leaves shared paths alone on every host", () => {
+    for (const p of ["/api", "/auth", "/login", "/signup", "/_next", "/privacy", "/terms"]) {
+      expect(mw).toContain(`pathname.startsWith("${p}")`);
+    }
+  });
+});

@@ -56,6 +56,14 @@ function routeExists(urlPath: string): boolean {
   return search(APP_DIR, segments);
 }
 
+/** Club surfaces are served from the ROOT of a club host: middleware
+ * rewrites /coaches/<id> into the /club/coaches/<id> route group, so a link
+ * resolves if EITHER form exists. Shared paths (/login, /privacy) are only
+ * ever at their real location, which the first check covers. */
+function resolvesOnClubHost(urlPath: string): boolean {
+  return routeExists(urlPath) || routeExists(`/club${urlPath === "/" ? "" : urlPath}`);
+}
+
 describe("club links resolve to real routes", () => {
   const files = [...walk(CLUB_COMPONENTS), ...walk(CLUB_APP)].filter((f) => f.endsWith(".tsx"));
 
@@ -66,26 +74,20 @@ describe("club links resolve to real routes", () => {
   it.each(files.map((f) => [path.relative(path.join(__dirname, ".."), f), f]))(
     "%s has no dead links",
     (_name, file) => {
-      const dead = internalLinks(fs.readFileSync(file, "utf-8")).filter((l) => !routeExists(l));
+      const dead = internalLinks(fs.readFileSync(file, "utf-8")).filter((l) => !resolvesOnClubHost(l));
       expect(dead).toEqual([]);
     }
   );
 
-  it("every step of the booking funnel exists", () => {
-    for (const route of [
-      "/club",
-      "/club/coaches/x",
-      "/club/coaches/x/book",
-      "/club/checkout/x",
-      "/club/bookings",
-      "/club/bookings/x",
-      "/club/profile",
-    ]) {
-      expect([route, routeExists(route)]).toEqual([route, true]);
+  it("every step of the booking funnel exists, as a visitor types it", () => {
+    // The clean URLs a visitor actually sees on tistra.club.
+    for (const route of ["/", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
+      expect([route, resolvesOnClubHost(route)]).toEqual([route, true]);
     }
   });
 
   it("can actually fail", () => {
+    expect(resolvesOnClubHost("/not-a-real-route")).toBe(false);
     expect(routeExists("/club/not-a-real-route")).toBe(false);
   });
 });

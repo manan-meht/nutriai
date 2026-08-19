@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { resolveCoachPhoto, isPlaceholderPhoto, PLACEHOLDER_SKILL_SLUGS } from "@/lib/club/placeholder-photos";
 
-const PUBLIC_DIR = path.join(__dirname, "..", "..", "public", "club", "coaches");
+const PUBLIC_DIR = path.join(__dirname, "..", "..", "public", "coach-photos");
 
 describe("placeholder coach photos", () => {
   it("ships an image for every slug it claims to cover", () => {
@@ -16,8 +16,8 @@ describe("placeholder coach photos", () => {
   });
 
   it("matches the coach's own discipline", () => {
-    expect(resolveCoachPhoto(null, ["swimming"])).toBe("/club/coaches/swimming.webp");
-    expect(resolveCoachPhoto(null, ["muay-thai", "boxing"])).toBe("/club/coaches/muay-thai.webp");
+    expect(resolveCoachPhoto(null, ["swimming"])).toBe("/coach-photos/swimming.webp");
+    expect(resolveCoachPhoto(null, ["muay-thai", "boxing"])).toBe("/coach-photos/muay-thai.webp");
   });
 
   it("falls back to something rather than nothing for an uncovered skill", () => {
@@ -51,15 +51,15 @@ describe("placeholder galleries", () => {
   it("gives a coach one image per discipline they teach", () => {
     const { resolveCoachGallery } = require("@/lib/club/placeholder-photos");
     expect(resolveCoachGallery([], null, ["muay-thai", "boxing"])).toEqual([
-      "/club/coaches/muay-thai.webp",
-      "/club/coaches/boxing.webp",
+      "/coach-photos/muay-thai.webp",
+      "/coach-photos/boxing.webp",
     ]);
   });
 
   it("never pads with a discipline the coach does not teach", () => {
     const { resolveCoachGallery } = require("@/lib/club/placeholder-photos");
     const gallery = resolveCoachGallery([], null, ["running"], 3);
-    expect(gallery).toEqual(["/club/coaches/running.webp"]);
+    expect(gallery).toEqual(["/coach-photos/running.webp"]);
   });
 
   it("puts the coach's own photos first and never mixes in stand-ins", () => {

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
-import { isClubHost, isClubWwwHost } from "@/lib/club/host";
+import { isClubHost, isClubWwwHost, CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -34,39 +34,60 @@ export async function middleware(request: NextRequest) {
   // Handling the redirect here instead costs nothing extra (middleware is
   // already one shared Function on every request) and removes those 4
   // routes entirely.
-  // Tistra Club (the consumer marketplace) lives on its own host. Rewrite
-  // rather than redirect, so the URL a visitor sees stays
-  // club.tistrahealth.com/... instead of leaking the internal /club prefix.
-  // Auth, static assets and API routes are excluded: they're shared across
-  // every product and must resolve to their real paths.
+  // Tistra Club is served from the ROOT of its own hosts (tistra.club and
+  // club.tistrahealth.com): a visitor sees tistra.club/coaches/<id>, never
+  // the internal /club prefix the App Router actually routes on.
+  //
+  // Three cases, in order:
+  //   1. www          -> 308 to the apex (cookies are per registrable
+  //                      domain, so www and apex are separate logins)
+  //   2. club host    -> a bare /club/... link is canonicalised away, and
+  //                      everything else is rewritten INTO /club/...
+  //   3. other hosts  -> /club/... leaves for the club's own origin, so
+  //                      Tistra Health stops serving the marketplace
+  //
+  // Auth, API, static assets and legal pages are shared across products and
+  // must resolve to their real paths on every host.
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
 
-  // www and the apex are separate origins to the cookie jar, so a visitor
-  // who signs in on one appears signed out on the other. Canonicalise
-  // before anything else looks at the host.
   if (isClubWwwHost(host)) {
     const url = request.nextUrl.clone();
     url.host = "tistra.club";
     return NextResponse.redirect(url, 308);
   }
 
+  const { pathname } = request.nextUrl;
+  const isSharedPath =
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/privacy") ||
+    pathname.startsWith("/terms") ||
+    /\.[a-z0-9]+$/i.test(pathname); // files (favicon, images, …)
+
   if (isClubHost(host)) {
-    const { pathname } = request.nextUrl;
-    const isShared =
-      pathname.startsWith("/club") ||
-      pathname.startsWith("/api") ||
-      pathname.startsWith("/auth") ||
-      pathname.startsWith("/login") ||
-      pathname.startsWith("/signup") ||
-      pathname.startsWith("/_next") ||
-      pathname.startsWith("/privacy") ||
-      pathname.startsWith("/terms") ||
-      /\.[a-z0-9]+$/i.test(pathname); // files (favicon, images, …)
-    if (!isShared) {
+    if (!isSharedPath) {
+      // An old /club/... link (or anything that leaked the prefix) is a
+      // redirect, not a rewrite — the canonical URL has to end up in the
+      // address bar, or the prefix propagates through every link the page
+      // then renders.
+      if (pathname === "/club" || pathname.startsWith("/club/")) {
+        const url = request.nextUrl.clone();
+        url.pathname = pathname.slice("/club".length) || "/";
+        return NextResponse.redirect(url, 308);
+      }
+
       const url = request.nextUrl.clone();
       url.pathname = `/club${pathname === "/" ? "" : pathname}`;
       return NextResponse.rewrite(url);
     }
+  } else if (pathname === "/club" || pathname.startsWith("/club/")) {
+    // The marketplace has its own home. Anyone reaching it through
+    // tistrahealth.com is sent there rather than being served a second copy
+    // under a different brand.
+    return NextResponse.redirect(`${CLUB_CANONICAL_ORIGIN}${pathname.slice("/club".length) || "/"}${request.nextUrl.search}`, 308);
   }
 
   const productLoginSignupMatch = request.nextUrl.pathname.match(/^\/(adults|gym)\/(login|signup)\/?$/);

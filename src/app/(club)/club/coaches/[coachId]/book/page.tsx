@@ -33,7 +33,7 @@ export default async function BookPage({
 
   return (
     <ClubChrome hideNav>
-      <Link href={`/club/coaches/${coachId}`} className="text-sm" style={{ color: T.onSurfaceVariant }}>← {coach.displayName}</Link>
+      <Link href={`/coaches/${coachId}`} className="text-sm" style={{ color: T.onSurfaceVariant }}>← {coach.displayName}</Link>
       <h1 className="mt-2.5 text-[26px] font-semibold leading-tight tracking-[-0.015em]">Pick a time</h1>
 
       {error && (
@@ -49,7 +49,7 @@ export default async function BookPage({
           {coach.services.map((s) => {
             const on = s.id === selected.id;
             return (
-              <Link key={s.id} href={`/club/coaches/${coachId}/book?service=${s.id}`}
+              <Link key={s.id} href={`/coaches/${coachId}/book?service=${s.id}`}
                     aria-current={on ? "true" : undefined}
                     className="whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-medium"
                     style={{

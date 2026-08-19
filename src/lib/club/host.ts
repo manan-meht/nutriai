@@ -42,6 +42,9 @@ export function isClubWwwHost(hostname: string | null | undefined): boolean {
   return normalizeHost(hostname) === "www.tistra.club";
 }
 
-/** The club's canonical origin, used for absolute links and metadata. */
+/** The club's canonical origin — where /club/... on a non-club host is
+ * sent. Defaults to the subdomain that is live today; set
+ * NEXT_PUBLIC_CLUB_ORIGIN to https://tistra.club once that domain resolves,
+ * so this never points at a domain that isn't answering yet. */
 export const CLUB_CANONICAL_ORIGIN =
-  process.env.NEXT_PUBLIC_CLUB_ORIGIN ?? "https://tistra.club";
+  process.env.NEXT_PUBLIC_CLUB_ORIGIN ?? "https://club.tistrahealth.com";

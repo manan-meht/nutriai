@@ -15,7 +15,7 @@ const when = new Intl.DateTimeFormat("en-SG", {
 export default async function BookingsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?product=club&next=%2Fclub%2Fbookings");
+  if (!user) redirect("/login?product=club&next=%2Fbookings");
 
   const admin = createServiceClient();
   const { data } = await admin
@@ -36,7 +36,7 @@ export default async function BookingsPage() {
       {rows.length === 0 ? (
         <div className="mt-8 rounded-2xl border p-6 text-center" style={{ borderColor: T.outlineVariant }}>
           <p className="text-sm" style={{ color: T.onSurfaceVariant }}>No sessions yet.</p>
-          <Link href="/club" className="mt-4 inline-block rounded-full px-5 py-2.5 text-sm font-medium"
+          <Link href="/" className="mt-4 inline-block rounded-full px-5 py-2.5 text-sm font-medium"
                 style={{ backgroundColor: T.primary, color: T.onPrimary }}>
             Find a coach
           </Link>
@@ -61,7 +61,7 @@ function Section({ title, rows }: { title: string; rows: any[] }) {
           const service = Array.isArray(r.coach_services) ? r.coach_services[0] : r.coach_services;
           return (
             <li key={r.id}>
-              <Link href={`/club/bookings/${r.id}`} className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+              <Link href={`/bookings/${r.id}`} className="flex items-center justify-between gap-4 rounded-2xl border p-4"
                     style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant }}>
                 <div className="min-w-0">
                   <p className="font-medium">{service?.name ?? "Session"}</p>
