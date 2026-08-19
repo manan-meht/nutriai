@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
-import { isClubHost, isClubWwwHost, isLegacyCoachHost, isLocalDevHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { isClubHost, isClubWwwHost, isLegacyCoachHost, isLocalDevHost, isClubAppPath, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 import { servesCoachApp, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
 import {
   parseAssignmentCookie,
@@ -110,6 +110,14 @@ export async function middleware(request: NextRequest) {
       url.pathname = `/club${pathname === "/" ? "" : pathname}`;
       return NextResponse.rewrite(url);
     }
+  } else if (isLocalDevHost(host) && !isSharedPath && isClubAppPath(pathname)) {
+    // Local development: the club's clean URLs resolve here too, so a link
+    // like /coaches/<id>/book works after signing in. Only the app's own
+    // segments — "/" has to stay Tistra Health, since one dev server
+    // cannot give the root to two products.
+    const url = request.nextUrl.clone();
+    url.pathname = `/club${pathname}`;
+    return NextResponse.rewrite(url);
   } else if (!isLocalDevHost(host) && (pathname === "/club" || pathname.startsWith("/club/"))) {
     // The marketplace has its own home. Anyone reaching it through
     // tistrahealth.com is sent there rather than being served a second copy

@@ -67,3 +67,18 @@ export function isLocalDevHost(hostname: string | null | undefined): boolean {
   const host = normalizeHost(hostname);
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
 }
+
+/** Top-level segments owned by the club app. Keep in sync with the
+ * directories under src/app/(club)/club/ — a test asserts they match. */
+export const CLUB_APP_SEGMENTS = ["bookings", "checkout", "coaches", "profile"] as const;
+
+const CLUB_SEGMENTS = new Set<string>(CLUB_APP_SEGMENTS);
+
+/** "/coaches/abc" -> true; "/" and "/pricing" -> false.
+ *
+ * Used only in local development. On a real club host everything is
+ * rewritten, including the root; on localhost the root has to stay Tistra
+ * Health, because one dev server cannot give "/" to two products. */
+export function isClubAppPath(pathname: string): boolean {
+  return CLUB_SEGMENTS.has(pathname.split("/")[1] ?? "");
+}

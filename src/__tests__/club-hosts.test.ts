@@ -247,3 +247,33 @@ describe("Coach OS URLs carry no /coach prefix", () => {
     expect(read("app/(public)/login/page.tsx")).toMatch(/isCoachHost\(hostname\) \? "\/dashboard"/);
   });
 });
+
+describe("club clean URLs in local development", () => {
+  const { isClubAppPath, CLUB_APP_SEGMENTS } = require("@/lib/club/host");
+
+  it("the segment list matches the actual route directories", () => {
+    // A new club section added without updating this would 404 on its
+    // clean URL locally while working in production — the worst place for
+    // a difference, because it only shows up when someone develops.
+    const dir = path.join(__dirname, "..", "app", "(club)", "club");
+    const actual = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    expect([...CLUB_APP_SEGMENTS].sort()).toEqual(actual);
+  });
+
+  it("maps the app's segments but never the root", () => {
+    expect(isClubAppPath("/coaches/abc")).toBe(true);
+    expect(isClubAppPath("/bookings")).toBe(true);
+    // "/" stays Tistra Health locally: one dev server cannot give the root
+    // to two products.
+    expect(isClubAppPath("/")).toBe(false);
+    expect(isClubAppPath("/pricing")).toBe(false);
+  });
+
+  it("middleware rewrites them only on a local host", () => {
+    const mw = fs.readFileSync(path.join(__dirname, "..", "middleware.ts"), "utf-8");
+    expect(mw).toMatch(/isLocalDevHost\(host\) && !isSharedPath && isClubAppPath\(pathname\)/);
+  });
+});
