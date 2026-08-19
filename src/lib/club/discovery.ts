@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateAvailableSlots, type AvailableSlot, type WorkingRule } from "./availability";
 import { rankCoaches, type RankableCoach } from "./ranking";
 import { haversineKm } from "./travel/provider";
-import { CLUB_MARKET } from "./config";
+import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "./config";
+import { resolveCoachPhoto, resolveCoachGallery } from "./placeholder-photos";
 
 // Consumer-side discovery and booking reads.
 //
@@ -32,6 +33,9 @@ export interface CoachCard {
   displayName: string;
   headline: string | null;
   photoUrl: string | null;
+  /** Swipeable gallery for the discovery card. Always contains photoUrl
+   * first when the coach has one; falls back to discipline stand-ins. */
+  photos: string[];
   neighbourhood: string | null;
   skills: string[];
   startingPriceCents: number | null;
@@ -64,13 +68,14 @@ export async function discoverCoaches(
   if (rows.length === 0) return [];
   const ids = rows.map((c: any) => c.id);
 
-  const [services, skills, locations, rules, travel, bookings] = await Promise.all([
+  const [services, skills, locations, rules, travel, bookings, media] = await Promise.all([
     admin.from("coach_services").select("coach_profile_id, duration_minutes, price_cents, currency, travel_enabled, skill_id").in("coach_profile_id", ids).eq("is_active", true),
     admin.from("coach_skills").select("coach_profile_id, skill_id, club_skills(name, slug)").in("coach_profile_id", ids),
     admin.from("coach_locations").select("coach_profile_id, neighbourhood, latitude, longitude, is_primary").in("coach_profile_id", ids).eq("is_active", true),
     admin.from("coach_availability_rules").select("coach_profile_id, weekday, start_minute, end_minute").in("coach_profile_id", ids).eq("is_active", true),
     admin.from("coach_travel_rules").select("coach_profile_id, travel_enabled, max_travel_km").in("coach_profile_id", ids),
     admin.from("bookings").select("coach_profile_id, starts_at, ends_at").in("coach_profile_id", ids).in("status", ["CONFIRMED", "PAYMENT_PENDING"]).gte("starts_at", now.toISOString()),
+    admin.from("coach_media").select("coach_profile_id, storage_path, sort_order").in("coach_profile_id", ids).eq("media_type", "image").order("sort_order"),
   ]);
 
   /** Groups joined rows by coach. Typed as any[] deliberately: these come
@@ -91,6 +96,24 @@ export async function discoverCoaches(
   const ruleBy = by(rules.data as any[]);
   const travelBy = by(travel.data as any[]);
   const bookingBy = by(bookings.data as any[]);
+  const mediaBy = by(media.data as any[]);
+
+  // coach_media lives in a private bucket, same pattern as meal photos:
+  // resolve to short-lived signed URLs server-side rather than handing a
+  // storage path to the browser. Signing failures are dropped rather than
+  // thrown, so one broken row can't blank a coach's whole card.
+  const signedMedia = new Map<string, string[]>();
+  await Promise.all(
+    [...mediaBy.entries()].map(async ([coachId, rows]) => {
+      const signed = await Promise.all(
+        rows.map(async (r: any) => {
+          const { data } = await admin.storage.from(COACH_MEDIA_BUCKET).createSignedUrl(r.storage_path, 3600);
+          return data?.signedUrl;
+        })
+      );
+      signedMedia.set(coachId, signed.filter((u): u is string => !!u));
+    })
+  );
 
   const horizonDays = filters.availableWithinDays ?? 14;
   const cards: CoachCard[] = [];
@@ -152,7 +175,12 @@ export async function discoverCoaches(
       coachProfileId: c.id,
       displayName: c.display_name,
       headline: c.headline,
-      photoUrl: c.photo_url,
+      photoUrl: resolveCoachPhoto(c.photo_url, mySkills.map((s) => s.slug)),
+      photos: resolveCoachGallery(
+        signedMedia.get(c.id) ?? [],
+        c.photo_url,
+        mySkills.map((s) => s.slug)
+      ),
       // Neighbourhood only — never the street address (privacy rule).
       neighbourhood: primary?.neighbourhood ?? null,
       skills: mySkills.map((s) => s.name),
@@ -211,22 +239,40 @@ export async function getCoachPublicProfile(
     .maybeSingle();
   if (!c) return null;
 
-  const [services, skills, locations, travel, reviews] = await Promise.all([
+  const [services, skills, locations, travel, media, reviews] = await Promise.all([
     admin.from("coach_services").select("id, name, description, duration_minutes, price_cents, currency, travel_enabled").eq("coach_profile_id", c.id).eq("is_active", true).order("price_cents"),
-    admin.from("coach_skills").select("club_skills(name)").eq("coach_profile_id", c.id),
+    admin.from("coach_skills").select("club_skills(name, slug)").eq("coach_profile_id", c.id),
     admin.from("coach_locations").select("neighbourhood, is_primary").eq("coach_profile_id", c.id).eq("is_active", true),
     admin.from("coach_travel_rules").select("travel_enabled").eq("coach_profile_id", c.id).maybeSingle(),
+    admin.from("coach_media").select("storage_path, sort_order").eq("coach_profile_id", c.id).eq("media_type", "image").order("sort_order"),
     admin.from("club_reviews").select("id, rating, body, tags, created_at, profiles!club_reviews_client_profile_id_fkey(full_name)").eq("coach_profile_id", c.id).eq("moderation_status", "published").order("created_at", { ascending: false }).limit(10),
   ]);
 
   const primary = (locations.data ?? []).find((l: any) => l.is_primary) ?? (locations.data ?? [])[0];
+
+  // Same private-bucket handling as discovery — signed server-side, never
+  // a raw storage path.
+  const ownMedia = (
+    await Promise.all(
+      (media.data ?? []).map(async (m: any) => {
+        const { data } = await admin.storage.from(COACH_MEDIA_BUCKET).createSignedUrl(m.storage_path, 3600);
+        return data?.signedUrl;
+      })
+    )
+  ).filter((u): u is string => !!u);
+
+  const skillSlugs = (skills.data ?? []).map((s: any) => {
+    const k = Array.isArray(s.club_skills) ? s.club_skills[0] : s.club_skills;
+    return k?.slug;
+  });
 
   return {
     coachProfileId: c.id,
     displayName: c.display_name,
     headline: c.headline,
     bio: c.bio,
-    photoUrl: c.photo_url,
+    photoUrl: resolveCoachPhoto(c.photo_url, skillSlugs),
+    photos: resolveCoachGallery(ownMedia, c.photo_url, skillSlugs, 5),
     yearsCoaching: c.years_coaching,
     languages: Array.isArray(c.languages) ? c.languages : [],
     neighbourhood: primary?.neighbourhood ?? null,

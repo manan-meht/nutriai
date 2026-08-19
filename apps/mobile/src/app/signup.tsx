@@ -14,13 +14,13 @@ import { signInWithProvider, type OAuthProvider } from '@/lib/oauth';
 import { setPendingProductSelection } from '@/lib/product-intent';
 import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
-type Product = 'self' | 'family' | 'coach';
+type Product = 'self' | 'family';
 
 // Same product -> scoped-account mapping as login.tsx.
-const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults' | 'gym'; subtitle: string }> = {
+// Coaching is not a signup path here — see login.tsx for why.
+const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults'; subtitle: string }> = {
   self: { scopeAs: 'adults', subtitle: 'Create an account to track your own meals' },
   family: { scopeAs: 'adults', subtitle: 'Create a family account' },
-  coach: { scopeAs: 'gym', subtitle: 'Create a coaching account' },
 };
 
 export default function SignupScreen() {

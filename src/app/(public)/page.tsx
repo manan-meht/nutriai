@@ -24,7 +24,7 @@ import nextDynamic from "next/dynamic";
 // show the unified chooser instead of defaulting to one product's landing.
 const UNIFIED_HOME_ENABLED = process.env.NEXT_PUBLIC_UNIFIED_HOME_ENABLED !== "false";
 
-// New three-use-case master homepage (Track myself / Family / Coach). Takes
+// Master homepage (Me / Family / invited user). Takes
 // precedence over UNIFIED_HOME_ENABLED at the same neutral-host gate below
 // — off by default so it can be reviewed before replacing the existing
 // unified chooser.
@@ -57,7 +57,7 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
     return {
       title: "Tistra Health | WhatsApp Meal Tracking and Nutrition Insights",
       description:
-        "Turn WhatsApp meal photos into simple nutrition insights for families, coaches, and individuals.",
+        "Turn WhatsApp meal photos into simple nutrition insights for individuals and families.",
       alternates: { canonical: "/" },
       icons: { icon: "/logos/logo-purple.png" },
     };
@@ -65,9 +65,9 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
 
   if (!byHostname && !explicitProduct && UNIFIED_HOME_ENABLED) {
     return {
-      title: "Tistra Health — Family and Coaching, in one place",
+      title: "Tistra Health — nutrition tracking for you and your family",
       description:
-        "Track nutrition for your family, or coach your clients — all under Tistra Health.",
+        "Track nutrition for yourself or the people you care about, from a WhatsApp meal photo.",
       alternates: { canonical: "/" },
       icons: { icon: faviconForProduct(null) },
     };
@@ -136,7 +136,7 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
     return (
       <UnifiedHome
         familyHref={user ? "/adults/dashboard" : getProductMarketingUrl("adults")}
-        coachingHref={user ? "/gym/dashboard" : getProductMarketingUrl("gym")}
+        selfHref={user ? "/adults/dashboard" : "/me"}
       />
     );
   }

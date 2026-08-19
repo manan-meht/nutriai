@@ -17,12 +17,31 @@ function weeksSince(iso: string | null): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (7 * 864e5));
 }
 
+// Two kinds of client exist and are deliberately NOT merged (Aug 2026).
+//
+// This list is people who booked a session: they hold a Tistra account, so
+// the record is a profile. Nutrition tracking works on WhatsApp contacts
+// who may have no account at all, keyed by phone number, and lives under
+// Nutrition. The same human can be both.
+//
+// Rather than guess that a matching phone number means the same person —
+// household numbers are shared, and meal photos are health data — each list
+// says plainly where the other one is. A coach who can't find someone gets
+// an answer instead of assuming the list is broken.
 export function CoachClients({ clients }: { clients: CoachClientRow[] }) {
   const lapsed = clients.filter((c) => !c.nextSessionAt && (weeksSince(c.lastSessionAt) ?? 0) >= 3);
 
   return (
     <>
-      <CoachPageHeader eyebrow={`${clients.length} ${clients.length === 1 ? "client" : "clients"}`} title="Clients" />
+      <CoachPageHeader eyebrow={`${clients.length} ${clients.length === 1 ? "client" : "clients"}`} title="Booking clients" />
+
+      <p className="-mt-2 mb-6 text-sm" style={{ color: T.onSurfaceVariant }}>
+        People who have booked a session with you.{" "}
+        <Link href="/coach/nutrition" className="underline underline-offset-2" style={{ color: T.primary }}>
+          Nutrition clients
+        </Link>{" "}
+        are tracked separately, by WhatsApp number.
+      </p>
 
       {clients.length === 0 ? (
         <div
@@ -32,7 +51,8 @@ export function CoachClients({ clients }: { clients: CoachClientRow[] }) {
           <p className="text-[15px] font-medium">No clients yet.</p>
           <p className="mx-auto mt-2 max-w-sm text-sm" style={{ color: T.onSurfaceVariant }}>
             Clients appear here automatically after their first booking. Make sure your profile
-            is published so people can find you.
+            is published so people can find you. Someone you track on WhatsApp appears under
+            Nutrition, not here.
           </p>
           <Link
             href="/coach/settings"

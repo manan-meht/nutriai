@@ -3,10 +3,13 @@ import Link from "next/link";
 
 interface UnifiedHomeProps {
   familyHref: string;
-  coachingHref: string;
+  /** Self-tracking. Coaching used to be the second card here; it moved to
+   * its own product on its own domain, so this chooser now offers the two
+   * adult products only. */
+  selfHref: string;
 }
 
-export function UnifiedHome({ familyHref, coachingHref }: UnifiedHomeProps) {
+export function UnifiedHome({ familyHref, selfHref }: UnifiedHomeProps) {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <header className="px-6 py-6 flex items-center justify-center gap-3">
@@ -47,13 +50,13 @@ export function UnifiedHome({ familyHref, coachingHref }: UnifiedHomeProps) {
             </Link>
 
             <Link
-              href={coachingHref}
+              href={selfHref}
               className="group flex flex-col rounded-2xl border border-gray-200 overflow-hidden hover:border-purple-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2"
             >
               <div className="relative w-full h-40 sm:h-48">
                 <Image
-                  src="/landing/gym/immersive/hero/gym-hero.jpeg"
-                  alt="Indian fitness client photographing his meal at the gym"
+                  src="/landing/adults/immersive/hero/adults-hero.jpeg"
+                  alt=""
                   fill
                   priority
                   sizes="(max-width: 640px) 100vw, 50vw"
@@ -61,12 +64,12 @@ export function UnifiedHome({ familyHref, coachingHref }: UnifiedHomeProps) {
                 />
               </div>
               <div className="flex flex-col flex-1 p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Coach your clients</h2>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Track yourself</h2>
                 <p className="text-gray-500 text-sm mb-6 flex-1">
-                  Manage client nutrition, progress, plans, and coaching from one place.
+                  Understand your own meal balance, calories, protein, and consistency.
                 </p>
                 <span className="inline-flex items-center justify-center rounded-xl bg-purple-600 group-hover:bg-purple-700 text-white font-semibold py-3 px-4 text-sm transition-colors">
-                  Open Coaching View
+                  Open My View
                 </span>
               </div>
             </Link>

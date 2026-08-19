@@ -79,6 +79,11 @@ export const CLUB_BRANDING = {
 /** Fallback only. The live fee is the newest club_platform_fees row
  * (admin-controlled, spec) — this is what a fresh environment starts from
  * before any row exists. Never hardcoded at a call site. */
+/** Private bucket holding coach gallery images. Private for the same
+ * reason meal photos are (migration 0040): paths are resolved to
+ * short-lived signed URLs server-side, never exposed raw. */
+export const COACH_MEDIA_BUCKET = "coach-media";
+
 export const DEFAULT_PLATFORM_FEE_PERCENT = Number(process.env.MARKETPLACE_PLATFORM_FEE_PERCENT ?? "15");
 
 /** How long a checkout holds a slot. Server-controlled (spec). */

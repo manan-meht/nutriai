@@ -13,18 +13,22 @@ import { signInWithProvider, type OAuthProvider } from '@/lib/oauth';
 import { setPendingProductSelection } from '@/lib/product-intent';
 import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
-type Product = 'self' | 'family' | 'coach';
+type Product = 'self' | 'family';
 
 // Which scoped Supabase account (see lib/auth.ts#scopedEmail) each product
-// choice signs into, and the subtitle copy for it — mirrors
-// nutriai-fresh's apps/mobile/app/login/{self,family,coach}.tsx, which are
-// three thin per-product wrappers around one shared form there; kept as
-// one parameterized screen here instead since expo-router's params already
-// give us the same effect without three near-identical route files.
-const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults' | 'gym'; subtitle: string }> = {
+// choice signs into, and the subtitle copy for it. One parameterized
+// screen rather than a route file per product, since expo-router's params
+// already give the same effect.
+//
+// Coaching is deliberately absent. It is its own product on its own domain
+// with its own sign-in, so this app offers only the two adult products —
+// matching the product picker (which dropped it in Aug 2026) and Tistra
+// Health's web surfaces. A stale /login?product=coach deep link now falls
+// through the guard below and lands on the picker instead of presenting a
+// coaching sign-in the app can't complete.
+const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults'; subtitle: string }> = {
   self: { scopeAs: 'adults', subtitle: 'Sign in to track your own meals' },
   family: { scopeAs: 'adults', subtitle: 'Sign in to your family account' },
-  coach: { scopeAs: 'gym', subtitle: 'Sign in to your coaching account' },
 };
 
 export default function LoginScreen() {
