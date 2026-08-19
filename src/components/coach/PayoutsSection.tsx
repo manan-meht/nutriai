@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { startPayoutOnboarding, openPayoutDashboard, refreshPayoutStatus } from "@/app/(coach)/coach/actions";
 import { CLUB_TOKENS as T } from "./tokens";
+import { formatMoney, splitAmount } from "@/lib/club/config";
 
 // Payouts.
 //
@@ -50,7 +51,12 @@ const COPY: Record<PayoutState["status"], { label: string; tone: "ok" | "wait" |
   },
 };
 
+/** A round number in the market's currency, so the split reads as money
+ * rather than arithmetic. */
+const EXAMPLE_PRICE_CENTS = 8000;
+
 export function PayoutsSection({ state }: { state: PayoutState }) {
+  const exampleSplit = splitAmount(EXAMPLE_PRICE_CENTS, state.feePercent);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const copy = COPY[state.status];
@@ -81,11 +87,18 @@ export function PayoutsSection({ state }: { state: PayoutState }) {
       </div>
 
       {/* Stated plainly rather than buried in terms: a coach should know
-          what they keep before they connect a bank account. */}
-      <p className="mt-4 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: T.surfaceContainerLow }}>
-        Tistra keeps <strong>{state.feePercent}%</strong> of each session. You receive the rest —
-        on a $100 session that&rsquo;s ${(100 - state.feePercent).toFixed(2)} to you.
-      </p>
+          what they keep, and that the number is all-in, before they connect
+          a bank account. */}
+      <div className="mt-4 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: T.surfaceContainerLow }}>
+        <p>
+          Tistra keeps <strong>{state.feePercent}%</strong> of each session, and that covers card
+          processing — there&rsquo;s nothing deducted on top.
+        </p>
+        <p className="mt-1.5" style={{ color: T.onSurfaceVariant }}>
+          {formatMoney(EXAMPLE_PRICE_CENTS)} session → {formatMoney(exampleSplit.platformFeeCents)} to
+          Tistra, <strong style={{ color: T.onSurface }}>{formatMoney(exampleSplit.coachAmountCents)} to you</strong>.
+        </p>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         {!state.payoutsEnabled && (

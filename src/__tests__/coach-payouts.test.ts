@@ -51,16 +51,27 @@ describe("account status mirrors Stripe", () => {
   });
 });
 
-describe("the 1% platform fee", () => {
-  it("takes 1% and gives the coach the rest", () => {
-    const { platformFeeCents, coachAmountCents } = splitAmount(10_000, 1);
-    expect(platformFeeCents).toBe(100);
-    expect(coachAmountCents).toBe(9_900);
+describe("the 10% platform fee, inclusive of processing", () => {
+  it("splits an 80 SGD session into 8 and 72", () => {
+    const { platformFeeCents, coachAmountCents } = splitAmount(8_000, 10);
+    expect(platformFeeCents).toBe(800);
+    expect(coachAmountCents).toBe(7_200);
+  });
+
+  it("gives the coach exactly 90%, whatever a card costs to process", () => {
+    // The 10% is all-in: Stripe's fee comes out of Tistra's share, not the
+    // coach's. If processing were ever deducted from the coach instead,
+    // their payout would vary by card type and the quoted number would be
+    // a lie.
+    for (const gross of [5_000, 8_000, 12_000, 25_000]) {
+      const { coachAmountCents } = splitAmount(gross, 10);
+      expect(coachAmountCents).toBe(gross * 0.9);
+    }
   });
 
   it("never loses a cent to rounding", () => {
     for (const gross of [1, 99, 333, 4_567, 8_500, 12_345]) {
-      const { platformFeeCents, coachAmountCents } = splitAmount(gross, 1);
+      const { platformFeeCents, coachAmountCents } = splitAmount(gross, 10);
       expect(platformFeeCents + coachAmountCents).toBe(gross);
     }
   });
@@ -78,7 +89,11 @@ describe("the 1% platform fee", () => {
   });
 
   it("tells the coach what they keep, before they connect a bank", () => {
-    expect(src("components/coach/PayoutsSection.tsx")).toMatch(/Tistra keeps/);
+    const ui = src("components/coach/PayoutsSection.tsx");
+    expect(ui).toMatch(/Tistra keeps/);
+    // And that the rate is all-in — otherwise a coach reasonably expects
+    // processing to come off the top as well.
+    expect(ui).toMatch(/covers card\s*\n?\s*processing/);
   });
 });
 
@@ -99,5 +114,45 @@ describe("we never hold bank details", () => {
   it("re-reads the account on return instead of assuming success", () => {
     const ret = src("app/(coach)/coach/payouts/return/page.tsx");
     expect(ret).toMatch(/refreshAccountState/);
+  });
+});
+
+describe("the charge structure behind the 90%", () => {
+  const { destinationChargeParams } = require("@/lib/club/stripe-connect");
+
+  const params = destinationChargeParams({
+    grossAmountCents: 8_000,
+    applicationFeeCents: 800,
+    currency: "SGD",
+    connectedAccountId: "acct_123",
+    metadata: { booking_id: "b1" },
+  });
+
+  it("is a destination charge to the coach's account", () => {
+    expect(params.transfer_data).toEqual({ destination: "acct_123" });
+    expect(params.amount).toBe(8_000);
+    expect(params.application_fee_amount).toBe(800);
+  });
+
+  it("does not set on_behalf_of", () => {
+    // Setting it makes the connected account the settlement merchant, and
+    // Stripe's processing fee then comes out of the COACH's balance — their
+    // payout would vary by card type and the flat 90% would stop being true.
+    expect("on_behalf_of" in params).toBe(false);
+  });
+
+  it("refuses a fee larger than the amount charged", () => {
+    expect(() =>
+      destinationChargeParams({
+        grossAmountCents: 1_000,
+        applicationFeeCents: 2_000,
+        currency: "SGD",
+        connectedAccountId: "acct_123",
+      })
+    ).toThrow(/cannot exceed/);
+  });
+
+  it("sends the currency in the form Stripe expects", () => {
+    expect(params.currency).toBe("sgd");
   });
 });

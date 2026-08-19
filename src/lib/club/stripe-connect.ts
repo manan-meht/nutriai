@@ -157,3 +157,47 @@ export async function refreshAccountState(
 
   return { accountId, ...state };
 }
+
+/**
+ * PaymentIntent parameters for a session payment.
+ *
+ * This is a DESTINATION charge: the charge is created on the Tistra
+ * account and Stripe transfers the coach's share to their connected
+ * account. That structure is what makes "the coach receives 90%" true.
+ *
+ * Two things must not change without understanding the consequence:
+ *
+ *  1. `on_behalf_of` is deliberately NOT set to the connected account.
+ *     Setting it makes the connected account the settlement merchant, and
+ *     Stripe's processing fee is then deducted from THEIR balance. The
+ *     coach's payout would vary with card type and country, and the flat
+ *     90% quoted on their settings page would quietly stop being true.
+ *
+ *  2. `application_fee_amount` is the platform's whole take, out of which
+ *     Stripe's processing fee is paid. It is not "our margin on top" —
+ *     the fee is inclusive, so the platform nets the application fee minus
+ *     whatever the card cost.
+ *
+ * The coach's amount is never sent to Stripe directly; it is whatever
+ * remains after the application fee, which is why splitAmount's guarantee
+ * that the two halves sum exactly to the gross matters here.
+ */
+export function destinationChargeParams(input: {
+  grossAmountCents: number;
+  applicationFeeCents: number;
+  currency: string;
+  connectedAccountId: string;
+  metadata?: Record<string, string>;
+}): Record<string, unknown> {
+  if (input.applicationFeeCents > input.grossAmountCents) {
+    throw new Error("Application fee cannot exceed the amount charged");
+  }
+  return {
+    amount: input.grossAmountCents,
+    currency: input.currency.toLowerCase(),
+    application_fee_amount: input.applicationFeeCents,
+    transfer_data: { destination: input.connectedAccountId },
+    automatic_payment_methods: { enabled: true },
+    metadata: input.metadata ?? {},
+  };
+}
