@@ -65,6 +65,14 @@ function routeExists(urlPath: string): boolean {
   return search(APP_DIR, segments);
 }
 
+/** Coach OS is served from the ROOT of the coach host: middleware rewrites
+ * /dashboard into the /coach/dashboard route group, so a link resolves if
+ * EITHER form exists. Shared paths (/login, /pricing) only ever live at
+ * their real location, which the first check covers. */
+function resolvesOnCoachHost(urlPath: string): boolean {
+  return routeExists(urlPath) || routeExists(`/coach${urlPath}`);
+}
+
 describe("Coach OS internal links resolve to real routes", () => {
   const files = walk(COMPONENTS_DIR).filter((f) => f.endsWith(".tsx"));
 
@@ -74,14 +82,16 @@ describe("Coach OS internal links resolve to real routes", () => {
 
   it.each(files.map((f) => [path.basename(f), f]))("%s has no dead links", (_name, file) => {
     const links = internalLinks(fs.readFileSync(file, "utf-8"));
-    const dead = links.filter((l) => !routeExists(l));
+    const dead = links.filter((l) => !resolvesOnCoachHost(l));
     expect(dead).toEqual([]);
   });
 
   // Sanity: the matcher must be capable of failing, or the suite above is
   // decorative.
   it("detects a genuinely missing route", () => {
+    expect(resolvesOnCoachHost("/definitely-not-a-real-route")).toBe(false);
     expect(routeExists("/coach/definitely-not-a-real-route")).toBe(false);
-    expect(routeExists("/coach/settings")).toBe(true);
+    // The clean URL a coach actually sees.
+    expect(resolvesOnCoachHost("/settings")).toBe(true);
   });
 });

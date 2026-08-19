@@ -17,7 +17,7 @@ export default async function CoachSessionPage({
 
   const admin = createServiceClient();
   const coach = await getCoachProfile(admin, user.id);
-  if (!coach) redirect("/coach/settings");
+  if (!coach) redirect("/settings");
 
   // Scoped by coach id as well as booking id: a forged booking id belonging
   // to another coach resolves to nothing rather than leaking their client.
@@ -41,7 +41,7 @@ export default async function CoachSessionPage({
 
   return (
     <CoachShell active="calendar" coachName={coach.displayName} photoUrl={coach.photoUrl}>
-      <Link href="/coach/calendar" className="mb-4 inline-block text-sm" style={{ color: "#4A4455" }}>
+      <Link href="/calendar" className="mb-4 inline-block text-sm" style={{ color: "#4A4455" }}>
         ← Back to calendar
       </Link>
       <CoachPageHeader title={prof?.full_name ?? "Session"} />

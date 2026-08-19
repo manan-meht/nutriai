@@ -45,7 +45,8 @@ describe("Nutrition tracking is the paid feature", () => {
 
   it("is reachable from the Coach OS nav", () => {
     const shell = fs.readFileSync(path.join(__dirname, "..", "components", "coach", "CoachShell.tsx"), "utf-8");
-    expect(shell).toMatch(/href: "\/coach\/nutrition"/);
+    // Coach OS is served from the root of the coach host.
+    expect(shell).toMatch(/href: "\/nutrition"/);
   });
 
   it("resolves the workspace from the signed-in user, never a parameter", () => {
@@ -90,12 +91,12 @@ describe("the two client lists are labelled, not silently merged", () => {
   const nutrition = read("nutrition/page.tsx");
 
   it("the booking list points at nutrition", () => {
-    expect(clientsList).toMatch(/href="\/coach\/nutrition"/);
+    expect(clientsList).toMatch(/href="\/nutrition"/);
     expect(clientsList).toMatch(/Booking clients/);
   });
 
   it("the nutrition list points back at bookings", () => {
-    expect(nutrition).toMatch(/href="\/coach\/clients"/);
+    expect(nutrition).toMatch(/href="\/clients"/);
   });
 
   it("nothing auto-links the two on a phone number", () => {

@@ -8,6 +8,7 @@ import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
 import { isClubHost } from "@/lib/club/host";
+import { isCoachHost } from "@/lib/coach/routes";
 
 /** Where a successful sign-in should land, per surface.
  *
@@ -17,7 +18,11 @@ import { isClubHost } from "@/lib/club/host";
  * (someone signing in at tistrahealth.com/login?product=club) "/" is the
  * Tistra Health homepage, so the prefix is exactly what's needed. */
 function defaultNextFor(surface: AuthSurface, hostname: string): string {
-  if (surface === "gym") return "/coach/dashboard";
+  if (surface === "gym") {
+    // Coach OS is served from the root of the coach host; the /coach prefix
+    // is only needed when signing in from somewhere else.
+    return isCoachHost(hostname) ? "/dashboard" : "/coach/dashboard";
+  }
   if (surface === "club") {
     return isClubHost(hostname) ? "/" : "/club";
   }

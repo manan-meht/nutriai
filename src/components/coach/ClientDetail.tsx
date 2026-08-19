@@ -54,7 +54,7 @@ export function ClientDetail({
             {bookings.map((b) => (
               <li key={b.id}>
                 <Link
-                  href={`/coach/sessions/${b.id}`}
+                  href={`/sessions/${b.id}`}
                   className="flex items-center justify-between gap-4 rounded-xl border px-4 py-3 text-sm"
                   style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
                 >

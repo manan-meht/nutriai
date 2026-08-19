@@ -40,7 +40,7 @@ export function CoachDashboard({ data }: { data: CoachDashboardData }) {
         <section className="lg:col-span-2">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-xl font-semibold tracking-[-0.01em]">Today&apos;s sessions</h2>
-            <Link href="/coach/calendar" className="text-sm font-medium" style={{ color: T.primary }}>
+            <Link href="/calendar" className="text-sm font-medium" style={{ color: T.primary }}>
               View calendar
             </Link>
           </div>
@@ -82,7 +82,7 @@ export function CoachDashboard({ data }: { data: CoachDashboardData }) {
                 They&apos;re already visible to people searching your skills.
               </p>
               <Link
-                href="/coach/calendar"
+                href="/calendar"
                 className="mt-4 inline-flex rounded-full px-5 py-2.5 text-sm font-medium"
                 style={{ backgroundColor: T.primary, color: T.onPrimary }}
               >
@@ -107,7 +107,7 @@ export function CoachDashboard({ data }: { data: CoachDashboardData }) {
               <Row label="Sessions" value={<span className="tabular-nums">{profile.sessionCount}</span>} />
             </dl>
             <Link
-              href="/coach/settings"
+              href="/settings"
               className="mt-4 inline-flex w-full items-center justify-center rounded-full border px-5 py-2.5 text-sm font-medium"
               style={{ borderColor: T.outlineVariant }}
             >
@@ -181,7 +181,7 @@ function SessionCard({
           </div>
         </div>
         <Link
-          href={`/coach/sessions/${session.id}`}
+          href={`/sessions/${session.id}`}
           className="rounded-full px-5 py-2.5 text-sm font-medium"
           style={
             isNext
@@ -211,7 +211,7 @@ function EmptyToday({ openSlots, published }: { openSlots: number; published: bo
           : "Publish your profile to start appearing in search results."}
       </p>
       <Link
-        href={published ? "/coach/calendar" : "/coach/settings"}
+        href={published ? "/calendar" : "/settings"}
         className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium"
         style={{ backgroundColor: T.primary, color: T.onPrimary }}
       >
@@ -244,7 +244,7 @@ function PublishChecklist({ blockers }: { blockers: string[] }) {
         ))}
       </ul>
       <Link
-        href="/coach/settings"
+        href="/settings"
         className="mt-5 inline-flex rounded-full px-5 py-2.5 text-sm font-medium"
         style={{ backgroundColor: T.primary, color: T.onPrimary }}
       >

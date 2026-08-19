@@ -36,7 +36,7 @@ export default async function CoachSettingsPage() {
       .single();
     coach = created;
   }
-  if (!coach) redirect("/coach/dashboard");
+  if (!coach) redirect("/dashboard");
 
   const [allSkills, mySkills, services, locations, travel, availability] = await Promise.all([
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),

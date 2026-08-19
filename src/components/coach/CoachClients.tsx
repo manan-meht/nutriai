@@ -37,7 +37,7 @@ export function CoachClients({ clients }: { clients: CoachClientRow[] }) {
 
       <p className="-mt-2 mb-6 text-sm" style={{ color: T.onSurfaceVariant }}>
         People who have booked a session with you.{" "}
-        <Link href="/coach/nutrition" className="underline underline-offset-2" style={{ color: T.primary }}>
+        <Link href="/nutrition" className="underline underline-offset-2" style={{ color: T.primary }}>
           Nutrition clients
         </Link>{" "}
         are tracked separately, by WhatsApp number.
@@ -55,7 +55,7 @@ export function CoachClients({ clients }: { clients: CoachClientRow[] }) {
             Nutrition, not here.
           </p>
           <Link
-            href="/coach/settings"
+            href="/settings"
             className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium"
             style={{ backgroundColor: T.primary, color: T.onPrimary }}
           >
@@ -121,7 +121,7 @@ export function CoachClients({ clients }: { clients: CoachClientRow[] }) {
                       </span>
                     )}
                     <Link
-                      href={`/coach/clients/${c.clientProfileId}`}
+                      href={`/clients/${c.clientProfileId}`}
                       className="rounded-full border px-4 py-2 text-sm font-medium"
                       style={{ borderColor: T.outlineVariant }}
                     >

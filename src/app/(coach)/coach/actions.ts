@@ -53,8 +53,8 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 const NOT_AUTHED: ActionResult = { ok: false, error: "Please sign in again." };
 
 function revalidateCoach() {
-  revalidatePath("/coach/dashboard");
-  revalidatePath("/coach/settings");
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
 }
 
 // ---- Profile basics --------------------------------------------------

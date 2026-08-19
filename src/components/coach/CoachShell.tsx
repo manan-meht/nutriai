@@ -11,15 +11,15 @@ import { CLUB_TOKENS } from "./tokens";
 export type CoachNavKey = "dashboard" | "calendar" | "clients" | "nutrition" | "payments" | "settings";
 
 const NAV: Array<{ key: CoachNavKey; label: string; href: string; icon: string }> = [
-  { key: "dashboard", label: "Dashboard", href: "/coach/dashboard", icon: "▦" },
-  { key: "calendar", label: "Calendar", href: "/coach/calendar", icon: "▤" },
-  { key: "clients", label: "Clients", href: "/coach/clients", icon: "◎" },
+  { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: "▦" },
+  { key: "calendar", label: "Calendar", href: "/calendar", icon: "▤" },
+  { key: "clients", label: "Clients", href: "/clients", icon: "◎" },
   // Nutrition tracking is the one paid feature inside an otherwise free
   // Coach OS. It sits in the main nav rather than behind an upsell banner:
   // a coach should be able to see what they'd be buying.
-  { key: "nutrition", label: "Nutrition", href: "/coach/nutrition", icon: "◍" },
-  { key: "payments", label: "Payments", href: "/coach/payments", icon: "▭" },
-  { key: "settings", label: "Settings", href: "/coach/settings", icon: "⚙" },
+  { key: "nutrition", label: "Nutrition", href: "/nutrition", icon: "◍" },
+  { key: "payments", label: "Payments", href: "/payments", icon: "▭" },
+  { key: "settings", label: "Settings", href: "/settings", icon: "⚙" },
 ];
 
 export function CoachShell({

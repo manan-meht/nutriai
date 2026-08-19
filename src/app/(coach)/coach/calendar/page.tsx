@@ -24,7 +24,7 @@ export default async function CoachCalendarPage({
 
   const admin = createServiceClient();
   const profile = await getCoachProfile(admin, user.id);
-  if (!profile) redirect("/coach/settings");
+  if (!profile) redirect("/settings");
 
   const params = (await searchParams) ?? {};
   const requested = params.week ? new Date(params.week) : new Date();

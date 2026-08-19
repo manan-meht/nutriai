@@ -14,7 +14,7 @@ export default async function CoachDashboardPage() {
 
   const data = await getCoachDashboard(createServiceClient(), user.id);
   // Signed in, but not a coach — send them to set one up rather than 404.
-  if (!data) redirect("/coach/settings");
+  if (!data) redirect("/settings");
 
   return (
     <CoachShell active="dashboard" coachName={data.profile.displayName} photoUrl={data.profile.photoUrl}>
