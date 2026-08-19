@@ -6,18 +6,45 @@ import { StickyAction } from "./ClubChrome";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { CLUB_MARKET } from "@/lib/club/config";
 
-// Day-then-time picker. Slots arrive already computed by the availability
-// engine, so this component never decides what is bookable — it only
-// arranges what it was given. Everything is rendered in the market's
-// timezone regardless of the visitor's device clock, because a Singapore
-// session at 7pm must read as 7pm to a client browsing from anywhere.
+// Time picker for a coach's availability.
+//
+// Two things drive the layout, both learned from how booking apps that get
+// used all day (Mindbody, Fresha, Calendly) handle this:
+//
+//  1. A day's slots are grouped into morning / afternoon / evening. A
+//     popular coach offers 25 half-hourly starts, and an undifferentiated
+//     grid of 25 identical boxes is genuinely hard to scan — the grouping
+//     turns "find 6pm" from reading into jumping.
+//  2. The date rail shows CONSECUTIVE days, with days the coach doesn't
+//     work dimmed rather than omitted. Skipping straight from Thu to Sat
+//     reads as a loading bug; showing Friday greyed says "they don't work
+//     Fridays", which is real information about the coach.
+//
+// Everything is rendered in the market's timezone regardless of the
+// visitor's device clock: a Singapore session at 7pm must read as 7pm to
+// someone browsing from anywhere.
 
 interface Slot { startsAt: string; endsAt: string }
 
 const TZ = CLUB_MARKET.timezone;
 const dayKeyFmt = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
-const dayLabelFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, weekday: "short", day: "numeric", month: "short" });
+const weekdayFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, weekday: "short" });
+const dayNumFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, day: "numeric" });
+const monthFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, month: "short" });
+const fullDayFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
 const timeFmt = new Intl.DateTimeFormat("en-SG", { timeZone: TZ, hour: "numeric", minute: "2-digit", hour12: true });
+const hourFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", hour12: false });
+
+/** Hour of day in the market's timezone, for grouping. */
+function zonedHour(iso: string): number {
+  return Number(hourFmt.format(new Date(iso)));
+}
+
+const PARTS = [
+  { key: "morning", label: "Morning", test: (h: number) => h < 12 },
+  { key: "afternoon", label: "Afternoon", test: (h: number) => h >= 12 && h < 17 },
+  { key: "evening", label: "Evening", test: (h: number) => h >= 17 },
+] as const;
 
 export function SlotPicker({
   coachProfileId,
@@ -30,21 +57,38 @@ export function SlotPicker({
   slots: Slot[];
   holdMinutes: number;
 }) {
-  const days = useMemo(() => {
-    const m = new Map<string, { label: string; slots: Slot[] }>();
+  const byDay = useMemo(() => {
+    const m = new Map<string, Slot[]>();
     for (const s of slots) {
-      const d = new Date(s.startsAt);
-      const key = dayKeyFmt.format(d);
-      if (!m.has(key)) m.set(key, { label: dayLabelFmt.format(d), slots: [] });
-      m.get(key)!.slots.push(s);
+      const key = dayKeyFmt.format(new Date(s.startsAt));
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(s);
     }
-    return [...m.entries()].map(([key, v]) => ({ key, ...v }));
+    return m;
   }, [slots]);
 
-  const [activeDay, setActiveDay] = useState(days[0]?.key ?? "");
+  /** Consecutive calendar days from today through the last bookable one,
+   * so closed days appear dimmed instead of silently missing. */
+  const days = useMemo(() => {
+    if (slots.length === 0) return [];
+    const last = slots.reduce((a, s) => (s.startsAt > a ? s.startsAt : a), slots[0].startsAt);
+    const out: Array<{ key: string; date: Date; count: number }> = [];
+    const cursor = new Date();
+    const lastKey = dayKeyFmt.format(new Date(last));
+    for (let i = 0; i < 60; i++) {
+      const key = dayKeyFmt.format(cursor);
+      out.push({ key, date: new Date(cursor), count: byDay.get(key)?.length ?? 0 });
+      if (key === lastKey) break;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out;
+  }, [slots, byDay]);
+
+  const firstOpen = days.find((d) => d.count > 0)?.key ?? "";
+  const [activeDay, setActiveDay] = useState(firstOpen);
   const [chosen, setChosen] = useState<string | null>(null);
 
-  if (days.length === 0) {
+  if (slots.length === 0) {
     return (
       <p className="mt-8 rounded-2xl border p-6 text-center text-sm"
          style={{ borderColor: T.outlineVariant, color: T.onSurfaceVariant }}>
@@ -54,30 +98,45 @@ export function SlotPicker({
     );
   }
 
-  const day = days.find((d) => d.key === activeDay) ?? days[0];
+  const daySlots = byDay.get(activeDay) ?? [];
+  const groups = PARTS.map((p) => ({
+    ...p,
+    slots: daySlots.filter((s) => p.test(zonedHour(s.startsAt))),
+  })).filter((g) => g.slots.length > 0);
 
   return (
     <>
-      <div className="-mx-5 mt-6 overflow-x-auto px-5">
-        <div className="flex gap-2 pb-1" role="tablist" aria-label="Date">
-          {days.map((d) => {
-            const on = d.key === day.key;
+      {/* Date rail */}
+      <div className="-mx-5 mt-5 overflow-x-auto px-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-1.5 pb-1" role="tablist" aria-label="Date">
+          {days.map((d, i) => {
+            const on = d.key === activeDay;
+            const closed = d.count === 0;
+            const showMonth = i === 0 || monthFmt.format(d.date) !== monthFmt.format(days[i - 1].date);
             return (
               <button
                 key={d.key}
                 type="button"
                 role="tab"
                 aria-selected={on}
+                disabled={closed}
                 onClick={() => { setActiveDay(d.key); setChosen(null); }}
-                className="shrink-0 rounded-2xl px-4 py-3 text-sm font-medium"
+                className="flex w-[3.4rem] shrink-0 flex-col items-center rounded-2xl py-2.5 disabled:cursor-default"
                 style={{
-                  backgroundColor: on ? T.primary : T.surfaceContainerLow,
-                  color: on ? T.onPrimary : T.onSurfaceVariant,
+                  backgroundColor: on ? T.primary : closed ? "transparent" : T.surfaceContainerLow,
+                  color: on ? T.onPrimary : closed ? T.outlineVariant : T.onSurface,
                 }}
               >
-                {d.label}
-                <span className="mt-0.5 block text-[11px] font-normal opacity-80">
-                  {d.slots.length} {d.slots.length === 1 ? "time" : "times"}
+                <span className="text-[10px] font-medium uppercase tracking-[0.06em]"
+                      style={{ color: on ? T.onPrimary : closed ? T.outlineVariant : T.onSurfaceVariant }}>
+                  {weekdayFmt.format(d.date)}
+                </span>
+                <span className="mt-0.5 text-[17px] font-semibold leading-none tabular-nums">
+                  {dayNumFmt.format(d.date)}
+                </span>
+                <span className="mt-1 text-[9px] uppercase tracking-[0.05em]"
+                      style={{ color: on ? T.onPrimary : T.outline, opacity: showMonth ? 1 : 0 }}>
+                  {monthFmt.format(d.date)}
                 </span>
               </button>
             );
@@ -85,27 +144,40 @@ export function SlotPicker({
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {day.slots.map((s) => {
-          const on = s.startsAt === chosen;
-          return (
-            <button
-              key={s.startsAt}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setChosen(s.startsAt)}
-              className="rounded-xl border py-3 text-sm font-medium"
-              style={{
-                backgroundColor: on ? T.primaryContainer : T.surfaceContainerLowest,
-                borderColor: on ? T.primary : T.outlineVariant,
-                color: on ? T.primary : T.onSurface,
-              }}
-            >
-              {timeFmt.format(new Date(s.startsAt))}
-            </button>
-          );
-        })}
-      </div>
+      <p className="mt-5 text-[13px]" style={{ color: T.onSurfaceVariant }}>
+        {fullDayFmt.format(new Date(`${activeDay}T00:00:00`))} · {daySlots.length} available
+      </p>
+
+      {/* Slots, grouped by part of day */}
+      {groups.map((g) => (
+        <section key={g.key} className="mt-5">
+          <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.09em]" style={{ color: T.outline }}>
+            {g.label}
+          </h2>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {g.slots.map((s) => {
+              const on = s.startsAt === chosen;
+              return (
+                <button
+                  key={s.startsAt}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setChosen(s.startsAt)}
+                  className="rounded-xl border py-2.5 text-[13px] tabular-nums transition-colors"
+                  style={{
+                    backgroundColor: on ? T.primary : T.surfaceContainerLowest,
+                    borderColor: on ? T.primary : T.outlineVariant,
+                    color: on ? T.onPrimary : T.onSurface,
+                    fontWeight: on ? 600 : 500,
+                  }}
+                >
+                  {timeFmt.format(new Date(s.startsAt)).replace(" ", "")}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
 
       <StickyAction>
         <form action={holdSlotAction}>
@@ -121,10 +193,10 @@ export function SlotPicker({
               color: chosen ? T.onPrimary : T.outline,
             }}
           >
-            {chosen ? `Hold ${timeFmt.format(new Date(chosen))}` : "Select a time"}
+            {chosen ? `Continue · ${timeFmt.format(new Date(chosen))}` : "Select a time"}
           </button>
           <p className="mt-2 text-center text-xs" style={{ color: T.onSurfaceVariant }}>
-            We&rsquo;ll hold it for {holdMinutes} minutes while you check out.
+            Held for {holdMinutes} minutes while you check out.
           </p>
         </form>
       </StickyAction>

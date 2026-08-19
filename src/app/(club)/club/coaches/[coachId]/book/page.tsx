@@ -34,7 +34,7 @@ export default async function BookPage({
   return (
     <ClubChrome hideNav>
       <Link href={`/club/coaches/${coachId}`} className="text-sm" style={{ color: T.onSurfaceVariant }}>← {coach.displayName}</Link>
-      <h1 className="mt-3 text-2xl font-semibold tracking-[-0.01em]">Pick a time</h1>
+      <h1 className="mt-2.5 text-[26px] font-semibold leading-tight tracking-[-0.015em]">Pick a time</h1>
 
       {error && (
         <p role="status" className="mt-4 rounded-xl px-4 py-3 text-sm"
@@ -44,27 +44,33 @@ export default async function BookPage({
       )}
 
       {coach.services.length > 1 && (
-        <nav className="mt-5 flex flex-wrap gap-2" aria-label="Session type">
+        <nav className="mt-4 flex gap-1 overflow-x-auto rounded-full p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+             style={{ backgroundColor: T.surfaceContainerLow }} aria-label="Session type">
           {coach.services.map((s) => {
             const on = s.id === selected.id;
             return (
               <Link key={s.id} href={`/club/coaches/${coachId}/book?service=${s.id}`}
                     aria-current={on ? "true" : undefined}
-                    className="rounded-full px-4 py-2 text-sm font-medium"
+                    className="whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-medium"
                     style={{
-                      backgroundColor: on ? T.primary : T.surfaceContainerLow,
-                      color: on ? T.onPrimary : T.onSurfaceVariant,
+                      backgroundColor: on ? T.surfaceContainerLowest : "transparent",
+                      color: on ? T.onSurface : T.onSurfaceVariant,
+                      boxShadow: on ? "0 1px 2px rgba(26,27,34,0.10)" : undefined,
                     }}>
-                {s.name} · {formatMoney(s.priceCents, s.currency)}
+                {s.name}
               </Link>
             );
           })}
         </nav>
       )}
 
-      <p className="mt-5 text-sm" style={{ color: T.onSurfaceVariant }}>
-        {selected.durationMinutes} min · {formatMoney(selected.priceCents, selected.currency)} ·
-        {" "}times shown in Singapore time
+      {/* The facts that don't change as you scroll the rail, stated once. */}
+      <p className="mt-4 flex flex-wrap items-baseline gap-x-2 text-sm" style={{ color: T.onSurfaceVariant }}>
+        <span className="text-[17px] font-semibold" style={{ color: T.onSurface }}>
+          {formatMoney(selected.priceCents, selected.currency)}
+        </span>
+        <span>· {selected.durationMinutes} min</span>
+        <span>· Singapore time</span>
       </p>
 
       <SlotPicker
