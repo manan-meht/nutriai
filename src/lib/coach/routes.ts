@@ -1,4 +1,5 @@
 import { resolveProductFromHostnameOnly } from "@/lib/product/resolve-product";
+import { isLocalDevHost } from "@/lib/club/host";
 
 // Coach OS is served from the ROOT of the coach host: a coach sees
 // coach.tistra.club/dashboard, not /coach/dashboard.
@@ -32,12 +33,7 @@ export function isCoachHost(hostname: string | null | undefined): boolean {
   return resolveProductFromHostnameOnly((hostname ?? "").split(":")[0].toLowerCase()) === "gym";
 }
 
-/** Local development, where one server answers for every product and there
- * is no coach hostname unless you go out of your way to use one. */
-export function isLocalDevHost(hostname: string | null | undefined): boolean {
-  const host = (hostname ?? "").split(":")[0].toLowerCase();
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
-}
+export { isLocalDevHost } from "@/lib/club/host";
 
 /** Whether Coach OS's clean URLs should resolve on this host.
  *

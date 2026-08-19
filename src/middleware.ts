@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
-import { isClubHost, isClubWwwHost, isLegacyCoachHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { isClubHost, isClubWwwHost, isLegacyCoachHost, isLocalDevHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 import { servesCoachApp, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
 import {
   parseAssignmentCookie,
@@ -110,10 +110,14 @@ export async function middleware(request: NextRequest) {
       url.pathname = `/club${pathname === "/" ? "" : pathname}`;
       return NextResponse.rewrite(url);
     }
-  } else if (pathname === "/club" || pathname.startsWith("/club/")) {
+  } else if (!isLocalDevHost(host) && (pathname === "/club" || pathname.startsWith("/club/"))) {
     // The marketplace has its own home. Anyone reaching it through
     // tistrahealth.com is sent there rather than being served a second copy
     // under a different brand.
+    //
+    // Never in local development: one dev server answers for every product,
+    // and sending /club to the production domain would make the club
+    // unreachable on a laptop — the same trap the coach routes hit.
     return NextResponse.redirect(`${CLUB_CANONICAL_ORIGIN}${pathname.slice("/club".length) || "/"}${request.nextUrl.search}`, 308);
   }
 

@@ -134,6 +134,13 @@ describe("middleware canonicalises club URLs", () => {
     expect(mw).toMatch(/CLUB_CANONICAL_ORIGIN/);
   });
 
+  it("but never in local development", () => {
+    // One dev server answers for every product. Sending /club to the
+    // production domain made the club unreachable on a laptop — the same
+    // trap the coach routes hit, found the same way.
+    expect(mw).toMatch(/!isLocalDevHost\(host\) &&/);
+  });
+
   it("leaves shared paths alone on every host", () => {
     for (const p of ["/api", "/auth", "/login", "/signup", "/_next", "/privacy", "/terms"]) {
       expect(mw).toContain(`pathname.startsWith("${p}")`);

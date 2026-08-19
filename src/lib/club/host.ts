@@ -60,3 +60,10 @@ export const COACH_CANONICAL_ORIGIN =
 export function isLegacyCoachHost(hostname: string | null | undefined): boolean {
   return normalizeHost(hostname) === "coach.tistrahealth.com";
 }
+
+/** Local development, where one server answers for every product and there
+ * are no product hostnames unless you go out of your way to use one. */
+export function isLocalDevHost(hostname: string | null | undefined): boolean {
+  const host = normalizeHost(hostname);
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
+}
