@@ -142,3 +142,32 @@ describe("marketplace money is exact", () => {
     }
   });
 });
+
+describe("club sign-in lands somewhere sensible", () => {
+  // A club visitor signing in on club.tistrahealth.com should land on "/",
+  // which middleware rewrites to discovery — sending them to "/club" there
+  // only puts the internal prefix in the address bar. On any other host
+  // "/" is the Tistra Health homepage, so "/club" is required.
+  const login = fs.readFileSync(path.join(__dirname, "..", "app", "(public)", "login", "page.tsx"), "utf-8");
+  const signup = fs.readFileSync(path.join(__dirname, "..", "app", "(public)", "signup", "page.tsx"), "utf-8");
+
+  it.each([["login", login], ["signup", signup]])("%s picks the destination from the host", (_n, src) => {
+    expect(src).toContain("defaultNextFor");
+    expect(src).toMatch(/startsWith\("club\."\)/);
+  });
+
+  it.each([["login", login], ["signup", signup]])("%s no longer hardcodes /club", (_n, src) => {
+    expect(src).not.toMatch(/product === "club" \? "\/club"/);
+  });
+
+  it("the OAuth callback returns to the host it left from", () => {
+    // The club OAuth failure (Aug 2026) was a Supabase allow-list gap, not
+    // this route — but if the callback ever built its redirect from a
+    // configured site URL instead of the request origin, every subdomain
+    // would silently funnel back to the apex.
+    const callback = fs.readFileSync(path.join(__dirname, "..", "app", "auth", "callback", "route.ts"), "utf-8");
+    expect(callback).toMatch(/const \{ searchParams, origin \} = new URL\(request\.url\)/);
+    expect(callback).toMatch(/NextResponse\.redirect\(`\$\{origin\}\$\{next\}`\)/);
+    expect(callback).not.toMatch(/NEXT_PUBLIC_SITE_URL/);
+  });
+});
