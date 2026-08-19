@@ -19,7 +19,10 @@
 // Set CLUB_PLACEHOLDER_COACH_PHOTOS=false to turn the whole thing off once
 // enough coaches have real photos that stand-ins do more harm than good.
 
-const BASE = "/club/coaches";
+// Deliberately NOT under /club: on a club host the marketplace is served
+// from the root, so /club/coaches/<file>.webp would sit in the same
+// namespace as the /coaches/<id> profile routes.
+const BASE = "/coach-photos";
 
 /** Skill slugs that have a matching image on disk. Keep in sync with
  * public/club/coaches/ — the guard test asserts every entry exists. */

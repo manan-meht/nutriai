@@ -39,7 +39,7 @@ export function CoachCardList({ coaches }: { coaches: CoachCard[] }) {
         <p className="mx-auto mt-2 max-w-xs text-sm" style={{ color: T.onSurfaceVariant }}>
           Try another skill, or clear your filters to see everyone available near you.
         </p>
-        <Link href="/club" className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
+        <Link href="/" className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
           Show all coaches
         </Link>
       </div>
@@ -108,7 +108,7 @@ export function CoachCardList({ coaches }: { coaches: CoachCard[] }) {
                   </p>
                 </div>
                 <Link
-                  href={`/club/coaches/${c.coachProfileId}`}
+                  href={`/coaches/${c.coachProfileId}`}
                   className="rounded-full px-4 py-2.5 text-sm font-medium"
                   style={{ backgroundColor: T.primary, color: T.onPrimary }}
                 >
@@ -120,7 +120,7 @@ export function CoachCardList({ coaches }: { coaches: CoachCard[] }) {
             {/* Whole-card target for the profile, sitting beneath the pager's
                 tap zones and the View button so neither is swallowed. */}
             <Link
-              href={`/club/coaches/${c.coachProfileId}`}
+              href={`/coaches/${c.coachProfileId}`}
               className="absolute inset-0 z-0"
               aria-label={`${c.displayName}, ${c.skills.slice(0, 3).join(", ")}`}
             />

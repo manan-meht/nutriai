@@ -18,7 +18,7 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
 
   return (
     <ClubChrome hideNav>
-      <Link href="/club" className="text-sm" style={{ color: T.onSurfaceVariant }}>← Back</Link>
+      <Link href="/" className="text-sm" style={{ color: T.onSurfaceVariant }}>← Back</Link>
 
       {/* Photo-led hero, matching the discovery feed — arriving from a
           large card onto a thumbnail read as a different product. */}
@@ -49,7 +49,7 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
       <ul className="flex flex-col gap-2">
         {coach.services.map((s) => (
           <li key={s.id}>
-            <Link href={`/club/coaches/${coach.coachProfileId}/book?service=${s.id}`}
+            <Link href={`/coaches/${coach.coachProfileId}/book?service=${s.id}`}
                   className="flex items-center justify-between gap-4 rounded-2xl border p-4"
                   style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant }}>
               <div className="min-w-0">
@@ -81,7 +81,7 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
       )}
 
       <StickyAction>
-        <Link href={`/club/coaches/${coach.coachProfileId}/book`}
+        <Link href={`/coaches/${coach.coachProfileId}/book`}
               className="flex w-full items-center justify-center rounded-full py-4 text-[15px] font-medium"
               style={{ backgroundColor: T.primary, color: T.onPrimary }}>
           See available times

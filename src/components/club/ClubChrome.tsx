@@ -10,9 +10,9 @@ import { CLUB_BRANDING } from "@/lib/club/config";
 export type ClubTab = "discover" | "bookings" | "profile";
 
 const TABS: Array<{ key: ClubTab; label: string; href: string; icon: string }> = [
-  { key: "discover", label: "Discover", href: "/club", icon: "◎" },
-  { key: "bookings", label: "Bookings", href: "/club/bookings", icon: "▤" },
-  { key: "profile", label: "Profile", href: "/club/profile", icon: "◑" },
+  { key: "discover", label: "Discover", href: "/", icon: "◎" },
+  { key: "bookings", label: "Bookings", href: "/bookings", icon: "▤" },
+  { key: "profile", label: "Profile", href: "/profile", icon: "◑" },
 ];
 
 export function ClubChrome({
@@ -33,7 +33,7 @@ export function ClubChrome({
         style={{ borderColor: T.outlineVariant, backgroundColor: "rgba(251,248,255,0.9)" }}
       >
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-3.5">
-          <Link href="/club" className="text-[15px] font-semibold tracking-[-0.01em]">
+          <Link href="/" className="text-[15px] font-semibold tracking-[-0.01em]">
             {CLUB_BRANDING.productName}
           </Link>
         </div>

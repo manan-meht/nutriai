@@ -26,7 +26,7 @@ export default async function CheckoutPage({
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?product=club&next=${encodeURIComponent(`/club/checkout/${holdId}`)}`);
+  if (!user) redirect(`/login?product=club&next=${encodeURIComponent(`/checkout/${holdId}`)}`);
 
   const admin = createServiceClient();
   const { data: hold } = await admin
@@ -36,17 +36,17 @@ export default async function CheckoutPage({
     .maybeSingle();
 
   // Someone else's hold is indistinguishable from a missing one here.
-  if (!hold || hold.client_profile_id !== user.id) redirect("/club");
-  if (hold.booking_id) redirect(`/club/bookings/${hold.booking_id}`);
+  if (!hold || hold.client_profile_id !== user.id) redirect("/");
+  if (hold.booking_id) redirect(`/bookings/${hold.booking_id}`);
   if (hold.released_at || new Date(hold.expires_at) <= new Date()) {
-    redirect(`/club/coaches/${hold.coach_profile_id}/book?service=${hold.service_id}&error=gone`);
+    redirect(`/coaches/${hold.coach_profile_id}/book?service=${hold.service_id}&error=gone`);
   }
 
   const [{ data: coach }, { data: service }] = await Promise.all([
     admin.from("coach_profiles").select("display_name, cancellation_full_refund_hours").eq("id", hold.coach_profile_id).maybeSingle(),
     admin.from("coach_services").select("name, duration_minutes, price_cents, currency").eq("id", hold.service_id).maybeSingle(),
   ]);
-  if (!coach || !service) redirect("/club");
+  if (!coach || !service) redirect("/");
 
   return (
     <ClubChrome hideNav>

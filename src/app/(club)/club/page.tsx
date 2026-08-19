@@ -30,7 +30,7 @@ export default async function ClubDiscoverPage({
     const merged = { skill: params.skill, travels: params.travels, ...over };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
     const s = p.toString();
-    return s ? `/club?${s}` : "/club";
+    return s ? `/?${s}` : "/";
   };
 
   return (

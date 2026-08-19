@@ -7,6 +7,7 @@ import { AuthForm } from "@/components/auth/AuthForm";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
+import { isClubHost } from "@/lib/club/host";
 
 /** Where a successful sign-in should land, per surface.
  *
@@ -18,7 +19,7 @@ import type { AuthSurface } from "@/lib/auth";
 function defaultNextFor(surface: AuthSurface, hostname: string): string {
   if (surface === "gym") return "/coach/dashboard";
   if (surface === "club") {
-    return hostname.split(":")[0].toLowerCase().startsWith("club.") ? "/" : "/club";
+    return isClubHost(hostname) ? "/" : "/club";
   }
   return "/adults/dashboard";
 }
@@ -28,7 +29,7 @@ function defaultNextFor(surface: AuthSurface, hostname: string): string {
  * ProductType: Tistra Club is a third sign-in surface, not a third value of
  * the gym/adults product used throughout the workspace code. */
 function resolveAuthSurface(hostname: string, params: URLSearchParams): AuthSurface {
-  if (hostname.split(":")[0].toLowerCase().startsWith("club.")) return "club";
+  if (isClubHost(hostname)) return "club";
   if (params.get("product") === "club") return "club";
   return resolveProductFromHostname(hostname, params) ?? "adults";
 }

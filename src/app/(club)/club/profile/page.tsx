@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function ClubProfilePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?product=club&next=%2Fclub%2Fprofile");
+  if (!user) redirect("/login?product=club&next=%2Fprofile");
 
   const admin = createServiceClient();
   const [{ data: profile }, { count: bookingCount }, { data: favourites }] = await Promise.all([
@@ -39,7 +39,7 @@ export default async function ClubProfilePage() {
               const c = Array.isArray(f.coach_profiles) ? f.coach_profiles[0] : f.coach_profiles;
               return (
                 <li key={f.coach_profile_id}>
-                  <Link href={`/club/coaches/${f.coach_profile_id}`} className="block rounded-2xl border p-4"
+                  <Link href={`/coaches/${f.coach_profile_id}`} className="block rounded-2xl border p-4"
                         style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant }}>
                     <p className="font-medium">{c?.display_name}</p>
                     <p className="mt-0.5 text-sm" style={{ color: T.onSurfaceVariant }}>{c?.headline}</p>
@@ -64,7 +64,7 @@ export default async function ClubProfilePage() {
         <Link href="/terms" style={{ color: T.onSurfaceVariant }}>Terms</Link>
         {/* Sign-out is a POST, not a link — a GET to /auth/signout is a 405. */}
         <form action="/auth/signout" method="post">
-          <input type="hidden" name="redirectTo" value="/club" />
+          <input type="hidden" name="redirectTo" value="/" />
           <button type="submit" style={{ color: T.error }}>Sign out</button>
         </form>
       </div>

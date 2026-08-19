@@ -56,6 +56,14 @@ function routeExists(urlPath: string): boolean {
   return search(APP_DIR, segments);
 }
 
+/** Club surfaces are served from the ROOT of a club host: middleware
+ * rewrites /coaches/<id> into the /club/coaches/<id> route group, so a link
+ * resolves if EITHER form exists. Shared paths (/login, /privacy) are only
+ * ever at their real location, which the first check covers. */
+function resolvesOnClubHost(urlPath: string): boolean {
+  return routeExists(urlPath) || routeExists(`/club${urlPath === "/" ? "" : urlPath}`);
+}
+
 describe("club links resolve to real routes", () => {
   const files = [...walk(CLUB_COMPONENTS), ...walk(CLUB_APP)].filter((f) => f.endsWith(".tsx"));
 
@@ -66,26 +74,20 @@ describe("club links resolve to real routes", () => {
   it.each(files.map((f) => [path.relative(path.join(__dirname, ".."), f), f]))(
     "%s has no dead links",
     (_name, file) => {
-      const dead = internalLinks(fs.readFileSync(file, "utf-8")).filter((l) => !routeExists(l));
+      const dead = internalLinks(fs.readFileSync(file, "utf-8")).filter((l) => !resolvesOnClubHost(l));
       expect(dead).toEqual([]);
     }
   );
 
-  it("every step of the booking funnel exists", () => {
-    for (const route of [
-      "/club",
-      "/club/coaches/x",
-      "/club/coaches/x/book",
-      "/club/checkout/x",
-      "/club/bookings",
-      "/club/bookings/x",
-      "/club/profile",
-    ]) {
-      expect([route, routeExists(route)]).toEqual([route, true]);
+  it("every step of the booking funnel exists, as a visitor types it", () => {
+    // The clean URLs a visitor actually sees on tistra.club.
+    for (const route of ["/", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
+      expect([route, resolvesOnClubHost(route)]).toEqual([route, true]);
     }
   });
 
   it("can actually fail", () => {
+    expect(resolvesOnClubHost("/not-a-real-route")).toBe(false);
     expect(routeExists("/club/not-a-real-route")).toBe(false);
   });
 });
@@ -115,7 +117,8 @@ describe("club members reuse one identity", () => {
     const signup = fs.readFileSync(path.join(__dirname, "..", "app", "(public)", "signup", "page.tsx"), "utf-8");
     for (const src of [login, signup]) {
       expect(src).toContain("resolveAuthSurface");
-      expect(src).toContain('startsWith("club.")');
+      // Host detection lives in the shared isClubHost helper.
+      expect(src).toContain("isClubHost");
     }
   });
 });
@@ -153,7 +156,9 @@ describe("club sign-in lands somewhere sensible", () => {
 
   it.each([["login", login], ["signup", signup]])("%s picks the destination from the host", (_n, src) => {
     expect(src).toContain("defaultNextFor");
-    expect(src).toMatch(/startsWith\("club\."\)/);
+    // Host detection moved into the shared isClubHost helper when
+    // tistra.club was added — see club-hosts.test.ts.
+    expect(src).toMatch(/isClubHost\(hostname\)/);
   });
 
   it.each([["login", login], ["signup", signup]])("%s no longer hardcodes /club", (_n, src) => {

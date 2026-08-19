@@ -40,7 +40,7 @@ export default async function BookingPage({
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?product=club&next=${encodeURIComponent(`/club/bookings/${bookingId}`)}`);
+  if (!user) redirect(`/login?product=club&next=${encodeURIComponent(`/bookings/${bookingId}`)}`);
 
   const admin = createServiceClient();
   const { data: b } = await admin
@@ -117,7 +117,7 @@ export default async function BookingPage({
         </form>
       )}
 
-      <Link href="/club/bookings" className="mt-8 inline-block text-sm underline" style={{ color: T.onSurfaceVariant }}>
+      <Link href="/bookings" className="mt-8 inline-block text-sm underline" style={{ color: T.onSurfaceVariant }}>
         All bookings
       </Link>
     </ClubChrome>
