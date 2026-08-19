@@ -11,12 +11,20 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { configurePurchases, logOutPurchases } from '@/lib/purchases';
 import { checkForUpdate } from '@/lib/check-for-update';
 import { updateAppIconForWeeklyActivity } from '@/lib/dynamic-app-icon';
 
+// Hold the native splash (the Tistra bowl on purple) until the stored
+// session has been restored, so the login screen never flashes on a cold
+// start. RootNavigator calls hideAsync() the moment that resolves.
+//
+// There used to be a second splash on top of this one: a JS overlay from
+// the Expo starter template that hid the native splash immediately and
+// then showed the EXPO logo for 600ms before animating out. That is the
+// "Expo logo before the app opens" people saw. It is gone; the native
+// splash now stays up for exactly as long as the app is actually loading.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -31,7 +39,6 @@ export default function RootLayout() {
   }, []);
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
       <AuthProvider>
         <RootNavigator />
       </AuthProvider>
@@ -83,9 +90,16 @@ function RootNavigator() {
     return () => subscription.remove();
   }, [session]);
 
-  // Keep the native splash screen up (see AnimatedSplashOverlay) rather
-  // than flashing the login screen for a moment while the stored session
-  // is still being restored from SecureStore.
+  // Hiding the splash is what actually reveals the app, so it has to run
+  // on every path out of loading — a missed call leaves the user staring
+  // at the splash forever. auth-context guarantees `loading` always
+  // resolves, even when restoring the session fails, precisely so this
+  // can be relied on.
+  useEffect(() => {
+    if (!loading) SplashScreen.hideAsync().catch(() => {});
+  }, [loading]);
+
+  // Nothing to render yet — the native splash is still covering this.
   if (loading) return null;
 
   return (

@@ -7,18 +7,14 @@ import { ThemedView } from './themed-view';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
-// 'coach' stays in the type — stored product intent and post-login routing
-// still understand it — but it is no longer OFFERED here (see OPTIONS).
-export type ProductKey = 'self' | 'family' | 'coach';
-
 /**
- * Coaching was removed from this picker in Aug 2026: it became its own
- * product on its own domain (coach.tistrahealth.com), so the Tistra Health
- * app offers only the two adult products. The card's artwork and the
- * 'coach' key are intentionally left in place rather than deleted, so
- * re-introducing a coach path (or handling an existing coach account that
- * signs in here) doesn't need this file reconstructed.
+ * Tistra Health is a two-product app: track yourself, or care for family.
+ *
+ * Coaching used to be a third option here. It is its own product now, on
+ * its own domain and getting its own app, so nothing coach-related remains
+ * in this one — not the picker, not the routing, not the types.
  */
+export type ProductKey = 'self' | 'family';
 const OPTIONS: Array<{
   key: ProductKey;
   image: number;

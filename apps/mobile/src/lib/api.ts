@@ -253,40 +253,6 @@ export interface AdultsContactDetails {
   meals: MealLog[];
 }
 
-export interface GymWorkspaceResponse {
-  workspace: { id: string; name: string; extraCapacity: number };
-  entitlement: {
-    status: string;
-    trialStartAt: string | null;
-    trialEndAt: string | null;
-    trialDaysRemaining: number | null;
-    isReadOnly: boolean;
-  };
-}
-
-export interface GymClient extends FoodBalanceProfileFields {
-  id: string;
-  workspaceId: string;
-  fullName: string;
-  whatsappNumber: string;
-  age?: number;
-  gender?: "male" | "female" | "other";
-  weightKg?: number;
-  heightCm?: number;
-  bmi?: number;
-  mealCount: number;
-  lastMealAt?: string;
-  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
-  /** Meal count for a true rolling 7-day window ending today — see
-   * AdultsContact.last7DaysMealCount's identical doc. */
-  last7DaysMealCount?: number;
-  goals: Goal[];
-  trackedBiomarkers: string[];
-  /** Set once a client has been removed (soft-deleted) — only present on
-   * rows returned by getRemovedGymClients, never on getGymClients. */
-  deletedAt?: string;
-}
-
 export interface WorkoutLog {
   id: string;
   loggedAt: string;
@@ -309,13 +275,6 @@ export interface BiomarkerLog {
   bicepCm?: number;
   thighCm?: number;
   notes?: string;
-}
-
-export interface GymClientDetails {
-  client: GymClient;
-  meals: MealLog[];
-  workouts: WorkoutLog[];
-  biomarkers: BiomarkerLog[];
 }
 
 // Temporary Access Codes — mirrors the web app's AccessCodeCard/
@@ -450,7 +409,7 @@ export interface FoodPreferenceSelections {
 // ---- API calls ----
 
 export const api = {
-  // Side-effect-free — unlike getAdultsWorkspace/getGymWorkspace below,
+  // Side-effect-free — unlike getAdultsWorkspace below,
   // this never creates a workspace. Use this to decide which
   // dashboard(s) to route into after login (see apps/mobile-api's
   // /me/products route for why the get-or-create endpoints can't be used
@@ -475,13 +434,6 @@ export const api = {
   removeAdultsContact: (contactId: string) =>
     apiDelete<{ ok: boolean }>(`/adults/contacts/${contactId}`),
 
-  getGymWorkspace: () => apiFetch<GymWorkspaceResponse>("/gym/workspace"),
-  getGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients"),
-  getRemovedGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients/removed"),
-  getGymClientDetails: (clientId: string) =>
-    apiFetch<GymClientDetails>(`/gym/clients/${clientId}`),
-  removeGymClient: (clientId: string) =>
-    apiDelete<{ ok: boolean }>(`/gym/clients/${clientId}`),
 
   // Feature-flagged server-side — returns 404 with {error:"Not available"}
   // when NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1 isn't set on mobile-api's
@@ -559,10 +511,6 @@ export const api = {
     formData.append("photo", { uri: imageUri, name: `avatar.${extension}`, type: mimeType } as any);
     return apiUpload<{ photoUrl: string }>(`/adults/contacts/${contactId}/avatar`, formData);
   },
-  createGymClient: (body: unknown) =>
-    apiRequest<{ id: string }>("/gym/clients", { method: "POST", body: JSON.stringify(body) }),
-  updateGymClient: (clientId: string, body: unknown) =>
-    apiRequest<{ id: string }>(`/gym/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   generateAdultsAccessCode: (contactId: string, ttlHours: 1 | 24 = 24) =>
     apiRequest<AccessCodeResult>(`/adults/contacts/${contactId}/access-code`, { method: "POST", body: JSON.stringify({ ttlHours }) }),

@@ -10,7 +10,8 @@ import Purchases, { LOG_LEVEL, type CustomerInfo } from 'react-native-purchases'
 // Configured once per session at the root layout (keyed on the current
 // Supabase auth user id), shared by both paywalls this app has — Self/
 // Family (adults/paywall.tsx, entitlement "adults_premium") and Coach
-// (gym/paywall.tsx, entitlement "coach_premium"). Nothing product-specific
+// Coaching had its own paywall and entitlement here until it moved out of
+// this app (Aug 2026). Nothing product-specific
 // happens here; which entitlement gets checked/purchased is entirely up
 // to the calling paywall screen.
 let configuredForUserId: string | null = null;

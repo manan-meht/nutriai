@@ -9,13 +9,13 @@ import { ProductPicker } from '@/components/product-picker';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
 import { consumePendingProductSelection, type PendingProduct } from '@/lib/product-intent';
-import { getLastDashboardChoice, saveLastDashboardChoice, clearLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
+import { clearLastDashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null };
+  | { status: 'ready'; products: MyProductsResponse; pendingProduct: PendingProduct | null };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -30,9 +30,9 @@ export default function ProductRouterScreen() {
     // an account seeded with both — or, just as importantly, a brand-new
     // account seeded with NEITHER yet — would otherwise ignore that choice
     // and ask again below.
-    Promise.all([api.getMyProducts(), getLastDashboardChoice(), consumePendingProductSelection()])
-      .then(([products, lastChoice, pendingProduct]) => {
-        if (!cancelled) setState({ status: 'ready', products, lastChoice, pendingProduct });
+    Promise.all([api.getMyProducts(), consumePendingProductSelection()])
+      .then(([products, pendingProduct]) => {
+        if (!cancelled) setState({ status: 'ready', products, pendingProduct });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -80,109 +80,38 @@ export default function ProductRouterScreen() {
     );
   }
 
-  const { adults, gym } = state.products;
+  const { adults } = state.products;
   const { pendingProduct } = state;
 
-  // Exactly one product — go straight there, no switcher needed.
-  if (adults && !gym) return <Redirect href="/adults" />;
-  if (gym && !adults) return <Redirect href="/gym" />;
+  // One product, one destination. This screen used to arbitrate between an
+  // adults and a gym dashboard — which product to open, which choice to
+  // remember, which to re-ask about. Coaching is its own product now, on
+  // its own domain and getting its own app, so all of that arbitration is
+  // gone: a Tistra Health account has an adults workspace or it has none.
+  if (adults) return <Redirect href="/adults" />;
 
-  // Both, but the user just told select-product.tsx (or login/signup, via
-  // OAuth) which one they meant — honor that instead of asking again below,
-  // and persist it so the next cold start (where pendingProduct has already
-  // been consumed) skips the picker too.
-  if (adults && gym && pendingProduct) {
-    const choice = pendingProduct === 'coach' ? 'gym' : 'adults';
-    saveLastDashboardChoice(choice);
-    return <Redirect href={choice === 'gym' ? '/gym' : '/adults'} />;
-  }
-
-  // Both, no fresh selection this session, but a persisted choice from a
-  // previous one — go straight there instead of showing the picker again.
-  // This is the actual fix for "every time I open the app I'm back on the
-  // dashboard picker": pendingProduct never survives a cold start on its
-  // own, but this does (SecureStore, see lib/product-choice.ts).
-  if (adults && gym && state.lastChoice) {
-    return <Redirect href={state.lastChoice === 'gym' ? '/gym' : '/adults'} />;
-  }
-
-  // Neither — this account has no workspace on either product yet, most
-  // often a brand-new signup (see app/signup.tsx) that hasn't picked a
-  // product yet. This used to be a dead end telling people to go use the
-  // website instead — wrong, since GET /adults/workspace and
-  // GET /gym/workspace (see apps/mobile-api's route handlers) both
-  // get-or-create the workspace as a side effect of being called at all,
-  // the same way visiting either dashboard for the first time on the web
-  // app does. So the picker below (normally only shown for an account with
-  // BOTH products and no remembered choice) works just as well here —
-  // picking one and landing on that dashboard is what actually creates the
-  // workspace, letting the person add their first family member/client
-  // from right there, same as this app's existing add.tsx screens already
-  // support.
+  // No workspace yet — almost always a brand-new signup. GET
+  // /adults/workspace get-or-creates as a side effect of being called, so
+  // landing on the dashboard is what actually creates the workspace, and
+  // the person can add their first family member from there.
   //
-  // Crucially, this branch must also honor `pendingProduct` exactly like
-  // the "both" branch above — a brand-new signup has NEITHER workspace yet
-  // by definition, so without this check the card someone tapped on
-  // select-product.tsx (e.g. "Family") was always silently ignored here,
-  // and they'd land back on this exact picker right after finishing sign-in
-  // (the reported "picked Family, signed in with Google, got sent back to
-  // the picker" bug — this was the other half of it, independent of
-  // whether pendingProduct itself survived the OAuth round-trip).
-  if (!adults && !gym) {
-    if (pendingProduct) {
-      const choice = pendingProduct === 'coach' ? 'gym' : 'adults';
-      saveLastDashboardChoice(choice);
-      if (choice === 'gym') return <Redirect href="/gym" />;
-      return (
-        <Redirect
-          // Always pass self explicitly (never {}) — adults/index.tsx reads
-          // this via useLocalSearchParams, and if this route was already
-          // present earlier in the navigation stack (e.g. someone backed
-          // out of a "Self" pick and chose "Family" instead), an omitted
-          // param can end up inheriting that stale self=1 instead of being
-          // absent, silently flipping a Family signup to the Self plan.
-          href={{ pathname: '/adults', params: { self: pendingProduct === 'self' ? '1' : '0' } }}
-        />
-      );
-    }
+  // "self" vs "family" only decides the workspace plan (see mobile-api's
+  // markWorkspaceSelfPlan). It is passed explicitly as '1' or '0' rather
+  // than omitted — adults/index.tsx reads it via useLocalSearchParams, and
+  // an omitted param can inherit a stale self=1 from an earlier navigation
+  // to the same route, silently flipping a Family signup to the Self plan.
+  if (pendingProduct) {
     return (
-      <ProductPicker
-        headline="How will you use Tistra Health?"
-        subhead="Choose the option that best fits you. You can change this later."
-        onContinue={(selected) => {
-          const choice = selected === 'coach' ? 'gym' : 'adults';
-          saveLastDashboardChoice(choice);
-          if (choice === 'gym') {
-            router.push('/gym');
-          } else {
-            // "self" vs "family" only matters for the adults workspace's
-            // plan (see mobile-api's markWorkspaceSelfPlan) — passed as a
-            // one-time route param, same as the web signup flow's own
-            // ?self=1, so adults/index.tsx can thread it through to its
-            // first GET /adults/workspace call. Always passed explicitly
-            // (never {}) — see the Redirect branch above for why an
-            // omitted param can silently inherit a stale self=1 from an
-            // earlier navigation to this same route.
-            router.push({ pathname: '/adults', params: { self: selected === 'self' ? '1' : '0' } });
-          }
-        }}
-      />
+      <Redirect href={{ pathname: '/adults', params: { self: pendingProduct === 'self' ? '1' : '0' } }} />
     );
   }
 
-  // Both, and no fresh selection from select-product.tsx to honor (e.g. a
-  // returning session restored straight into (app)) — reuse the exact same
-  // picker as select-product.tsx rather than a differently-styled one;
-  // "self" and "family" both resolve to /adults here since there's no
-  // further distinction to make once already authenticated.
   return (
     <ProductPicker
-      headline="Which dashboard?"
-      subhead="Choose which one to view. You can switch anytime by signing out."
+      headline="How will you use Tistra Health?"
+      subhead="Choose the option that best fits you. You can change this later."
       onContinue={(selected) => {
-        const choice = selected === 'coach' ? 'gym' : 'adults';
-        saveLastDashboardChoice(choice);
-        router.push(choice === 'gym' ? '/gym' : '/adults');
+        router.push({ pathname: '/adults', params: { self: selected === 'self' ? '1' : '0' } });
       }}
     />
   );

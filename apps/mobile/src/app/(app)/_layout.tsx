@@ -15,12 +15,10 @@ export default function AppLayout() {
   // /select-product.
   const { session } = useAuth();
 
-  // Push permission is no longer requested silently at this layout level —
-  // it now goes through PushPermissionCard (adults/index.tsx) so the OS
-  // system dialog (which neither platform lets us relabel) is preceded by
-  // our own explanation of what the notification is actually for. gym's
-  // dashboard still registers unconditionally on its own (see
-  // gym/index.tsx) since it has no per-plan messaging to show yet.
+  // Push permission is not requested silently at this layout level — it
+  // goes through PushPermissionCard (adults/index.tsx) so the OS system
+  // dialog (which neither platform lets us relabel) is preceded by our own
+  // explanation of what the notification is actually for.
 
   // Routes a tapped notification (cold-launch or app-already-running) to
   // the screen it's actually about — see setupNotificationNavigation's own
@@ -36,7 +34,6 @@ export default function AppLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="gym" />
       <Stack.Screen name="adults" />
     </Stack>
   );

@@ -114,3 +114,75 @@ describe("mobile app auth screens offer no coach path", () => {
     expect(readMobile("app/login.tsx")).toMatch(/Redirect href="\/select-product"/);
   });
 });
+
+// The Tistra Health mobile app carries no coaching product at all as of
+// Aug 2026 — coaching is getting its own app. The screens, the routing
+// arbitration between two dashboards, the API surface and the types are
+// all gone, not merely hidden behind a picker that no longer offers them.
+describe("mobile app carries no coaching product", () => {
+  it("has no gym screens", () => {
+    expect(fs.existsSync(path.join(MOBILE, "app", "(app)", "gym"))).toBe(false);
+  });
+
+  it("registers no gym route in the authenticated stack", () => {
+    expect(code(readMobile("app/(app)/_layout.tsx"))).not.toMatch(/name="gym"/);
+  });
+
+  it("routes straight to adults instead of arbitrating between dashboards", () => {
+    const router = code(readMobile("app/(app)/index.tsx"));
+    expect(router).not.toMatch(/href="\/gym"/);
+    expect(router).not.toMatch(/saveLastDashboardChoice/);
+    expect(router).toMatch(/if \(adults\) return <Redirect href="\/adults" \/>;/);
+  });
+
+  it("exposes no gym endpoints on the API client", () => {
+    const api = code(readMobile("lib/api.ts"));
+    for (const method of ["getGymWorkspace", "getGymClients", "createGymClient", "updateGymClient", "removeGymClient", "getGymClientDetails", "getRemovedGymClients"]) {
+      expect([method, api.includes(method)]).toEqual([method, false]);
+    }
+  });
+
+  it("narrows the product types to the two adult products", () => {
+    expect(code(readMobile("components/product-picker.tsx"))).toMatch(/ProductKey = 'self' \| 'family';/);
+    expect(code(readMobile("lib/product-intent.ts"))).toMatch(/PendingProduct = 'self' \| 'family';/);
+  });
+
+  it("counts only adults meals toward the dynamic app icon", () => {
+    // The icon summed a coaching workspace's client meals too; leaving that
+    // in would call an endpoint the app no longer ships a screen for.
+    expect(code(readMobile("lib/dynamic-app-icon.ts"))).not.toMatch(/getGymClients|products\.gym/);
+  });
+});
+
+// The app showed the EXPO logo for ~600ms on every cold start: a JS splash
+// overlay from the starter template hid the native Tistra splash as soon as
+// it laid out, displayed assets/images/expo-logo.png, then animated away.
+// Removing it means the native splash must be hidden explicitly instead —
+// a missed hideAsync() call leaves the user stuck on the splash forever.
+describe("mobile cold start shows no Expo branding", () => {
+  it("ships no Expo logo or badge assets", () => {
+    for (const asset of ["expo-logo.png", "expo-badge.png", "expo-badge-white.png"]) {
+      const p = path.join(MOBILE, "..", "assets", "images", asset);
+      expect([asset, fs.existsSync(p)]).toEqual([asset, false]);
+    }
+  });
+
+  it("has no splash overlay component", () => {
+    for (const f of ["components/animated-icon.tsx", "components/animated-icon.web.tsx"]) {
+      expect([f, fs.existsSync(path.join(MOBILE, f))]).toEqual([f, false]);
+    }
+  });
+
+  it("the root layout no longer mounts an overlay", () => {
+    expect(code(readMobile("app/_layout.tsx"))).not.toMatch(/AnimatedSplashOverlay/);
+  });
+
+  it("still hides the native splash once auth resolves", () => {
+    // The overlay used to be the only caller of hideAsync(). Without a
+    // replacement, preventAutoHideAsync() would strand every user on the
+    // splash screen.
+    const layout = code(readMobile("app/_layout.tsx"));
+    expect(layout).toMatch(/SplashScreen\.preventAutoHideAsync\(\)/);
+    expect(layout).toMatch(/if \(!loading\) SplashScreen\.hideAsync\(\)/);
+  });
+});

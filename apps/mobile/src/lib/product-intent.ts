@@ -21,7 +21,7 @@ import * as SecureStore from 'expo-secure-store';
 // process while the browser has focus.
 const PENDING_PRODUCT_KEY = 'tistra_pending_product_selection';
 
-export type PendingProduct = 'self' | 'family' | 'coach';
+export type PendingProduct = 'self' | 'family';
 
 export async function setPendingProductSelection(product: PendingProduct): Promise<void> {
   await SecureStore.setItemAsync(PENDING_PRODUCT_KEY, product);
@@ -32,5 +32,5 @@ export async function setPendingProductSelection(product: PendingProduct): Promi
 export async function consumePendingProductSelection(): Promise<PendingProduct | null> {
   const value = await SecureStore.getItemAsync(PENDING_PRODUCT_KEY);
   if (value) await SecureStore.deleteItemAsync(PENDING_PRODUCT_KEY);
-  return value === 'self' || value === 'family' || value === 'coach' ? value : null;
+  return value === 'self' || value === 'family' ? value : null;
 }

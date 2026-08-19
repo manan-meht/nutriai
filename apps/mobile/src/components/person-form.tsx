@@ -48,19 +48,20 @@ interface PersonFormProps {
   /** "adults" posts/patches to /adults/contacts; "gym" to /gym/clients.
    * Only "adults" shows the relationship field (gym clients don't have
    * one). */
-  product: 'adults' | 'gym';
+  /** Only 'adults' remains: coaching left this app with its own product. */
+  product: 'adults';
   mode: 'add' | 'edit';
   personId?: string;
   initialValues?: PersonFormInitialValues;
   /** Hides the "Myself" relationship option — passed by the caller once it
    * already has the contacts list loaded (see adults/add.tsx). Ignored
-   * for product="gym". */
+   * for a coaching client. */
   hasSelfContact?: boolean;
   /** "self" vs "family" — passed by the caller (see adults/add.tsx). A
    * "self" plan workspace only ever has one contact (the caregiver's own
    * tracked profile), so the relationship picker is skipped entirely and
    * relationship_type is forced to "self" rather than asking a question
-   * with only one possible answer. Ignored for product="gym" and for
+   * with only one possible answer. Ignored for
    * mode="edit" (relationship never changes after creation). */
   workspacePlan?: string | null;
   /** Passed the newly-created contact's id/name/isSelf only for
@@ -145,13 +146,9 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
           }
           onSuccess({ id: created.id, fullName, isSelf });
           return;
-        } else {
-          await api.createGymClient(body);
         }
-      } else if (product === 'adults') {
-        await api.updateAdultsContact(personId!, body);
       } else {
-        await api.updateGymClient(personId!, body);
+        await api.updateAdultsContact(personId!, body);
       }
       onSuccess();
     } catch (err) {
@@ -165,14 +162,11 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   // this section is actually about, same personalization pattern as
   // NutritionGoalFields' personDisplay.
   const isSelfRelationship = product === 'adults' && relationship === 'self';
-  const aboutSectionTitle =
-    product === 'gym'
-      ? 'Client details'
-      : isSelfRelationship
-        ? 'About you'
-        : fullName.trim()
-          ? `About ${fullName.trim().split(' ')[0]}`
-          : 'About them';
+  const aboutSectionTitle = isSelfRelationship
+    ? 'About you'
+    : fullName.trim()
+      ? `About ${fullName.trim().split(' ')[0]}`
+      : 'About them';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -378,7 +372,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               only once the user taps to expand it. See the web app's
               EditContactModal for the same change. */}
           <View style={[styles.targetsContent, !targetsExpanded && styles.hidden]}>
-            <NutritionTargetsCard {...(product === 'gym' ? { clientId: personId } : { contactId: personId })} />
+            <NutritionTargetsCard contactId={personId} />
           </View>
 
           {/* Adults-only, mirrors the web app's EditContactModal — Food
