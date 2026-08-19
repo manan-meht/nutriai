@@ -78,16 +78,39 @@ describe("coordinates survive a save", () => {
   });
 });
 
-describe("map provider is isolated", () => {
-  it("loads leaflet lazily and ships its stylesheet", () => {
-    const map = src("components/coach/CoachLocationMap.tsx");
-    // Leaflet touches window at module scope, so a static import breaks SSR.
-    expect(map).toMatch(/await import\("leaflet"\)/);
-    expect(map).toMatch(/leaflet\/dist\/leaflet\.css/);
+describe("map provider and key handling", () => {
+  const map = src("components/coach/CoachLocationMap.tsx");
+
+  it("waits for importLibrary rather than the script's onload", () => {
+    // Under loading=async the bootstrap defines importLibrary() and
+    // nothing else, so touching google.maps.Map when onload fires throws
+    // "Map is not a constructor". Awaiting importLibrary is what actually
+    // guarantees the classes exist.
+    expect(map).toMatch(/importLibrary\("maps"\)/);
+    expect(map).toMatch(/importLibrary\("marker"\)/);
+  });
+
+  it("loads the Maps JS API once, even if asked twice", () => {
+    // A second <script> tag makes Google warn and reinitialise.
+    expect(map).toMatch(/let mapsPromise/);
+    expect(map).toMatch(/if \(mapsPromise\) return mapsPromise/);
+  });
+
+  it("lets a failed load be retried rather than caching the failure", () => {
+    expect(map).toMatch(/mapsPromise = null;/);
+  });
+
+  it("uses only the browser key client-side, never the server key", () => {
+    // The server key can call Places and Geocoding and must never ship.
+    expect(map).toMatch(/NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY/);
+    expect(map).not.toMatch(/GOOGLE_MAPS_SERVER_KEY/);
+  });
+
+  it("degrades to the address field when the map cannot load", () => {
+    expect(map).toMatch(/couldn&rsquo;t load/);
   });
 
   it("keeps the pin private to the coach", () => {
-    const map = src("components/coach/CoachLocationMap.tsx");
     expect(map).toMatch(/clients only ever see your neighbourhood/i);
   });
 });
@@ -122,7 +145,25 @@ describe("address search", () => {
 
   it("scopes results to the market's country", () => {
     // Otherwise a common street name returns the same road abroad.
-    expect(src("lib/club/geocode.ts")).toMatch(/countrycodes=\$\{CLUB_MARKET\.countryCode\.toLowerCase\(\)\}/);
+    const g = src("lib/club/geocode.ts");
+    expect(g).toMatch(/includedRegionCodes/);
+    expect(g).toMatch(/components=country:\$\{CLUB_MARKET\.countryCode\}/);
+  });
+
+  it("falls back to Geocoding when Places is not enabled", () => {
+    // Places is a separate API that must be switched on; until it is,
+    // search still works rather than the field appearing broken.
+    const g = src("lib/club/geocode.ts");
+    expect(g).toMatch(/searchWithPlaces/);
+    expect(g).toMatch(/searchWithGeocoding/);
+    // null means "unavailable", [] means "no matches" — the distinction is
+    // what makes the fallback correct rather than hiding real empty results.
+    expect(g).toMatch(/Returns null \(rather than \[\]\) when Places is unavailable/);
+  });
+
+  it("keeps the server key server-side", () => {
+    expect(src("lib/club/geocode.ts")).toMatch(/process\.env\.GOOGLE_MAPS_SERVER_KEY/);
+    expect(src("lib/club/geocode.ts")).not.toMatch(/NEXT_PUBLIC_GOOGLE_MAPS/);
   });
 
   it("carries a neighbourhood only when it matches the known list", () => {

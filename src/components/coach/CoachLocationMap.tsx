@@ -1,31 +1,77 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-// Leaflet positions tiles with its own CSS; without this the map renders
-// as a scrambled grid. Imported here rather than globally so it only
-// loads on the one screen that shows a map.
-import "leaflet/dist/leaflet.css";
 import { CLUB_TOKENS as T } from "./tokens";
 import { MARKET_CENTRE } from "@/lib/club/geocode";
 
-// Map picker for "Where you coach".
+// Map picker for "Where you coach", on Google Maps.
 //
-// Leaflet with OpenStreetMap tiles: no API key, no billing account, works
-// today. The provider is isolated here and in lib/club/geocode.ts, so
-// moving to Google or Mapbox later is those two files and a key.
+// The browser key is referrer-restricted and limited to the Maps
+// JavaScript API. It ships in the page by necessity — a JS map cannot load
+// otherwise — so the restriction is what protects it, and it deliberately
+// cannot call Places or Geocoding. Those run server-side with the other
+// key, behind /api/coach/geocode.
 //
-// Leaflet is imported dynamically inside an effect because it touches
-// `window` at module scope and would break server rendering.
-//
-// Privacy note that governs this whole screen: the pin is the coach's real
-// location and is stored, but clients only ever see the neighbourhood
-// (discovery and the public profile expose nothing else, and the exact
-// address is released only after a booking is confirmed). The map is a
+// Privacy rule governing this screen: the pin is the coach's real location
+// and is stored, but clients only ever see the neighbourhood. The exact
+// address is released only after a booking is confirmed. This is a
 // coach-facing tool, not a public one.
+
+const BROWSER_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY;
 
 export interface PinnedLocation {
   latitude: number;
   longitude: number;
+}
+
+/** Loads the Maps JS API once per page, even if two components ask at the
+ * same time — a second <script> tag makes Google warn and reinitialise.
+ *
+ * Resolves with the constructors rather than void. Under `loading=async`
+ * the script's onload fires before google.maps is populated: the bootstrap
+ * defines importLibrary() and nothing else, so touching google.maps.Map at
+ * that point throws "not a constructor". Awaiting importLibrary is what
+ * actually guarantees the classes exist.
+ */
+type MapsApi = { Map: any; Circle: any; Marker: any };
+let mapsPromise: Promise<MapsApi> | null = null;
+
+function loadGoogleMaps(): Promise<MapsApi> {
+  if (mapsPromise) return mapsPromise;
+
+  mapsPromise = (async () => {
+    const g = () => (window as any).google;
+
+    if (!g()?.maps?.importLibrary) {
+      await new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector<HTMLScriptElement>("script[data-google-maps]");
+        if (existing) {
+          existing.addEventListener("load", () => resolve());
+          existing.addEventListener("error", () => reject(new Error("Google Maps failed to load")));
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${BROWSER_KEY}&loading=async&v=weekly`;
+        script.async = true;
+        script.dataset.googleMaps = "true";
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("Google Maps failed to load"));
+        document.head.appendChild(script);
+      });
+    }
+
+    const [maps, marker] = await Promise.all([
+      g().maps.importLibrary("maps"),
+      g().maps.importLibrary("marker"),
+    ]);
+    return { Map: maps.Map, Circle: maps.Circle, Marker: marker.Marker };
+  })().catch((err) => {
+    // Let a later attempt retry rather than caching the failure forever.
+    mapsPromise = null;
+    throw err;
+  });
+
+  return mapsPromise;
 }
 
 export function CoachLocationMap({
@@ -49,85 +95,92 @@ export function CoachLocationMap({
   onChangeRef.current = onChange;
 
   const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [locating, setLocating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // Create the map once.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const L = (await import("leaflet")).default;
+      if (!BROWSER_KEY) { setFailed(true); return; }
+      let api: MapsApi;
+      try {
+        api = await loadGoogleMaps();
+      } catch {
+        if (!cancelled) setFailed(true);
+        return;
+      }
       if (cancelled || !containerRef.current || mapRef.current) return;
 
       const start = value ?? MARKET_CENTRE;
-      const map = L.map(containerRef.current, { attributionControl: true }).setView(
-        [start.latitude, start.longitude],
-        value ? 15 : 12
-      );
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(map);
+      const centre = { lat: start.latitude, lng: start.longitude };
 
-      // A plain circle marker avoids Leaflet's default icon, whose PNGs
-      // resolve relative to the CSS and 404 under a bundler.
-      const marker = L.circleMarker([start.latitude, start.longitude], {
-        radius: 9,
-        color: "#FFFFFF",
-        weight: 3,
-        fillColor: T.primary,
-        fillOpacity: 1,
-      }).addTo(map);
+      const map = new api.Map(containerRef.current, {
+        center: centre,
+        zoom: value ? 16 : 12,
+        mapTypeControl: false,
+        streetViewControl: false,
+        fullscreenControl: false,
+      });
 
-      map.on("click", (e: any) => {
-        const next = { latitude: e.latlng.lat, longitude: e.latlng.lng };
-        marker.setLatLng(e.latlng);
-        circleRef.current?.setLatLng(e.latlng);
+      const marker = new api.Marker({
+        position: centre,
+        map,
+        draggable: true,
+      });
+
+      marker.addListener("dragend", () => {
+        const p = marker.getPosition();
+        const next = { latitude: p.lat(), longitude: p.lng() };
+        circleRef.current?.setCenter(p);
+        onChangeRef.current(next);
+      });
+
+      map.addListener("click", (e: any) => {
+        const next = { latitude: e.latLng.lat(), longitude: e.latLng.lng() };
+        marker.setPosition(e.latLng);
+        circleRef.current?.setCenter(e.latLng);
         onChangeRef.current(next);
       });
 
       mapRef.current = map;
       markerRef.current = marker;
       setReady(true);
-      // Tiles can lay out before the container has its final size.
-      setTimeout(() => map.invalidateSize(), 0);
     })();
-    return () => {
-      cancelled = true;
-      mapRef.current?.remove();
-      mapRef.current = null;
-    };
-    // Deliberately once: later value changes are pushed onto the existing
-    // map below rather than rebuilding it.
+    return () => { cancelled = true; };
+    // Once: later value changes are pushed onto the existing map below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep marker and radius in step with props.
+  // Keep marker and view in step with the form.
   useEffect(() => {
-    if (!ready || !value) return;
-    markerRef.current?.setLatLng([value.latitude, value.longitude]);
-    mapRef.current?.setView([value.latitude, value.longitude], mapRef.current.getZoom());
+    if (!ready || !value || !mapRef.current) return;
+    const pos = { lat: value.latitude, lng: value.longitude };
+    markerRef.current?.setPosition(pos);
+    circleRef.current?.setCenter(pos);
+    mapRef.current.panTo(pos);
   }, [ready, value]);
 
+  // Radius circle.
   useEffect(() => {
     if (!ready || !mapRef.current) return;
-    (async () => {
-      const L = (await import("leaflet")).default;
-      const centre = value ?? MARKET_CENTRE;
-      if (circleRef.current) {
-        mapRef.current.removeLayer(circleRef.current);
-        circleRef.current = null;
-      }
-      if (radiusKm && radiusKm > 0) {
-        circleRef.current = L.circle([centre.latitude, centre.longitude], {
-          radius: radiusKm * 1000,
-          color: T.primary,
-          weight: 1,
-          fillColor: T.primary,
-          fillOpacity: 0.12,
-        }).addTo(mapRef.current);
-      }
-    })();
+    const centre = value ?? MARKET_CENTRE;
+    if (circleRef.current) {
+      circleRef.current.setMap(null);
+      circleRef.current = null;
+    }
+    if (radiusKm && radiusKm > 0) {
+      circleRef.current = new (window as any).google.maps.Circle({
+        map: mapRef.current,
+        center: { lat: centre.latitude, lng: centre.longitude },
+        radius: radiusKm * 1000,
+        strokeColor: T.primary,
+        strokeOpacity: 0.8,
+        strokeWeight: 1,
+        fillColor: T.primary,
+        fillOpacity: 0.12,
+      });
+    }
   }, [ready, radiusKm, value]);
 
   async function lookupNeighbourhood(lat: number, lng: number) {
@@ -158,7 +211,7 @@ export function CoachLocationMap({
       (pos) => {
         const next = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         onChangeRef.current(next);
-        mapRef.current?.setView([next.latitude, next.longitude], 15);
+        mapRef.current?.setZoom(16);
         setLocating(false);
         void lookupNeighbourhood(next.latitude, next.longitude);
       },
@@ -180,24 +233,34 @@ export function CoachLocationMap({
         <button
           type="button"
           onClick={useMyLocation}
-          disabled={locating}
+          disabled={locating || failed}
           className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
           style={{ borderColor: T.outlineVariant }}
         >
           {locating ? "Locating…" : "Use my current location"}
         </button>
         <span className="text-xs" style={{ color: T.onSurfaceVariant }}>
-          or tap the map to drop a pin
+          or tap the map to drop a pin, and drag it to adjust
         </span>
       </div>
 
-      <div
-        ref={containerRef}
-        className="h-64 w-full overflow-hidden rounded-2xl"
-        style={{ backgroundColor: T.surfaceContainerLow, borderColor: T.outlineVariant, borderWidth: 1 }}
-        role="application"
-        aria-label="Map for choosing where you coach"
-      />
+      {failed ? (
+        <div
+          className="flex h-32 items-center justify-center rounded-2xl border border-dashed px-4 text-center text-sm"
+          style={{ borderColor: T.outlineVariant, color: T.onSurfaceVariant }}
+        >
+          The map couldn&rsquo;t load. You can still search for your address above, or type your
+          neighbourhood below.
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="h-64 w-full overflow-hidden rounded-2xl border"
+          style={{ backgroundColor: T.surfaceContainerLow, borderColor: T.outlineVariant }}
+          role="application"
+          aria-label="Map for choosing where you coach"
+        />
+      )}
 
       <p className="mt-2 text-xs" style={{ color: T.onSurfaceVariant }}>
         {value
