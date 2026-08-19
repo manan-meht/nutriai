@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { ClubChrome, StickyAction } from "@/components/club/ClubChrome";
 import { HoldCountdown } from "@/components/club/HoldCountdown";
-import { payAction, releaseHoldAction } from "../../actions";
+import { payAction, startBookingCheckout, releaseHoldAction } from "../../actions";
+import { stripeCheckoutConfigured } from "@/lib/club/checkout-session";
+import { headers } from "next/headers";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
 
@@ -43,10 +45,13 @@ export default async function CheckoutPage({
   }
 
   const [{ data: coach }, { data: service }] = await Promise.all([
-    admin.from("coach_profiles").select("display_name, cancellation_full_refund_hours").eq("id", hold.coach_profile_id).maybeSingle(),
+    admin.from("coach_profiles").select("display_name, cancellation_full_refund_hours, stripe_account_id, stripe_payouts_enabled").eq("id", hold.coach_profile_id).maybeSingle(),
     admin.from("coach_services").select("name, duration_minutes, price_cents, currency").eq("id", hold.service_id).maybeSingle(),
   ]);
   if (!coach || !service) redirect("/");
+
+  const live = stripeCheckoutConfigured() && !!coach.stripe_account_id && coach.stripe_payouts_enabled;
+  const origin = `https://${(await headers()).get("host") ?? "tistra.club"}`;
 
   return (
     <ClubChrome hideNav>
@@ -82,8 +87,12 @@ export default async function CheckoutPage({
         </p>
       </section>
 
-      <form action={payAction} className="mt-4">
+      {/* Real payment when Stripe is configured and the coach can be paid;
+          the mock only runs in development, and says so rather than looking
+          like a completed purchase. */}
+      <form action={live ? startBookingCheckout : payAction} className="mt-4">
         <input type="hidden" name="holdId" value={hold.id} />
+        <input type="hidden" name="origin" value={origin} />
         <label htmlFor="clientNote" className="text-sm font-medium">Anything your coach should know?</label>
         <textarea
           id="clientNote" name="clientNote" rows={3}
@@ -94,8 +103,13 @@ export default async function CheckoutPage({
         <StickyAction>
           <button type="submit" className="w-full rounded-full py-4 text-[15px] font-medium"
                   style={{ backgroundColor: T.primary, color: T.onPrimary }}>
-            Pay {formatMoney(service.price_cents, service.currency)}
+            {live ? "Pay" : "Pay (test mode)"} {formatMoney(service.price_cents, service.currency)}
           </button>
+          {!live && (
+            <p className="mt-2 text-center text-xs" style={{ color: T.warning }}>
+              No card will be charged — payments aren&rsquo;t live for this coach yet.
+            </p>
+          )}
         </StickyAction>
       </form>
 
