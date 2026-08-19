@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
-import { CLUB_MARKET } from "@/lib/club/config";
+import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
+import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
 
 // Every write a coach can make to their own marketplace presence.
 //
@@ -427,6 +428,116 @@ export async function setCoachPublished(publish: boolean): Promise<ActionResult 
     .eq("id", coach.id);
 
   if (error) return { ok: false, error: error.message };
+  revalidateCoach();
+  return { ok: true };
+}
+
+/** Uploads (or replaces) the coach's profile photo.
+ *
+ * Stores a bare storage path, never a URL: the bucket is private, so reads
+ * go through a signed URL generated at render time. The old file is deleted
+ * after the new path is saved — that order means a failed delete leaves an
+ * orphan rather than a profile pointing at nothing. */
+export async function uploadCoachPhoto(formData: FormData): Promise<ActionResult> {
+  const profile = await requireCoachProfile();
+  if (!profile) return NOT_AUTHED;
+
+  const file = formData.get("photo");
+  if (!(file instanceof File)) return { ok: false, error: "No photo was selected." };
+  const check = checkUpload(file);
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const admin = createServiceClient();
+  const { data: existing } = await admin
+    .from("coach_profiles")
+    .select("photo_url")
+    .eq("id", profile.id)
+    .maybeSingle();
+
+  const path = coachMediaPath(profile.id, "profile", file);
+  const { error: uploadError } = await admin.storage
+    .from(COACH_MEDIA_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) return { ok: false, error: uploadError.message };
+
+  const { error } = await admin.from("coach_profiles").update({ photo_url: path }).eq("id", profile.id);
+  if (error) return { ok: false, error: error.message };
+
+  const previous = existing?.photo_url;
+  if (previous && !previous.startsWith("http")) {
+    await admin.storage.from(COACH_MEDIA_BUCKET).remove([previous]).catch(() => {});
+  }
+
+  revalidateCoach();
+  return { ok: true };
+}
+
+/** Adds an image to the coach's gallery, which is what the discovery card
+ * pages through. Bounded so one coach can't upload without limit. */
+export async function addCoachGalleryImage(formData: FormData): Promise<ActionResult> {
+  const profile = await requireCoachProfile();
+  if (!profile) return NOT_AUTHED;
+
+  const file = formData.get("photo");
+  if (!(file instanceof File)) return { ok: false, error: "No photo was selected." };
+  const check = checkUpload(file);
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const admin = createServiceClient();
+  const { data: current } = await admin
+    .from("coach_media")
+    .select("id, sort_order")
+    .eq("coach_profile_id", profile.id)
+    .eq("media_type", "image")
+    .order("sort_order", { ascending: false });
+
+  if ((current ?? []).length >= MAX_GALLERY_IMAGES) {
+    return { ok: false, error: `You can have up to ${MAX_GALLERY_IMAGES} gallery photos.` };
+  }
+
+  const path = coachMediaPath(profile.id, "gallery", file);
+  const { error: uploadError } = await admin.storage
+    .from(COACH_MEDIA_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) return { ok: false, error: uploadError.message };
+
+  const { error } = await admin.from("coach_media").insert({
+    coach_profile_id: profile.id,
+    media_type: "image",
+    storage_path: path,
+    sort_order: ((current ?? [])[0]?.sort_order ?? 0) + 1,
+  });
+  if (error) {
+    // Don't leave a file behind that no row points at.
+    await admin.storage.from(COACH_MEDIA_BUCKET).remove([path]).catch(() => {});
+    return { ok: false, error: error.message };
+  }
+
+  revalidateCoach();
+  return { ok: true };
+}
+
+/** Removes a gallery image. Scoped by coach profile id so the media id
+ * alone can't be used to delete another coach's photo. */
+export async function deleteCoachGalleryImage(formData: FormData): Promise<ActionResult> {
+  const profile = await requireCoachProfile();
+  if (!profile) return NOT_AUTHED;
+
+  const mediaId = String(formData.get("mediaId") ?? "");
+  if (!mediaId) return { ok: false, error: "Nothing to remove." };
+
+  const admin = createServiceClient();
+  const { data: row } = await admin
+    .from("coach_media")
+    .select("id, storage_path")
+    .eq("id", mediaId)
+    .eq("coach_profile_id", profile.id)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "That photo no longer exists." };
+
+  await admin.from("coach_media").delete().eq("id", row.id).eq("coach_profile_id", profile.id);
+  await admin.storage.from(COACH_MEDIA_BUCKET).remove([row.storage_path]).catch(() => {});
+
   revalidateCoach();
   return { ok: true };
 }

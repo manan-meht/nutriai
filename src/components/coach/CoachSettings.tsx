@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CLUB_TOKENS as T } from "./tokens";
+import { CoachPhotoSection } from "./CoachPhotoSection";
 import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
 import {
   updateCoachProfile,
@@ -33,6 +34,8 @@ export interface SettingsData {
     status: string;
     photoUrl: string | null;
   };
+  /** Signed URLs — the bucket is private, so these expire. */
+  gallery: Array<{ id: string; url: string }>;
   allSkills: Array<{ id: string; name: string; slug: string }>;
   selectedSkillIds: string[];
   services: Array<{
@@ -65,6 +68,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PublishSection status={data.profile.status} blockers={data.publishBlockers} />
+      <CoachPhotoSection photoUrl={data.profile.photoUrl} gallery={data.gallery} />
       <ProfileSection profile={data.profile} />
       <SkillsSection allSkills={data.allSkills} selectedIds={data.selectedSkillIds} />
       <ServicesSection services={data.services} skills={data.allSkills} />

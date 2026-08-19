@@ -4,6 +4,7 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { CoachPageHeader } from "@/components/coach/CoachShell";
 import { CoachSettings, type SettingsData } from "@/components/coach/CoachSettings";
 import { publishBlockers } from "@/lib/club/ranking";
+import { resolveSignedCoachPhotoUrl, resolveSignedCoachPhotoUrls } from "@/lib/club/media";
 
 // Coach profile / onboarding. This route is also the landing place for a
 // brand-new coach: /coach/dashboard redirects here when no coach_profiles
@@ -47,6 +48,21 @@ export default async function CoachSettingsPage() {
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
   ]);
 
+  // Photos live in a private bucket, so both the portrait and the gallery
+  // are resolved to signed URLs here rather than handing paths to the
+  // browser.
+  const { data: media } = await admin
+    .from("coach_media")
+    .select("id, storage_path")
+    .eq("coach_profile_id", coach.id)
+    .eq("media_type", "image")
+    .order("sort_order");
+
+  const [signedPortrait, signedGallery] = await Promise.all([
+    resolveSignedCoachPhotoUrl(admin, coach.photo_url),
+    resolveSignedCoachPhotoUrls(admin, (media ?? []).map((m: any) => m.storage_path)),
+  ]);
+
   const { data: areas } = await admin
     .from("coach_service_areas")
     .select("area_name")
@@ -61,8 +77,12 @@ export default async function CoachSettingsPage() {
       bio: coach.bio,
       yearsCoaching: coach.years_coaching,
       status: coach.status,
-      photoUrl: coach.photo_url,
+      photoUrl: signedPortrait ?? null,
     },
+    gallery: (media ?? [])
+      .map((m: any, i: number) => ({ id: m.id, url: signedGallery[i] }))
+      // A photo that failed to sign is dropped rather than rendered broken.
+      .filter((g: any): g is { id: string; url: string } => !!g.url),
     allSkills: allSkills.data ?? [],
     selectedSkillIds: (mySkills.data ?? []).map((s: any) => s.skill_id),
     services: (services.data ?? []).map((s: any) => ({
@@ -107,7 +127,7 @@ export default async function CoachSettingsPage() {
   };
 
   return (
-    <CoachShell active="settings" coachName={coach.display_name} photoUrl={coach.photo_url}>
+    <CoachShell active="settings" coachName={coach.display_name} photoUrl={signedPortrait}>
       <CoachPageHeader title="Your profile" />
       <CoachSettings data={data} />
     </CoachShell>
