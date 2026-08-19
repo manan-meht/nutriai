@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
 import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
+import { validateBookingPreferences, type BookingPreferences } from "@/lib/club/booking-preferences";
 
 // Every write a coach can make to their own marketplace presence.
 //
@@ -537,6 +538,44 @@ export async function deleteCoachGalleryImage(formData: FormData): Promise<Actio
 
   await admin.from("coach_media").delete().eq("id", row.id).eq("coach_profile_id", profile.id);
   await admin.storage.from(COACH_MEDIA_BUCKET).remove([row.storage_path]).catch(() => {});
+
+  revalidateCoach();
+  return { ok: true };
+}
+
+/**
+ * Booking rules and cancellation policy.
+ *
+ * Changing the cancellation policy affects FUTURE bookings only. Existing
+ * ones carry a snapshot taken at checkout (see convertHoldToBooking), so a
+ * client keeps the terms they actually agreed to — a coach cannot tighten
+ * their policy and have it apply retroactively to sessions already sold.
+ */
+export async function updateBookingPreferences(
+  input: Partial<Record<keyof BookingPreferences, unknown>>
+): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const parsed = validateBookingPreferences(input);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const v = parsed.value;
+
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("coach_profiles")
+    .update({
+      buffer_before_minutes: v.bufferBeforeMinutes,
+      buffer_after_minutes: v.bufferAfterMinutes,
+      min_notice_hours: v.minNoticeHours,
+      max_advance_days: v.maxAdvanceDays,
+      cancellation_full_refund_hours: v.cancellationFullRefundHours,
+      cancellation_partial_refund_percent: v.cancellationPartialRefundPercent,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", coach.id);
+
+  if (error) return { ok: false, error: error.message };
 
   revalidateCoach();
   return { ok: true };

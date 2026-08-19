@@ -20,7 +20,7 @@ export default async function CoachSettingsPage() {
   // click "become a coach" before they can enter anything.
   let { data: coach } = await admin
     .from("coach_profiles")
-    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled")
+    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -33,7 +33,7 @@ export default async function CoachSettingsPage() {
         display_name: profile?.full_name?.trim() || "New coach",
         status: "draft",
       })
-      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled")
+      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
       .single();
     coach = created;
   }
@@ -78,6 +78,14 @@ export default async function CoachSettingsPage() {
       yearsCoaching: coach.years_coaching,
       status: coach.status,
       photoUrl: signedPortrait ?? null,
+    },
+    bookingPreferences: {
+      bufferBeforeMinutes: coach.buffer_before_minutes,
+      bufferAfterMinutes: coach.buffer_after_minutes,
+      minNoticeHours: coach.min_notice_hours,
+      maxAdvanceDays: coach.max_advance_days,
+      cancellationFullRefundHours: coach.cancellation_full_refund_hours,
+      cancellationPartialRefundPercent: coach.cancellation_partial_refund_percent,
     },
     gallery: (media ?? [])
       .map((m: any, i: number) => ({ id: m.id, url: signedGallery[i] }))
