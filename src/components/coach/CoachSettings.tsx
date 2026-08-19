@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { CLUB_TOKENS as T } from "./tokens";
 import { CoachPhotoSection } from "./CoachPhotoSection";
 import { CoachLocationMap } from "./CoachLocationMap";
+import { AddressSearch } from "./AddressSearch";
 import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
 import {
   updateCoachProfile,
@@ -55,6 +56,8 @@ export interface SettingsData {
     addressIsPublic: boolean;
     latitude: number | null;
     longitude: number | null;
+    addressLine: string | null;
+    postalCode: string | null;
   } | null;
   travel: { travelEnabled: boolean; maxTravelKm: number; travelBufferMinutes: number; serviceAreas: string[] } | null;
   availability: Array<{ weekday: number; startMinute: number; endMinute: number }>;
@@ -348,6 +351,8 @@ function LocationSection({
     addressIsPublic: location?.addressIsPublic ?? false,
     latitude: location?.latitude ?? null as number | null,
     longitude: location?.longitude ?? null as number | null,
+    addressLine: location?.addressLine ?? "",
+    postalCode: location?.postalCode ?? "",
   });
   const [travelForm, setTravelForm] = useState({
     enabled: travel?.travelEnabled ?? false,
@@ -362,6 +367,30 @@ function LocationSection({
       <Field label="Location name" hint="e.g. River Valley studio">
         <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
       </Field>
+
+      <AddressSearch
+        onSelect={(r) =>
+          setForm((f) => ({
+            ...f,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            addressLine: r.addressLine ?? f.addressLine,
+            postalCode: r.postalCode ?? f.postalCode,
+            // Only fills a blank — a coach who picked a neighbourhood
+            // deliberately keeps it.
+            neighbourhood: f.neighbourhood || r.neighbourhood || "",
+          }))
+        }
+      />
+
+      <div className="grid grid-cols-[1fr_9rem] gap-4">
+        <Field label="Address" hint="Kept private unless you choose otherwise below">
+          <Input value={form.addressLine} onChange={(v) => setForm({ ...form, addressLine: v })} />
+        </Field>
+        <Field label="Postal code">
+          <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
+        </Field>
+      </div>
 
       {/* Coordinates drive travel-aware availability: without them the
           engine cannot tell whether a coach can physically reach a client
@@ -459,6 +488,8 @@ function LocationSection({
               // existing pin is never wiped by saving the rest of the form.
               latitude: form.latitude ?? undefined,
               longitude: form.longitude ?? undefined,
+              addressLine: form.addressLine,
+              postalCode: form.postalCode,
               isPrimary: true,
             });
             if (!locRes.ok) return locRes;

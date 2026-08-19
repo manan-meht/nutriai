@@ -43,7 +43,7 @@ export default async function CoachSettingsPage() {
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),
     admin.from("coach_skills").select("skill_id").eq("coach_profile_id", coach.id),
     admin.from("coach_services").select("id, name, duration_minutes, price_cents, is_active, travel_enabled, skill_id").eq("coach_profile_id", coach.id).order("created_at"),
-    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, latitude, longitude").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
+    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
     admin.from("coach_travel_rules").select("travel_enabled, max_travel_km, travel_buffer_minutes").eq("coach_profile_id", coach.id).maybeSingle(),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
   ]);
@@ -102,6 +102,8 @@ export default async function CoachSettingsPage() {
           addressIsPublic: locations.data.address_is_public,
           latitude: locations.data.latitude != null ? Number(locations.data.latitude) : null,
           longitude: locations.data.longitude != null ? Number(locations.data.longitude) : null,
+          addressLine: locations.data.address_line,
+          postalCode: locations.data.postal_code,
         }
       : null,
     travel: travel.data

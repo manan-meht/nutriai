@@ -91,3 +91,40 @@ describe("map provider is isolated", () => {
     expect(map).toMatch(/clients only ever see your neighbourhood/i);
   });
 });
+
+describe("address search", () => {
+  const search = src("components/coach/AddressSearch.tsx");
+
+  it("debounces and sets a minimum length", () => {
+    // The geocoder is free and keyless and asks for at most one request a
+    // second; typing "192 depot road" would otherwise fire thirteen.
+    expect(search).toMatch(/setTimeout\([\s\S]{0,400}?450\)/);
+    expect(search).toMatch(/q\.length < 3/);
+  });
+
+  it("discards a stale response instead of rendering it", () => {
+    // A slow early request landing after a fast later one would repopulate
+    // the list for a prefix the coach has already typed past.
+    expect(search).toMatch(/requestId/);
+    expect(search).toMatch(/if \(id !== requestId\.current\) return;/);
+  });
+
+  it("offers the map as a fallback when nothing matches", () => {
+    expect(search).toMatch(/drop a pin on the map instead/);
+  });
+
+  it("fills the form without overwriting a chosen neighbourhood", () => {
+    const settings = src("components/coach/CoachSettings.tsx");
+    expect(settings).toMatch(/neighbourhood: f\.neighbourhood \|\| r\.neighbourhood \|\| ""/);
+    expect(settings).toMatch(/postalCode: r\.postalCode \?\? f\.postalCode/);
+  });
+
+  it("scopes results to the market's country", () => {
+    // Otherwise a common street name returns the same road abroad.
+    expect(src("lib/club/geocode.ts")).toMatch(/countrycodes=\$\{CLUB_MARKET\.countryCode\.toLowerCase\(\)\}/);
+  });
+
+  it("carries a neighbourhood only when it matches the known list", () => {
+    expect(src("lib/club/geocode.ts")).toMatch(/neighbourhood: matchKnownNeighbourhood\(area\)/);
+  });
+});

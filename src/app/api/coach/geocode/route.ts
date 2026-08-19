@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { reverseGeocode } from "@/lib/club/geocode";
+import { reverseGeocode, searchAddress } from "@/lib/club/geocode";
 
 // Coordinates -> neighbourhood, for the "Where you coach" map.
 //
@@ -15,6 +15,12 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+
+  // ?q= searches for an address; ?lat=&lng= names the area at a point.
+  const query = request.nextUrl.searchParams.get("q");
+  if (query !== null) {
+    return NextResponse.json({ results: await searchAddress(query) });
+  }
 
   const lat = Number(request.nextUrl.searchParams.get("lat"));
   const lng = Number(request.nextUrl.searchParams.get("lng"));

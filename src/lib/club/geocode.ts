@@ -13,7 +13,8 @@ import { CLUB_MARKET, SG_NEIGHBOURHOODS } from "./config";
 // respected below. Swapping in Google or Mapbox later means replacing this
 // one function — nothing else knows where the answer came from.
 
-const NOMINATIM = "https://nominatim.openstreetmap.org/reverse";
+const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
+const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 
 export interface ReverseGeocodeResult {
   /** One of SG_NEIGHBOURHOODS, or null when nothing matched. */
@@ -43,7 +44,7 @@ export async function reverseGeocode(
   latitude: number,
   longitude: number
 ): Promise<ReverseGeocodeResult> {
-  const url = `${NOMINATIM}?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=14&addressdetails=1`;
+  const url = `${NOMINATIM_REVERSE}?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=14&addressdetails=1`;
   try {
     const res = await fetch(url, {
       headers: {
@@ -68,3 +69,61 @@ export async function reverseGeocode(
 
 /** Where the map opens when a coach has no location yet. */
 export const MARKET_CENTRE = CLUB_MARKET.centre;
+
+export interface AddressSuggestion {
+  /** One line, as a person would write it. */
+  label: string;
+  addressLine: string | null;
+  postalCode: string | null;
+  /** Matched against SG_NEIGHBOURHOODS; null when nothing matched. */
+  neighbourhood: string | null;
+  latitude: number;
+  longitude: number;
+}
+
+/**
+ * Address search for the "Where you coach" field: type "192 Depot Road",
+ * pick a result, and the map moves with the postal code filled in.
+ *
+ * Scoped to the market's country so a search for a common street name
+ * doesn't return the same road on another continent. Same keyless provider
+ * as the reverse lookup, and the same rule about neighbourhoods: a result
+ * only carries one if it matches the list discovery filters on.
+ */
+export async function searchAddress(query: string, limit = 5): Promise<AddressSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+
+  const url =
+    `${NOMINATIM_SEARCH}?format=jsonv2&q=${encodeURIComponent(q)}` +
+    `&countrycodes=${CLUB_MARKET.countryCode.toLowerCase()}&addressdetails=1&limit=${limit}`;
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "TistraClub/1.0 (https://tistra.club)",
+        "Accept-Language": "en",
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return [];
+    const json: any[] = await res.json();
+    if (!Array.isArray(json)) return [];
+
+    return json.map((r) => {
+      const a = r.address ?? {};
+      const street = [a.house_number, a.road].filter(Boolean).join(" ") || null;
+      const area = a.suburb ?? a.neighbourhood ?? a.quarter ?? a.city_district ?? null;
+      return {
+        label: r.display_name as string,
+        addressLine: street ?? (r.name || null),
+        postalCode: a.postcode ?? null,
+        neighbourhood: matchKnownNeighbourhood(area),
+        latitude: Number(r.lat),
+        longitude: Number(r.lon),
+      };
+    }).filter((s) => Number.isFinite(s.latitude) && Number.isFinite(s.longitude));
+  } catch {
+    return [];
+  }
+}
