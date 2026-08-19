@@ -153,3 +153,36 @@ describe("mobile app carries no coaching product", () => {
     expect(code(readMobile("lib/dynamic-app-icon.ts"))).not.toMatch(/getGymClients|products\.gym/);
   });
 });
+
+// The app showed the EXPO logo for ~600ms on every cold start: a JS splash
+// overlay from the starter template hid the native Tistra splash as soon as
+// it laid out, displayed assets/images/expo-logo.png, then animated away.
+// Removing it means the native splash must be hidden explicitly instead —
+// a missed hideAsync() call leaves the user stuck on the splash forever.
+describe("mobile cold start shows no Expo branding", () => {
+  it("ships no Expo logo or badge assets", () => {
+    for (const asset of ["expo-logo.png", "expo-badge.png", "expo-badge-white.png"]) {
+      const p = path.join(MOBILE, "..", "assets", "images", asset);
+      expect([asset, fs.existsSync(p)]).toEqual([asset, false]);
+    }
+  });
+
+  it("has no splash overlay component", () => {
+    for (const f of ["components/animated-icon.tsx", "components/animated-icon.web.tsx"]) {
+      expect([f, fs.existsSync(path.join(MOBILE, f))]).toEqual([f, false]);
+    }
+  });
+
+  it("the root layout no longer mounts an overlay", () => {
+    expect(code(readMobile("app/_layout.tsx"))).not.toMatch(/AnimatedSplashOverlay/);
+  });
+
+  it("still hides the native splash once auth resolves", () => {
+    // The overlay used to be the only caller of hideAsync(). Without a
+    // replacement, preventAutoHideAsync() would strand every user on the
+    // splash screen.
+    const layout = code(readMobile("app/_layout.tsx"));
+    expect(layout).toMatch(/SplashScreen\.preventAutoHideAsync\(\)/);
+    expect(layout).toMatch(/if \(!loading\) SplashScreen\.hideAsync\(\)/);
+  });
+});
