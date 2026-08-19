@@ -6,6 +6,12 @@ import { publishBlockers } from "@/lib/club/ranking";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
 import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
 import { validateBookingPreferences, type BookingPreferences } from "@/lib/club/booking-preferences";
+import {
+  ensureConnectAccount,
+  createOnboardingLink,
+  createDashboardLink,
+  refreshAccountState,
+} from "@/lib/club/stripe-connect";
 
 // Every write a coach can make to their own marketplace presence.
 //
@@ -579,4 +585,83 @@ export async function updateBookingPreferences(
 
   revalidateCoach();
   return { ok: true };
+}
+
+type LinkResult = { ok: true; url: string } | { ok: false; error: string };
+
+/** Starts (or resumes) Stripe Connect onboarding and returns the hosted
+ * link to send the coach to.
+ *
+ * Onboarding links are single-use and expire in minutes, so one is minted
+ * per click rather than stored. Stripe collects identity, bank details and
+ * tax information itself — none of it passes through us. */
+export async function startPayoutOnboarding(origin: string): Promise<LinkResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return { ok: false, error: "Please sign in again." };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const admin = createServiceClient();
+  try {
+    const accountId = await ensureConnectAccount(
+      admin,
+      coach.id,
+      user?.email,
+      CLUB_MARKET.countryCode
+    );
+    const url = await createOnboardingLink(
+      accountId,
+      `${origin}/payouts/return`,
+      `${origin}/payouts/refresh`
+    );
+    return { ok: true, url };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach Stripe." };
+  }
+}
+
+/** Link into Stripe's Express dashboard, where a coach changes their bank
+ * details and sees payouts. */
+export async function openPayoutDashboard(): Promise<LinkResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return { ok: false, error: "Please sign in again." };
+
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("coach_profiles")
+    .select("stripe_account_id")
+    .eq("id", coach.id)
+    .maybeSingle();
+  if (!data?.stripe_account_id) return { ok: false, error: "Set up payouts first." };
+
+  try {
+    return { ok: true, url: await createDashboardLink(data.stripe_account_id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach Stripe." };
+  }
+}
+
+/** Re-reads the account from Stripe. Called when a coach returns from
+ * onboarding, and available as a manual retry — Stripe can take a moment
+ * to finish verifying after the coach is redirected back. */
+export async function refreshPayoutStatus(): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+  const { data } = await admin
+    .from("coach_profiles")
+    .select("stripe_account_id")
+    .eq("id", coach.id)
+    .maybeSingle();
+  if (!data?.stripe_account_id) return { ok: false, error: "Payouts haven't been set up yet." };
+
+  try {
+    await refreshAccountState(admin, coach.id, data.stripe_account_id);
+    revalidateCoach();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach Stripe." };
+  }
 }

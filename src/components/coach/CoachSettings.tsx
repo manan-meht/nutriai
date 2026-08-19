@@ -6,6 +6,7 @@ import { CoachPhotoSection } from "./CoachPhotoSection";
 import { CoachLocationMap } from "./CoachLocationMap";
 import { AddressSearch } from "./AddressSearch";
 import { BOUNDS, describeCancellationPolicy } from "@/lib/club/booking-preferences";
+import { PayoutsSection, type PayoutState } from "./PayoutsSection";
 import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
 import {
   updateCoachProfile,
@@ -40,6 +41,7 @@ export interface SettingsData {
   };
   /** Signed URLs — the bucket is private, so these expire. */
   gallery: Array<{ id: string; url: string }>;
+  payouts: PayoutState;
   bookingPreferences: {
     bufferBeforeMinutes: number;
     bufferAfterMinutes: number;
@@ -91,6 +93,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
       <LocationSection location={data.location} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
       <BookingPreferencesSection preferences={data.bookingPreferences} />
+      <PayoutsSection state={data.payouts} />
     </div>
   );
 }

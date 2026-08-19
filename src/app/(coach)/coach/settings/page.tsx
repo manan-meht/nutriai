@@ -5,6 +5,7 @@ import { CoachPageHeader } from "@/components/coach/CoachShell";
 import { CoachSettings, type SettingsData } from "@/components/coach/CoachSettings";
 import { publishBlockers } from "@/lib/club/ranking";
 import { resolveSignedCoachPhotoUrl, resolveSignedCoachPhotoUrls } from "@/lib/club/media";
+import { getPlatformFeePercent } from "@/lib/club/platform-fee";
 
 // Coach profile / onboarding. This route is also the landing place for a
 // brand-new coach: /coach/dashboard redirects here when no coach_profiles
@@ -20,7 +21,7 @@ export default async function CoachSettingsPage() {
   // click "become a coach" before they can enter anything.
   let { data: coach } = await admin
     .from("coach_profiles")
-    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -33,7 +34,7 @@ export default async function CoachSettingsPage() {
         display_name: profile?.full_name?.trim() || "New coach",
         status: "draft",
       })
-      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
       .single();
     coach = created;
   }
@@ -78,6 +79,12 @@ export default async function CoachSettingsPage() {
       yearsCoaching: coach.years_coaching,
       status: coach.status,
       photoUrl: signedPortrait ?? null,
+    },
+    payouts: {
+      status: coach.stripe_onboarding_status,
+      payoutsEnabled: coach.stripe_payouts_enabled,
+      hasAccount: !!coach.stripe_account_id,
+      feePercent: await getPlatformFeePercent(admin),
     },
     bookingPreferences: {
       bufferBeforeMinutes: coach.buffer_before_minutes,

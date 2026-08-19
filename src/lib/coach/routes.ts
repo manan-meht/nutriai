@@ -20,6 +20,7 @@ export const COACH_APP_SEGMENTS = [
   "dashboard",
   "nutrition",
   "payments",
+  "payouts",
   "sessions",
   "settings",
 ] as const;

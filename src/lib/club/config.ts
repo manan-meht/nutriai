@@ -87,7 +87,10 @@ export const CLUB_BRANDING = {
  * short-lived signed URLs server-side, never exposed raw. */
 export const COACH_MEDIA_BUCKET = "coach-media";
 
-export const DEFAULT_PLATFORM_FEE_PERCENT = Number(process.env.MARKETPLACE_PLATFORM_FEE_PERCENT ?? "15");
+/** Fallback platform fee. The live value comes from club_platform_fees
+ * (see getPlatformFeePercent) so a change is dated and auditable rather
+ * than a redeploy — this is only used when that read is unavailable. */
+export const DEFAULT_PLATFORM_FEE_PERCENT = Number(process.env.MARKETPLACE_PLATFORM_FEE_PERCENT ?? "1");
 
 /** How long a checkout holds a slot. Server-controlled (spec). */
 export const BOOKING_HOLD_MINUTES = Number(process.env.CLUB_BOOKING_HOLD_MINUTES ?? "10");
