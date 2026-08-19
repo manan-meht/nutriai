@@ -156,3 +156,23 @@ describe("the charge structure behind the 90%", () => {
     expect(params.currency).toBe("sgd");
   });
 });
+
+describe("a coach can find payout setup", () => {
+  it("the payments page offers real setup, not a disabled placeholder", () => {
+    const payments = src("components/coach/CoachPayments.tsx");
+    expect(payments).toMatch(/PayoutsSection/);
+    // The dead button that started this was disabled and labelled as
+    // unavailable long after it shipped. Checked against code with
+    // comments stripped, since the comment there explains the history.
+    const code = payments.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/coming soon/i);
+    expect(code).not.toMatch(/cursor-not-allowed/);
+  });
+
+  it("the dashboard checklist links each blocker to where it's done", () => {
+    const dash = src("components/coach/CoachDashboard.tsx");
+    expect(dash).toMatch(/blockerHref/);
+    // Payouts live on their own screen, not in settings.
+    expect(dash).toMatch(/\/payout\/i\.test\(blocker\) \? "\/payments"/);
+  });
+});
