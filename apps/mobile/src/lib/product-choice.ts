@@ -1,6 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
 
-// Persists which dashboard (adults/gym) an account with BOTH workspaces
+// Vestigial as of Aug 2026: nothing writes a choice any more, because the
+// app has a single product. clearLastDashboardChoice() is kept and still
+// called on sign-out so a value stored by an older build is purged from the
+// device rather than lingering in SecureStore forever.
+//
+// Originally: persisted which dashboard (adults/gym) an account with BOTH workspaces
 // last chose, so reopening the app goes straight there instead of showing
 // "Which dashboard?" (see (app)/index.tsx) every single cold start —
 // lib/product-intent.ts's in-memory pendingProduct only survives the

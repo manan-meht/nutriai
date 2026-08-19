@@ -114,3 +114,42 @@ describe("mobile app auth screens offer no coach path", () => {
     expect(readMobile("app/login.tsx")).toMatch(/Redirect href="\/select-product"/);
   });
 });
+
+// The Tistra Health mobile app carries no coaching product at all as of
+// Aug 2026 — coaching is getting its own app. The screens, the routing
+// arbitration between two dashboards, the API surface and the types are
+// all gone, not merely hidden behind a picker that no longer offers them.
+describe("mobile app carries no coaching product", () => {
+  it("has no gym screens", () => {
+    expect(fs.existsSync(path.join(MOBILE, "app", "(app)", "gym"))).toBe(false);
+  });
+
+  it("registers no gym route in the authenticated stack", () => {
+    expect(code(readMobile("app/(app)/_layout.tsx"))).not.toMatch(/name="gym"/);
+  });
+
+  it("routes straight to adults instead of arbitrating between dashboards", () => {
+    const router = code(readMobile("app/(app)/index.tsx"));
+    expect(router).not.toMatch(/href="\/gym"/);
+    expect(router).not.toMatch(/saveLastDashboardChoice/);
+    expect(router).toMatch(/if \(adults\) return <Redirect href="\/adults" \/>;/);
+  });
+
+  it("exposes no gym endpoints on the API client", () => {
+    const api = code(readMobile("lib/api.ts"));
+    for (const method of ["getGymWorkspace", "getGymClients", "createGymClient", "updateGymClient", "removeGymClient", "getGymClientDetails", "getRemovedGymClients"]) {
+      expect([method, api.includes(method)]).toEqual([method, false]);
+    }
+  });
+
+  it("narrows the product types to the two adult products", () => {
+    expect(code(readMobile("components/product-picker.tsx"))).toMatch(/ProductKey = 'self' \| 'family';/);
+    expect(code(readMobile("lib/product-intent.ts"))).toMatch(/PendingProduct = 'self' \| 'family';/);
+  });
+
+  it("counts only adults meals toward the dynamic app icon", () => {
+    // The icon summed a coaching workspace's client meals too; leaving that
+    // in would call an endpoint the app no longer ships a screen for.
+    expect(code(readMobile("lib/dynamic-app-icon.ts"))).not.toMatch(/getGymClients|products\.gym/);
+  });
+});
