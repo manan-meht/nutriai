@@ -87,7 +87,9 @@ describe("map provider and key handling", () => {
     // "Map is not a constructor". Awaiting importLibrary is what actually
     // guarantees the classes exist.
     expect(map).toMatch(/importLibrary\("maps"\)/);
-    expect(map).toMatch(/importLibrary\("marker"\)/);
+    // Marker has moved between libraries across Maps versions; asking the
+    // wrong one yields undefined and fails later as "not a constructor".
+    expect(map).toMatch(/maps\.Marker \?\? g\(\)\.maps\.Marker/);
   });
 
   it("loads the Maps JS API once, even if asked twice", () => {
@@ -108,6 +110,10 @@ describe("map provider and key handling", () => {
 
   it("degrades to the address field when the map cannot load", () => {
     expect(map).toMatch(/couldn&rsquo;t load/);
+    // Naming the cause matters: "it failed" leaves a coach with nothing
+    // to act on, and the two causes have different fixes.
+    expect(map).toMatch(/"no-key"/);
+    expect(map).toMatch(/"blocked"/);
   });
 
   it("keeps the pin private to the coach", () => {

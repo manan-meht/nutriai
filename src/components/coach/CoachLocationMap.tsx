@@ -60,11 +60,20 @@ function loadGoogleMaps(): Promise<MapsApi> {
       });
     }
 
-    const [maps, marker] = await Promise.all([
-      g().maps.importLibrary("maps"),
-      g().maps.importLibrary("marker"),
-    ]);
-    return { Map: maps.Map, Circle: maps.Circle, Marker: marker.Marker };
+    const maps = await g().maps.importLibrary("maps");
+
+    // The legacy Marker has moved between libraries across Maps versions,
+    // and asking for a library that doesn't provide it yields undefined
+    // rather than an error — which then fails later as "not a constructor",
+    // far from the cause. Take it from wherever it actually is.
+    let Marker = maps.Marker ?? g().maps.Marker;
+    if (!Marker) {
+      const markerLib = await g().maps.importLibrary("marker").catch(() => null);
+      Marker = markerLib?.Marker;
+    }
+    if (!maps.Map || !Marker) throw new Error("Maps libraries loaded without Map/Marker");
+
+    return { Map: maps.Map, Circle: maps.Circle ?? g().maps.Circle, Marker };
   })().catch((err) => {
     // Let a later attempt retry rather than caching the failure forever.
     mapsPromise = null;
@@ -95,19 +104,32 @@ export function CoachLocationMap({
   onChangeRef.current = onChange;
 
   const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<null | "no-key" | "blocked">(null);
   const [locating, setLocating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!BROWSER_KEY) { setFailed(true); return; }
+      if (!BROWSER_KEY) {
+        console.error(
+          "[map] NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY is not set in this build. " +
+            "NEXT_PUBLIC_* values are inlined at build time, so the dev server " +
+            "must be restarted after adding it."
+        );
+        if (!cancelled) setFailure("no-key");
+        return;
+      }
       let api: MapsApi;
       try {
         api = await loadGoogleMaps();
-      } catch {
-        if (!cancelled) setFailed(true);
+      } catch (err) {
+        // Overwhelmingly this is a browser extension blocking
+        // maps.googleapis.com, or the key's referrer restriction not
+        // covering this origin. Both look identical from here, so say so
+        // rather than leaving a dead end.
+        console.error("[map] Google Maps failed to load:", err);
+        if (!cancelled) setFailure("blocked");
         return;
       }
       if (cancelled || !containerRef.current || mapRef.current) return;
@@ -233,7 +255,7 @@ export function CoachLocationMap({
         <button
           type="button"
           onClick={useMyLocation}
-          disabled={locating || failed}
+          disabled={locating || failure !== null}
           className="rounded-full border px-4 py-2 text-sm font-medium disabled:opacity-60"
           style={{ borderColor: T.outlineVariant }}
         >
@@ -244,13 +266,21 @@ export function CoachLocationMap({
         </span>
       </div>
 
-      {failed ? (
+      {failure ? (
         <div
-          className="flex h-32 items-center justify-center rounded-2xl border border-dashed px-4 text-center text-sm"
+          className="rounded-2xl border border-dashed px-4 py-5 text-center text-sm"
           style={{ borderColor: T.outlineVariant, color: T.onSurfaceVariant }}
         >
-          The map couldn&rsquo;t load. You can still search for your address above, or type your
-          neighbourhood below.
+          <p className="font-medium" style={{ color: T.onSurface }}>The map couldn&rsquo;t load.</p>
+          <p className="mx-auto mt-1.5 max-w-md">
+            {failure === "no-key"
+              ? "No Maps key is configured for this build."
+              : "It was blocked before it could start — usually an ad or privacy blocker stopping maps.googleapis.com, or the key not allowing this address."}
+          </p>
+          <p className="mt-2 text-xs">
+            Address search still works, and you can type your neighbourhood below. See the browser
+            console for the exact reason.
+          </p>
         </div>
       ) : (
         <div
