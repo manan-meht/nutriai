@@ -1,4 +1,7 @@
-const APEX_DOMAIN = "tistrahealth.com";
+/** Every registrable domain this app serves. A session is shared across
+ * the subdomains of ONE of these, never between them — different eTLD+1s
+ * cannot share a cookie, and the browser rejects the attempt outright. */
+const APEX_DOMAINS = ["tistrahealth.com", "tistra.club"] as const;
 
 /** Scopes the Supabase auth cookie to the shared parent domain when the
  * request is actually on a *.tistrahealth.com host, so a session started
@@ -18,8 +21,8 @@ const APEX_DOMAIN = "tistrahealth.com";
 export function getCookieDomain(hostname: string | null | undefined): string | undefined {
   if (!hostname) return undefined;
   const host = hostname.split(":")[0].toLowerCase();
-  if (host === APEX_DOMAIN || host.endsWith(`.${APEX_DOMAIN}`)) {
-    return `.${APEX_DOMAIN}`;
+  for (const apex of APEX_DOMAINS) {
+    if (host === apex || host.endsWith(`.${apex}`)) return `.${apex}`;
   }
   return undefined;
 }

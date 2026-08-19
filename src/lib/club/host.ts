@@ -48,3 +48,15 @@ export function isClubWwwHost(hostname: string | null | undefined): boolean {
  * so this never points at a domain that isn't answering yet. */
 export const CLUB_CANONICAL_ORIGIN =
   process.env.NEXT_PUBLIC_CLUB_ORIGIN ?? "https://club.tistrahealth.com";
+
+/** Tistra Coach's own home. Coaching is a separate product from Tistra
+ * Health and is no longer served from that domain. */
+export const COACH_CANONICAL_ORIGIN =
+  process.env.NEXT_PUBLIC_COACH_ORIGIN ?? "https://coach.tistra.club";
+
+/** The old coach subdomain on the Health domain, kept alive as a redirect
+ * so existing links, bookmarks and any Supabase entry still land somewhere
+ * correct rather than 404ing. */
+export function isLegacyCoachHost(hostname: string | null | undefined): boolean {
+  return normalizeHost(hostname) === "coach.tistrahealth.com";
+}

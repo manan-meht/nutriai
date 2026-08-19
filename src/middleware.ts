@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
-import { isClubHost, isClubWwwHost, CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { isClubHost, isClubWwwHost, isLegacyCoachHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -49,6 +49,16 @@ export async function middleware(request: NextRequest) {
   // Auth, API, static assets and legal pages are shared across products and
   // must resolve to their real paths on every host.
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+
+  // Coaching moved off the Health domain entirely. Send the whole old host
+  // across, preserving path and query so a deep link (or an in-flight OAuth
+  // callback) lands where it was going.
+  if (isLegacyCoachHost(host)) {
+    return NextResponse.redirect(
+      `${COACH_CANONICAL_ORIGIN}${request.nextUrl.pathname}${request.nextUrl.search}`,
+      308
+    );
+  }
 
   if (isClubWwwHost(host)) {
     const url = request.nextUrl.clone();
