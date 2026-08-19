@@ -18,7 +18,7 @@ export default async function CoachClientPage({
 
   const admin = createServiceClient();
   const coach = await getCoachProfile(admin, user.id);
-  if (!coach) redirect("/coach/settings");
+  if (!coach) redirect("/settings");
 
   // A coach may only view someone they actually have a relationship with.
   const { data: rel } = await admin
@@ -54,7 +54,7 @@ export default async function CoachClientPage({
 
   return (
     <CoachShell active="clients" coachName={coach.displayName} photoUrl={coach.photoUrl}>
-      <Link href="/coach/clients" className="mb-4 inline-block text-sm" style={{ color: "#4A4455" }}>
+      <Link href="/clients" className="mb-4 inline-block text-sm" style={{ color: "#4A4455" }}>
         ← Back to clients
       </Link>
       <CoachPageHeader title={prof?.full_name ?? "Client"} />

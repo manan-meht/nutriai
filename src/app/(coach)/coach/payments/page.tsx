@@ -11,7 +11,7 @@ export default async function CoachPaymentsPage() {
 
   const admin = createServiceClient();
   const profile = await getCoachProfile(admin, user.id);
-  if (!profile) redirect("/coach/settings");
+  if (!profile) redirect("/settings");
 
   const payments = await getCoachPayments(admin, user.id);
 

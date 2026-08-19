@@ -27,7 +27,7 @@ const THEME = {
     // domain — and its home is the Coach OS, not the older
     // /gym/dashboard nutrition view.
     label: "Tistra Coach",
-    dashboardUrl: "/coach/dashboard",
+    dashboardUrl: "/dashboard",
     switchUrl: (mode: Mode) => (mode === "signin" ? "/gym/signup" : "/gym/login"),
   },
   adults: {

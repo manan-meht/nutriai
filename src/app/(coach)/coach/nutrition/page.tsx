@@ -44,7 +44,7 @@ export default async function CoachNutritionPage({
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?product=gym&next=%2Fcoach%2Fnutrition");
+  if (!user) redirect("/login?product=gym&next=%2Fnutrition");
 
   const { data: profileRow } = await supabase
     .from("profiles")
@@ -89,7 +89,7 @@ export default async function CoachNutritionPage({
           rather than assuming the list is broken. */}
       <p className="mb-6 text-sm" style={{ color: "#4A4455" }}>
         People you track by WhatsApp, whether or not they have booked with you.{" "}
-        <Link href="/coach/clients" className="underline underline-offset-2" style={{ color: "#630ED4" }}>
+        <Link href="/clients" className="underline underline-offset-2" style={{ color: "#630ED4" }}>
           Booking clients
         </Link>{" "}
         are listed separately.

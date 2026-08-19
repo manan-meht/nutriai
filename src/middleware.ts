@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { isClubHost, isClubWwwHost, isLegacyCoachHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { isCoachHost, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -76,6 +77,22 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/terms") ||
     /\.[a-z0-9]+$/i.test(pathname); // files (favicon, images, …)
+
+  // Coach OS from the root of the coach host, same shape as the club but
+  // limited to the app's own segments — /coach also has real marketing
+  // pages (/coach/india, /coach/add-users) that must keep working.
+  if (isCoachHost(host) && !isSharedPath) {
+    if (isPrefixedCoachAppPath(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname.slice("/coach".length);
+      return NextResponse.redirect(url, 308);
+    }
+    if (isCoachAppPath(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/coach${pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
 
   if (isClubHost(host)) {
     if (!isSharedPath) {

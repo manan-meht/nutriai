@@ -180,3 +180,48 @@ describe("coach product lives on its own domain", () => {
     expect(getCookieDomain("example.com")).toBeUndefined();
   });
 });
+
+describe("Coach OS URLs carry no /coach prefix", () => {
+  const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf-8");
+  const { COACH_APP_SEGMENTS, isCoachAppPath, isPrefixedCoachAppPath, isCoachHost } = require("@/lib/coach/routes");
+
+  it("the segment list matches the actual route directories", () => {
+    // If a new Coach OS section is added without updating the list, its
+    // clean URL would 404 while /coach/<section> quietly kept working.
+    const dir = path.join(__dirname, "..", "app", "(coach)", "coach");
+    const actual = fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    expect([...COACH_APP_SEGMENTS].sort()).toEqual(actual);
+  });
+
+  it("maps app paths but leaves marketing pages alone", () => {
+    expect(isCoachAppPath("/dashboard")).toBe(true);
+    expect(isCoachAppPath("/clients/abc")).toBe(true);
+    // /coach/india and /coach/add-users are real marketing pages; sweeping
+    // the whole prefix would send them to /india and /add-users.
+    expect(isPrefixedCoachAppPath("/coach/india")).toBe(false);
+    expect(isPrefixedCoachAppPath("/coach/add-users")).toBe(false);
+    expect(isPrefixedCoachAppPath("/coach/dashboard")).toBe(true);
+    expect(isCoachAppPath("/")).toBe(false);
+    expect(isCoachAppPath("/pricing")).toBe(false);
+  });
+
+  it("recognises the coach host and not the club", () => {
+    expect(isCoachHost("coach.tistra.club")).toBe(true);
+    expect(isCoachHost("tistra.club")).toBe(false);
+  });
+
+  it("Coach OS components link without the prefix", () => {
+    for (const f of fs.readdirSync(path.join(__dirname, "..", "components", "coach"))) {
+      if (!f.endsWith(".tsx")) continue;
+      expect([f, /["`]\/coach\//.test(read(path.join("components", "coach", f)))]).toEqual([f, false]);
+    }
+  });
+
+  it("sign-in lands a coach on the clean dashboard URL", () => {
+    expect(read("components/auth/AuthForm.tsx")).toMatch(/dashboardUrl: "\/dashboard"/);
+    expect(read("app/(public)/login/page.tsx")).toMatch(/isCoachHost\(hostname\) \? "\/dashboard"/);
+  });
+});

@@ -36,7 +36,7 @@ export function SessionDetail({
           <Row
             label="Client"
             value={
-              <Link href={`/coach/clients/${booking.clientProfileId}`} style={{ color: T.primary }}>
+              <Link href={`/clients/${booking.clientProfileId}`} style={{ color: T.primary }}>
                 {booking.clientName}
               </Link>
             }

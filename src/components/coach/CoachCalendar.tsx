@@ -56,15 +56,15 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
         title="Calendar"
         action={
           <div className="flex items-center gap-2">
-            <NavLink href={`/coach/calendar?week=${prev}`} label="Previous week">←</NavLink>
+            <NavLink href={`/calendar?week=${prev}`} label="Previous week">←</NavLink>
             <Link
-              href="/coach/calendar"
+              href="/calendar"
               className="rounded-full border px-4 py-2 text-sm font-medium"
               style={{ borderColor: T.outlineVariant }}
             >
               Today
             </Link>
-            <NavLink href={`/coach/calendar?week=${next}`} label="Next week">→</NavLink>
+            <NavLink href={`/calendar?week=${next}`} label="Next week">→</NavLink>
           </div>
         }
       />
@@ -124,7 +124,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
                     return (
                       <Link
                         key={s.id}
-                        href={`/coach/sessions/${s.id}`}
+                        href={`/sessions/${s.id}`}
                         className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1.5 text-[11px] leading-tight"
                         style={{
                           top: `${top}%`,
