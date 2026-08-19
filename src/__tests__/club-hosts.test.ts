@@ -140,3 +140,43 @@ describe("middleware canonicalises club URLs", () => {
     }
   });
 });
+
+// Coaching is a separate product from Tistra Health and moved off that
+// domain entirely (Aug 2026). coach.tistrahealth.com survives only as a
+// redirect, so existing links, bookmarks and in-flight OAuth callbacks land
+// somewhere correct instead of 404ing.
+describe("coach product lives on its own domain", () => {
+  const read = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf-8");
+
+  it("resolves coach.tistra.club to the coach product", () => {
+    const { resolveProductFromHostnameOnly, getProductDomain } = require("@/lib/product/resolve-product");
+    expect(resolveProductFromHostnameOnly("coach.tistra.club")).toBe("gym");
+    expect(getProductDomain("gym")).toBe("coach.tistra.club");
+  });
+
+  it("still resolves the old host, so a stale link reaches the right product", () => {
+    const { resolveProductFromHostnameOnly } = require("@/lib/product/resolve-product");
+    expect(resolveProductFromHostnameOnly("coach.tistrahealth.com")).toBe("gym");
+  });
+
+  it("does not mistake the coach subdomain for the club", () => {
+    // tistra.club is the club; coach.tistra.club is a different product on
+    // the same registrable domain.
+    expect(isClubHost("coach.tistra.club")).toBe(false);
+  });
+
+  it("redirects the whole legacy host, preserving path and query", () => {
+    const mw = read("middleware.ts");
+    expect(mw).toMatch(/isLegacyCoachHost\(host\)/);
+    expect(mw).toMatch(/COACH_CANONICAL_ORIGIN\}\$\{request\.nextUrl\.pathname\}\$\{request\.nextUrl\.search\}/);
+  });
+
+  it("shares a session across each registrable domain, never between them", () => {
+    const { getCookieDomain } = require("@/lib/supabase/cookie-domain");
+    expect(getCookieDomain("coach.tistra.club")).toBe(".tistra.club");
+    expect(getCookieDomain("tistra.club")).toBe(".tistra.club");
+    expect(getCookieDomain("coach.tistrahealth.com")).toBe(".tistrahealth.com");
+    // A different eTLD+1 cannot share a cookie; the browser rejects it.
+    expect(getCookieDomain("example.com")).toBeUndefined();
+  });
+});

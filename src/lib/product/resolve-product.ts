@@ -1,6 +1,11 @@
 import type { ProductType } from "@/types";
 
 const GYM_DOMAINS = new Set([
+  // Tistra Coach's own home. Coaching is a separate product from Tistra
+  // Health and no longer sits on that domain at all (Aug 2026); the old
+  // subdomain is kept here only so a stale link still resolves to the right
+  // product before the middleware redirects it across.
+  "coach.tistra.club",
   "coach.tistrahealth.com",
   "gym.nutritionplatform.com",
   "brand-gym.com",
@@ -63,7 +68,7 @@ export function resolveProductFromHostname(
  */
 export function getProductDomain(product: ProductType): string {
   if (product === "gym") {
-    return process.env.NEXT_PUBLIC_GYM_DOMAIN ?? "coach.tistrahealth.com";
+    return process.env.NEXT_PUBLIC_GYM_DOMAIN ?? "coach.tistra.club";
   }
   return process.env.NEXT_PUBLIC_FAMILY_DOMAIN ?? "family.tistrahealth.com";
 }
