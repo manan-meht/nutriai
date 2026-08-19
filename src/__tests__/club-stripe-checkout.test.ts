@@ -98,3 +98,19 @@ describe("the mock is never mistaken for a live payment", () => {
     );
   });
 });
+
+describe("return URLs use the request's scheme", () => {
+  const page = src("app/(club)/club/checkout/[holdId]/page.tsx");
+
+  it("does not hardcode https", () => {
+    // Hardcoding it sent Stripe's return URL to https://localhost:3001,
+    // which has no TLS: the card was charged and the client landed on a
+    // browser error with no booking. Found by paying for real.
+    expect(page).not.toMatch(/`https:\/\/\$\{/);
+  });
+
+  it("derives the scheme from the proxy header, falling back by host", () => {
+    expect(page).toMatch(/x-forwarded-proto/);
+    expect(page).toMatch(/isLocalDevHost\(host\) \? "http" : "https"/);
+  });
+});

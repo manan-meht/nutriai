@@ -5,6 +5,7 @@ import { HoldCountdown } from "@/components/club/HoldCountdown";
 import { payAction, startBookingCheckout, releaseHoldAction } from "../../actions";
 import { stripeCheckoutConfigured } from "@/lib/club/checkout-session";
 import { headers } from "next/headers";
+import { isLocalDevHost } from "@/lib/club/host";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
 
@@ -51,7 +52,13 @@ export default async function CheckoutPage({
   if (!coach || !service) redirect("/");
 
   const live = stripeCheckoutConfigured() && !!coach.stripe_account_id && coach.stripe_payouts_enabled;
-  const origin = `https://${(await headers()).get("host") ?? "tistra.club"}`;
+  // Scheme comes from the request, not a constant. Hardcoding https sent
+  // Stripe's return URL to https://localhost:3001, which has no TLS — the
+  // payment succeeded and the client landed on a browser error.
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "tistra.club";
+  const proto = requestHeaders.get("x-forwarded-proto") ?? (isLocalDevHost(host) ? "http" : "https");
+  const origin = `${proto}://${host}`;
 
   return (
     <ClubChrome hideNav>
