@@ -231,7 +231,7 @@ function ServicesSection({
   const [, startToggle] = useTransition();
 
   return (
-    <Section title="Services" description="What clients can book, and what it costs.">
+    <Section title="Services and Classes" description="What clients can book, and what it costs.">
       {services.length > 0 && (
         <ul className="mb-4 flex flex-col gap-2">
           {services.map((s) => (
@@ -262,7 +262,7 @@ function ServicesSection({
 
       {adding ? (
         <div className="flex flex-col gap-4 rounded-xl border p-4" style={{ borderColor: T.outlineVariant }}>
-          <Field label="Service name" hint="e.g. Handstand Foundations">
+          <Field label="Service or Class name" hint="e.g. Handstand Foundations">
             <Input value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
           </Field>
           <Field label="Skill">
@@ -289,7 +289,7 @@ function ServicesSection({
           <Checkbox
             checked={draft.travel}
             onChange={(v) => setDraft({ ...draft, travel: v })}
-            label="I'll travel to the client for this service"
+            label="I'll travel to the client for this"
           />
           {error && <ErrorNote>{error}</ErrorNote>}
           <div className="flex gap-3">
@@ -326,7 +326,7 @@ function ServicesSection({
           </div>
         </div>
       ) : (
-        <Button variant="secondary" onClick={() => setAdding(true)}>Add another service</Button>
+        <Button variant="secondary" onClick={() => setAdding(true)}>Add another</Button>
       )}
     </Section>
   );

@@ -123,7 +123,7 @@ export function publishBlockers(input: {
   if (!input.hasPhoto) blockers.push("Add a profile photo");
   if (!input.hasBio) blockers.push("Write a short introduction");
   if (input.skillCount === 0) blockers.push("Select at least one skill");
-  if (input.serviceCount === 0) blockers.push("Create at least one service");
+  if (input.serviceCount === 0) blockers.push("Add at least one service or class");
   if (!input.hasLocation) blockers.push("Add where you coach");
   if (!input.hasAvailability) blockers.push("Set your weekly availability");
   if (!input.payoutsEnabled) blockers.push("Finish payout setup to accept bookings");
