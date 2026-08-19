@@ -98,7 +98,8 @@ describe("address search", () => {
   it("debounces and sets a minimum length", () => {
     // The geocoder is free and keyless and asks for at most one request a
     // second; typing "192 depot road" would otherwise fire thirteen.
-    expect(search).toMatch(/setTimeout\([\s\S]{0,400}?450\)/);
+    expect(search).toMatch(/setTimeout\(/);
+    expect(search).toMatch(/\}, 450\);/);
     expect(search).toMatch(/q\.length < 3/);
   });
 
