@@ -125,11 +125,24 @@ describe("address search", () => {
   const search = src("components/coach/AddressSearch.tsx");
 
   it("debounces and sets a minimum length", () => {
-    // The geocoder is free and keyless and asks for at most one request a
-    // second; typing "192 depot road" would otherwise fire thirteen.
+    // Places searchText is billed per request, so an undebounced field
+    // turns typing one address into a dozen charges.
     expect(search).toMatch(/setTimeout\(/);
-    expect(search).toMatch(/\}, 450\);/);
-    expect(search).toMatch(/q\.length < 3/);
+    expect(search).toMatch(/\}, 600\);/);
+    expect(search).toMatch(/q\.length < MIN_SEARCH_LENGTH/);
+  });
+
+  it("caches identical searches so backspacing is free", () => {
+    const g = src("lib/club/geocode.ts");
+    expect(g).toMatch(/readCache\(cacheKey\)/);
+    expect(g).toMatch(/writeCache\(cacheKey, results\)/);
+    expect(g).toMatch(/CACHE_TTL_MS/);
+  });
+
+  it("bounds the cache so it cannot grow without limit", () => {
+    const g = src("lib/club/geocode.ts");
+    expect(g).toMatch(/CACHE_MAX_ENTRIES/);
+    expect(g).toMatch(/cache\.delete\(oldest\)/);
   });
 
   it("discards a stale response instead of rendering it", () => {

@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CLUB_TOKENS as T } from "./tokens";
-import type { AddressSuggestion } from "@/lib/club/geocode";
+import { MIN_SEARCH_LENGTH, type AddressSuggestion } from "@/lib/club/geocode";
 
 // Address search for "Where you coach".
 //
-// Debounced to 450ms with a 3-character minimum: the geocoder is a free,
-// keyless service that asks for at most one request a second, and typing
-// "192 depot road" would otherwise fire thirteen searches.
+// Debounced to 600ms with a 4-character minimum. Places "searchText" is
+// billed per request, so an undebounced field turns typing an address into
+// a dozen charges; identical queries are also cached server-side, which
+// covers the backspace-and-retype pattern.
 //
 // Requests are sequenced, and a stale response is discarded rather than
 // rendered — without that, a slow early request can land after a fast later
@@ -29,7 +30,7 @@ export function AddressSearch({
 
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3) {
+    if (q.length < MIN_SEARCH_LENGTH) {
       setResults([]);
       setNoResults(false);
       return;
@@ -52,7 +53,7 @@ export function AddressSearch({
       } finally {
         if (id === requestId.current) setSearching(false);
       }
-    }, 450);
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [query]);

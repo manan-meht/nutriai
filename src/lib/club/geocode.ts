@@ -100,13 +100,56 @@ function componentValue(components: any[], type: string): string | null {
  * doesn't return the same road on another continent. */
 export async function searchAddress(query: string, limit = 5): Promise<AddressSuggestion[]> {
   const q = query.trim();
-  if (q.length < 3) return [];
+  if (q.length < MIN_SEARCH_LENGTH) return [];
   const key = serverKey();
   if (!key) return [];
 
+  const cacheKey = q.toLowerCase();
+  const hit = readCache(cacheKey);
+  if (hit) return hit;
+
   const viaPlaces = await searchWithPlaces(q, limit, key);
-  if (viaPlaces !== null) return viaPlaces;
-  return searchWithGeocoding(q, limit, key);
+  const results = viaPlaces !== null ? viaPlaces : await searchWithGeocoding(q, limit, key);
+  writeCache(cacheKey, results);
+  return results;
+}
+
+/** Below this, a query is too vague to be worth a billed request. */
+export const MIN_SEARCH_LENGTH = 4;
+
+// Short-lived cache of identical searches.
+//
+// Places "searchText" is billed per request, and typing an address
+// generates a burst of near-identical ones — every backspace and retype
+// re-asks a question just answered. Caching by normalised query collapses
+// those. Scoped per server instance and deliberately small: this is a cost
+// and latency optimisation, not a store, and address data changing within
+// the TTL does not matter.
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 200;
+const cache = new Map<string, { at: number; results: AddressSuggestion[] }>();
+
+function readCache(key: string): AddressSuggestion[] | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.at > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  // Refresh recency so frequently used queries survive eviction.
+  cache.delete(key);
+  cache.set(key, entry);
+  return entry.results;
+}
+
+function writeCache(key: string, results: AddressSuggestion[]): void {
+  if (cache.size >= CACHE_MAX_ENTRIES) {
+    // Map preserves insertion order, so the first key is the least
+    // recently used given the refresh in readCache.
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, { at: Date.now(), results });
 }
 
 /** Returns null (rather than []) when Places is unavailable, so the caller
