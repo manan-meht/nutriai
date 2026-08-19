@@ -18,6 +18,25 @@ describe("account status mirrors Stripe", () => {
     expect(readAccountState({ charges_enabled: true, payouts_enabled: false, requirements: {} }).payoutsEnabled).toBe(false);
   });
 
+  it("calls a pending verification a review, not a rejection", () => {
+    // Stripe sets disabled_reason=requirements.pending_verification while
+    // it checks documents the coach already submitted. Reporting that as
+    // "disabled" tells a coach their payouts were paused when nothing is
+    // wrong and nothing is owed by them.
+    const state = readAccountState({
+      charges_enabled: true,
+      payouts_enabled: false,
+      details_submitted: true,
+      requirements: {
+        disabled_reason: "requirements.pending_verification",
+        currently_due: [],
+        pending_verification: ["individual.verification.proof_of_liveness"],
+      },
+    });
+    expect(state.status).toBe("restricted");
+    expect(state.payoutsEnabled).toBe(false);
+  });
+
   it("treats a disabled_reason as disabled whatever the other flags say", () => {
     const state = readAccountState({
       charges_enabled: true,

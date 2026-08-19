@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
+import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
 import { validateBookingPreferences, type BookingPreferences } from "@/lib/club/booking-preferences";
 import {
@@ -608,7 +609,8 @@ export async function startPayoutOnboarding(origin: string): Promise<LinkResult>
       admin,
       coach.id,
       user?.email,
-      CLUB_MARKET.countryCode
+      CLUB_MARKET.countryCode,
+      CLUB_CANONICAL_ORIGIN
     );
     const url = await createOnboardingLink(
       accountId,

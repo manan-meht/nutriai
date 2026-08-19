@@ -73,11 +73,26 @@ export function readAccountState(account: any): Omit<AccountState, "accountId"> 
   const due: string[] = [...(req.currently_due ?? []), ...(req.past_due ?? [])];
   const payoutsEnabled = account?.payouts_enabled === true && account?.charges_enabled === true;
 
+  // Order matters. A disabled_reason outranks the flags — Stripe can leave
+  // charges_enabled and payouts_enabled true on an account it has decided
+  // to stop paying out — except for pending_verification, which is a
+  // review in progress rather than a decision.
   let status: OnboardingStatus;
-  if (req.disabled_reason) status = "disabled";
-  else if (payoutsEnabled) status = "enabled";
-  else if (due.length > 0 || account?.details_submitted === false) status = "pending";
-  else status = "restricted";
+  if (req.disabled_reason === "requirements.pending_verification") {
+    // Stripe is checking documents the coach already submitted. Reporting
+    // this as "disabled" told a coach their payouts had been paused when
+    // nothing was wrong and nothing was owed by them — it clears on its
+    // own. It is a review, not a rejection.
+    status = "restricted";
+  } else if (req.disabled_reason) {
+    status = "disabled";
+  } else if (payoutsEnabled) {
+    status = "enabled";
+  } else if (due.length > 0 || account?.details_submitted === false) {
+    status = "pending";
+  } else {
+    status = "restricted";
+  }
 
   return { status, payoutsEnabled, requirements: due };
 }
@@ -87,15 +102,28 @@ export async function ensureConnectAccount(
   admin: SupabaseClient,
   coachProfileId: string,
   email: string | undefined,
-  country: string
+  country: string,
+  clubOrigin: string
 ): Promise<string> {
   const { data: coach } = await admin
     .from("coach_profiles")
-    .select("stripe_account_id")
+    .select("stripe_account_id, display_name, headline, status")
     .eq("id", coachProfileId)
     .maybeSingle();
 
   if (coach?.stripe_account_id) return coach.stripe_account_id;
+
+  // Stripe asks every account for a business website, which a
+  // self-employed coach almost never has — and being unable to answer is
+  // where onboarding stalls. Their Tistra Club profile IS their web
+  // presence: public, showing what they teach and what it costs, which is
+  // exactly what Stripe is looking for. Pre-filling it means the question
+  // is never put to them.
+  //
+  // An unpublished profile 404s, so the club homepage stands in until they
+  // go live rather than sending Stripe to a dead link during review.
+  const profileUrl =
+    coach?.status === "published" ? `${clubOrigin}/coaches/${coachProfileId}` : clubOrigin;
 
   const account = await stripe<any>("POST", "/accounts", {
     type: "express",
@@ -103,6 +131,16 @@ export async function ensureConnectAccount(
     email,
     capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
     business_type: "individual",
+    business_profile: {
+      name: coach?.display_name || undefined,
+      url: profileUrl,
+      // 7997: membership clubs, sports and recreation — what an in-person
+      // coaching session is, and it saves the coach guessing at a category.
+      mcc: "7997",
+      product_description:
+        coach?.headline?.trim() ||
+        "One-to-one and small-group coaching sessions booked through Tistra Club",
+    },
     metadata: { coach_profile_id: coachProfileId },
   });
 
