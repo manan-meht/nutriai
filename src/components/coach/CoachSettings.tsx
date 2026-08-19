@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { CLUB_TOKENS as T } from "./tokens";
 import { CoachPhotoSection } from "./CoachPhotoSection";
+import { CoachLocationMap } from "./CoachLocationMap";
 import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
 import {
   updateCoachProfile,
@@ -52,6 +53,8 @@ export interface SettingsData {
     label: string;
     neighbourhood: string | null;
     addressIsPublic: boolean;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   travel: { travelEnabled: boolean; maxTravelKm: number; travelBufferMinutes: number; serviceAreas: string[] } | null;
   availability: Array<{ weekday: number; startMinute: number; endMinute: number }>;
@@ -343,6 +346,8 @@ function LocationSection({
     label: location?.label ?? "",
     neighbourhood: location?.neighbourhood ?? "",
     addressIsPublic: location?.addressIsPublic ?? false,
+    latitude: location?.latitude ?? null as number | null,
+    longitude: location?.longitude ?? null as number | null,
   });
   const [travelForm, setTravelForm] = useState({
     enabled: travel?.travelEnabled ?? false,
@@ -357,6 +362,18 @@ function LocationSection({
       <Field label="Location name" hint="e.g. River Valley studio">
         <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
       </Field>
+
+      {/* Coordinates drive travel-aware availability: without them the
+          engine cannot tell whether a coach can physically reach a client
+          between sessions, and correctly refuses to guess. */}
+      <CoachLocationMap
+        value={form.latitude != null && form.longitude != null
+          ? { latitude: form.latitude, longitude: form.longitude }
+          : null}
+        radiusKm={travelForm.enabled ? Number(travelForm.maxKm) || null : null}
+        onChange={(next) => setForm((f) => ({ ...f, latitude: next.latitude, longitude: next.longitude }))}
+        onNeighbourhoodDetected={(n) => setForm((f) => (f.neighbourhood ? f : { ...f, neighbourhood: n }))}
+      />
       <Field label="Neighbourhood">
         <select
           value={form.neighbourhood}
@@ -438,6 +455,10 @@ function LocationSection({
               locationType: "COACH_LOCATION",
               neighbourhood: form.neighbourhood,
               addressIsPublic: form.addressIsPublic,
+              // Sent as undefined rather than null when unpinned, so an
+              // existing pin is never wiped by saving the rest of the form.
+              latitude: form.latitude ?? undefined,
+              longitude: form.longitude ?? undefined,
               isPrimary: true,
             });
             if (!locRes.ok) return locRes;

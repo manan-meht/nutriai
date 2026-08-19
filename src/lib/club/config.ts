@@ -51,6 +51,9 @@ export const CLUB_MARKET = {
   currency: process.env.CLUB_DEFAULT_CURRENCY ?? "SGD",
   timezone: process.env.CLUB_DEFAULT_TIMEZONE ?? "Asia/Singapore",
   locale: "en-SG",
+  /** Where a map opens before a coach has pinned anything. Central
+   * Singapore; a second market changes this alongside the list below. */
+  centre: { latitude: 1.3521, longitude: 103.8198 },
 } as const;
 
 /** Singapore neighbourhoods used for discovery chips and seed data. Held
