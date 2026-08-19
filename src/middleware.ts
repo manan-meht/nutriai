@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
+import { isClubHost, isClubWwwHost } from "@/lib/club/host";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -39,7 +40,17 @@ export async function middleware(request: NextRequest) {
   // Auth, static assets and API routes are excluded: they're shared across
   // every product and must resolve to their real paths.
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
-  if (host.startsWith("club.")) {
+
+  // www and the apex are separate origins to the cookie jar, so a visitor
+  // who signs in on one appears signed out on the other. Canonicalise
+  // before anything else looks at the host.
+  if (isClubWwwHost(host)) {
+    const url = request.nextUrl.clone();
+    url.host = "tistra.club";
+    return NextResponse.redirect(url, 308);
+  }
+
+  if (isClubHost(host)) {
     const { pathname } = request.nextUrl;
     const isShared =
       pathname.startsWith("/club") ||

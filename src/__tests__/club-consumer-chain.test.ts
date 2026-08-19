@@ -115,7 +115,8 @@ describe("club members reuse one identity", () => {
     const signup = fs.readFileSync(path.join(__dirname, "..", "app", "(public)", "signup", "page.tsx"), "utf-8");
     for (const src of [login, signup]) {
       expect(src).toContain("resolveAuthSurface");
-      expect(src).toContain('startsWith("club.")');
+      // Host detection lives in the shared isClubHost helper.
+      expect(src).toContain("isClubHost");
     }
   });
 });
@@ -153,7 +154,9 @@ describe("club sign-in lands somewhere sensible", () => {
 
   it.each([["login", login], ["signup", signup]])("%s picks the destination from the host", (_n, src) => {
     expect(src).toContain("defaultNextFor");
-    expect(src).toMatch(/startsWith\("club\."\)/);
+    // Host detection moved into the shared isClubHost helper when
+    // tistra.club was added — see club-hosts.test.ts.
+    expect(src).toMatch(/isClubHost\(hostname\)/);
   });
 
   it.each([["login", login], ["signup", signup]])("%s no longer hardcodes /club", (_n, src) => {
