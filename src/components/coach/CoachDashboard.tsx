@@ -221,6 +221,12 @@ function EmptyToday({ openSlots, published }: { openSlots: number; published: bo
   );
 }
 
+/** Where a coach goes to clear each blocker. Payouts have their own screen;
+ * everything else is a section of settings. */
+function blockerHref(blocker: string): string {
+  return /payout/i.test(blocker) ? "/payments" : "/settings";
+}
+
 function PublishChecklist({ blockers }: { blockers: string[] }) {
   return (
     <section
@@ -232,16 +238,21 @@ function PublishChecklist({ blockers }: { blockers: string[] }) {
         Finish these and you&apos;ll appear in search for people looking for your skills.
       </p>
       <ul className="mt-4 flex flex-col gap-2">
-        {blockers.map((b) => (
-          <li key={b} className="flex items-center gap-2.5 text-sm">
-            <span
-              aria-hidden="true"
-              className="inline-block h-4 w-4 shrink-0 rounded-full border"
-              style={{ borderColor: T.outline }}
-            />
-            {b}
-          </li>
-        ))}
+        {blockers.map((b) => {
+          // Each item links where it can actually be done. A checklist that
+          // only names what's missing makes the coach hunt for the screen.
+          const href = blockerHref(b);
+          return (
+            <li key={b} className="flex items-center gap-2.5 text-sm">
+              <span
+                aria-hidden="true"
+                className="inline-block h-4 w-4 shrink-0 rounded-full border"
+                style={{ borderColor: T.outline }}
+              />
+              <Link href={href} className="underline underline-offset-2">{b}</Link>
+            </li>
+          );
+        })}
       </ul>
       <Link
         href="/settings"

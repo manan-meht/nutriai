@@ -4,6 +4,7 @@ import { rankCoaches, type RankableCoach } from "./ranking";
 import { haversineKm } from "./travel/provider";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "./config";
 import { resolveCoachPhoto, resolveCoachGallery } from "./placeholder-photos";
+import { resolveSignedCoachPhotoUrl } from "./media";
 
 // Consumer-side discovery and booking reads.
 //
@@ -102,6 +103,16 @@ export async function discoverCoaches(
   // resolve to short-lived signed URLs server-side rather than handing a
   // storage path to the browser. Signing failures are dropped rather than
   // thrown, so one broken row can't blank a coach's whole card.
+  // A coach's own portrait is a path in the private bucket, exactly like
+  // their gallery — signing it here is what stops it rendering as a broken
+  // image the moment a coach uploads one.
+  const signedPortrait = new Map<string, string | undefined>();
+  await Promise.all(
+    rows.map(async (c: any) => {
+      signedPortrait.set(c.id, await resolveSignedCoachPhotoUrl(admin, c.photo_url));
+    })
+  );
+
   const signedMedia = new Map<string, string[]>();
   await Promise.all(
     [...mediaBy.entries()].map(async ([coachId, rows]) => {
@@ -175,10 +186,10 @@ export async function discoverCoaches(
       coachProfileId: c.id,
       displayName: c.display_name,
       headline: c.headline,
-      photoUrl: resolveCoachPhoto(c.photo_url, mySkills.map((s) => s.slug)),
+      photoUrl: resolveCoachPhoto(signedPortrait.get(c.id), mySkills.map((s) => s.slug)),
       photos: resolveCoachGallery(
         signedMedia.get(c.id) ?? [],
-        c.photo_url,
+        signedPortrait.get(c.id),
         mySkills.map((s) => s.slug)
       ),
       // Neighbourhood only — never the street address (privacy rule).
@@ -261,6 +272,8 @@ export async function getCoachPublicProfile(
     )
   ).filter((u): u is string => !!u);
 
+  const portrait = await resolveSignedCoachPhotoUrl(admin, c.photo_url);
+
   const skillSlugs = (skills.data ?? []).map((s: any) => {
     const k = Array.isArray(s.club_skills) ? s.club_skills[0] : s.club_skills;
     return k?.slug;
@@ -271,8 +284,8 @@ export async function getCoachPublicProfile(
     displayName: c.display_name,
     headline: c.headline,
     bio: c.bio,
-    photoUrl: resolveCoachPhoto(c.photo_url, skillSlugs),
-    photos: resolveCoachGallery(ownMedia, c.photo_url, skillSlugs, 5),
+    photoUrl: resolveCoachPhoto(portrait, skillSlugs),
+    photos: resolveCoachGallery(ownMedia, portrait, skillSlugs, 5),
     yearsCoaching: c.years_coaching,
     languages: Array.isArray(c.languages) ? c.languages : [],
     neighbourhood: primary?.neighbourhood ?? null,

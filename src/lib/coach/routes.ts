@@ -1,4 +1,5 @@
 import { resolveProductFromHostnameOnly } from "@/lib/product/resolve-product";
+import { isLocalDevHost } from "@/lib/club/host";
 
 // Coach OS is served from the ROOT of the coach host: a coach sees
 // coach.tistra.club/dashboard, not /coach/dashboard.
@@ -20,6 +21,7 @@ export const COACH_APP_SEGMENTS = [
   "dashboard",
   "nutrition",
   "payments",
+  "payouts",
   "sessions",
   "settings",
 ] as const;
@@ -29,6 +31,19 @@ const SEGMENTS = new Set<string>(COACH_APP_SEGMENTS);
 /** True when this host serves the coach product. */
 export function isCoachHost(hostname: string | null | undefined): boolean {
   return resolveProductFromHostnameOnly((hostname ?? "").split(":")[0].toLowerCase()) === "gym";
+}
+
+export { isLocalDevHost } from "@/lib/club/host";
+
+/** Whether Coach OS's clean URLs should resolve on this host.
+ *
+ * In production that means the coach host only — /dashboard on
+ * tistrahealth.com must not silently open the coach product. Locally it
+ * also means plain localhost, because the alternative is that every
+ * un-prefixed link in Coach OS 404s in development while working in
+ * production, which is a trap rather than a safeguard. */
+export function servesCoachApp(hostname: string | null | undefined): boolean {
+  return isCoachHost(hostname) || isLocalDevHost(hostname);
 }
 
 /** "/dashboard" or "/clients/abc" -> true; "/india" or "/" -> false. */

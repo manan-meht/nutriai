@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertHoldToBooking } from "./holds";
 import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config";
 import { attachCoachLocationToBooking } from "./locations";
+import { getPlatformFeePercent } from "./platform-fee";
+import { readCheckoutSession } from "./checkout-session";
 
 // Marketplace payments.
 //
@@ -212,4 +214,70 @@ export async function settlePayment(
     .single();
 
   return { ok: true, bookingId: converted.bookingId, paymentId: payment?.id ?? "" };
+}
+
+/**
+ * Settles a booking from a completed Stripe Checkout session.
+ *
+ * Called from two places on purpose — the client's return from Stripe, and
+ * the checkout.session.completed webhook. The first gives instant
+ * confirmation; the second covers the client who closes the tab. Both read
+ * the session from Stripe rather than trusting the caller, and
+ * convertHoldToBooking is idempotent, so whichever runs second is a no-op
+ * instead of a second booking.
+ */
+export async function settleFromCheckoutSession(
+  admin: SupabaseClient,
+  sessionId: string
+): Promise<CheckoutResult> {
+  const outcome = await readCheckoutSession(sessionId);
+  if (!outcome.paid) return { ok: false, message: "Payment hasn't completed." };
+  if (!outcome.holdId) return { ok: false, message: "That payment isn't linked to a booking." };
+
+  const { data: hold } = await admin
+    .from("booking_holds")
+    .select("id, coach_profile_id, service_id, booking_id")
+    .eq("id", outcome.holdId)
+    .maybeSingle();
+  if (!hold) return { ok: false, message: "This hold no longer exists." };
+
+  // Already settled by whichever path got here first.
+  if (hold.booking_id) {
+    const { data: existing } = await admin.from("club_payments").select("id").eq("booking_id", hold.booking_id).maybeSingle();
+    return { ok: true, bookingId: hold.booking_id, paymentId: existing?.id ?? "" };
+  }
+
+  const [{ data: service }, { data: coach }] = await Promise.all([
+    admin.from("coach_services").select("price_cents, currency, skill_id").eq("id", hold.service_id).maybeSingle(),
+    admin
+      .from("coach_profiles")
+      .select("cancellation_full_refund_hours, cancellation_partial_refund_percent")
+      .eq("id", hold.coach_profile_id)
+      .maybeSingle(),
+  ]);
+  if (!service || !coach) return { ok: false, message: "This session is no longer available." };
+
+  // The amount actually charged is authoritative — a price edited between
+  // hold and payment must not change what the ledger records.
+  const gross = outcome.amountTotal ?? service.price_cents;
+  const feePercent = await getPlatformFeePercent(admin);
+  const { platformFeeCents, coachAmountCents } = splitAmount(gross, feePercent);
+
+  return settlePayment(admin, {
+    holdId: outcome.holdId,
+    providerRef: outcome.paymentIntentId ?? sessionId,
+    grossAmountCents: gross,
+    platformFeeCents,
+    coachAmountCents,
+    currency: (outcome.currency ?? service.currency).toUpperCase(),
+    serviceId: hold.service_id,
+    skillId: service.skill_id,
+    priceCents: gross,
+    travelFeeCents: 0,
+    clientNote: null,
+    cancellationPolicySnapshot: {
+      fullRefundHours: coach.cancellation_full_refund_hours,
+      partialRefundPercent: coach.cancellation_partial_refund_percent,
+    },
+  });
 }

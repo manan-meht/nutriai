@@ -38,14 +38,14 @@
     "html-to-image": "^1.11.13",
     "next": "^16.2.9",
     "openai": "^6.45.0",
+    "patch-package": "^8.0.1",
     "postcss": "^8.5.16",
     "razorpay": "^2.9.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "recharts": "^3.9.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "^6.0.3",
-    "patch-package": "^8.0.1"
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.20.2",

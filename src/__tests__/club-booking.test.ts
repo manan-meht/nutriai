@@ -215,7 +215,7 @@ describe("publish gating", () => {
 
   it("blocks a profile with no availability or no service", () => {
     expect(publishBlockers({ ...complete, hasAvailability: false })).toContain("Set your weekly availability");
-    expect(publishBlockers({ ...complete, serviceCount: 0 })).toContain("Create at least one service");
+    expect(publishBlockers({ ...complete, serviceCount: 0 })).toContain("Add at least one service or class");
   });
 
   it("blocks publishing before payouts are set up", () => {

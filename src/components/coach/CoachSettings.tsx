@@ -2,6 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { CLUB_TOKENS as T } from "./tokens";
+import { CoachPhotoSection } from "./CoachPhotoSection";
+import { CoachLocationMap } from "./CoachLocationMap";
+import { AddressSearch } from "./AddressSearch";
+import { BOUNDS, describeCancellationPolicy } from "@/lib/club/booking-preferences";
+import { PayoutsSection, type PayoutState } from "./PayoutsSection";
 import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
 import {
   updateCoachProfile,
@@ -12,6 +17,7 @@ import {
   updateTravelRules,
   setAvailabilityRules,
   setCoachPublished,
+  updateBookingPreferences,
 } from "@/app/(coach)/coach/actions";
 
 // Coach profile / onboarding. One page rather than a wizard: a returning
@@ -33,6 +39,17 @@ export interface SettingsData {
     status: string;
     photoUrl: string | null;
   };
+  /** Signed URLs — the bucket is private, so these expire. */
+  gallery: Array<{ id: string; url: string }>;
+  payouts: PayoutState;
+  bookingPreferences: {
+    bufferBeforeMinutes: number;
+    bufferAfterMinutes: number;
+    minNoticeHours: number;
+    maxAdvanceDays: number;
+    cancellationFullRefundHours: number;
+    cancellationPartialRefundPercent: number;
+  };
   allSkills: Array<{ id: string; name: string; slug: string }>;
   selectedSkillIds: string[];
   services: Array<{
@@ -49,6 +66,10 @@ export interface SettingsData {
     label: string;
     neighbourhood: string | null;
     addressIsPublic: boolean;
+    latitude: number | null;
+    longitude: number | null;
+    addressLine: string | null;
+    postalCode: string | null;
   } | null;
   travel: { travelEnabled: boolean; maxTravelKm: number; travelBufferMinutes: number; serviceAreas: string[] } | null;
   availability: Array<{ weekday: number; startMinute: number; endMinute: number }>;
@@ -65,11 +86,14 @@ export function CoachSettings({ data }: { data: SettingsData }) {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PublishSection status={data.profile.status} blockers={data.publishBlockers} />
+      <CoachPhotoSection photoUrl={data.profile.photoUrl} gallery={data.gallery} />
       <ProfileSection profile={data.profile} />
       <SkillsSection allSkills={data.allSkills} selectedIds={data.selectedSkillIds} />
       <ServicesSection services={data.services} skills={data.allSkills} />
       <LocationSection location={data.location} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
+      <BookingPreferencesSection preferences={data.bookingPreferences} />
+      <PayoutsSection state={data.payouts} />
     </div>
   );
 }
@@ -227,7 +251,7 @@ function ServicesSection({
   const [, startToggle] = useTransition();
 
   return (
-    <Section title="Services" description="What clients can book, and what it costs.">
+    <Section title="Services and Classes" description="What clients can book, and what it costs.">
       {services.length > 0 && (
         <ul className="mb-4 flex flex-col gap-2">
           {services.map((s) => (
@@ -258,7 +282,7 @@ function ServicesSection({
 
       {adding ? (
         <div className="flex flex-col gap-4 rounded-xl border p-4" style={{ borderColor: T.outlineVariant }}>
-          <Field label="Service name" hint="e.g. Handstand Foundations">
+          <Field label="Service or Class name" hint="e.g. Handstand Foundations">
             <Input value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
           </Field>
           <Field label="Skill">
@@ -285,7 +309,7 @@ function ServicesSection({
           <Checkbox
             checked={draft.travel}
             onChange={(v) => setDraft({ ...draft, travel: v })}
-            label="I'll travel to the client for this service"
+            label="I'll travel to the client for this"
           />
           {error && <ErrorNote>{error}</ErrorNote>}
           <div className="flex gap-3">
@@ -322,7 +346,7 @@ function ServicesSection({
           </div>
         </div>
       ) : (
-        <Button variant="secondary" onClick={() => setAdding(true)}>Add another service</Button>
+        <Button variant="secondary" onClick={() => setAdding(true)}>Add another</Button>
       )}
     </Section>
   );
@@ -339,6 +363,10 @@ function LocationSection({
     label: location?.label ?? "",
     neighbourhood: location?.neighbourhood ?? "",
     addressIsPublic: location?.addressIsPublic ?? false,
+    latitude: location?.latitude ?? null as number | null,
+    longitude: location?.longitude ?? null as number | null,
+    addressLine: location?.addressLine ?? "",
+    postalCode: location?.postalCode ?? "",
   });
   const [travelForm, setTravelForm] = useState({
     enabled: travel?.travelEnabled ?? false,
@@ -353,6 +381,42 @@ function LocationSection({
       <Field label="Location name" hint="e.g. River Valley studio">
         <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
       </Field>
+
+      <AddressSearch
+        onSelect={(r) =>
+          setForm((f) => ({
+            ...f,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            addressLine: r.addressLine ?? f.addressLine,
+            postalCode: r.postalCode ?? f.postalCode,
+            // Only fills a blank — a coach who picked a neighbourhood
+            // deliberately keeps it.
+            neighbourhood: f.neighbourhood || r.neighbourhood || "",
+          }))
+        }
+      />
+
+      <div className="grid grid-cols-[1fr_9rem] gap-4">
+        <Field label="Address" hint="Kept private unless you choose otherwise below">
+          <Input value={form.addressLine} onChange={(v) => setForm({ ...form, addressLine: v })} />
+        </Field>
+        <Field label="Postal code">
+          <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
+        </Field>
+      </div>
+
+      {/* Coordinates drive travel-aware availability: without them the
+          engine cannot tell whether a coach can physically reach a client
+          between sessions, and correctly refuses to guess. */}
+      <CoachLocationMap
+        value={form.latitude != null && form.longitude != null
+          ? { latitude: form.latitude, longitude: form.longitude }
+          : null}
+        radiusKm={travelForm.enabled ? Number(travelForm.maxKm) || null : null}
+        onChange={(next) => setForm((f) => ({ ...f, latitude: next.latitude, longitude: next.longitude }))}
+        onNeighbourhoodDetected={(n) => setForm((f) => (f.neighbourhood ? f : { ...f, neighbourhood: n }))}
+      />
       <Field label="Neighbourhood">
         <select
           value={form.neighbourhood}
@@ -434,6 +498,12 @@ function LocationSection({
               locationType: "COACH_LOCATION",
               neighbourhood: form.neighbourhood,
               addressIsPublic: form.addressIsPublic,
+              // Sent as undefined rather than null when unpinned, so an
+              // existing pin is never wiped by saving the rest of the form.
+              latitude: form.latitude ?? undefined,
+              longitude: form.longitude ?? undefined,
+              addressLine: form.addressLine,
+              postalCode: form.postalCode,
               isPrimary: true,
             });
             if (!locRes.ok) return locRes;
@@ -688,5 +758,121 @@ function ErrorNote({ children }: { children: React.ReactNode }) {
     >
       {children}
     </p>
+  );
+}
+
+
+/** Booking rules and cancellation policy.
+ *
+ * These were already governing every search and every refund with no way
+ * for a coach to set them, so the product was making promises on their
+ * behalf — a profile advertising "free cancellation up to 24 hours before"
+ * stated a default nobody had agreed to.
+ *
+ * The policy is shown back as a sentence, because the consequence of two
+ * numbers is not obvious from the numbers.
+ */
+function BookingPreferencesSection({
+  preferences,
+}: {
+  preferences: SettingsData["bookingPreferences"];
+}) {
+  const [form, setForm] = useState({
+    bufferBeforeMinutes: String(preferences.bufferBeforeMinutes),
+    bufferAfterMinutes: String(preferences.bufferAfterMinutes),
+    minNoticeHours: String(preferences.minNoticeHours),
+    maxAdvanceDays: String(preferences.maxAdvanceDays),
+    cancellationFullRefundHours: String(preferences.cancellationFullRefundHours),
+    cancellationPartialRefundPercent: String(preferences.cancellationPartialRefundPercent),
+  });
+  const { pending, error, saved, save } = useSaver();
+
+  const digits = (v: string) => v.replace(/\D/g, "");
+  const num = (v: string) => Number(v || 0);
+
+  return (
+    <Section
+      title="Booking preferences"
+      description="How far ahead clients can book, the gaps you need, and what happens when someone cancels."
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Buffer before (min)" hint="Time to set up">
+          <Input
+            value={form.bufferBeforeMinutes}
+            onChange={(v) => setForm({ ...form, bufferBeforeMinutes: digits(v) })}
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Buffer after (min)" hint="Time to pack down or travel">
+          <Input
+            value={form.bufferAfterMinutes}
+            onChange={(v) => setForm({ ...form, bufferAfterMinutes: digits(v) })}
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Minimum notice (hours)" hint="How late someone can book">
+          <Input
+            value={form.minNoticeHours}
+            onChange={(v) => setForm({ ...form, minNoticeHours: digits(v) })}
+            inputMode="numeric"
+          />
+        </Field>
+        <Field label="Booking window (days)" hint="How far ahead your calendar opens">
+          <Input
+            value={form.maxAdvanceDays}
+            onChange={(v) => setForm({ ...form, maxAdvanceDays: digits(v) })}
+            inputMode="numeric"
+          />
+        </Field>
+      </div>
+
+      <div className="mt-2 border-t pt-5" style={{ borderColor: T.outlineVariant }}>
+        <p className="mb-3 text-sm font-medium">If a client cancels</p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Free cancellation up to (hours)">
+            <Input
+              value={form.cancellationFullRefundHours}
+              onChange={(v) => setForm({ ...form, cancellationFullRefundHours: digits(v) })}
+              inputMode="numeric"
+            />
+          </Field>
+          <Field label="Refund after that (%)">
+            <Input
+              value={form.cancellationPartialRefundPercent}
+              onChange={(v) => setForm({ ...form, cancellationPartialRefundPercent: digits(v) })}
+              inputMode="numeric"
+            />
+          </Field>
+        </div>
+
+        <p className="mt-3 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: T.surfaceContainerLow }}>
+          {describeCancellationPolicy(
+            num(form.cancellationFullRefundHours),
+            num(form.cancellationPartialRefundPercent)
+          )}
+        </p>
+        <p className="mt-2 text-xs" style={{ color: T.onSurfaceVariant }}>
+          Applies to new bookings. Sessions already booked keep the terms they were sold under.
+        </p>
+      </div>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <SaveRow
+        pending={pending}
+        saved={saved}
+        onSave={() =>
+          save(async () =>
+            updateBookingPreferences({
+              bufferBeforeMinutes: num(form.bufferBeforeMinutes),
+              bufferAfterMinutes: num(form.bufferAfterMinutes),
+              minNoticeHours: num(form.minNoticeHours),
+              maxAdvanceDays: num(form.maxAdvanceDays),
+              cancellationFullRefundHours: num(form.cancellationFullRefundHours),
+              cancellationPartialRefundPercent: num(form.cancellationPartialRefundPercent),
+            })
+          )
+        }
+      />
+    </Section>
   );
 }

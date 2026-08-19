@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
-import { isClubHost, isClubWwwHost, isLegacyCoachHost, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
-import { isCoachHost, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
+import { isClubHost, isClubWwwHost, isLegacyCoachHost, isLocalDevHost, isClubAppPath, CLUB_CANONICAL_ORIGIN, COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { servesCoachApp, isCoachAppPath, isPrefixedCoachAppPath } from "@/lib/coach/routes";
 import {
   parseAssignmentCookie,
   createNewAssignment,
@@ -81,7 +81,7 @@ export async function middleware(request: NextRequest) {
   // Coach OS from the root of the coach host, same shape as the club but
   // limited to the app's own segments — /coach also has real marketing
   // pages (/coach/india, /coach/add-users) that must keep working.
-  if (isCoachHost(host) && !isSharedPath) {
+  if (servesCoachApp(host) && !isSharedPath) {
     if (isPrefixedCoachAppPath(pathname)) {
       const url = request.nextUrl.clone();
       url.pathname = pathname.slice("/coach".length);
@@ -110,10 +110,22 @@ export async function middleware(request: NextRequest) {
       url.pathname = `/club${pathname === "/" ? "" : pathname}`;
       return NextResponse.rewrite(url);
     }
-  } else if (pathname === "/club" || pathname.startsWith("/club/")) {
+  } else if (isLocalDevHost(host) && !isSharedPath && isClubAppPath(pathname)) {
+    // Local development: the club's clean URLs resolve here too, so a link
+    // like /coaches/<id>/book works after signing in. Only the app's own
+    // segments — "/" has to stay Tistra Health, since one dev server
+    // cannot give the root to two products.
+    const url = request.nextUrl.clone();
+    url.pathname = `/club${pathname}`;
+    return NextResponse.rewrite(url);
+  } else if (!isLocalDevHost(host) && (pathname === "/club" || pathname.startsWith("/club/"))) {
     // The marketplace has its own home. Anyone reaching it through
     // tistrahealth.com is sent there rather than being served a second copy
     // under a different brand.
+    //
+    // Never in local development: one dev server answers for every product,
+    // and sending /club to the production domain would make the club
+    // unreachable on a laptop — the same trap the coach routes hit.
     return NextResponse.redirect(`${CLUB_CANONICAL_ORIGIN}${pathname.slice("/club".length) || "/"}${request.nextUrl.search}`, 308);
   }
 

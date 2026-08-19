@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { calculateAvailableSlots, type WorkingRule } from "./availability";
 import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config";
 import { profileQualityScore, publishBlockers } from "./ranking";
+import { resolveSignedCoachPhotoUrl } from "./media";
 
 // Data layer for the Coach OS. Every screen reads from here rather than
 // querying Supabase inline, so authorization ("is this row actually this
@@ -16,7 +17,13 @@ export interface CoachProfileRow {
   id: string;
   displayName: string;
   status: "draft" | "published" | "paused" | "suspended";
+  /** Signed URL for display. Undefined if signing failed — check
+   * hasPhoto, never this, when deciding whether a photo EXISTS: a
+   * transient signing failure must not tell a coach their photo is
+   * missing and block them from publishing. */
   photoUrl: string | null;
+  /** Whether a photo is actually stored, independent of signing. */
+  hasPhoto: boolean;
   headline: string | null;
   bio: string | null;
   timezone: string;
@@ -46,7 +53,8 @@ export async function getCoachProfile(
     id: data.id,
     displayName: data.display_name,
     status: data.status,
-    photoUrl: data.photo_url,
+    photoUrl: (await resolveSignedCoachPhotoUrl(admin, data.photo_url)) ?? null,
+    hasPhoto: !!data.photo_url,
     headline: data.headline,
     bio: data.bio,
     timezone: CLUB_MARKET.timezone,
@@ -211,7 +219,7 @@ export async function getCoachDashboard(
   const offered = slots.length + earnedSessions.length;
 
   const quality = profileQualityScore({
-    hasPhoto: !!profile.photoUrl,
+    hasPhoto: profile.hasPhoto,
     hasBio: !!profile.bio,
     hasCoverMedia: false,
     serviceCount: services.data?.length ?? 0,
@@ -232,7 +240,7 @@ export async function getCoachDashboard(
     },
     activeClients: clients.data?.length ?? 0,
     publishBlockers: publishBlockers({
-      hasPhoto: !!profile.photoUrl,
+      hasPhoto: profile.hasPhoto,
       hasBio: !!profile.bio,
       serviceCount: services.data?.length ?? 0,
       skillCount: skills.data?.length ?? 0,

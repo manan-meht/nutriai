@@ -4,6 +4,8 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { CoachPageHeader } from "@/components/coach/CoachShell";
 import { CoachSettings, type SettingsData } from "@/components/coach/CoachSettings";
 import { publishBlockers } from "@/lib/club/ranking";
+import { resolveSignedCoachPhotoUrl, resolveSignedCoachPhotoUrls } from "@/lib/club/media";
+import { getPlatformFeePercent } from "@/lib/club/platform-fee";
 
 // Coach profile / onboarding. This route is also the landing place for a
 // brand-new coach: /coach/dashboard redirects here when no coach_profiles
@@ -19,7 +21,7 @@ export default async function CoachSettingsPage() {
   // click "become a coach" before they can enter anything.
   let { data: coach } = await admin
     .from("coach_profiles")
-    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled")
+    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -32,7 +34,7 @@ export default async function CoachSettingsPage() {
         display_name: profile?.full_name?.trim() || "New coach",
         status: "draft",
       })
-      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled")
+      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
       .single();
     coach = created;
   }
@@ -42,9 +44,24 @@ export default async function CoachSettingsPage() {
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),
     admin.from("coach_skills").select("skill_id").eq("coach_profile_id", coach.id),
     admin.from("coach_services").select("id, name, duration_minutes, price_cents, is_active, travel_enabled, skill_id").eq("coach_profile_id", coach.id).order("created_at"),
-    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
+    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
     admin.from("coach_travel_rules").select("travel_enabled, max_travel_km, travel_buffer_minutes").eq("coach_profile_id", coach.id).maybeSingle(),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
+  ]);
+
+  // Photos live in a private bucket, so both the portrait and the gallery
+  // are resolved to signed URLs here rather than handing paths to the
+  // browser.
+  const { data: media } = await admin
+    .from("coach_media")
+    .select("id, storage_path")
+    .eq("coach_profile_id", coach.id)
+    .eq("media_type", "image")
+    .order("sort_order");
+
+  const [signedPortrait, signedGallery] = await Promise.all([
+    resolveSignedCoachPhotoUrl(admin, coach.photo_url),
+    resolveSignedCoachPhotoUrls(admin, (media ?? []).map((m: any) => m.storage_path)),
   ]);
 
   const { data: areas } = await admin
@@ -61,8 +78,26 @@ export default async function CoachSettingsPage() {
       bio: coach.bio,
       yearsCoaching: coach.years_coaching,
       status: coach.status,
-      photoUrl: coach.photo_url,
+      photoUrl: signedPortrait ?? null,
     },
+    payouts: {
+      status: coach.stripe_onboarding_status,
+      payoutsEnabled: coach.stripe_payouts_enabled,
+      hasAccount: !!coach.stripe_account_id,
+      feePercent: await getPlatformFeePercent(admin),
+    },
+    bookingPreferences: {
+      bufferBeforeMinutes: coach.buffer_before_minutes,
+      bufferAfterMinutes: coach.buffer_after_minutes,
+      minNoticeHours: coach.min_notice_hours,
+      maxAdvanceDays: coach.max_advance_days,
+      cancellationFullRefundHours: coach.cancellation_full_refund_hours,
+      cancellationPartialRefundPercent: coach.cancellation_partial_refund_percent,
+    },
+    gallery: (media ?? [])
+      .map((m: any, i: number) => ({ id: m.id, url: signedGallery[i] }))
+      // A photo that failed to sign is dropped rather than rendered broken.
+      .filter((g: any): g is { id: string; url: string } => !!g.url),
     allSkills: allSkills.data ?? [],
     selectedSkillIds: (mySkills.data ?? []).map((s: any) => s.skill_id),
     services: (services.data ?? []).map((s: any) => ({
@@ -80,6 +115,10 @@ export default async function CoachSettingsPage() {
           label: locations.data.label,
           neighbourhood: locations.data.neighbourhood,
           addressIsPublic: locations.data.address_is_public,
+          latitude: locations.data.latitude != null ? Number(locations.data.latitude) : null,
+          longitude: locations.data.longitude != null ? Number(locations.data.longitude) : null,
+          addressLine: locations.data.address_line,
+          postalCode: locations.data.postal_code,
         }
       : null,
     travel: travel.data
@@ -107,7 +146,7 @@ export default async function CoachSettingsPage() {
   };
 
   return (
-    <CoachShell active="settings" coachName={coach.display_name} photoUrl={coach.photo_url}>
+    <CoachShell active="settings" coachName={coach.display_name} photoUrl={signedPortrait}>
       <CoachPageHeader title="Your profile" />
       <CoachSettings data={data} />
     </CoachShell>

@@ -1,4 +1,5 @@
 import { CLUB_TOKENS as T } from "./tokens";
+import { PayoutsSection, type PayoutState } from "./PayoutsSection";
 import { CoachPageHeader } from "./CoachShell";
 import { Card, CardLabel } from "./CoachDashboard";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
@@ -11,7 +12,7 @@ const dateFmt = new Intl.DateTimeFormat("en-SG", {
   year: "numeric",
 });
 
-export function CoachPayments({ summary }: { summary: CoachPaymentsSummary }) {
+export function CoachPayments({ summary, payouts }: { payouts: PayoutState; summary: CoachPaymentsSummary }) {
   return (
     <>
       <CoachPageHeader title="Payments" />
@@ -19,24 +20,13 @@ export function CoachPayments({ summary }: { summary: CoachPaymentsSummary }) {
       {/* Payouts are the one thing a coach must not be confused about, so
           an incomplete setup is stated plainly rather than implied by an
           empty table. */}
+      {/* Payouts live here, not behind a disabled "coming soon" button —
+          this is the page a coach opens when wondering where their money
+          is. The same section appears in settings, where a new coach is
+          working through their publish checklist. */}
       {!summary.payoutsEnabled && (
-        <div
-          className="mb-6 rounded-2xl border p-5"
-          style={{ backgroundColor: T.warningContainer, borderColor: T.outlineVariant }}
-        >
-          <p className="text-[15px] font-semibold">Payouts aren&apos;t set up yet</p>
-          <p className="mt-1.5 text-sm" style={{ color: T.onSurfaceVariant }}>
-            You can take bookings once payout details are verified. We never see or store your
-            bank details — verification happens with our payments provider.
-          </p>
-          <button
-            type="button"
-            disabled
-            className="mt-4 inline-flex cursor-not-allowed rounded-full px-5 py-2.5 text-sm font-medium opacity-60"
-            style={{ backgroundColor: T.primary, color: T.onPrimary }}
-          >
-            Set up payouts (coming soon)
-          </button>
+        <div className="mb-6">
+          <PayoutsSection state={payouts} />
         </div>
       )}
 

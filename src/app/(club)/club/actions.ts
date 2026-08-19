@@ -6,6 +6,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createHold, releaseHold, syncBookingLock } from "@/lib/club/holds";
 import { getBookableSlots } from "@/lib/club/discovery";
 import { checkout } from "@/lib/club/payments";
+import { createBookingCheckoutSession, stripeCheckoutConfigured } from "@/lib/club/checkout-session";
+import { CLUB_MARKET } from "@/lib/club/config";
 import { calculateRefund, type CancellationPolicySnapshot } from "@/lib/club/booking-state";
 
 // Consumer booking actions.
@@ -59,6 +61,62 @@ export async function holdSlotAction(formData: FormData) {
 }
 
 /** Pays for a held slot and confirms the booking. */
+/** Sends the client to Stripe to pay for a held slot.
+ *
+ * Refuses when the coach has no connected account: taking money we cannot
+ * forward would leave the client charged and the coach unpaid, with a
+ * booking that looks confirmed. Better to say so before the card screen. */
+export async function startBookingCheckout(formData: FormData) {
+  const holdId = String(formData.get("holdId") ?? "");
+  const origin = String(formData.get("origin") ?? "");
+
+  const profileId = await currentProfileId();
+  if (!profileId) redirect("/login?product=club");
+
+  const admin = createServiceClient();
+  const { data: hold } = await admin
+    .from("booking_holds")
+    .select("id, coach_profile_id, client_profile_id, service_id, expires_at, released_at, booking_id")
+    .eq("id", holdId)
+    .maybeSingle();
+  if (!hold || hold.client_profile_id !== profileId) redirect("/");
+  if (hold.booking_id) redirect(`/bookings/${hold.booking_id}`);
+  if (hold.released_at || new Date(hold.expires_at) <= new Date()) {
+    redirect(`/coaches/${hold.coach_profile_id}/book?service=${hold.service_id}&error=gone`);
+  }
+
+  const [{ data: service }, { data: coach }, { data: profile }] = await Promise.all([
+    admin.from("coach_services").select("name, price_cents, currency").eq("id", hold.service_id).maybeSingle(),
+    admin.from("coach_profiles").select("display_name, stripe_account_id, stripe_payouts_enabled").eq("id", hold.coach_profile_id).maybeSingle(),
+    admin.from("profiles").select("email").eq("id", profileId).maybeSingle(),
+  ]);
+  if (!service || !coach) redirect(`/checkout/${holdId}?error=unavailable`);
+
+  if (!coach.stripe_account_id || !coach.stripe_payouts_enabled) {
+    redirect(`/checkout/${holdId}?error=${encodeURIComponent("This coach can't take payments yet.")}`);
+  }
+
+  let url: string;
+  try {
+    const session = await createBookingCheckoutSession(admin, {
+      holdId,
+      coachProfileId: hold.coach_profile_id,
+      connectedAccountId: coach.stripe_account_id,
+      description: `${service.name} with ${coach.display_name}`,
+      priceCents: service.price_cents,
+      currency: service.currency ?? CLUB_MARKET.currency,
+      clientEmail: profile?.email ?? undefined,
+      successUrl: `${origin}/checkout/${holdId}/complete?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${origin}/checkout/${holdId}?error=${encodeURIComponent("Payment cancelled.")}`,
+    });
+    url = session.url;
+  } catch (err) {
+    redirect(`/checkout/${holdId}?error=${encodeURIComponent(err instanceof Error ? err.message : "Couldn't start payment.")}`);
+  }
+
+  redirect(url);
+}
+
 export async function payAction(formData: FormData) {
   const holdId = String(formData.get("holdId") ?? "");
   const clientNote = String(formData.get("clientNote") ?? "").trim() || null;
