@@ -1,8 +1,8 @@
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { downloadMedia, sendTextMessage } from "@/lib/whatsapp/client";
 import { handleIncomingMessage } from "@/lib/whatsapp/conversation-handler";
-import { claimMessageId, claimMediaId } from "@/lib/whatsapp/dedup";
+import { claimMessageId, claimMediaId, releaseMessageId, releaseMediaId } from "@/lib/whatsapp/dedup";
 
 
 // Meta webhook verification
@@ -22,12 +22,29 @@ export async function GET(request: NextRequest) {
 
 // Incoming messages
 export async function POST(request: NextRequest) {
-  // Always return 200 immediately — Meta will retry if we return non-2xx
   const body = await request.json().catch(() => null);
 
-  await processWebhook(body).catch((err) =>
-    console.error("[webhook] unhandled error:", err)
-  );
+  // Acknowledge Meta BEFORE doing the work, not after.
+  //
+  // This used to await processWebhook() and only then return 200, despite
+  // the comment claiming otherwise. Photo analysis takes 12-19s, so a
+  // single message was already close to Meta's patience and two photos in
+  // one delivery (~25-40s) blew past it reliably. Meta then gave up
+  // waiting and redelivered — but the messages were already claimed, so
+  // the retry was skipped and the photo was silently dropped. Worse, on
+  // Workers a disconnected client can have its request cancelled, killing
+  // the analysis mid-flight.
+  //
+  // after() hands the work to the platform's waitUntil, so the response
+  // goes out in milliseconds and the processing outlives it. Messages
+  // within a delivery stay sequential on purpose: they share one
+  // conversation, and running them concurrently would let two photos race
+  // on the same pending-clarification state.
+  after(async () => {
+    await processWebhook(body).catch((err) =>
+      console.error("[webhook] unhandled error:", err)
+    );
+  });
 
   return new NextResponse("OK", { status: 200 });
 }
@@ -44,6 +61,8 @@ async function processWebhook(body: any) {
         const from: string = message.from;
         const type: string = message.type;
         const messageId: string | undefined = message.id;
+        // Tracked so the catch below can release it; only set once claimed.
+        let claimedMediaId: string | undefined;
 
         console.log(`[webhook] message from ${from}, type: ${type}`);
 
@@ -77,6 +96,7 @@ async function processWebhook(body: any) {
               console.log(`[webhook] skipping duplicate media ${mediaId} from ${from}`);
               continue;
             }
+            claimedMediaId = mediaId;
 
             const downloadStart = Date.now();
             const { buffer } = await downloadMedia(mediaId);
@@ -93,6 +113,10 @@ async function processWebhook(body: any) {
           }
         } catch (err) {
           console.error(`[webhook] error processing message from ${from}, type ${type}:`, err);
+          // Give the claims back so Meta's redelivery is actually retried.
+          // Holding them would drop this photo permanently.
+          if (messageId) await releaseMessageId(messageId).catch(() => {});
+          if (claimedMediaId) await releaseMediaId(claimedMediaId).catch(() => {});
           await sendTextMessage(
             from,
             "Sorry, I had trouble processing that. Please try sending it again."

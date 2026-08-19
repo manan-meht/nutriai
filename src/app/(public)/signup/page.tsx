@@ -8,6 +8,22 @@ import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
 
+/** Where a successful sign-in should land, per surface.
+ *
+ * Club is host-dependent: on club.tistrahealth.com the middleware already
+ * rewrites "/" to the discovery page, so sending someone to "/club" there
+ * only puts the internal prefix in their address bar. On any other host
+ * (someone signing in at tistrahealth.com/login?product=club) "/" is the
+ * Tistra Health homepage, so the prefix is exactly what's needed. */
+function defaultNextFor(surface: AuthSurface, hostname: string): string {
+  if (surface === "gym") return "/coach/dashboard";
+  if (surface === "club") {
+    return hostname.split(":")[0].toLowerCase().startsWith("club.") ? "/" : "/club";
+  }
+  return "/adults/dashboard";
+}
+
+
 /** Which auth surface this request belongs to. Kept separate from
  * ProductType: Tistra Club is a third sign-in surface, not a third value of
  * the gym/adults product used throughout the workspace code. */
@@ -48,7 +64,7 @@ export default async function SignupPage({
   const product = resolveAuthSurface(hostname, rawParams);
   // Same as the login page: "gym" is Tistra Coach, whose home is the Coach
   // OS, not the older /gym/dashboard nutrition view.
-  let next = params.next ?? (product === "gym" ? "/coach/dashboard" : product === "club" ? "/club" : "/adults/dashboard");
+  let next = params.next ?? defaultNextFor(product, hostname);
   // Carries a /pricing plan/interval choice through signup so the dashboard
   // (which starts checkout — see requiresCardBeforeTrial) knows what to
   // check the new workspace out for, instead of defaulting to "monthly".

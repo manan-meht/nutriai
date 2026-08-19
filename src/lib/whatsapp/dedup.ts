@@ -42,3 +42,26 @@ export async function claimMediaId(mediaId: string): Promise<boolean> {
   console.error("[whatsapp-dedup] media claim failed, processing anyway:", error);
   return true;
 }
+
+/**
+ * Releases a claim so a Meta redelivery can retry the message.
+ *
+ * The claim tables are "claim before work", which is right for
+ * exactly-once: a redelivery arriving while the first attempt is still
+ * running must not trigger a second AI analysis. But it means a claim that
+ * is never followed by completed work turns into permanent data loss — the
+ * user's photo is dropped and every retry Meta sends is skipped.
+ *
+ * So a failed attempt gives the claim back. The worst case becomes a
+ * duplicate (visible, correctable) instead of a silent loss (invisible,
+ * and the user only finds out when their meal never appears).
+ */
+export async function releaseMessageId(messageId: string): Promise<void> {
+  const { error } = await admin().from("whatsapp_processed_messages").delete().eq("message_id", messageId);
+  if (error) console.error("[whatsapp-dedup] failed to release message claim:", error);
+}
+
+export async function releaseMediaId(mediaId: string): Promise<void> {
+  const { error } = await admin().from("whatsapp_processed_media").delete().eq("media_id", mediaId);
+  if (error) console.error("[whatsapp-dedup] failed to release media claim:", error);
+}

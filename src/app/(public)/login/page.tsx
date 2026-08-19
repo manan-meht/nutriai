@@ -8,6 +8,22 @@ import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
 
+/** Where a successful sign-in should land, per surface.
+ *
+ * Club is host-dependent: on club.tistrahealth.com the middleware already
+ * rewrites "/" to the discovery page, so sending someone to "/club" there
+ * only puts the internal prefix in their address bar. On any other host
+ * (someone signing in at tistrahealth.com/login?product=club) "/" is the
+ * Tistra Health homepage, so the prefix is exactly what's needed. */
+function defaultNextFor(surface: AuthSurface, hostname: string): string {
+  if (surface === "gym") return "/coach/dashboard";
+  if (surface === "club") {
+    return hostname.split(":")[0].toLowerCase().startsWith("club.") ? "/" : "/club";
+  }
+  return "/adults/dashboard";
+}
+
+
 /** Which auth surface this request belongs to. Kept separate from
  * ProductType: Tistra Club is a third sign-in surface, not a third value of
  * the gym/adults product used throughout the workspace code. */
@@ -50,7 +66,7 @@ export default async function LoginPage({
   // (/coach/dashboard) — NOT /gym/dashboard, which is the older
   // nutrition-tracking dashboard. Sending a coach there after sign-in
   // dropped them into the wrong product entirely.
-  const next = params.next ?? (product === "gym" ? "/coach/dashboard" : product === "club" ? "/club" : "/adults/dashboard");
+  const next = params.next ?? defaultNextFor(product, hostname);
 
   // Coaching is a separate product on its own domain, so this shared page
   // must introduce itself as whichever product the visitor came for.
