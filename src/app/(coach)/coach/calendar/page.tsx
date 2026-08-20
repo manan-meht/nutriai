@@ -3,6 +3,8 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCoachCalendarWeek, getCoachProfile } from "@/lib/club/coach-queries";
 import { CoachShell } from "@/components/coach/CoachShell";
 import { CoachCalendar } from "@/components/coach/CoachCalendar";
+import { CalendarSection } from "@/components/coach/CalendarSection";
+import { getCalendarState } from "@/lib/club/calendar";
 
 /** Monday of the week containing `date`, at local midnight. */
 function weekStartOf(date: Date): Date {
@@ -29,10 +31,17 @@ export default async function CoachCalendarPage({
   const params = (await searchParams) ?? {};
   const requested = params.week ? new Date(params.week) : new Date();
   const weekStart = weekStartOf(Number.isNaN(requested.getTime()) ? new Date() : requested);
-  const week = await getCoachCalendarWeek(admin, user.id, weekStart);
+  const [week, calendar] = await Promise.all([
+    getCoachCalendarWeek(admin, user.id, weekStart),
+    getCalendarState(admin, profile.id),
+  ]);
 
   return (
     <CoachShell active="calendar" coachName={profile.displayName} photoUrl={profile.photoUrl}>
+      {/* Above the week, where a coach is already thinking about their
+          schedule — and hidden entirely once connected, since a healthy
+          integration has nothing to say. */}
+      <CalendarSection state={calendar} compact />
       <CoachCalendar week={week!} weekStart={weekStart.toISOString()} />
     </CoachShell>
   );

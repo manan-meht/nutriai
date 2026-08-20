@@ -117,3 +117,30 @@ describe("what the coach is told", () => {
     expect(src("components/coach/CalendarSection.tsx")).toMatch(/Reconnect needed/);
   });
 });
+
+describe("the prompt appears where a coach is thinking about their week", () => {
+  const section = () => src("components/coach/CalendarSection.tsx");
+  const page = () => src("app/(coach)/coach/calendar/page.tsx");
+
+  it("the calendar page renders the same component, compact", () => {
+    // One component, two densities — status wording and the privacy
+    // promise cannot drift between the two places they appear.
+    expect(page()).toMatch(/<CalendarSection state=\{calendar\} compact \/>/);
+    expect(page()).toMatch(/getCalendarState\(admin, profile\.id\)/);
+  });
+
+  it("says nothing once connected", () => {
+    // A healthy integration has no message to add to a calendar view.
+    expect(section()).toMatch(/if \(!state\.configured \|\| state\.status === "connected"\) return null;/);
+  });
+
+  it("offers reconnect when access lapsed, connect otherwise", () => {
+    const compact = section().slice(section().indexOf("if (compact)"), section().indexOf("return (\n    <section"));
+    expect(compact).toMatch(/state\.status === "needs_reauth" \? "Reconnect" : "Connect Google Calendar"/);
+  });
+
+  it("repeats the busy-times-only promise where the coach is asked to connect", () => {
+    const compact = section().slice(section().indexOf("if (compact)"), section().indexOf("return (\n    <section"));
+    expect(compact).toMatch(/busy times/);
+  });
+});

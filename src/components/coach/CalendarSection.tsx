@@ -25,11 +25,52 @@ const COPY: Record<
   error: { label: "Not connected", tone: "wait" },
 };
 
-export function CalendarSection({ state }: { state: CalendarConnectionState }) {
+/**
+ * `compact` is the calendar page's variant: one line and a button, because
+ * a coach looking at their week wants to fix the gap, not read about it.
+ * Same component so the status wording and the privacy promise cannot
+ * drift between the two places they appear.
+ */
+export function CalendarSection({
+  state,
+  compact,
+}: {
+  state: CalendarConnectionState;
+  compact?: boolean;
+}) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const copy = COPY[state.status];
   const tone = copy.tone === "ok" ? T.success : copy.tone === "bad" ? T.error : T.warning;
+
+  if (compact) {
+    // Nothing to say when it's working and there's no problem to fix.
+    if (!state.configured || state.status === "connected") return null;
+    return (
+      <div
+        className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3"
+        style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant }}
+      >
+        <p className="text-sm" style={{ color: T.onSurfaceVariant }}>
+          {state.status === "not_connected" || state.status === "error" ? (
+            <>
+              Connect Google Calendar and Tistra will stop offering times you&rsquo;re already busy.
+              We only ever see <strong style={{ color: T.onSurface }}>busy times</strong>.
+            </>
+          ) : (
+            <>Google stopped accepting our access, so your calendar isn&rsquo;t being checked.</>
+          )}
+        </p>
+        <a
+          href="/api/coach/calendar/start"
+          className="shrink-0 rounded-full px-4 py-2 text-sm font-medium"
+          style={{ backgroundColor: T.primary, color: T.onPrimary }}
+        >
+          {state.status === "needs_reauth" ? "Reconnect" : "Connect Google Calendar"}
+        </a>
+      </div>
+    );
+  }
 
   return (
     <section
