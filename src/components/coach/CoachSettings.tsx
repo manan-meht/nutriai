@@ -20,6 +20,8 @@ import {
   setAvailabilityRules,
   setCoachPublished,
   updateBookingPreferences,
+  setPrimaryCoachLocation,
+  deleteCoachLocation,
   addAvailabilityException,
   removeAvailabilityException,
 } from "@/app/(coach)/coach/actions";
@@ -68,16 +70,17 @@ export interface SettingsData {
     travelEnabled: boolean;
     skillId: string | null;
   }>;
-  location: {
+  locations: Array<{
     id: string;
     label: string;
     neighbourhood: string | null;
     addressIsPublic: boolean;
+    isPrimary: boolean;
     latitude: number | null;
     longitude: number | null;
     addressLine: string | null;
     postalCode: string | null;
-  } | null;
+  }>;
   travel: { travelEnabled: boolean; maxTravelKm: number; travelBufferMinutes: number; serviceAreas: string[] } | null;
   availability: Array<{ weekday: number; startMinute: number; endMinute: number }>;
   publishBlockers: string[];
@@ -97,7 +100,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
       <ProfileSection profile={data.profile} />
       <SkillsSection allSkills={data.allSkills} selectedIds={data.selectedSkillIds} />
       <ServicesSection services={data.services} skills={data.allSkills} />
-      <LocationSection location={data.location} travel={data.travel} />
+      <LocationSection locations={data.locations} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
       <TimeOffSection entries={data.timeOff} />
       <BookingPreferencesSection preferences={data.bookingPreferences} />
@@ -373,22 +376,37 @@ function ServicesSection({
   );
 }
 
+type LocationDraft = SettingsData["locations"][number];
+
+const BLANK_LOCATION: LocationDraft = {
+  id: "",
+  label: "",
+  neighbourhood: "",
+  addressIsPublic: false,
+  isPrimary: false,
+  latitude: null,
+  longitude: null,
+  addressLine: "",
+  postalCode: "",
+};
+
+/** Where a coach works — one place or several.
+ *
+ * A list with ONE editor open at a time, rather than a card per location:
+ * each editor carries a Google map, and mounting several would load the
+ * Maps API repeatedly for places the coach isn't editing.
+ */
 function LocationSection({
-  location,
+  locations,
   travel,
 }: {
-  location: SettingsData["location"];
+  locations: SettingsData["locations"];
   travel: SettingsData["travel"];
 }) {
-  const [form, setForm] = useState({
-    label: location?.label ?? "",
-    neighbourhood: location?.neighbourhood ?? "",
-    addressIsPublic: location?.addressIsPublic ?? false,
-    latitude: location?.latitude ?? null as number | null,
-    longitude: location?.longitude ?? null as number | null,
-    addressLine: location?.addressLine ?? "",
-    postalCode: location?.postalCode ?? "",
-  });
+  // Open the first location by default so a coach with one place sees the
+  // form immediately, exactly as before this became a list.
+  const [editingId, setEditingId] = useState<string | null>(locations[0]?.id ?? "new");
+  const [draft, setDraft] = useState<LocationDraft>(locations[0] ?? BLANK_LOCATION);
   const [travelForm, setTravelForm] = useState({
     enabled: travel?.travelEnabled ?? false,
     maxKm: travel?.maxTravelKm?.toString() ?? "10",
@@ -396,49 +414,137 @@ function LocationSection({
     areas: travel?.serviceAreas ?? [],
   });
   const { pending, error, saved, save } = useSaver();
+  const [busy, startBusy] = useTransition();
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  const openEditor = (loc: LocationDraft | null) => {
+    setRowError(null);
+    setDraft(loc ?? BLANK_LOCATION);
+    setEditingId(loc?.id ?? "new");
+  };
 
   return (
     <Section title="Where you coach" description="Clients see your neighbourhood, never your exact address.">
+      {locations.length > 0 && (
+        <ul className="mb-4 flex flex-col gap-2">
+          {locations.map((loc) => (
+            <li
+              key={loc.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
+              style={{
+                borderColor: editingId === loc.id ? T.primary : T.outlineVariant,
+                backgroundColor: T.surfaceContainerLowest,
+              }}
+            >
+              <span className="min-w-0 text-sm">
+                <span className="font-medium">{loc.label}</span>
+                {loc.neighbourhood && (
+                  <span style={{ color: T.onSurfaceVariant }}> · {loc.neighbourhood}</span>
+                )}
+                {loc.isPrimary && (
+                  <span
+                    className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{ backgroundColor: T.primaryContainer, color: T.primary }}
+                  >
+                    Main
+                  </span>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-3 text-sm">
+                <button type="button" onClick={() => openEditor(loc)} className="underline underline-offset-2">
+                  {editingId === loc.id ? "Editing" : "Edit"}
+                </button>
+                {!loc.isPrimary && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      startBusy(async () => {
+                        const r = await setPrimaryCoachLocation(loc.id);
+                        if (!r.ok) setRowError(r.error);
+                      })
+                    }
+                    style={{ color: T.onSurfaceVariant }}
+                  >
+                    Make main
+                  </button>
+                )}
+                {locations.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      startBusy(async () => {
+                        setRowError(null);
+                        const r = await deleteCoachLocation(loc.id);
+                        if (!r.ok) setRowError(r.error);
+                        else if (editingId === loc.id) openEditor(null);
+                      })
+                    }
+                    style={{ color: T.error }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {rowError && <ErrorNote>{rowError}</ErrorNote>}
+
+      {editingId !== "new" && (
+        <button
+          type="button"
+          onClick={() => openEditor(null)}
+          className="mb-4 self-start rounded-full border px-4 py-2 text-sm font-medium"
+          style={{ borderColor: T.outlineVariant }}
+        >
+          + Add another location
+        </button>
+      )}
+
       <Field label="Location name (optional)" hint="Only useful if you coach from more than one place — e.g. River Valley studio">
-        <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
+        <Input value={draft.label} onChange={(v) => setDraft({ ...draft, label: v })} />
       </Field>
 
       <AddressSearch
-        value={form.addressLine}
-        onChange={(v) => setForm((f) => ({ ...f, addressLine: v }))}
+        value={draft.addressLine ?? ""}
+        onChange={(v) => setDraft((d) => ({ ...d, addressLine: v }))}
         onSelect={(r) =>
-          setForm((f) => ({
-            ...f,
+          setDraft((d) => ({
+            ...d,
             latitude: r.latitude,
             longitude: r.longitude,
-            addressLine: r.addressLine ?? f.addressLine,
-            postalCode: r.postalCode ?? f.postalCode,
-            // Only fills a blank — a coach who picked a neighbourhood
-            // deliberately keeps it.
-            neighbourhood: f.neighbourhood || r.neighbourhood || "",
+            addressLine: r.addressLine ?? d.addressLine,
+            postalCode: r.postalCode ?? d.postalCode,
+            neighbourhood: d.neighbourhood || r.neighbourhood || "",
           }))
         }
       />
 
       <Field label="Postal code">
-        <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
+        <Input value={draft.postalCode ?? ""} onChange={(v) => setDraft({ ...draft, postalCode: v })} inputMode="numeric" />
       </Field>
 
       {/* Coordinates drive travel-aware availability: without them the
           engine cannot tell whether a coach can physically reach a client
           between sessions, and correctly refuses to guess. */}
       <CoachLocationMap
-        value={form.latitude != null && form.longitude != null
-          ? { latitude: form.latitude, longitude: form.longitude }
+        key={editingId ?? "new"}
+        value={draft.latitude != null && draft.longitude != null
+          ? { latitude: draft.latitude, longitude: draft.longitude }
           : null}
         radiusKm={travelForm.enabled ? Number(travelForm.maxKm) || null : null}
-        onChange={(next) => setForm((f) => ({ ...f, latitude: next.latitude, longitude: next.longitude }))}
-        onNeighbourhoodDetected={(n) => setForm((f) => (f.neighbourhood ? f : { ...f, neighbourhood: n }))}
+        onChange={(next) => setDraft((d) => ({ ...d, latitude: next.latitude, longitude: next.longitude }))}
+        onNeighbourhoodDetected={(n) => setDraft((d) => (d.neighbourhood ? d : { ...d, neighbourhood: n }))}
       />
+
       <Field label="Neighbourhood">
         <select
-          value={form.neighbourhood}
-          onChange={(e) => setForm({ ...form, neighbourhood: e.target.value })}
+          value={draft.neighbourhood ?? ""}
+          onChange={(e) => setDraft({ ...draft, neighbourhood: e.target.value })}
           className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
           style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
         >
@@ -448,11 +554,12 @@ function LocationSection({
           ))}
         </select>
       </Field>
+
       {/* Default off, and stated plainly — a home studio must never become
           public by accident. */}
       <Checkbox
-        checked={form.addressIsPublic}
-        onChange={(v) => setForm({ ...form, addressIsPublic: v })}
+        checked={draft.addressIsPublic}
+        onChange={(v) => setDraft({ ...draft, addressIsPublic: v })}
         label="Show my exact address publicly (leave off if you coach from home)"
       />
 
@@ -505,24 +612,25 @@ function LocationSection({
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+      {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
         saved={saved}
         onSave={() =>
           save(async () => {
             const locRes = await upsertCoachLocation({
-              id: location?.id,
-              label: form.label,
+              id: draft.id || undefined,
+              label: draft.label,
               locationType: "COACH_LOCATION",
-              neighbourhood: form.neighbourhood,
-              addressIsPublic: form.addressIsPublic,
-              // Sent as undefined rather than null when unpinned, so an
-              // existing pin is never wiped by saving the rest of the form.
-              latitude: form.latitude ?? undefined,
-              longitude: form.longitude ?? undefined,
-              addressLine: form.addressLine,
-              postalCode: form.postalCode,
-              isPrimary: true,
+              neighbourhood: draft.neighbourhood ?? undefined,
+              addressIsPublic: draft.addressIsPublic,
+              latitude: draft.latitude ?? undefined,
+              longitude: draft.longitude ?? undefined,
+              addressLine: draft.addressLine ?? undefined,
+              postalCode: draft.postalCode ?? undefined,
+              // The first location a coach saves becomes the main one;
+              // after that, "Make main" is an explicit choice.
+              isPrimary: draft.isPrimary || locations.length === 0,
             });
             if (!locRes.ok) return locRes;
             return updateTravelRules({

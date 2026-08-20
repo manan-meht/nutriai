@@ -733,3 +733,100 @@ export async function disconnectCoachCalendar(): Promise<ActionResult> {
   revalidateCoach();
   return { ok: true };
 }
+
+/** Makes one location the primary, unsetting the others.
+ *
+ * The primary is what discovery shows and what a booking defaults to, so
+ * exactly one must hold the flag — the column has no constraint enforcing
+ * that, and two primaries would make "where do you coach" answer
+ * arbitrarily. */
+export async function setPrimaryCoachLocation(locationId: string): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+  const { data: owned } = await admin
+    .from("coach_locations")
+    .select("id")
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id)
+    .maybeSingle();
+  if (!owned) return { ok: false, error: "That location no longer exists." };
+
+  await admin
+    .from("coach_locations")
+    .update({ is_primary: false })
+    .eq("coach_profile_id", coach.id);
+  const { error } = await admin
+    .from("coach_locations")
+    .update({ is_primary: true, updated_at: new Date().toISOString() })
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateCoach();
+  return { ok: true };
+}
+
+/**
+ * Removes a location.
+ *
+ * Two refusals, both protecting someone other than the coach:
+ *
+ *  - The last location can't go. "Add where you coach" is a publish
+ *    blocker, so deleting the only one would silently unpublish a live
+ *    profile from a screen that says nothing about publishing.
+ *  - A location with upcoming sessions can't go. booking_locations
+ *    references it with ON DELETE SET NULL, so the booking would survive
+ *    while quietly losing the exact address the client was promised on
+ *    confirmation.
+ */
+export async function deleteCoachLocation(locationId: string): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+  const [{ data: mine }, { data: upcoming }] = await Promise.all([
+    admin.from("coach_locations").select("id, is_primary").eq("coach_profile_id", coach.id).eq("is_active", true),
+    admin
+      .from("booking_locations")
+      .select("booking_id, bookings!inner(starts_at, status)")
+      .eq("coach_location_id", locationId)
+      .gte("bookings.starts_at", new Date().toISOString())
+      .in("bookings.status", ["CONFIRMED", "PAYMENT_PENDING"]),
+  ]);
+
+  const locations = mine ?? [];
+  if (!locations.some((l: any) => l.id === locationId)) {
+    return { ok: false, error: "That location no longer exists." };
+  }
+  if (locations.length <= 1) {
+    return { ok: false, error: "This is your only location. Add another before removing this one." };
+  }
+  if ((upcoming ?? []).length > 0) {
+    const n = (upcoming ?? []).length;
+    return {
+      ok: false,
+      error: `${n} upcoming ${n === 1 ? "session is" : "sessions are"} booked at this location. Move or cancel ${n === 1 ? "it" : "them"} first.`,
+    };
+  }
+
+  const wasPrimary = locations.find((l: any) => l.id === locationId)?.is_primary;
+  const { error } = await admin
+    .from("coach_locations")
+    .delete()
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id);
+  if (error) return { ok: false, error: error.message };
+
+  // Never leave a coach with locations but no primary.
+  if (wasPrimary) {
+    const next = locations.find((l: any) => l.id !== locationId);
+    if (next) {
+      await admin.from("coach_locations").update({ is_primary: true }).eq("id", next.id);
+    }
+  }
+
+  revalidateCoach();
+  return { ok: true };
+}

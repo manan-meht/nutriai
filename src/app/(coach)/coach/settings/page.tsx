@@ -45,7 +45,7 @@ export default async function CoachSettingsPage() {
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),
     admin.from("coach_skills").select("skill_id").eq("coach_profile_id", coach.id),
     admin.from("coach_services").select("id, name, duration_minutes, price_cents, is_active, travel_enabled, skill_id").eq("coach_profile_id", coach.id).order("created_at"),
-    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
+    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, is_primary, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_active", true).order("is_primary", { ascending: false }).order("created_at"),
     admin.from("coach_travel_rules").select("travel_enabled, max_travel_km, travel_buffer_minutes").eq("coach_profile_id", coach.id).maybeSingle(),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
   ]);
@@ -127,18 +127,17 @@ export default async function CoachSettingsPage() {
       travelEnabled: s.travel_enabled,
       skillId: s.skill_id,
     })),
-    location: locations.data
-      ? {
-          id: locations.data.id,
-          label: locations.data.label,
-          neighbourhood: locations.data.neighbourhood,
-          addressIsPublic: locations.data.address_is_public,
-          latitude: locations.data.latitude != null ? Number(locations.data.latitude) : null,
-          longitude: locations.data.longitude != null ? Number(locations.data.longitude) : null,
-          addressLine: locations.data.address_line,
-          postalCode: locations.data.postal_code,
-        }
-      : null,
+    locations: (locations.data ?? []).map((l: any) => ({
+      id: l.id,
+      label: l.label,
+      neighbourhood: l.neighbourhood,
+      addressIsPublic: l.address_is_public,
+      isPrimary: l.is_primary,
+      latitude: l.latitude != null ? Number(l.latitude) : null,
+      longitude: l.longitude != null ? Number(l.longitude) : null,
+      addressLine: l.address_line,
+      postalCode: l.postal_code,
+    })),
     travel: travel.data
       ? {
           travelEnabled: travel.data.travel_enabled,
@@ -157,7 +156,9 @@ export default async function CoachSettingsPage() {
       hasBio: !!coach.bio,
       serviceCount: activeServices.length,
       skillCount: mySkills.data?.length ?? 0,
-      hasLocation: !!locations.data,
+      // An empty array is truthy — count it, or a coach with no location
+      // clears the publish blocker.
+      hasLocation: (locations.data ?? []).length > 0,
       hasAvailability: (availability.data?.length ?? 0) > 0,
       payoutsEnabled: !!coach.stripe_payouts_enabled,
     }),
