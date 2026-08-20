@@ -11,3 +11,6 @@ apps/mobile/*.aab
 .open-next
 .dev.vars
 .wrangler
+
+# Supabase CLI scratch
+supabase/.temp/
