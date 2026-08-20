@@ -6,9 +6,17 @@ import { OBSIDIAN_TOKENS as O } from "@/components/coach/tokens";
 import { trackClubEvent } from "@/lib/club/analytics";
 import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 
-/** Where an interested coach goes. The coach app is a different origin, so
- * this is an absolute URL rather than a Next Link. */
-const COACH_SIGNUP_URL = `${COACH_CANONICAL_ORIGIN}/signup`;
+/** Where an interested coach goes: the Tistra Coach landing page, not
+ * straight into the signup form.
+ *
+ * Someone who taps this from the club deck has seen a marketplace, not a
+ * pitch — they don't yet know what the coach product does or what it
+ * costs. Dropping them on an account form asks them to commit before
+ * either question is answered; the landing page answers both (including
+ * the 10%) and carries its own signup CTA.
+ *
+ * A different origin, so an absolute URL rather than a Next Link. */
+const COACH_LANDING_URL = COACH_CANONICAL_ORIGIN;
 
 // The club homepage and coach deck, as ONE vertical surface.
 //
@@ -332,8 +340,8 @@ export function SwipeFeed({
                   Nobody is bookable yet. If you coach here, this is the moment to claim your spot.
                 </p>
                 <a
-                  href={COACH_SIGNUP_URL}
-                  onClick={() => trackClubEvent("coach_signup_clicked", { from: "empty_deck" })}
+                  href={COACH_LANDING_URL}
+                  onClick={() => trackClubEvent("coach_landing_clicked", { from: "empty_deck" })}
                   className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
                 >

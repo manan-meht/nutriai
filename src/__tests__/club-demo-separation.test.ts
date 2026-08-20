@@ -184,5 +184,10 @@ describe("the empty public deck", () => {
     const empty = feed.slice(feed.indexOf("filtered.length === 0 ?"));
     expect(empty).toMatch(/No coaches for this skill yet\./);
     expect(empty).toMatch(/Coach with Tistra/);
+    // The CTA goes to the Tistra Coach landing page, not straight into the
+    // signup form: someone arriving from the club deck has not yet been
+    // told what the coach product is or what it costs.
+    expect(feed).toMatch(/const COACH_LANDING_URL = COACH_CANONICAL_ORIGIN;/);
+    expect(feed).not.toMatch(/COACH_CANONICAL_ORIGIN\}\/signup/);
   });
 });

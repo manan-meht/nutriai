@@ -63,7 +63,7 @@ export function CoachCardList({
             <p className="mx-auto mt-2 max-w-xs text-sm" style={{ color: T.onSurfaceVariant }}>
               We&rsquo;re signing up the first coaches in {CLUB_MARKET.displayName}. Nobody is bookable here yet.
             </p>
-            <a href={`${COACH_CANONICAL_ORIGIN}/signup`} className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
+            <a href={COACH_CANONICAL_ORIGIN} className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
               Coach with Tistra
             </a>
           </>

@@ -13,7 +13,11 @@ export type ClubAnalyticsEvent =
   // Empty-deck exits. While the marketplace has no real coaches, these two
   // are the only actions the homepage can offer, so they are the only
   // signal that anyone reached it and wanted something.
-  | "coach_signup_clicked"
+  //
+  // Named for the landing page, not signup: the CTA sends people to the
+  // Tistra Coach pitch, and calling it a signup click would overstate the
+  // funnel step it measures.
+  | "coach_landing_clicked"
   | "demo_clicked";
 
 export function trackClubEvent(event: ClubAnalyticsEvent, properties?: Record<string, unknown>): void {
