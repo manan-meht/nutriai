@@ -9,7 +9,12 @@ export type ClubAnalyticsEvent =
   | "skill_selected"
   | "first_coach_preview_seen"
   | "coach_feed_started"
-  | "list_view_clicked";
+  | "list_view_clicked"
+  // Empty-deck exits. While the marketplace has no real coaches, these two
+  // are the only actions the homepage can offer, so they are the only
+  // signal that anyone reached it and wanted something.
+  | "coach_signup_clicked"
+  | "demo_clicked";
 
 export function trackClubEvent(event: ClubAnalyticsEvent, properties?: Record<string, unknown>): void {
   console.debug("[club-analytics]", event, properties);

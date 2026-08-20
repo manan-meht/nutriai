@@ -6,6 +6,7 @@ import { CoachSettings, type SettingsData } from "@/components/coach/CoachSettin
 import { publishBlockers } from "@/lib/club/ranking";
 import { resolveSignedCoachPhotoUrl, resolveSignedCoachPhotoUrls } from "@/lib/club/media";
 import { getPlatformFeePercent } from "@/lib/club/platform-fee";
+import { getCalendarState } from "@/lib/club/calendar";
 
 // Coach profile / onboarding. This route is also the landing place for a
 // brand-new coach: /coach/dashboard redirects here when no coach_profiles
@@ -21,7 +22,7 @@ export default async function CoachSettingsPage() {
   // click "become a coach" before they can enter anything.
   let { data: coach } = await admin
     .from("coach_profiles")
-    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+    .select("id, display_name, headline, bio, years_coaching, status, photo_url, languages, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -34,7 +35,7 @@ export default async function CoachSettingsPage() {
         display_name: profile?.full_name?.trim() || "New coach",
         status: "draft",
       })
-      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+      .select("id, display_name, headline, bio, years_coaching, status, photo_url, languages, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
       .single();
     coach = created;
   }
@@ -44,7 +45,7 @@ export default async function CoachSettingsPage() {
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),
     admin.from("coach_skills").select("skill_id").eq("coach_profile_id", coach.id),
     admin.from("coach_services").select("id, name, duration_minutes, price_cents, is_active, travel_enabled, skill_id").eq("coach_profile_id", coach.id).order("created_at"),
-    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_primary", true).maybeSingle(),
+    admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, is_primary, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_active", true).order("is_primary", { ascending: false }).order("created_at"),
     admin.from("coach_travel_rules").select("travel_enabled, max_travel_km, travel_buffer_minutes").eq("coach_profile_id", coach.id).maybeSingle(),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
   ]);
@@ -64,6 +65,15 @@ export default async function CoachSettingsPage() {
     resolveSignedCoachPhotoUrls(admin, (media ?? []).map((m: any) => m.storage_path)),
   ]);
 
+  // Upcoming closures only — past time off is history a coach can't act on.
+  const { data: timeOff } = await admin
+    .from("coach_availability_exceptions")
+    .select("id, starts_at, ends_at, reason")
+    .eq("coach_profile_id", coach.id)
+    .eq("exception_type", "blocked")
+    .gte("ends_at", new Date().toISOString())
+    .order("starts_at");
+
   const { data: areas } = await admin
     .from("coach_service_areas")
     .select("area_name")
@@ -77,9 +87,17 @@ export default async function CoachSettingsPage() {
       headline: coach.headline,
       bio: coach.bio,
       yearsCoaching: coach.years_coaching,
+      languages: Array.isArray(coach.languages) ? coach.languages : [],
       status: coach.status,
       photoUrl: signedPortrait ?? null,
     },
+    calendar: await getCalendarState(admin, coach.id),
+    timeOff: (timeOff ?? []).map((e: any) => ({
+      id: e.id,
+      startsAt: e.starts_at,
+      endsAt: e.ends_at,
+      reason: e.reason,
+    })),
     payouts: {
       status: coach.stripe_onboarding_status,
       payoutsEnabled: coach.stripe_payouts_enabled,
@@ -109,18 +127,17 @@ export default async function CoachSettingsPage() {
       travelEnabled: s.travel_enabled,
       skillId: s.skill_id,
     })),
-    location: locations.data
-      ? {
-          id: locations.data.id,
-          label: locations.data.label,
-          neighbourhood: locations.data.neighbourhood,
-          addressIsPublic: locations.data.address_is_public,
-          latitude: locations.data.latitude != null ? Number(locations.data.latitude) : null,
-          longitude: locations.data.longitude != null ? Number(locations.data.longitude) : null,
-          addressLine: locations.data.address_line,
-          postalCode: locations.data.postal_code,
-        }
-      : null,
+    locations: (locations.data ?? []).map((l: any) => ({
+      id: l.id,
+      label: l.label,
+      neighbourhood: l.neighbourhood,
+      addressIsPublic: l.address_is_public,
+      isPrimary: l.is_primary,
+      latitude: l.latitude != null ? Number(l.latitude) : null,
+      longitude: l.longitude != null ? Number(l.longitude) : null,
+      addressLine: l.address_line,
+      postalCode: l.postal_code,
+    })),
     travel: travel.data
       ? {
           travelEnabled: travel.data.travel_enabled,
@@ -139,7 +156,9 @@ export default async function CoachSettingsPage() {
       hasBio: !!coach.bio,
       serviceCount: activeServices.length,
       skillCount: mySkills.data?.length ?? 0,
-      hasLocation: !!locations.data,
+      // An empty array is truthy — count it, or a coach with no location
+      // clears the publish blocker.
+      hasLocation: (locations.data ?? []).length > 0,
       hasAvailability: (availability.data?.length ?? 0) > 0,
       payoutsEnabled: !!coach.stripe_payouts_enabled,
     }),

@@ -7,7 +7,9 @@ import { CoachLocationMap } from "./CoachLocationMap";
 import { AddressSearch } from "./AddressSearch";
 import { BOUNDS, describeCancellationPolicy } from "@/lib/club/booking-preferences";
 import { PayoutsSection, type PayoutState } from "./PayoutsSection";
-import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
+import { CalendarSection } from "./CalendarSection";
+import type { CalendarConnectionState } from "@/lib/club/calendar";
+import { formatMoney, SG_NEIGHBOURHOODS, CLUB_MARKET } from "@/lib/club/config";
 import {
   updateCoachProfile,
   setCoachSkills,
@@ -18,6 +20,10 @@ import {
   setAvailabilityRules,
   setCoachPublished,
   updateBookingPreferences,
+  setPrimaryCoachLocation,
+  deleteCoachLocation,
+  addAvailabilityException,
+  removeAvailabilityException,
 } from "@/app/(coach)/coach/actions";
 
 // Coach profile / onboarding. One page rather than a wizard: a returning
@@ -36,12 +42,15 @@ export interface SettingsData {
     headline: string | null;
     bio: string | null;
     yearsCoaching: number | null;
+    languages: string[];
     status: string;
     photoUrl: string | null;
   };
   /** Signed URLs — the bucket is private, so these expire. */
   gallery: Array<{ id: string; url: string }>;
   payouts: PayoutState;
+  calendar: CalendarConnectionState;
+  timeOff: Array<{ id: string; startsAt: string; endsAt: string; reason: string | null }>;
   bookingPreferences: {
     bufferBeforeMinutes: number;
     bufferAfterMinutes: number;
@@ -61,16 +70,17 @@ export interface SettingsData {
     travelEnabled: boolean;
     skillId: string | null;
   }>;
-  location: {
+  locations: Array<{
     id: string;
     label: string;
     neighbourhood: string | null;
     addressIsPublic: boolean;
+    isPrimary: boolean;
     latitude: number | null;
     longitude: number | null;
     addressLine: string | null;
     postalCode: string | null;
-  } | null;
+  }>;
   travel: { travelEnabled: boolean; maxTravelKm: number; travelBufferMinutes: number; serviceAreas: string[] } | null;
   availability: Array<{ weekday: number; startMinute: number; endMinute: number }>;
   publishBlockers: string[];
@@ -90,9 +100,11 @@ export function CoachSettings({ data }: { data: SettingsData }) {
       <ProfileSection profile={data.profile} />
       <SkillsSection allSkills={data.allSkills} selectedIds={data.selectedSkillIds} />
       <ServicesSection services={data.services} skills={data.allSkills} />
-      <LocationSection location={data.location} travel={data.travel} />
+      <LocationSection locations={data.locations} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
+      <TimeOffSection entries={data.timeOff} />
       <BookingPreferencesSection preferences={data.bookingPreferences} />
+      <CalendarSection state={data.calendar} />
       <PayoutsSection state={data.payouts} />
     </div>
   );
@@ -153,6 +165,7 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
     headline: profile.headline ?? "",
     bio: profile.bio ?? "",
     yearsCoaching: profile.yearsCoaching?.toString() ?? "",
+    languages: profile.languages.length > 0 ? profile.languages : ["English"],
   });
   const { pending, error, saved, save } = useSaver();
 
@@ -180,6 +193,16 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
           inputMode="numeric"
         />
       </Field>
+
+      <LanguagesField
+        selected={form.languages}
+        onChange={(next) =>
+          // Never let it reach empty: the public profile renders whatever
+          // is here, and no languages at all reads as an error rather than
+          // a choice.
+          setForm({ ...form, languages: next.length > 0 ? next : ["English"] })
+        }
+      />
       {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
@@ -191,6 +214,7 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
               headline: form.headline,
               bio: form.bio,
               yearsCoaching: form.yearsCoaching ? Number(form.yearsCoaching) : undefined,
+              languages: form.languages,
             })
           )
         }
@@ -352,22 +376,45 @@ function ServicesSection({
   );
 }
 
+/** Shared affordance for the per-location row actions. They sit in a row
+ * of plain text, so without an underline they read as labels rather than
+ * controls — which is exactly how "Make main" was missed. Disabled state
+ * included, since these run server actions. */
+const ROW_ACTION =
+  "underline underline-offset-2 hover:no-underline disabled:opacity-50 disabled:no-underline " +
+  "rounded focus-visible:outline-2 focus-visible:outline-offset-2";
+
+type LocationDraft = SettingsData["locations"][number];
+
+const BLANK_LOCATION: LocationDraft = {
+  id: "",
+  label: "",
+  neighbourhood: "",
+  addressIsPublic: false,
+  isPrimary: false,
+  latitude: null,
+  longitude: null,
+  addressLine: "",
+  postalCode: "",
+};
+
+/** Where a coach works — one place or several.
+ *
+ * A list with ONE editor open at a time, rather than a card per location:
+ * each editor carries a Google map, and mounting several would load the
+ * Maps API repeatedly for places the coach isn't editing.
+ */
 function LocationSection({
-  location,
+  locations,
   travel,
 }: {
-  location: SettingsData["location"];
+  locations: SettingsData["locations"];
   travel: SettingsData["travel"];
 }) {
-  const [form, setForm] = useState({
-    label: location?.label ?? "",
-    neighbourhood: location?.neighbourhood ?? "",
-    addressIsPublic: location?.addressIsPublic ?? false,
-    latitude: location?.latitude ?? null as number | null,
-    longitude: location?.longitude ?? null as number | null,
-    addressLine: location?.addressLine ?? "",
-    postalCode: location?.postalCode ?? "",
-  });
+  // Open the first location by default so a coach with one place sees the
+  // form immediately, exactly as before this became a list.
+  const [editingId, setEditingId] = useState<string | null>(locations[0]?.id ?? "new");
+  const [draft, setDraft] = useState<LocationDraft>(locations[0] ?? BLANK_LOCATION);
   const [travelForm, setTravelForm] = useState({
     enabled: travel?.travelEnabled ?? false,
     maxKm: travel?.maxTravelKm?.toString() ?? "10",
@@ -375,52 +422,144 @@ function LocationSection({
     areas: travel?.serviceAreas ?? [],
   });
   const { pending, error, saved, save } = useSaver();
+  const [busy, startBusy] = useTransition();
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  const openEditor = (loc: LocationDraft | null) => {
+    setRowError(null);
+    setDraft(loc ?? BLANK_LOCATION);
+    setEditingId(loc?.id ?? "new");
+  };
 
   return (
     <Section title="Where you coach" description="Clients see your neighbourhood, never your exact address.">
-      <Field label="Location name" hint="e.g. River Valley studio">
-        <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
+      {locations.length > 0 && (
+        <ul className="mb-4 flex flex-col gap-2">
+          {locations.map((loc) => (
+            <li
+              key={loc.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
+              style={{
+                borderColor: editingId === loc.id ? T.primary : T.outlineVariant,
+                backgroundColor: T.surfaceContainerLowest,
+              }}
+            >
+              <span className="min-w-0 text-sm">
+                <span className="font-medium">{loc.label}</span>
+                {loc.neighbourhood && (
+                  <span style={{ color: T.onSurfaceVariant }}> · {loc.neighbourhood}</span>
+                )}
+                {loc.isPrimary && (
+                  <span
+                    className="ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                    style={{ backgroundColor: T.primaryContainer, color: T.primary }}
+                  >
+                    Main
+                  </span>
+                )}
+              </span>
+              <span className="flex shrink-0 items-center gap-3 text-sm">
+                <button
+                  type="button"
+                  onClick={() => openEditor(loc)}
+                  className={ROW_ACTION}
+                  aria-current={editingId === loc.id ? "true" : undefined}
+                >
+                  {editingId === loc.id ? "Editing" : "Edit"}
+                </button>
+                {!loc.isPrimary && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      startBusy(async () => {
+                        const r = await setPrimaryCoachLocation(loc.id);
+                        if (!r.ok) setRowError(r.error);
+                      })
+                    }
+                    className={ROW_ACTION}
+                    style={{ color: T.primary }}
+                  >
+                    Make main
+                  </button>
+                )}
+                {locations.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      startBusy(async () => {
+                        setRowError(null);
+                        const r = await deleteCoachLocation(loc.id);
+                        if (!r.ok) setRowError(r.error);
+                        else if (editingId === loc.id) openEditor(null);
+                      })
+                    }
+                    className={ROW_ACTION}
+                    style={{ color: T.error }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {rowError && <ErrorNote>{rowError}</ErrorNote>}
+
+      {editingId !== "new" && (
+        <button
+          type="button"
+          onClick={() => openEditor(null)}
+          className="mb-4 self-start rounded-full border px-4 py-2 text-sm font-medium"
+          style={{ borderColor: T.outlineVariant }}
+        >
+          + Add another location
+        </button>
+      )}
+
+      <Field label="Location name (optional)" hint="Only useful if you coach from more than one place — e.g. River Valley studio">
+        <Input value={draft.label} onChange={(v) => setDraft({ ...draft, label: v })} />
       </Field>
 
       <AddressSearch
+        value={draft.addressLine ?? ""}
+        onChange={(v) => setDraft((d) => ({ ...d, addressLine: v }))}
         onSelect={(r) =>
-          setForm((f) => ({
-            ...f,
+          setDraft((d) => ({
+            ...d,
             latitude: r.latitude,
             longitude: r.longitude,
-            addressLine: r.addressLine ?? f.addressLine,
-            postalCode: r.postalCode ?? f.postalCode,
-            // Only fills a blank — a coach who picked a neighbourhood
-            // deliberately keeps it.
-            neighbourhood: f.neighbourhood || r.neighbourhood || "",
+            addressLine: r.addressLine ?? d.addressLine,
+            postalCode: r.postalCode ?? d.postalCode,
+            neighbourhood: d.neighbourhood || r.neighbourhood || "",
           }))
         }
       />
 
-      <div className="grid grid-cols-[1fr_9rem] gap-4">
-        <Field label="Address" hint="Kept private unless you choose otherwise below">
-          <Input value={form.addressLine} onChange={(v) => setForm({ ...form, addressLine: v })} />
-        </Field>
-        <Field label="Postal code">
-          <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
-        </Field>
-      </div>
+      <Field label="Postal code">
+        <Input value={draft.postalCode ?? ""} onChange={(v) => setDraft({ ...draft, postalCode: v })} inputMode="numeric" />
+      </Field>
 
       {/* Coordinates drive travel-aware availability: without them the
           engine cannot tell whether a coach can physically reach a client
           between sessions, and correctly refuses to guess. */}
       <CoachLocationMap
-        value={form.latitude != null && form.longitude != null
-          ? { latitude: form.latitude, longitude: form.longitude }
+        key={editingId ?? "new"}
+        value={draft.latitude != null && draft.longitude != null
+          ? { latitude: draft.latitude, longitude: draft.longitude }
           : null}
         radiusKm={travelForm.enabled ? Number(travelForm.maxKm) || null : null}
-        onChange={(next) => setForm((f) => ({ ...f, latitude: next.latitude, longitude: next.longitude }))}
-        onNeighbourhoodDetected={(n) => setForm((f) => (f.neighbourhood ? f : { ...f, neighbourhood: n }))}
+        onChange={(next) => setDraft((d) => ({ ...d, latitude: next.latitude, longitude: next.longitude }))}
+        onNeighbourhoodDetected={(n) => setDraft((d) => (d.neighbourhood ? d : { ...d, neighbourhood: n }))}
       />
+
       <Field label="Neighbourhood">
         <select
-          value={form.neighbourhood}
-          onChange={(e) => setForm({ ...form, neighbourhood: e.target.value })}
+          value={draft.neighbourhood ?? ""}
+          onChange={(e) => setDraft({ ...draft, neighbourhood: e.target.value })}
           className="w-full rounded-xl border px-4 py-3 text-sm outline-none"
           style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
         >
@@ -430,11 +569,12 @@ function LocationSection({
           ))}
         </select>
       </Field>
+
       {/* Default off, and stated plainly — a home studio must never become
           public by accident. */}
       <Checkbox
-        checked={form.addressIsPublic}
-        onChange={(v) => setForm({ ...form, addressIsPublic: v })}
+        checked={draft.addressIsPublic}
+        onChange={(v) => setDraft({ ...draft, addressIsPublic: v })}
         label="Show my exact address publicly (leave off if you coach from home)"
       />
 
@@ -487,24 +627,25 @@ function LocationSection({
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
+      {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
         saved={saved}
         onSave={() =>
           save(async () => {
             const locRes = await upsertCoachLocation({
-              id: location?.id,
-              label: form.label,
+              id: draft.id || undefined,
+              label: draft.label,
               locationType: "COACH_LOCATION",
-              neighbourhood: form.neighbourhood,
-              addressIsPublic: form.addressIsPublic,
-              // Sent as undefined rather than null when unpinned, so an
-              // existing pin is never wiped by saving the rest of the form.
-              latitude: form.latitude ?? undefined,
-              longitude: form.longitude ?? undefined,
-              addressLine: form.addressLine,
-              postalCode: form.postalCode,
-              isPrimary: true,
+              neighbourhood: draft.neighbourhood ?? undefined,
+              addressIsPublic: draft.addressIsPublic,
+              latitude: draft.latitude ?? undefined,
+              longitude: draft.longitude ?? undefined,
+              addressLine: draft.addressLine ?? undefined,
+              postalCode: draft.postalCode ?? undefined,
+              // The first location a coach saves becomes the main one;
+              // after that, "Make main" is an explicit choice.
+              isPrimary: draft.isPrimary || locations.length === 0,
             });
             if (!locRes.ok) return locRes;
             return updateTravelRules({
@@ -521,63 +662,119 @@ function LocationSection({
 }
 
 function AvailabilitySection({ rules }: { rules: SettingsData["availability"] }) {
-  const byDay = new Map(rules.map((r) => [r.weekday, r]));
-  const [days, setDays] = useState(
-    DAYS.map((_, weekday) => {
-      const existing = byDay.get(weekday);
-      return {
-        weekday,
-        enabled: !!existing,
-        start: minutesToTime(existing?.startMinute ?? 9 * 60),
-        end: minutesToTime(existing?.endMinute ?? 17 * 60),
-      };
-    })
+  // A day holds a LIST of windows, not one. Coaches keep split days —
+  // mornings before a day job, evenings after — and the availability
+  // engine has always unioned multiple windows per weekday. Only this form
+  // couldn't express it: it keyed rules by weekday into a Map, so a second
+  // window was invisible here and deleted on the next save.
+  const [days, setDays] = useState(() =>
+    DAYS.map((_, weekday) => ({
+      weekday,
+      windows: rules
+        .filter((r) => r.weekday === weekday)
+        .sort((a, b) => a.startMinute - b.startMinute)
+        .map((r) => ({ start: minutesToTime(r.startMinute), end: minutesToTime(r.endMinute) })),
+    }))
   );
   const { pending, error, saved, save } = useSaver();
 
+  const update = (weekday: number, fn: (w: Array<{ start: string; end: string }>) => Array<{ start: string; end: string }>) =>
+    setDays((prev) => prev.map((d) => (d.weekday === weekday ? { ...d, windows: fn(d.windows) } : d)));
+
   return (
-    <Section title="Weekly availability" description="The hours clients can book. You can block one-off dates later.">
-      <div className="flex flex-col gap-2">
-        {days.map((d, i) => (
-          <div key={d.weekday} className="flex flex-wrap items-center gap-3">
-            <label className="flex min-w-[130px] items-center gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={d.enabled}
-                onChange={(e) => {
-                  const next = [...days];
-                  next[i] = { ...d, enabled: e.target.checked };
-                  setDays(next);
-                }}
-                className="h-4 w-4 rounded"
-                style={{ accentColor: T.primary }}
-              />
-              {DAYS[d.weekday]}
-            </label>
-            {d.enabled && (
-              <div className="flex items-center gap-2">
-                <TimeInput
-                  value={d.start}
-                  onChange={(v) => {
-                    const next = [...days];
-                    next[i] = { ...d, start: v };
-                    setDays(next);
-                  }}
-                />
-                <span className="text-sm" style={{ color: T.onSurfaceVariant }}>to</span>
-                <TimeInput
-                  value={d.end}
-                  onChange={(v) => {
-                    const next = [...days];
-                    next[i] = { ...d, end: v };
-                    setDays(next);
-                  }}
-                />
+    <Section
+      title="Weekly availability"
+      description="The hours clients can book. Add more than one block to a day if you coach mornings and evenings. You can block one-off dates later."
+    >
+      <div className="flex flex-col gap-3">
+        {days.map((d) => {
+          const open = d.windows.length > 0;
+          return (
+            <div
+              key={d.weekday}
+              className="rounded-xl border p-3"
+              style={{ borderColor: T.outlineVariant, backgroundColor: open ? T.surfaceContainerLowest : "transparent" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={open}
+                    onChange={(e) =>
+                      update(d.weekday, () =>
+                        e.target.checked ? [{ start: "09:00", end: "17:00" }] : []
+                      )
+                    }
+                    className="h-4 w-4 rounded"
+                    style={{ accentColor: T.primary }}
+                  />
+                  {DAYS[d.weekday]}
+                </label>
+                {!open && (
+                  <span className="text-sm" style={{ color: T.onSurfaceVariant }}>Closed</span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+
+              {open && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {d.windows.map((w, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="time"
+                        value={w.start}
+                        aria-label={`${DAYS[d.weekday]} block ${i + 1} start`}
+                        onChange={(e) =>
+                          update(d.weekday, (ws) => ws.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)))
+                        }
+                        className="rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+                      />
+                      <span className="text-sm" style={{ color: T.onSurfaceVariant }}>to</span>
+                      <input
+                        type="time"
+                        value={w.end}
+                        aria-label={`${DAYS[d.weekday]} block ${i + 1} end`}
+                        onChange={(e) =>
+                          update(d.weekday, (ws) => ws.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))
+                        }
+                        className="rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+                      />
+                      {d.windows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => update(d.weekday, (ws) => ws.filter((_, j) => j !== i))}
+                          aria-label={`Remove ${DAYS[d.weekday]} block ${i + 1}`}
+                          className="rounded-full px-2.5 py-1 text-sm"
+                          style={{ color: T.error }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      update(d.weekday, (ws) => [
+                        ...ws,
+                        // Default the new block after the last one, so the
+                        // common case (a gap, then evenings) needs no edit.
+                        { start: ws[ws.length - 1]?.end ?? "18:00", end: "21:00" },
+                      ])
+                    }
+                    className="self-start rounded-full border px-3.5 py-1.5 text-[13px] font-medium"
+                    style={{ borderColor: T.outlineVariant, color: T.onSurfaceVariant }}
+                  >
+                    + Add another block
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+
       {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
@@ -585,13 +782,13 @@ function AvailabilitySection({ rules }: { rules: SettingsData["availability"] })
         onSave={() =>
           save(() =>
             setAvailabilityRules(
-              days
-                .filter((d) => d.enabled)
-                .map((d) => ({
+              days.flatMap((d) =>
+                d.windows.map((w) => ({
                   weekday: d.weekday,
-                  startMinute: timeToMinutes(d.start),
-                  endMinute: timeToMinutes(d.end),
+                  startMinute: timeToMinutes(w.start),
+                  endMinute: timeToMinutes(w.end),
                 }))
+              )
             )
           )
         }
@@ -600,10 +797,6 @@ function AvailabilitySection({ rules }: { rules: SettingsData["availability"] })
   );
 }
 
-// ---- Shared pieces ---------------------------------------------------
-
-/** Per-section save state. Each section owns its own, so one failing save
- * never wipes another section's unsaved edits. */
 function useSaver() {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -654,11 +847,16 @@ function Section({
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  // The hint sits BELOW the input, not between label and input. Placed
+  // above, it pushed the input down by its own height, so two fields
+  // side by side in a grid only lined up when both had hints or neither
+  // did — "Address" against "Postal code", "Max distance" against
+  // "Travel buffer". Below, every input in a row starts at the same y.
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium">{label}</span>
-      {hint && <span className="mb-1.5 block text-xs" style={{ color: T.onSurfaceVariant }}>{hint}</span>}
       {children}
+      {hint && <span className="mt-1.5 block text-xs" style={{ color: T.onSurfaceVariant }}>{hint}</span>}
     </label>
   );
 }
@@ -871,6 +1069,158 @@ function BookingPreferencesSection({
               cancellationPartialRefundPercent: num(form.cancellationPartialRefundPercent),
             })
           )
+        }
+      />
+    </Section>
+  );
+}
+
+
+/** Languages a coach can actually coach in.
+ *
+ * The public profile has always shown a Languages line, but nothing could
+ * set it — the action defaulted every coach to English, so a Mandarin- or
+ * Malay-speaking coach in Singapore was advertised as English-only. A
+ * public claim nobody can correct is worse than no claim.
+ */
+const COMMON_LANGUAGES = ["English", "Mandarin", "Malay", "Tamil", "Cantonese", "Hindi", "Japanese", "Korean"];
+
+function LanguagesField({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <Field label="Languages you coach in">
+      <div className="flex flex-wrap gap-2">
+        {COMMON_LANGUAGES.map((lang) => {
+          const on = selected.includes(lang);
+          return (
+            <button
+              key={lang}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? selected.filter((l) => l !== lang) : [...selected, lang])}
+              className="rounded-full border px-3 py-1.5 text-xs font-medium"
+              style={
+                on
+                  ? { backgroundColor: T.primary, color: T.onPrimary, borderColor: T.primary }
+                  : { borderColor: T.outlineVariant, color: T.onSurfaceVariant }
+              }
+            >
+              {lang}
+            </button>
+          );
+        })}
+      </div>
+    </Field>
+  );
+}
+
+/** One-off closures: a holiday, a competition, a Tuesday off.
+ *
+ * The weekly grid answers "when do you normally work"; this answers "when
+ * are you away". Without it a coach going on holiday has to switch off
+ * whole weekdays and remember to switch them back — and every client sees
+ * a permanently narrower coach in the meantime.
+ */
+function TimeOffSection({ entries }: { entries: SettingsData["timeOff"] }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [reason, setReason] = useState("");
+  const { pending, error, saved, save } = useSaver();
+  const [removing, startRemoving] = useTransition();
+
+  const dayFmt = new Intl.DateTimeFormat("en-SG", {
+    timeZone: CLUB_MARKET.timezone,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return (
+    <Section
+      title="Time off"
+      description="Block a holiday or a one-off day. Your weekly hours stay as they are."
+    >
+      {entries.length > 0 && (
+        <ul className="mb-4 flex flex-col gap-2">
+          {entries.map((e) => (
+            <li
+              key={e.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
+              style={{ borderColor: T.outlineVariant }}
+            >
+              <span className="text-sm">
+                <span className="font-medium">
+                  {dayFmt.format(new Date(e.startsAt))} – {dayFmt.format(new Date(e.endsAt))}
+                </span>
+                {e.reason && (
+                  <span style={{ color: T.onSurfaceVariant }}> · {e.reason}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                disabled={removing}
+                onClick={() => startRemoving(async () => { await removeAvailabilityException(e.id); })}
+                className="text-sm underline underline-offset-2"
+                style={{ color: T.error }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-[1fr_1fr_1.4fr]">
+        <Field label="From">
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="w-full rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="w-full rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+          />
+        </Field>
+        <Field label="Reason (optional)" hint="Only you see this">
+          <Input value={reason} onChange={setReason} />
+        </Field>
+      </div>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <SaveRow
+        pending={pending}
+        saved={saved}
+        onSave={() =>
+          save(async () => {
+            if (!from || !to) return { ok: false as const, error: "Pick both dates." };
+            // Whole days, in the market's timezone: a coach picking 5–7
+            // means all three days off, not 00:00 to 00:00.
+            const startsAt = new Date(`${from}T00:00:00+08:00`).toISOString();
+            const endsAt = new Date(`${to}T23:59:59+08:00`).toISOString();
+            if (new Date(endsAt) <= new Date(startsAt)) {
+              return { ok: false as const, error: "The end date is before the start date." };
+            }
+            const result = await addAvailabilityException({ startsAt, endsAt, type: "blocked", reason });
+            if (result.ok) {
+              setFrom("");
+              setTo("");
+              setReason("");
+            }
+            return result;
+          })
         }
       />
     </Section>

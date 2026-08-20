@@ -63,18 +63,18 @@ describe("coordinates survive a save", () => {
   const settings = src("components/coach/CoachSettings.tsx");
 
   it("are passed to the action", () => {
-    expect(settings).toMatch(/latitude: form\.latitude \?\? undefined/);
-    expect(settings).toMatch(/longitude: form\.longitude \?\? undefined/);
+    expect(settings).toMatch(/latitude: draft\.latitude \?\? undefined/);
+    expect(settings).toMatch(/longitude: draft\.longitude \?\? undefined/);
   });
 
   it("send undefined rather than null when unpinned", () => {
     // Sending null would wipe an existing pin whenever a coach saved the
     // rest of the form without touching the map.
-    expect(settings).not.toMatch(/latitude: form\.latitude \?\? null/);
+    expect(settings).not.toMatch(/latitude: draft\.latitude \?\? null/);
   });
 
   it("are loaded back into the form", () => {
-    expect(src("app/(coach)/coach/settings/page.tsx")).toMatch(/latitude: locations\.data\.latitude/);
+    expect(src("app/(coach)/coach/settings/page.tsx")).toMatch(/latitude: l\.latitude != null \? Number\(l\.latitude\) : null/);
   });
 });
 
@@ -158,8 +158,8 @@ describe("address search", () => {
 
   it("fills the form without overwriting a chosen neighbourhood", () => {
     const settings = src("components/coach/CoachSettings.tsx");
-    expect(settings).toMatch(/neighbourhood: f\.neighbourhood \|\| r\.neighbourhood \|\| ""/);
-    expect(settings).toMatch(/postalCode: r\.postalCode \?\? f\.postalCode/);
+    expect(settings).toMatch(/neighbourhood: d\.neighbourhood \|\| r\.neighbourhood \|\| ""/);
+    expect(settings).toMatch(/postalCode: r\.postalCode \?\? d\.postalCode/);
   });
 
   it("scopes results to the market's country", () => {
@@ -193,5 +193,44 @@ describe("address search", () => {
 
   it("carries a neighbourhood only when it matches the known list", () => {
     expect(src("lib/club/geocode.ts")).toMatch(/neighbourhood: matchKnownNeighbourhood\(area\)/);
+  });
+});
+
+describe("the location form after simplification", () => {
+  const settings = () => src("components/coach/CoachSettings.tsx");
+  const search = () => src("components/coach/AddressSearch.tsx");
+
+  it("hints sit below inputs, so side-by-side fields line up", () => {
+    // A hint above the input pushed that input down, so "Address"/"Postal
+    // code" and "Max distance"/"Travel buffer" only aligned when both
+    // fields had hints or neither did.
+    const field = settings().slice(settings().indexOf("function Field({"));
+    const inputAt = field.indexOf("{children}");
+    const hintAt = field.indexOf("{hint &&");
+    expect(hintAt).toBeGreaterThan(inputAt);
+  });
+
+  it("address search and the address field are one input", () => {
+    // Two boxes holding the same text invite them to disagree.
+    expect(search()).toMatch(/htmlFor="coach-address"/);
+    expect(search()).toMatch(/>Address</);
+    expect(settings()).toMatch(/value=\{draft\.addressLine \?\? ""\}/);
+    // The separate duplicate Address input is gone.
+    expect(settings()).not.toMatch(/<Field label="Address"/);
+  });
+
+  it("typing and picking a suggestion both set the address", () => {
+    expect(search()).toMatch(/onChange\(e\.target\.value\)/);
+    expect(search()).toMatch(/onChange\(chosen\)/);
+  });
+
+  it("the location name is optional in the form and in the action", () => {
+    expect(settings()).toMatch(/Location name \(optional\)/);
+    const actions = src("app/(coach)/coach/actions.ts");
+    const fn = actions.slice(actions.indexOf("export async function upsertCoachLocation"));
+    // Asking a coach with one place to invent a label for it is a required
+    // field with only one sensible answer.
+    expect(fn).not.toMatch(/Give this location a name/);
+    expect(fn).toMatch(/input\.label\?\.trim\(\) \|\| input\.neighbourhood\?\.trim\(\) \|\| "Main location"/);
   });
 });

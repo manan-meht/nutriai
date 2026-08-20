@@ -14,7 +14,7 @@ const src = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf-8
  * re-learning. */
 const code = (s: string) => s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const feed = () => src("components/club/SwipeFeed.tsx");
-const page = () => src("app/(club)/club/browse/page.tsx");
+const page = () => src("app/(club)/club/deck.tsx");
 const loading = () => src("app/(club)/club/browse/loading.tsx");
 
 describe("hero copy", () => {
@@ -75,7 +75,7 @@ describe("skill filtering", () => {
 
   it("filters client-side over the loaded page — no second query per tap", () => {
     expect(feed()).toMatch(/coaches\.filter\(\(c\) => c\.skillSlugs\.includes\(skill\)\)/);
-    expect(page()).toMatch(/discoverCoaches\(admin, \{\}, now\)/);
+    expect(page()).toMatch(/discoverCoaches\(admin, \{ demo \}, now\)/);
   });
 
   it("keeps the URL shareable without navigating", () => {
@@ -100,7 +100,9 @@ describe("skill filtering", () => {
   });
 
   it("deep links still seed the filter", () => {
-    expect(page()).toMatch(/params\.skill && bySlug\.has\(params\.skill\)/);
+    expect(page()).toMatch(/skillParam && bySlug\.has\(skillParam\)/);
+    // The route still reads ?skill= and hands it down.
+    expect(src("app/(club)/club/browse/page.tsx")).toMatch(/skillParam=\{params\.skill\}/);
   });
 });
 
@@ -115,7 +117,8 @@ describe("count and list view", () => {
 
   it("Browse all is a styled, tracked secondary action pointing at the list's home", () => {
     expect(feed()).toMatch(/>\s*Browse all\s*</);
-    expect(feed()).toMatch(/href="\/coaches"/);
+    // Carries the audience: from /demo it must stay in the demo.
+    expect(feed()).toMatch(/href=\{demo \? "\/coaches\?demo=1" : "\/coaches"\}/);
     expect(feed()).toMatch(/trackClubEvent\("list_view_clicked"\)/);
   });
 });

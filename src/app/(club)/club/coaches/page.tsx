@@ -16,23 +16,29 @@ export const metadata = {
 export default async function ClubDiscoverPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ skill?: string; travels?: string }>;
+  searchParams?: Promise<{ skill?: string; travels?: string; demo?: string }>;
 }) {
   const params = (await searchParams) ?? {};
   const admin = createServiceClient();
+
+  // ?demo=1 is how the /demo deck's "Browse all" stays inside the demo.
+  // Without it the showcase would hand visitors a list of real coaches,
+  // which is empty — the demo would appear to break halfway through.
+  const demo = params.demo === "1";
 
   const [skills, coaches] = await Promise.all([
     listSkills(admin),
     discoverCoaches(admin, {
       skillSlug: params.skill,
       travelsToClient: params.travels === "1",
+      demo,
     }),
   ]);
 
   const activeSkill = skills.find((s: any) => s.slug === params.skill);
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    const merged = { skill: params.skill, travels: params.travels, ...over };
+    const merged = { skill: params.skill, travels: params.travels, demo: params.demo, ...over };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
     const s = p.toString();
     return s ? `/coaches?${s}` : "/coaches";
@@ -48,7 +54,7 @@ export default async function ClubDiscoverPage({
       </p>
 
       <Link
-        href="/browse"
+        href={demo ? "/demo" : "/browse"}
         className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium"
         style={{ backgroundColor: T.primary, color: T.onPrimary }}
       >
@@ -77,7 +83,7 @@ export default async function ClubDiscoverPage({
         {coaches.length} {coaches.length === 1 ? "coach" : "coaches"} available
       </p>
 
-      <CoachCardList coaches={coaches} />
+      <CoachCardList coaches={coaches} filtered={!!params.skill || params.travels === "1"} />
     </ClubChrome>
   );
 }

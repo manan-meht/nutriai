@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
 import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { disconnectCalendar } from "@/lib/club/calendar";
 import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
 import { validateBookingPreferences, type BookingPreferences } from "@/lib/club/booking-preferences";
 import {
@@ -236,12 +237,16 @@ export async function upsertCoachLocation(input: {
 }): Promise<ActionResult> {
   const coach = await requireCoachProfile();
   if (!coach) return NOT_AUTHED;
-  if (!input.label?.trim()) return { ok: false, error: "Give this location a name." };
+
+  // A name is only useful to a coach juggling several places. With one
+  // location it is a required field asking someone to invent a label for
+  // the only answer, so it falls back to their neighbourhood.
+  const label = input.label?.trim() || input.neighbourhood?.trim() || "Main location";
 
   const admin = createServiceClient();
   const payload = {
     coach_profile_id: coach.id,
-    label: input.label.trim(),
+    label,
     location_type: input.locationType,
     neighbourhood: input.neighbourhood?.trim() || null,
     address_line: input.addressLine?.trim() || null,
@@ -329,6 +334,23 @@ export async function setAvailabilityRules(
     if (r.endMinute <= r.startMinute) return { ok: false, error: "End time must be after start time." };
   }
 
+  // A day may hold several windows — mornings and evenings, with a gap for
+  // a day job. They must not overlap: the availability engine unions
+  // windows per day, so an overlap silently collapses into one long block,
+  // and a coach who thought they had closed the middle of the day gets
+  // booked in it.
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  for (let weekday = 0; weekday <= 6; weekday++) {
+    const sameDay = rules
+      .filter((r) => r.weekday === weekday)
+      .sort((a, b) => a.startMinute - b.startMinute);
+    for (let i = 1; i < sameDay.length; i++) {
+      if (sameDay[i].startMinute < sameDay[i - 1].endMinute) {
+        return { ok: false, error: `Your ${DAY_NAMES[weekday]} times overlap. Adjust them so they don't run into each other.` };
+      }
+    }
+  }
+
   const admin = createServiceClient();
   await admin.from("coach_availability_rules").delete().eq("coach_profile_id", coach.id);
   if (rules.length > 0) {
@@ -361,6 +383,38 @@ export async function addAvailabilityException(input: {
   }
 
   const admin = createServiceClient();
+
+  // Blocking time that already has sessions in it would strand real
+  // clients: the booking survives, but it now sits outside the coach's
+  // availability, so nobody is told and the coach may not notice until
+  // someone turns up. Name the clash and let them cancel deliberately.
+  if (input.type === "blocked") {
+    const { data: clashes } = await admin
+      .from("bookings")
+      .select("starts_at, coach_services(name)")
+      .eq("coach_profile_id", coach.id)
+      .in("status", ["CONFIRMED", "PAYMENT_PENDING"])
+      .lt("starts_at", input.endsAt)
+      .gt("ends_at", input.startsAt)
+      .order("starts_at");
+
+    if (clashes && clashes.length > 0) {
+      const when = new Intl.DateTimeFormat("en-SG", {
+        timeZone: CLUB_MARKET.timezone,
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(new Date((clashes[0] as any).starts_at));
+      const extra = clashes.length > 1 ? ` and ${clashes.length - 1} more` : "";
+      return {
+        ok: false,
+        error: `You have a session booked on ${when}${extra} in that period. Cancel it first if you're not available.`,
+      };
+    }
+  }
+
   const { error } = await admin.from("coach_availability_exceptions").insert({
     coach_profile_id: coach.id,
     starts_at: input.startsAt,
@@ -666,4 +720,113 @@ export async function refreshPayoutStatus(): Promise<ActionResult> {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach Stripe." };
   }
+}
+
+/** Detaches the coach's Google Calendar. The stored tokens are deleted
+ * rather than flagged — keeping credentials for a connection a coach has
+ * explicitly ended is not defensible. */
+export async function disconnectCoachCalendar(): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  await disconnectCalendar(createServiceClient(), coach.id);
+  revalidateCoach();
+  return { ok: true };
+}
+
+/** Makes one location the primary, unsetting the others.
+ *
+ * The primary is what discovery shows and what a booking defaults to, so
+ * exactly one must hold the flag — the column has no constraint enforcing
+ * that, and two primaries would make "where do you coach" answer
+ * arbitrarily. */
+export async function setPrimaryCoachLocation(locationId: string): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+  const { data: owned } = await admin
+    .from("coach_locations")
+    .select("id")
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id)
+    .maybeSingle();
+  if (!owned) return { ok: false, error: "That location no longer exists." };
+
+  await admin
+    .from("coach_locations")
+    .update({ is_primary: false })
+    .eq("coach_profile_id", coach.id);
+  const { error } = await admin
+    .from("coach_locations")
+    .update({ is_primary: true, updated_at: new Date().toISOString() })
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateCoach();
+  return { ok: true };
+}
+
+/**
+ * Removes a location.
+ *
+ * Two refusals, both protecting someone other than the coach:
+ *
+ *  - The last location can't go. "Add where you coach" is a publish
+ *    blocker, so deleting the only one would silently unpublish a live
+ *    profile from a screen that says nothing about publishing.
+ *  - A location with upcoming sessions can't go. booking_locations
+ *    references it with ON DELETE SET NULL, so the booking would survive
+ *    while quietly losing the exact address the client was promised on
+ *    confirmation.
+ */
+export async function deleteCoachLocation(locationId: string): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+  const [{ data: mine }, { data: upcoming }] = await Promise.all([
+    admin.from("coach_locations").select("id, is_primary").eq("coach_profile_id", coach.id).eq("is_active", true),
+    admin
+      .from("booking_locations")
+      .select("booking_id, bookings!inner(starts_at, status)")
+      .eq("coach_location_id", locationId)
+      .gte("bookings.starts_at", new Date().toISOString())
+      .in("bookings.status", ["CONFIRMED", "PAYMENT_PENDING"]),
+  ]);
+
+  const locations = mine ?? [];
+  if (!locations.some((l: any) => l.id === locationId)) {
+    return { ok: false, error: "That location no longer exists." };
+  }
+  if (locations.length <= 1) {
+    return { ok: false, error: "This is your only location. Add another before removing this one." };
+  }
+  if ((upcoming ?? []).length > 0) {
+    const n = (upcoming ?? []).length;
+    return {
+      ok: false,
+      error: `${n} upcoming ${n === 1 ? "session is" : "sessions are"} booked at this location. Move or cancel ${n === 1 ? "it" : "them"} first.`,
+    };
+  }
+
+  const wasPrimary = locations.find((l: any) => l.id === locationId)?.is_primary;
+  const { error } = await admin
+    .from("coach_locations")
+    .delete()
+    .eq("id", locationId)
+    .eq("coach_profile_id", coach.id);
+  if (error) return { ok: false, error: error.message };
+
+  // Never leave a coach with locations but no primary.
+  if (wasPrimary) {
+    const next = locations.find((l: any) => l.id !== locationId);
+    if (next) {
+      await admin.from("coach_locations").update({ is_primary: true }).eq("id", next.id);
+    }
+  }
+
+  revalidateCoach();
+  return { ok: true };
 }

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OBSIDIAN_TOKENS as O } from "@/components/coach/tokens";
 import { trackClubEvent } from "@/lib/club/analytics";
+import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+
+/** Where an interested coach goes. The coach app is a different origin, so
+ * this is an absolute URL rather than a Next Link. */
+const COACH_SIGNUP_URL = `${COACH_CANONICAL_ORIGIN}/signup`;
 
 // The club homepage and coach deck, as ONE vertical surface.
 //
@@ -55,6 +60,7 @@ export function SwipeFeed({
   coaches,
   initialSkill,
   marketName,
+  demo = false,
 }: {
   /** Already ordered: priority skills first, the rest after. */
   skills: SwipeSkill[];
@@ -63,6 +69,10 @@ export function SwipeFeed({
   coaches: SwipeCoach[];
   initialSkill: string | null;
   marketName: string;
+  /** Renders the deck as the labelled /demo showcase. Seeded coaches are
+   * only ever shown behind this flag, so nothing on the live site can
+   * present an invented person as someone you could book. */
+  demo?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [skill, setSkill] = useState<string | null>(initialSkill);
@@ -196,6 +206,25 @@ export function SwipeFeed({
           </p>
         </div>
 
+        {/* Says what this page is before anything else is read. Placed in
+            the flow rather than as an overlay so it can never sit on top
+            of a coach's name the way the Filters pill once did. */}
+        {demo && (
+          <div
+            className="mt-3 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl px-4 py-2.5 text-center text-[13px]"
+            style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
+          >
+            <span className="font-semibold">Demo — these coaches are examples, not real people.</span>
+            <a
+              href="/"
+              className="font-semibold underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{ color: O.onPrimaryContainer }}
+            >
+              Go to Tistra Club
+            </a>
+          </div>
+        )}
+
         {/* Hero — identical copy on every breakpoint. */}
         <div className="flex flex-1 flex-col justify-center">
           <h1
@@ -250,7 +279,7 @@ export function SwipeFeed({
               {filtered.length === 1 ? "1 coach" : `${filtered.length} coaches`} in {marketName}
             </p>
             <Link
-              href="/coaches"
+              href={demo ? "/coaches?demo=1" : "/coaches"}
               onClick={() => trackClubEvent("list_view_clicked")}
               className="rounded-full px-2 py-1 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               style={{ color: O.primary }}
@@ -282,7 +311,7 @@ export function SwipeFeed({
       {filtered.length === 0 ? (
         <section
           className="h-[100dvh] w-full snap-start snap-always px-5 sm:px-10"
-          aria-label="No matching coaches"
+          aria-label={coaches.length === 0 ? "No coaches yet" : "No matching coaches"}
         >
           {/* Content sits in the top third so the peek under the cover
               shows the message, never a blank slab. */}
@@ -290,17 +319,50 @@ export function SwipeFeed({
             className="mx-auto flex max-w-md flex-col items-center rounded-t-[28px] px-6 pb-10 pt-9 text-center sm:rounded-3xl"
             style={{ backgroundColor: O.surfaceContainerLow }}
           >
-            <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
-              No coaches for this skill yet.
-            </p>
-            <button
-              type="button"
-              onClick={() => selectSkill(null)}
-              className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-              style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
-            >
-              Browse all coaches
-            </button>
+            {coaches.length === 0 ? (
+              /* Nothing is loaded at all — the market is still opening.
+                 Saying so plainly beats an empty deck that reads as a
+                 broken page, and the only honest next step for a visitor
+                 here is to become one of the first coaches. */
+              <>
+                <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
+                  We&rsquo;re signing up the first coaches in {marketName}.
+                </p>
+                <p className="mt-2 text-[15px]" style={{ color: O.onSurfaceVariant }}>
+                  Nobody is bookable yet. If you coach here, this is the moment to claim your spot.
+                </p>
+                <a
+                  href={COACH_SIGNUP_URL}
+                  onClick={() => trackClubEvent("coach_signup_clicked", { from: "empty_deck" })}
+                  className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
+                >
+                  Coach with Tistra
+                </a>
+                <a
+                  href="/demo"
+                  onClick={() => trackClubEvent("demo_clicked", { from: "empty_deck" })}
+                  className="mt-4 text-[14px] underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                  style={{ color: O.onSurfaceVariant }}
+                >
+                  See how it works
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
+                  No coaches for this skill yet.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => selectSkill(null)}
+                  className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                  style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
+                >
+                  Browse all coaches
+                </button>
+              </>
+            )}
           </div>
         </section>
       ) : (

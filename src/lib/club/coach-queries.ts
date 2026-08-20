@@ -3,6 +3,7 @@ import { calculateAvailableSlots, type WorkingRule } from "./availability";
 import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config";
 import { profileQualityScore, publishBlockers } from "./ranking";
 import { resolveSignedCoachPhotoUrl } from "./media";
+import { fetchBusyBlocks } from "./calendar";
 
 // Data layer for the Coach OS. Every screen reads from here rather than
 // querying Supabase inline, so authorization ("is this row actually this
@@ -197,6 +198,13 @@ export async function getCoachDashboard(
   // week, using booked sessions as busy time, so the number a coach sees is
   // the same number a client could actually book.
   const defaultDuration = (services.data ?? [])[0]?.duration_minutes ?? 60;
+
+  // The coach's own connected calendar counts here too, or their dashboard
+  // would claim open capacity that discovery and the booking page both
+  // refuse to offer — the number is supposed to be what a client could
+  // actually book.
+  const externalBusy = await fetchBusyBlocks(admin, profile.id, now, weekEnd);
+
   const { slots } = calculateAvailableSlots({
     now,
     timezone: profile.timezone,
@@ -204,7 +212,10 @@ export async function getCoachDashboard(
     serviceDurationMinutes: defaultDuration,
     slotIntervalMinutes: 60,
     workingRules,
-    busy: weekSessions.map((s) => ({ startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
+    busy: [
+      ...weekSessions.map((s) => ({ startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
+      ...(externalBusy ?? []),
+    ],
     bufferBeforeMinutes: profile.bufferBeforeMinutes,
     bufferAfterMinutes: profile.bufferAfterMinutes,
     minNoticeHours: profile.minNoticeHours,
@@ -259,12 +270,20 @@ export interface CalendarWeek {
     /** Working windows in local minutes, for the background shading. */
     workingWindows: Array<{ startMinute: number; endMinute: number }>;
     sessions: SessionSummary[];
+    /** Google Calendar busy blocks, as opaque ranges. Times only — the
+     * free/busy scope means no title, guest or location ever reaches us,
+     * so there is nothing here that could leak what the coach is doing. */
+    busyBlocks: Array<{ startsAt: string; endsAt: string }>;
   }>;
 }
 
 /** A week of the coach's calendar: working hours as background, real
- * bookings on top. Google busy blocks merge in here once Calendar OAuth
- * lands — sanitized to opaque ranges, never event details (spec). */
+ * bookings on top, and Google busy blocks as opaque ranges — sanitized to
+ * times only, never event details (spec).
+ *
+ * Showing them matters beyond decoration: without them a coach sees a slot
+ * missing from their availability with no visible reason, which reads as a
+ * bug in Tistra rather than as their own dentist appointment. */
 export async function getCoachCalendarWeek(
   admin: SupabaseClient,
   profileId: string,
@@ -274,10 +293,16 @@ export async function getCoachCalendarWeek(
   if (!profile) return null;
 
   const weekEnd = new Date(weekStart.getTime() + 7 * 864e5);
-  const [sessions, rules] = await Promise.all([
+  const [sessions, rules, externalBusy] = await Promise.all([
     getBookingsBetween(admin, profile.id, weekStart, weekEnd),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", profile.id).eq("is_active", true),
+    fetchBusyBlocks(admin, profile.id, weekStart, weekEnd),
   ]);
+
+  const localDateKey = (d: Date) => {
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+    return local.toISOString().slice(0, 10);
+  };
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const date = new Date(weekStart.getTime() + i * 864e5);
@@ -290,6 +315,11 @@ export async function getCoachCalendarWeek(
         .filter((r: any) => r.weekday === weekday)
         .map((r: any) => ({ startMinute: r.start_minute, endMinute: r.end_minute })),
       sessions: sessions.filter((s) => s.startsAt.slice(0, 10) === dayKey),
+      // Same local-date grouping the sessions use, so a block lands on the
+      // day a coach would say it belongs to.
+      busyBlocks: (externalBusy ?? [])
+        .filter((b) => localDateKey(b.startsAt) === dayKey)
+        .map((b) => ({ startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() })),
     };
   });
 
