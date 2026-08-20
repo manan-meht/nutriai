@@ -1,36 +1,41 @@
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { Hanken_Grotesk } from "next/font/google";
+import { createServiceClient } from "@/lib/supabase/server";
 import { discoverCoaches, listSkills } from "@/lib/club/discovery";
-import { SwipeFeed, type SwipeCoach } from "@/components/club/SwipeFeed";
+import { SwipeFeed, type SwipeCoach, type SwipeSkill } from "@/components/club/SwipeFeed";
 import { nextAvailableLabel } from "@/components/club/CoachCardList";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
-import { zonedDateString } from "@/lib/club/time";
 
-// The swipe entry point: sign in on a phone, get a greeting, filter or
-// don't, then swipe through one full-screen coach at a time.
+// The club homepage: hero, skill filters and the coach deck as one
+// continuous vertical surface (see SwipeFeed for the geometry).
+//
+// One query loads the ranked page of coaches; filtering after that is
+// client-side over the same data, so a chip tap updates the count and the
+// peeking first coach without a navigation. ?skill= deep links still work
+// — they seed the client state rather than narrowing the fetch.
 //
 // Everything a card shows is composed HERE and passed down as plain
-// strings. The client component stays a dumb renderer: no Date parsing, no
-// currency logic, nothing that could disagree with the list view about
-// what "Next available" means — both surfaces share the same label
-// functions.
+// strings; the client component parses no Dates and does no currency
+// maths, so the deck can never disagree with the list view about what
+// "Next available" means.
 
 export const dynamic = "force-dynamic";
 
-/** One line per day, rotated deterministically — the message changes daily
- * but never mid-session, so a refresh doesn't feel like a slot machine. */
-const DAILY_LINES = [
-  "Consistency beats intensity. Book the next session.",
-  "Strong is a habit, not an event.",
-  "The right coach makes showing up the easy part.",
-  "One good session this week changes the next one.",
-  "Your future self is watching this swipe.",
-  "Small, regular sessions beat big, rare ones.",
-];
+// The Stitch type system pairs Hanken Grotesk with Inter; the hero carries
+// the page, so it gets the real face rather than an approximation.
+// Self-hosted by next/font at build time — no runtime font CDN.
+const hanken = Hanken_Grotesk({ subsets: ["latin"], weight: ["500", "600", "700"], display: "swap" });
 
-function greetingFor(hour: number, firstName: string | null): string {
-  const base = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  return firstName ? `${base}, ${firstName}.` : `${base}.`;
-}
+/** Default-visible chips, in the approved order. Everything else sits
+ * behind More — access to no skill is removed, only deferred. */
+const PRIORITY_SKILL_SLUGS = [
+  "handstands",
+  "strength-training",
+  "acrobatics",
+  "mobility",
+  "yoga",
+  "muay-thai",
+  "running",
+];
 
 export default async function BrowsePage({
   searchParams,
@@ -40,47 +45,39 @@ export default async function BrowsePage({
   const params = (await searchParams) ?? {};
   const admin = createServiceClient();
 
-  // Greeting personalises when signed in, stays warm when not — the feed
-  // itself is public, same as list discovery.
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  let firstName: string | null = null;
-  if (user) {
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("full_name")
-      .eq("id", user.id)
-      .maybeSingle();
-    firstName = profile?.full_name?.trim().split(" ")[0] || null;
-  }
-
   const now = new Date();
-  // Hour and day in the market's timezone, not the server's — a Worker
-  // runs in UTC and would otherwise say good morning at dinner time.
-  const hour = Number(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: CLUB_MARKET.timezone,
-      hour: "2-digit",
-      hour12: false,
-    }).format(now)
-  );
-  const dayNumber = Number(zonedDateString(now, CLUB_MARKET.timezone).replace(/-/g, ""));
-  const message = DAILY_LINES[dayNumber % DAILY_LINES.length];
-
-  const [skills, coaches] = await Promise.all([
+  const [skillRows, coaches] = await Promise.all([
     listSkills(admin),
-    discoverCoaches(admin, { skillSlug: params.skill }, now),
+    discoverCoaches(admin, {}, now),
   ]);
+
+  // Priority order first, then the remainder in their existing sort order.
+  const bySlug = new Map<string, SwipeSkill>(
+    skillRows.map((s: any) => [s.slug, { slug: s.slug, name: s.name }])
+  );
+  const prioritised = PRIORITY_SKILL_SLUGS.map((slug) => bySlug.get(slug)).filter(
+    (s): s is SwipeSkill => !!s
+  );
+  const rest = skillRows
+    .map((s: any) => ({ slug: s.slug, name: s.name }))
+    .filter((s: SwipeSkill) => !PRIORITY_SKILL_SLUGS.includes(s.slug));
+  const orderedSkills = [...prioritised, ...rest];
+
+  const initialSkill = params.skill && bySlug.has(params.skill) ? params.skill : null;
 
   const feedCoaches: SwipeCoach[] = coaches.map((c) => ({
     id: c.coachProfileId,
     name: c.displayName,
     headline: c.headline,
     skills: c.skills.slice(0, 3),
+    skillSlugs: c.skillSlugs,
     neighbourhood: c.neighbourhood,
-    ratingLabel: c.ratingAverage ? `★ ${c.ratingAverage} (${c.reviewCount})` : "New coach",
+    rating: c.ratingAverage ? `${c.ratingAverage} (${c.reviewCount})` : null,
     priceLabel:
-      c.startingPriceCents != null ? `From ${formatMoney(c.startingPriceCents, c.currency)}` : null,
+      c.startingPriceCents != null
+        ? // "From S$70", not "From S$70.00" — the Stitch card drops empty cents.
+          `From ${formatMoney(c.startingPriceCents, c.currency).replace(/\.00$/, "")}`
+        : null,
     nextLabel: nextAvailableLabel(c.nextSlot ? new Date(c.nextSlot.startsAt) : null),
     photo: c.photos[0] ?? c.photoUrl,
     verified: c.identityVerified,
@@ -88,12 +85,14 @@ export default async function BrowsePage({
   }));
 
   return (
-    <SwipeFeed
-      greeting={greetingFor(hour, firstName)}
-      message={message}
-      skills={skills.map((s: any) => ({ slug: s.slug, name: s.name }))}
-      coaches={feedCoaches}
-      activeSkill={params.skill ?? null}
-    />
+    <div className={hanken.className}>
+      <SwipeFeed
+        skills={orderedSkills}
+        primaryCount={prioritised.length}
+        coaches={feedCoaches}
+        initialSkill={initialSkill}
+        marketName={CLUB_MARKET.displayName}
+      />
+    </div>
   );
 }

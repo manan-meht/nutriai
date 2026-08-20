@@ -51,6 +51,9 @@ export const CLUB_MARKET = {
   currency: process.env.CLUB_DEFAULT_CURRENCY ?? "SGD",
   timezone: process.env.CLUB_DEFAULT_TIMEZONE ?? "Asia/Singapore",
   locale: "en-SG",
+  /** How the market is named to a consumer ("12 coaches in Singapore").
+   * Becomes per-city if the location model ever grows beyond one market. */
+  displayName: "Singapore",
   /** Where a map opens before a coach has pinned anything. Central
    * Singapore; a second market changes this alongside the list below. */
   centre: { latitude: 1.3521, longitude: 103.8198 },

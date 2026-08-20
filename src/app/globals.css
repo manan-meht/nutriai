@@ -57,3 +57,12 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Swipe affordance on the club deck: a slow, subtle lift — deliberately
+   not a bounce. The prefers-reduced-motion override above already reduces
+   it to a single frame for users who ask for that. */
+@keyframes swipe-nudge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.swipe-nudge { animation: swipe-nudge 2.8s ease-in-out infinite; }
