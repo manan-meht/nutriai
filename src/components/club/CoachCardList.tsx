@@ -3,6 +3,7 @@ import { CoachPhotoPager } from "./CoachPhotoPager";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
 import type { CoachCard } from "@/lib/club/discovery";
+import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 
 // Discovery feed: one large, photo-led card per coach, paged left/right for
 // more photos.
@@ -33,17 +34,40 @@ export function nextAvailableLabel(next: Date | null): string {
   return slotFmt.format(next);
 }
 
-export function CoachCardList({ coaches }: { coaches: CoachCard[] }) {
+export function CoachCardList({
+  coaches,
+  filtered = true,
+}: {
+  coaches: CoachCard[];
+  /** Whether a skill or travel filter is actually applied. Without this the
+   * empty state blames filters the visitor never set — which is what it did
+   * when the marketplace itself became empty. */
+  filtered?: boolean;
+}) {
   if (coaches.length === 0) {
     return (
       <div className="rounded-3xl border border-dashed px-6 py-14 text-center" style={{ borderColor: T.outlineVariant }}>
-        <p className="text-[15px] font-medium">No coaches match that yet.</p>
-        <p className="mx-auto mt-2 max-w-xs text-sm" style={{ color: T.onSurfaceVariant }}>
-          Try another skill, or clear your filters to see everyone available near you.
-        </p>
-        <Link href="/" className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
-          Show all coaches
-        </Link>
+        {filtered ? (
+          <>
+            <p className="text-[15px] font-medium">No coaches match that yet.</p>
+            <p className="mx-auto mt-2 max-w-xs text-sm" style={{ color: T.onSurfaceVariant }}>
+              Try another skill, or clear your filters to see everyone available near you.
+            </p>
+            <Link href="/coaches" className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
+              Show all coaches
+            </Link>
+          </>
+        ) : (
+          <>
+            <p className="text-[15px] font-medium">No coaches yet.</p>
+            <p className="mx-auto mt-2 max-w-xs text-sm" style={{ color: T.onSurfaceVariant }}>
+              We&rsquo;re signing up the first coaches in {CLUB_MARKET.displayName}. Nobody is bookable here yet.
+            </p>
+            <a href={`${COACH_CANONICAL_ORIGIN}/signup`} className="mt-6 inline-flex rounded-full px-6 py-3 text-sm font-medium" style={{ backgroundColor: T.primary, color: T.onPrimary }}>
+              Coach with Tistra
+            </a>
+          </>
+        )}
       </div>
     );
   }

@@ -78,7 +78,7 @@ export function isLocalDevHost(hostname: string | null | undefined): boolean {
 
 /** Top-level segments owned by the club app. Keep in sync with the
  * directories under src/app/(club)/club/ — a test asserts they match. */
-export const CLUB_APP_SEGMENTS = ["bookings", "browse", "checkout", "coaches", "profile"] as const;
+export const CLUB_APP_SEGMENTS = ["bookings", "browse", "checkout", "coaches", "demo", "profile"] as const;
 
 const CLUB_SEGMENTS = new Set<string>(CLUB_APP_SEGMENTS);
 

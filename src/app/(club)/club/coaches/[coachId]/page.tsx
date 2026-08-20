@@ -20,6 +20,22 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
     <ClubChrome hideNav>
       <Link href="/" className="text-sm" style={{ color: T.onSurfaceVariant }}>← Back</Link>
 
+      {/* An example profile stays reachable — old links shouldn't 404 —
+          but it must never read as a real, bookable person. Placed above
+          the photo so the label is seen before the face. */}
+      {coach.isDemo && (
+        <p
+          className="mt-3 rounded-2xl px-4 py-3 text-sm"
+          style={{ backgroundColor: T.primaryContainer, color: T.onSurface }}
+        >
+          <span className="font-semibold">This is a demo profile.</span>{" "}
+          {coach.displayName} is an example used to show how Tistra Club works, not a real coach.{" "}
+          <Link href="/" className="font-semibold underline underline-offset-2 hover:no-underline">
+            Find real coaches
+          </Link>
+        </p>
+      )}
+
       {/* Photo-led hero, matching the discovery feed — arriving from a
           large card onto a thumbnail read as a different product. */}
       <div className="-mx-5 mt-3 overflow-hidden sm:mx-0 sm:rounded-3xl">

@@ -28,6 +28,10 @@ export interface DiscoveryFilters {
   maxPriceCents?: number;
   travelsToClient?: boolean;
   availableWithinDays?: number;
+  /** Seeded example coaches instead of real ones. Default false: the
+   * public deck shows only real coaches, and demo profiles are confined
+   * to /demo where they are labelled as examples. */
+  demo?: boolean;
 }
 
 export interface CoachCard {
@@ -56,6 +60,23 @@ export interface CoachCard {
   isNew: boolean;
 }
 
+/** True when a query failed only because 0060 has not been applied yet.
+ *
+ * Migrations here are applied by hand, so code and schema go live minutes
+ * apart in either order. Rather than let that window 500 the homepage,
+ * callers fall back to the pre-migration truth: at the time 0060 was
+ * written every published profile was seeded or a test account, so
+ * "no is_demo column" means "no real coaches exist". The fallback is safe
+ * in the direction that matters — it shows a visitor nothing, never a
+ * fabricated coach presented as real. */
+function isMissingDemoColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /is_demo/.test(error.message ?? "");
+}
+
+const PROFILE_CARD_COLUMNS =
+  "id, display_name, headline, photo_url, rating_average, review_count, session_count, identity_verification_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days";
+
 /** Everything discovery needs, in a handful of queries rather than one per
  * coach — availability then runs in-process against the fetched rows. */
 export async function discoverCoaches(
@@ -63,12 +84,16 @@ export async function discoverCoaches(
   filters: DiscoveryFilters = {},
   now: Date = new Date()
 ): Promise<CoachCard[]> {
-  const { data: coaches } = await admin
-    .from("coach_profiles")
-    .select(
-      "id, display_name, headline, photo_url, rating_average, review_count, session_count, identity_verification_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days"
-    )
-    .eq("status", "published");
+  const demoOnly = filters.demo === true;
+  const published = () =>
+    admin.from("coach_profiles").select(PROFILE_CARD_COLUMNS).eq("status", "published");
+
+  let { data: coaches, error } = await published().eq("is_demo", demoOnly);
+  if (isMissingDemoColumn(error)) {
+    // Pre-migration: every published profile is a seeded example.
+    if (!demoOnly) return [];
+    ({ data: coaches } = await published());
+  }
 
   const rows = coaches ?? [];
   if (rows.length === 0) return [];
@@ -257,18 +282,39 @@ export interface CoachPublicProfile extends Omit<CoachCard, "nextSlot"> {
   }>;
   reviews: Array<{ id: string; rating: number; body: string | null; tags: string[]; createdAt: string; authorName: string }>;
   cancellationFullRefundHours: number;
+  /** Seeded example. The profile stays reachable by URL — a link that
+   * worked yesterday should not 404 — but it says so on the page rather
+   * than passing a fabricated coach off as bookable. */
+  isDemo: boolean;
 }
 
 export async function getCoachPublicProfile(
   admin: SupabaseClient,
   coachProfileId: string
 ): Promise<CoachPublicProfile | null> {
-  const { data: c } = await admin
-    .from("coach_profiles")
-    .select("id, display_name, headline, bio, photo_url, years_coaching, languages, rating_average, review_count, session_count, identity_verification_status, cancellation_full_refund_hours")
-    .eq("id", coachProfileId)
-    .eq("status", "published") // unpublished profiles are not publicly readable
-    .maybeSingle();
+  // Two literal selects rather than one built by concatenation:
+  // PostgREST types the result from the select STRING, so a template
+  // literal erases the row type entirely.
+  const withDemo = () =>
+    admin
+      .from("coach_profiles")
+      .select("id, display_name, headline, bio, photo_url, years_coaching, languages, rating_average, review_count, session_count, identity_verification_status, cancellation_full_refund_hours, is_demo")
+      .eq("id", coachProfileId)
+      .eq("status", "published") // unpublished profiles are not publicly readable
+      .maybeSingle();
+  const withoutDemo = () =>
+    admin
+      .from("coach_profiles")
+      .select("id, display_name, headline, bio, photo_url, years_coaching, languages, rating_average, review_count, session_count, identity_verification_status, cancellation_full_refund_hours")
+      .eq("id", coachProfileId)
+      .eq("status", "published")
+      .maybeSingle();
+
+  const first = await withDemo();
+  // Same hand-applied-migration window as discovery. Falling back to
+  // is_demo = true keeps every current profile labelled as an example,
+  // which is what they all are until 0060 lands.
+  const c: any = isMissingDemoColumn(first.error) ? (await withoutDemo()).data : first.data;
   if (!c) return null;
 
   const [services, skills, locations, travel, media, reviews] = await Promise.all([
@@ -346,6 +392,7 @@ export async function getCoachPublicProfile(
       };
     }),
     cancellationFullRefundHours: c.cancellation_full_refund_hours,
+    isDemo: c.is_demo ?? true,
   };
 }
 
