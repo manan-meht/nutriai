@@ -190,7 +190,7 @@ export function CoachLanding() {
         <div className="md:col-span-5">
           <MarketingImage
             src="/marketing/coach-hero.webp"
-            alt="A coach guiding a client through a training session"
+            alt="A trainer coaching a client through a kettlebell squat in a naturally lit gym"
             priority
           />
         </div>
@@ -217,8 +217,8 @@ export function CoachLanding() {
             <div className="mt-8">
               <MarketingImage
                 src="/marketing/coach-practice.webp"
-                alt="A coach running a small group session outdoors"
-                aspect="aspect-[16/10]"
+                alt="A coach correcting one client's form during a small outdoor group session in a Singapore park"
+                aspect="aspect-[16/9]"
               />
             </div>
           </div>
