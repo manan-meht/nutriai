@@ -17,11 +17,18 @@ import { MIN_SEARCH_LENGTH, type AddressSuggestion } from "@/lib/club/geocode";
 // already typed past.
 
 export function AddressSearch({
+  value,
+  onChange,
   onSelect,
 }: {
+  /** The stored address line — this input IS the address field, not a
+   * separate search box that populates one. Two boxes holding the same
+   * text invites them to disagree. */
+  value: string;
+  onChange: (next: string) => void;
   onSelect: (suggestion: AddressSuggestion) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(value);
   const [results, setResults] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -60,10 +67,16 @@ export function AddressSearch({
 
   return (
     <div className="relative">
-      <label className="mb-1.5 block text-sm font-medium">Search for your address</label>
+      <label className="mb-1.5 block text-sm font-medium" htmlFor="coach-address">Address</label>
       <input
+        id="coach-address"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          // Typed text is the address; picking a suggestion additionally
+          // fills the postal code and moves the map.
+          onChange(e.target.value);
+        }}
         onFocus={() => results.length > 0 && setOpen(true)}
         placeholder="e.g. 192 Depot Road"
         autoComplete="off"
@@ -73,8 +86,10 @@ export function AddressSearch({
         aria-expanded={open}
         aria-controls="address-results"
       />
-      <p className="mt-1 text-xs" style={{ color: T.onSurfaceVariant }}>
-        {searching ? "Searching…" : "Pick a result to fill in the postal code and move the map."}
+      <p className="mt-1.5 text-xs" style={{ color: T.onSurfaceVariant }}>
+        {searching
+          ? "Searching…"
+          : "Start typing and pick a result — we'll fill in the postal code and drop the pin. Kept private unless you choose to show it below."}
       </p>
 
       {open && (results.length > 0 || noResults) && (
@@ -103,7 +118,9 @@ export function AddressSearch({
                     type="button"
                     onClick={() => {
                       onSelect(r);
-                      setQuery(r.addressLine ?? r.label);
+                      const chosen = r.addressLine ?? r.label;
+                      setQuery(chosen);
+                      onChange(chosen);
                       setOpen(false);
                     }}
                     className="block w-full px-4 py-3 text-left text-sm"

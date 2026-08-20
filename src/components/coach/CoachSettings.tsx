@@ -382,11 +382,13 @@ function LocationSection({
 
   return (
     <Section title="Where you coach" description="Clients see your neighbourhood, never your exact address.">
-      <Field label="Location name" hint="e.g. River Valley studio">
+      <Field label="Location name (optional)" hint="Only useful if you coach from more than one place — e.g. River Valley studio">
         <Input value={form.label} onChange={(v) => setForm({ ...form, label: v })} />
       </Field>
 
       <AddressSearch
+        value={form.addressLine}
+        onChange={(v) => setForm((f) => ({ ...f, addressLine: v }))}
         onSelect={(r) =>
           setForm((f) => ({
             ...f,
@@ -401,14 +403,9 @@ function LocationSection({
         }
       />
 
-      <div className="grid grid-cols-[1fr_9rem] gap-4">
-        <Field label="Address" hint="Kept private unless you choose otherwise below">
-          <Input value={form.addressLine} onChange={(v) => setForm({ ...form, addressLine: v })} />
-        </Field>
-        <Field label="Postal code">
-          <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
-        </Field>
-      </div>
+      <Field label="Postal code">
+        <Input value={form.postalCode} onChange={(v) => setForm({ ...form, postalCode: v })} inputMode="numeric" />
+      </Field>
 
       {/* Coordinates drive travel-aware availability: without them the
           engine cannot tell whether a coach can physically reach a client
@@ -710,11 +707,16 @@ function Section({
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  // The hint sits BELOW the input, not between label and input. Placed
+  // above, it pushed the input down by its own height, so two fields
+  // side by side in a grid only lined up when both had hints or neither
+  // did — "Address" against "Postal code", "Max distance" against
+  // "Travel buffer". Below, every input in a row starts at the same y.
   return (
     <label className="block">
       <span className="mb-1.5 block text-sm font-medium">{label}</span>
-      {hint && <span className="mb-1.5 block text-xs" style={{ color: T.onSurfaceVariant }}>{hint}</span>}
       {children}
+      {hint && <span className="mt-1.5 block text-xs" style={{ color: T.onSurfaceVariant }}>{hint}</span>}
     </label>
   );
 }

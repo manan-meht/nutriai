@@ -195,3 +195,42 @@ describe("address search", () => {
     expect(src("lib/club/geocode.ts")).toMatch(/neighbourhood: matchKnownNeighbourhood\(area\)/);
   });
 });
+
+describe("the location form after simplification", () => {
+  const settings = () => src("components/coach/CoachSettings.tsx");
+  const search = () => src("components/coach/AddressSearch.tsx");
+
+  it("hints sit below inputs, so side-by-side fields line up", () => {
+    // A hint above the input pushed that input down, so "Address"/"Postal
+    // code" and "Max distance"/"Travel buffer" only aligned when both
+    // fields had hints or neither did.
+    const field = settings().slice(settings().indexOf("function Field({"));
+    const inputAt = field.indexOf("{children}");
+    const hintAt = field.indexOf("{hint &&");
+    expect(hintAt).toBeGreaterThan(inputAt);
+  });
+
+  it("address search and the address field are one input", () => {
+    // Two boxes holding the same text invite them to disagree.
+    expect(search()).toMatch(/htmlFor="coach-address"/);
+    expect(search()).toMatch(/>Address</);
+    expect(settings()).toMatch(/value=\{form\.addressLine\}\s*\n?\s*onChange=/);
+    // The separate duplicate Address input is gone.
+    expect(settings()).not.toMatch(/<Field label="Address"/);
+  });
+
+  it("typing and picking a suggestion both set the address", () => {
+    expect(search()).toMatch(/onChange\(e\.target\.value\)/);
+    expect(search()).toMatch(/onChange\(chosen\)/);
+  });
+
+  it("the location name is optional in the form and in the action", () => {
+    expect(settings()).toMatch(/Location name \(optional\)/);
+    const actions = src("app/(coach)/coach/actions.ts");
+    const fn = actions.slice(actions.indexOf("export async function upsertCoachLocation"));
+    // Asking a coach with one place to invent a label for it is a required
+    // field with only one sensible answer.
+    expect(fn).not.toMatch(/Give this location a name/);
+    expect(fn).toMatch(/input\.label\?\.trim\(\) \|\| input\.neighbourhood\?\.trim\(\) \|\| "Main location"/);
+  });
+});

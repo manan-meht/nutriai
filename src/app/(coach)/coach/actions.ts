@@ -237,12 +237,16 @@ export async function upsertCoachLocation(input: {
 }): Promise<ActionResult> {
   const coach = await requireCoachProfile();
   if (!coach) return NOT_AUTHED;
-  if (!input.label?.trim()) return { ok: false, error: "Give this location a name." };
+
+  // A name is only useful to a coach juggling several places. With one
+  // location it is a required field asking someone to invent a label for
+  // the only answer, so it falls back to their neighbourhood.
+  const label = input.label?.trim() || input.neighbourhood?.trim() || "Main location";
 
   const admin = createServiceClient();
   const payload = {
     coach_profile_id: coach.id,
-    label: input.label.trim(),
+    label,
     location_type: input.locationType,
     neighbourhood: input.neighbourhood?.trim() || null,
     address_line: input.addressLine?.trim() || null,
