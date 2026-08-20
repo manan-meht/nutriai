@@ -13,8 +13,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 //
 // `stripe_payouts_enabled` is never set from our own optimism. It mirrors
 // what Stripe reports, refreshed when a coach returns from onboarding and
-// on the account.updated webhook — a coach who abandons verification
-// halfway must not end up marked ready to take money.
+// each time the coach returns from onboarding or opens their payouts page
+// — a coach who abandons verification halfway must not end up marked ready
+// to take money. NOTE: account.updated is not currently subscribed, so a
+// verification that clears asynchronously is only picked up on their next
+// visit, not pushed.
 
 const STRIPE_API = "https://api.stripe.com/v1";
 
