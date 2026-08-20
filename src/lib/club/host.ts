@@ -65,12 +65,20 @@ export function isLegacyCoachHost(hostname: string | null | undefined): boolean 
  * are no product hostnames unless you go out of your way to use one. */
 export function isLocalDevHost(hostname: string | null | undefined): boolean {
   const host = normalizeHost(hostname);
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost");
+  if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host.endsWith(".localhost")) {
+    return true;
+  }
+  // Phone-on-the-same-wifi testing: the dev server is reached by the
+  // machine's private LAN address (192.168.x.x etc), which no production
+  // request ever carries — Workers always see a real hostname. Without
+  // this, opening a club path from a phone 308s to the production domain
+  // mid-test.
+  return /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(host);
 }
 
 /** Top-level segments owned by the club app. Keep in sync with the
  * directories under src/app/(club)/club/ — a test asserts they match. */
-export const CLUB_APP_SEGMENTS = ["bookings", "checkout", "coaches", "profile"] as const;
+export const CLUB_APP_SEGMENTS = ["bookings", "browse", "checkout", "coaches", "profile"] as const;
 
 const CLUB_SEGMENTS = new Set<string>(CLUB_APP_SEGMENTS);
 

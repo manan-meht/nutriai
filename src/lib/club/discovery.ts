@@ -39,6 +39,10 @@ export interface CoachCard {
   photos: string[];
   neighbourhood: string | null;
   skills: string[];
+  /** Slug forms of `skills`, for client-side filtering of an
+   * already-loaded page of coaches — the same membership rule the server
+   * applies, on the same data, without a second query per chip tap. */
+  skillSlugs: string[];
   startingPriceCents: number | null;
   currency: string;
   ratingAverage: number | null;
@@ -195,6 +199,7 @@ export async function discoverCoaches(
       // Neighbourhood only — never the street address (privacy rule).
       neighbourhood: primary?.neighbourhood ?? null,
       skills: mySkills.map((s) => s.name),
+      skillSlugs: mySkills.map((s) => s.slug),
       startingPriceCents: Number.isFinite(startingPrice) ? startingPrice : null,
       currency: mySvcs[0].currency ?? CLUB_MARKET.currency,
       ratingAverage: c.rating_average != null ? Number(c.rating_average) : null,
@@ -293,6 +298,7 @@ export async function getCoachPublicProfile(
       const k = Array.isArray(s.club_skills) ? s.club_skills[0] : s.club_skills;
       return k?.name;
     }).filter(Boolean),
+    skillSlugs: skillSlugs.filter(Boolean),
     services: (services.data ?? []).map((s: any) => ({
       id: s.id,
       name: s.name,

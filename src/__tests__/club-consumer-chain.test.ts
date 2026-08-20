@@ -61,7 +61,9 @@ function routeExists(urlPath: string): boolean {
  * resolves if EITHER form exists. Shared paths (/login, /privacy) are only
  * ever at their real location, which the first check covers. */
 function resolvesOnClubHost(urlPath: string): boolean {
-  return routeExists(urlPath) || routeExists(`/club${urlPath === "/" ? "" : urlPath}`);
+  // "/" on a club host serves the deck (rewritten to /club/browse); every
+  // other clean path maps into the route group unchanged.
+  return routeExists(urlPath) || routeExists(urlPath === "/" ? "/club/browse" : `/club${urlPath}`);
 }
 
 describe("club links resolve to real routes", () => {
@@ -81,7 +83,7 @@ describe("club links resolve to real routes", () => {
 
   it("every step of the booking funnel exists, as a visitor types it", () => {
     // The clean URLs a visitor actually sees on tistra.club.
-    for (const route of ["/", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
+    for (const route of ["/", "/browse", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
       expect([route, resolvesOnClubHost(route)]).toEqual([route, true]);
     }
   });

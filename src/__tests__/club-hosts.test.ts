@@ -80,13 +80,15 @@ describe("club URLs carry no /club prefix", () => {
   const CLUB_UI = [
     "components/club/ClubChrome.tsx",
     "components/club/CoachCardList.tsx",
-    "app/(club)/club/page.tsx",
+    "app/(club)/club/coaches/page.tsx",
     "app/(club)/club/coaches/[coachId]/page.tsx",
     "app/(club)/club/coaches/[coachId]/book/page.tsx",
     "app/(club)/club/checkout/[holdId]/page.tsx",
     "app/(club)/club/bookings/page.tsx",
     "app/(club)/club/bookings/[bookingId]/page.tsx",
     "app/(club)/club/profile/page.tsx",
+    "app/(club)/club/browse/page.tsx",
+    "components/club/SwipeFeed.tsx",
     "app/(club)/club/actions.ts",
   ];
 
@@ -125,9 +127,17 @@ describe("middleware canonicalises club URLs", () => {
     expect(mw).toMatch(/NextResponse\.redirect\(url, 308\)/);
   });
 
-  it("rewrites clean paths into the /club route group", () => {
-    expect(mw).toMatch(/url\.pathname = `\/club\$\{pathname === "\/" \? "" : pathname\}`/);
+  it("serves the deck at the club root and rewrites other clean paths", () => {
+    // "/" on a club host is the swipe deck; everything else maps into the
+    // route group unchanged, so /coaches is the list and /coaches/<id> a
+    // profile.
+    expect(mw).toMatch(/url\.pathname = pathname === "\/" \? "\/club\/browse" : `\/club\$\{pathname\}`/);
     expect(mw).toMatch(/NextResponse\.rewrite\(url\)/);
+  });
+
+  it("keeps /browse alive as a redirect to the new home", () => {
+    // Bookmarks and stale sign-in defaults from the week it lived there.
+    expect(mw).toMatch(/pathname === "\/browse"/);
   });
 
   it("sends /club on a non-club host to the club's own origin", () => {
@@ -228,6 +238,12 @@ describe("Coach OS URLs carry no /coach prefix", () => {
     const { servesCoachApp, isLocalDevHost } = require("@/lib/coach/routes");
     expect(isLocalDevHost("localhost:3001")).toBe(true);
     expect(isLocalDevHost("127.0.0.1")).toBe(true);
+    // Phone-on-the-same-wifi testing reaches the dev server by the
+    // machine's LAN address; production requests never carry one.
+    expect(isLocalDevHost("192.168.1.169:3001")).toBe(true);
+    expect(isLocalDevHost("10.0.0.5")).toBe(true);
+    expect(isLocalDevHost("172.20.0.7")).toBe(true);
+    expect(isLocalDevHost("172.32.0.1")).toBe(false); // outside the 172.16-31 private block
     expect(servesCoachApp("localhost:3001")).toBe(true);
     expect(servesCoachApp("coach.tistra.club")).toBe(true);
     expect(servesCoachApp("tistrahealth.com")).toBe(false);

@@ -22,7 +22,9 @@ const slotFmt = new Intl.DateTimeFormat("en-SG", {
   timeZone: CLUB_MARKET.timezone, weekday: "short", hour: "numeric", minute: "2-digit", hour12: true,
 });
 
-function nextAvailableLabel(next: Date | null): string {
+/** Shared with the swipe feed, so "Today, 7:00 pm" reads identically on
+ * both discovery surfaces. */
+export function nextAvailableLabel(next: Date | null): string {
   if (!next) return "No open slots";
   const days = Math.round((new Date(next).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 864e5);
   const time = slotFmt.format(next).split(", ").pop();
