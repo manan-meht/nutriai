@@ -330,6 +330,23 @@ export async function setAvailabilityRules(
     if (r.endMinute <= r.startMinute) return { ok: false, error: "End time must be after start time." };
   }
 
+  // A day may hold several windows — mornings and evenings, with a gap for
+  // a day job. They must not overlap: the availability engine unions
+  // windows per day, so an overlap silently collapses into one long block,
+  // and a coach who thought they had closed the middle of the day gets
+  // booked in it.
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  for (let weekday = 0; weekday <= 6; weekday++) {
+    const sameDay = rules
+      .filter((r) => r.weekday === weekday)
+      .sort((a, b) => a.startMinute - b.startMinute);
+    for (let i = 1; i < sameDay.length; i++) {
+      if (sameDay[i].startMinute < sameDay[i - 1].endMinute) {
+        return { ok: false, error: `Your ${DAY_NAMES[weekday]} times overlap. Adjust them so they don't run into each other.` };
+      }
+    }
+  }
+
   const admin = createServiceClient();
   await admin.from("coach_availability_rules").delete().eq("coach_profile_id", coach.id);
   if (rules.length > 0) {

@@ -5,7 +5,7 @@ import { haversineKm } from "./travel/provider";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "./config";
 import { resolveCoachPhoto, resolveCoachGallery } from "./placeholder-photos";
 import { resolveSignedCoachPhotoUrl } from "./media";
-import { fetchBusyBlocks } from "./calendar";
+import { fetchBusyBlocks, fetchBusyBlocksForCoaches } from "./calendar";
 
 // Consumer-side discovery and booking reads.
 //
@@ -132,6 +132,18 @@ export async function discoverCoaches(
   );
 
   const horizonDays = filters.availableWithinDays ?? 14;
+
+  // Calendar busy for every coach on this page, in one batched pass. Any
+  // coach with a connected calendar gets their external commitments
+  // subtracted here too — without this, discovery advertised a "next
+  // available" the booking page would then refuse.
+  const externalBusyByCoach = await fetchBusyBlocksForCoaches(
+    admin,
+    ids,
+    now,
+    new Date(now.getTime() + horizonDays * 864e5)
+  );
+
   const cards: CoachCard[] = [];
 
   for (const c of rows) {
@@ -177,10 +189,13 @@ export async function discoverCoaches(
       serviceDurationMinutes: mySvcs[0].duration_minutes,
       slotIntervalMinutes: 60,
       workingRules,
-      busy: (bookingBy.get(c.id) ?? []).map((b: any) => ({
-        startsAt: new Date(b.starts_at),
-        endsAt: new Date(b.ends_at),
-      })),
+      busy: [
+        ...(bookingBy.get(c.id) ?? []).map((b: any) => ({
+          startsAt: new Date(b.starts_at),
+          endsAt: new Date(b.ends_at),
+        })),
+        ...(externalBusyByCoach.get(c.id) ?? []),
+      ],
       bufferBeforeMinutes: c.buffer_before_minutes,
       bufferAfterMinutes: c.buffer_after_minutes,
       minNoticeHours: c.min_notice_hours,

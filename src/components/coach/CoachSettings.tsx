@@ -525,63 +525,119 @@ function LocationSection({
 }
 
 function AvailabilitySection({ rules }: { rules: SettingsData["availability"] }) {
-  const byDay = new Map(rules.map((r) => [r.weekday, r]));
-  const [days, setDays] = useState(
-    DAYS.map((_, weekday) => {
-      const existing = byDay.get(weekday);
-      return {
-        weekday,
-        enabled: !!existing,
-        start: minutesToTime(existing?.startMinute ?? 9 * 60),
-        end: minutesToTime(existing?.endMinute ?? 17 * 60),
-      };
-    })
+  // A day holds a LIST of windows, not one. Coaches keep split days —
+  // mornings before a day job, evenings after — and the availability
+  // engine has always unioned multiple windows per weekday. Only this form
+  // couldn't express it: it keyed rules by weekday into a Map, so a second
+  // window was invisible here and deleted on the next save.
+  const [days, setDays] = useState(() =>
+    DAYS.map((_, weekday) => ({
+      weekday,
+      windows: rules
+        .filter((r) => r.weekday === weekday)
+        .sort((a, b) => a.startMinute - b.startMinute)
+        .map((r) => ({ start: minutesToTime(r.startMinute), end: minutesToTime(r.endMinute) })),
+    }))
   );
   const { pending, error, saved, save } = useSaver();
 
+  const update = (weekday: number, fn: (w: Array<{ start: string; end: string }>) => Array<{ start: string; end: string }>) =>
+    setDays((prev) => prev.map((d) => (d.weekday === weekday ? { ...d, windows: fn(d.windows) } : d)));
+
   return (
-    <Section title="Weekly availability" description="The hours clients can book. You can block one-off dates later.">
-      <div className="flex flex-col gap-2">
-        {days.map((d, i) => (
-          <div key={d.weekday} className="flex flex-wrap items-center gap-3">
-            <label className="flex min-w-[130px] items-center gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={d.enabled}
-                onChange={(e) => {
-                  const next = [...days];
-                  next[i] = { ...d, enabled: e.target.checked };
-                  setDays(next);
-                }}
-                className="h-4 w-4 rounded"
-                style={{ accentColor: T.primary }}
-              />
-              {DAYS[d.weekday]}
-            </label>
-            {d.enabled && (
-              <div className="flex items-center gap-2">
-                <TimeInput
-                  value={d.start}
-                  onChange={(v) => {
-                    const next = [...days];
-                    next[i] = { ...d, start: v };
-                    setDays(next);
-                  }}
-                />
-                <span className="text-sm" style={{ color: T.onSurfaceVariant }}>to</span>
-                <TimeInput
-                  value={d.end}
-                  onChange={(v) => {
-                    const next = [...days];
-                    next[i] = { ...d, end: v };
-                    setDays(next);
-                  }}
-                />
+    <Section
+      title="Weekly availability"
+      description="The hours clients can book. Add more than one block to a day if you coach mornings and evenings. You can block one-off dates later."
+    >
+      <div className="flex flex-col gap-3">
+        {days.map((d) => {
+          const open = d.windows.length > 0;
+          return (
+            <div
+              key={d.weekday}
+              className="rounded-xl border p-3"
+              style={{ borderColor: T.outlineVariant, backgroundColor: open ? T.surfaceContainerLowest : "transparent" }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2.5 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={open}
+                    onChange={(e) =>
+                      update(d.weekday, () =>
+                        e.target.checked ? [{ start: "09:00", end: "17:00" }] : []
+                      )
+                    }
+                    className="h-4 w-4 rounded"
+                    style={{ accentColor: T.primary }}
+                  />
+                  {DAYS[d.weekday]}
+                </label>
+                {!open && (
+                  <span className="text-sm" style={{ color: T.onSurfaceVariant }}>Closed</span>
+                )}
               </div>
-            )}
-          </div>
-        ))}
+
+              {open && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {d.windows.map((w, i) => (
+                    <div key={i} className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="time"
+                        value={w.start}
+                        aria-label={`${DAYS[d.weekday]} block ${i + 1} start`}
+                        onChange={(e) =>
+                          update(d.weekday, (ws) => ws.map((x, j) => (j === i ? { ...x, start: e.target.value } : x)))
+                        }
+                        className="rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+                      />
+                      <span className="text-sm" style={{ color: T.onSurfaceVariant }}>to</span>
+                      <input
+                        type="time"
+                        value={w.end}
+                        aria-label={`${DAYS[d.weekday]} block ${i + 1} end`}
+                        onChange={(e) =>
+                          update(d.weekday, (ws) => ws.map((x, j) => (j === i ? { ...x, end: e.target.value } : x)))
+                        }
+                        className="rounded-lg border px-3 py-2 text-sm"
+                        style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+                      />
+                      {d.windows.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => update(d.weekday, (ws) => ws.filter((_, j) => j !== i))}
+                          aria-label={`Remove ${DAYS[d.weekday]} block ${i + 1}`}
+                          className="rounded-full px-2.5 py-1 text-sm"
+                          style={{ color: T.error }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      update(d.weekday, (ws) => [
+                        ...ws,
+                        // Default the new block after the last one, so the
+                        // common case (a gap, then evenings) needs no edit.
+                        { start: ws[ws.length - 1]?.end ?? "18:00", end: "21:00" },
+                      ])
+                    }
+                    className="self-start rounded-full border px-3.5 py-1.5 text-[13px] font-medium"
+                    style={{ borderColor: T.outlineVariant, color: T.onSurfaceVariant }}
+                  >
+                    + Add another block
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
+
       {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
@@ -589,13 +645,13 @@ function AvailabilitySection({ rules }: { rules: SettingsData["availability"] })
         onSave={() =>
           save(() =>
             setAvailabilityRules(
-              days
-                .filter((d) => d.enabled)
-                .map((d) => ({
+              days.flatMap((d) =>
+                d.windows.map((w) => ({
                   weekday: d.weekday,
-                  startMinute: timeToMinutes(d.start),
-                  endMinute: timeToMinutes(d.end),
+                  startMinute: timeToMinutes(w.start),
+                  endMinute: timeToMinutes(w.end),
                 }))
+              )
             )
           )
         }
@@ -604,10 +660,6 @@ function AvailabilitySection({ rules }: { rules: SettingsData["availability"] })
   );
 }
 
-// ---- Shared pieces ---------------------------------------------------
-
-/** Per-section save state. Each section owns its own, so one failing save
- * never wipes another section's unsaved edits. */
 function useSaver() {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);

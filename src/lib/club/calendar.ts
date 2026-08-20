@@ -124,6 +124,7 @@ export async function connectCalendar(
     { onConflict: "coach_profile_id,provider" }
   );
 
+  invalidateBusyCache(coachProfileId);
   return { email };
 }
 
@@ -135,6 +136,7 @@ export async function disconnectCalendar(admin: SupabaseClient, coachProfileId: 
     .delete()
     .eq("coach_profile_id", coachProfileId)
     .eq("provider", "google");
+  invalidateBusyCache(coachProfileId);
 }
 
 /** A usable access token, refreshing if the stored one has expired.
@@ -191,6 +193,62 @@ async function markNeedsReauth(admin: SupabaseClient, coachProfileId: string, re
     .eq("provider", "google");
 }
 
+// Short-lived cache of busy blocks, keyed by coach and window.
+//
+// Discovery renders a dozen coaches at once. Without this, every listing
+// page would make a dozen Google calls, so calendar busy was only applied
+// on the booking page — which meant the deck could advertise a time the
+// coach was busy in, and the slot only vanished once a client opened the
+// booking screen. Caching makes it affordable to apply everywhere, so all
+// three surfaces agree.
+//
+// Two minutes: long enough to collapse a page render into one call per
+// coach, short enough that a coach who blocks out their afternoon sees it
+// reflected almost immediately. Bounded and LRU, like the geocode cache.
+//
+// Only SUCCESSFUL reads are cached. Caching a null would pin a coach into
+// "we don't know" for two minutes after a transient blip, and "we don't
+// know" is the state that lets a double-booking through.
+const BUSY_CACHE_TTL_MS = 2 * 60 * 1000;
+const BUSY_CACHE_MAX_ENTRIES = 300;
+const busyCache = new Map<string, { at: number; blocks: TimeRange[] }>();
+
+/** Windows are rounded to the hour so repeated renders inside the same
+ * hour share an entry instead of each minting its own key. */
+function busyCacheKey(coachProfileId: string, from: Date, to: Date): string {
+  const hour = (d: Date) => Math.floor(d.getTime() / 3_600_000);
+  return `${coachProfileId}:${hour(from)}:${hour(to)}`;
+}
+
+function readBusyCache(key: string): TimeRange[] | null {
+  const entry = busyCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.at > BUSY_CACHE_TTL_MS) {
+    busyCache.delete(key);
+    return null;
+  }
+  // Refresh recency so frequently-viewed coaches survive eviction.
+  busyCache.delete(key);
+  busyCache.set(key, entry);
+  return entry.blocks;
+}
+
+function writeBusyCache(key: string, blocks: TimeRange[]): void {
+  if (busyCache.size >= BUSY_CACHE_MAX_ENTRIES) {
+    const oldest = busyCache.keys().next().value;
+    if (oldest !== undefined) busyCache.delete(oldest);
+  }
+  busyCache.set(key, { at: Date.now(), blocks });
+}
+
+/** Drops a coach's cached busy blocks — used when they connect or
+ * disconnect, so the change is visible without waiting out the TTL. */
+export function invalidateBusyCache(coachProfileId: string): void {
+  for (const key of busyCache.keys()) {
+    if (key.startsWith(`${coachProfileId}:`)) busyCache.delete(key);
+  }
+}
+
 /**
  * Busy blocks for a coach, or null when there is no usable connection.
  *
@@ -206,6 +264,10 @@ export async function fetchBusyBlocks(
   to: Date
 ): Promise<TimeRange[] | null> {
   if (!calendarConfigured()) return null;
+
+  const cacheKey = busyCacheKey(coachProfileId, from, to);
+  const cached = readBusyCache(cacheKey);
+  if (cached) return cached;
 
   const token = await accessTokenFor(admin, coachProfileId);
   if (!token) return null;
@@ -231,7 +293,9 @@ export async function fetchBusyBlocks(
       .eq("coach_profile_id", coachProfileId)
       .eq("provider", "google");
 
-    return busy.map((b) => ({ startsAt: new Date(b.start), endsAt: new Date(b.end) }));
+    const blocks = busy.map((b) => ({ startsAt: new Date(b.start), endsAt: new Date(b.end) }));
+    writeBusyCache(cacheKey, blocks);
+    return blocks;
   } catch {
     return null;
   }
@@ -265,4 +329,42 @@ export async function getCalendarState(
     lastSyncedAt: data.last_synced_at,
     configured,
   };
+}
+
+/**
+ * Busy blocks for many coaches at once, for a listing page.
+ *
+ * Runs the per-coach lookups in parallel and leans on the cache above, so
+ * a page of a dozen coaches costs at most a dozen calls on a cold cache
+ * and none on a warm one. Coaches with no connection simply don't appear
+ * in the result.
+ */
+export async function fetchBusyBlocksForCoaches(
+  admin: SupabaseClient,
+  coachProfileIds: string[],
+  from: Date,
+  to: Date
+): Promise<Map<string, TimeRange[]>> {
+  const out = new Map<string, TimeRange[]>();
+  if (!calendarConfigured() || coachProfileIds.length === 0) return out;
+
+  // One query to find who actually has a connection, rather than asking
+  // Google about coaches who have never connected anything.
+  const { data: connected } = await admin
+    .from("calendar_connections")
+    .select("coach_profile_id")
+    .eq("provider", "google")
+    .eq("sync_status", "connected")
+    .in("coach_profile_id", coachProfileIds);
+
+  const ids = (connected ?? []).map((r: any) => r.coach_profile_id);
+  if (ids.length === 0) return out;
+
+  await Promise.all(
+    ids.map(async (id: string) => {
+      const blocks = await fetchBusyBlocks(admin, id, from, to);
+      if (blocks) out.set(id, blocks);
+    })
+  );
+  return out;
 }

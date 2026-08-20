@@ -3,6 +3,7 @@ import { calculateAvailableSlots, type WorkingRule } from "./availability";
 import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config";
 import { profileQualityScore, publishBlockers } from "./ranking";
 import { resolveSignedCoachPhotoUrl } from "./media";
+import { fetchBusyBlocks } from "./calendar";
 
 // Data layer for the Coach OS. Every screen reads from here rather than
 // querying Supabase inline, so authorization ("is this row actually this
@@ -197,6 +198,13 @@ export async function getCoachDashboard(
   // week, using booked sessions as busy time, so the number a coach sees is
   // the same number a client could actually book.
   const defaultDuration = (services.data ?? [])[0]?.duration_minutes ?? 60;
+
+  // The coach's own connected calendar counts here too, or their dashboard
+  // would claim open capacity that discovery and the booking page both
+  // refuse to offer — the number is supposed to be what a client could
+  // actually book.
+  const externalBusy = await fetchBusyBlocks(admin, profile.id, now, weekEnd);
+
   const { slots } = calculateAvailableSlots({
     now,
     timezone: profile.timezone,
@@ -204,7 +212,10 @@ export async function getCoachDashboard(
     serviceDurationMinutes: defaultDuration,
     slotIntervalMinutes: 60,
     workingRules,
-    busy: weekSessions.map((s) => ({ startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
+    busy: [
+      ...weekSessions.map((s) => ({ startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt) })),
+      ...(externalBusy ?? []),
+    ],
     bufferBeforeMinutes: profile.bufferBeforeMinutes,
     bufferAfterMinutes: profile.bufferAfterMinutes,
     minNoticeHours: profile.minNoticeHours,
