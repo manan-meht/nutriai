@@ -59,6 +59,11 @@ interface FamilyHealthCardProps {
  * health snapshot (score ring, 7-day trend, latest meal, reminder status,
  * today's focus). Replaces the old list-record-style ContactCard per the
  * family-dashboard-redesign spec. */
+/** What the account holder sends Tistra Health to open (or reopen) their
+ * own 24h WhatsApp window. Shared by both self paths on this card so the
+ * "not connected yet" and "gone quiet" cases can't drift apart. */
+const SELF_WHATSAPP_GREETING = "Hi! I'm ready to start tracking my meals with Tistra Health 👋";
+
 export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumber, onStatus }: FamilyHealthCardProps) {
   // Lazy initializer, not a direct Date.now() call — react-hooks/purity
   // forbids calling impure functions during render; this only needs to be
@@ -166,7 +171,7 @@ export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumb
               </p>
               {tistraWhatsAppNumber && (
                 <a
-                  href={`https://wa.me/${tistraWhatsAppNumber}?text=${encodeURIComponent("Hi! I'm ready to start tracking my meals with Tistra Health 👋")}`}
+                  href={`https://wa.me/${tistraWhatsAppNumber}?text=${encodeURIComponent(SELF_WHATSAPP_GREETING)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block bg-[var(--color-dashboard-primary)] text-white text-sm font-medium rounded-lg px-4 py-2"
@@ -192,9 +197,13 @@ export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumb
         <div className="mb-4">
           {isSelf ? (
             <ReminderStatus
-              title="Reminders paused"
-              description="More than 24h since you interacted on WhatsApp."
-              waLink={tistraWhatsAppNumber ? `https://wa.me/${tistraWhatsAppNumber}` : undefined}
+              title="Message Tistra Health to get started"
+              description="WhatsApp only lets us reply within 24h of your last message."
+              // Opens the chat WITH the message already typed. A bare
+              // wa.me link opened an empty conversation, leaving the one
+              // action that actually restarts reminders — sending
+              // something — up to the user to work out.
+              waLink={tistraWhatsAppNumber ? `https://wa.me/${tistraWhatsAppNumber}?text=${encodeURIComponent(SELF_WHATSAPP_GREETING)}` : undefined}
             />
           ) : (
             <div onClick={(e) => e.stopPropagation()}>

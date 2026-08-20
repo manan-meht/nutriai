@@ -134,6 +134,11 @@ function TrendSparkline({ scores }: { scores?: number[] }) {
  * today's focus). Mirrors the web dashboard's FamilyHealthCard.tsx.
  * Adults-only — gym clients still use the plain PersonCard (no equivalent
  * redesign there yet). */
+/** What the account holder sends Tistra Health to open (or reopen) their
+ * own 24h WhatsApp window. Matches the web dashboard's card so both open
+ * the same conversation with the same text. */
+const SELF_WHATSAPP_GREETING = "Hi! I'm ready to start tracking my meals with Tistra Health 👋";
+
 export function FamilyHealthCard({
   contact,
   onPress,
@@ -185,7 +190,11 @@ export function FamilyHealthCard({
   async function handleSendInvite() {
     if (!invite) return;
     if (invite.status === 'stale' && invite.isSelf) {
-      if (invite.tistraWhatsAppNumber) await Linking.openURL(`https://wa.me/${invite.tistraWhatsAppNumber}`);
+      if (invite.tistraWhatsAppNumber) {
+        await Linking.openURL(
+          `https://wa.me/${invite.tistraWhatsAppNumber}?text=${encodeURIComponent(SELF_WHATSAPP_GREETING)}`
+        );
+      }
       return;
     }
     setSendingInvite(true);
@@ -282,12 +291,18 @@ export function FamilyHealthCard({
 
         {invite && (
           <View style={[styles.inviteBox, { backgroundColor: theme.backgroundSelected }]}>
-            <ThemedText type="smallBold">{invite.status === 'stale' ? 'Reminders paused' : 'Not connected yet'}</ThemedText>
+            <ThemedText type="smallBold">
+              {invite.isSelf
+                ? 'Message Tistra Health to get started'
+                : invite.status === 'stale'
+                  ? 'Reminders paused'
+                  : 'Not connected yet'}
+            </ThemedText>
             <ThemedText type="small" themeColor="textSecondary" style={styles.inviteText}>
-              {invite.status === 'stale'
-                ? "More than 24h since WhatsApp was last used — reminders won't be sent."
-                : invite.isSelf
-                  ? "You haven't connected your own WhatsApp number yet."
+              {invite.isSelf
+                ? 'WhatsApp only lets us reply within 24h of your last message.'
+                : invite.status === 'stale'
+                  ? "More than 24h since WhatsApp was last used — reminders won't be sent."
                   : `${contact.fullName.split(' ')[0]} hasn't opened the WhatsApp invite yet.`}
             </ThemedText>
             <Pressable
@@ -302,12 +317,10 @@ export function FamilyHealthCard({
                 <ActivityIndicator color="#fff" />
               ) : (
                 <ThemedText type="small" style={styles.inviteButtonText}>
-                  {invite.status === 'stale'
-                    ? invite.isSelf
-                      ? 'Open WhatsApp'
-                      : `Remind ${contact.fullName.split(' ')[0]}`
-                    : invite.isSelf
-                      ? 'Open WhatsApp to get started'
+                  {invite.isSelf
+                    ? 'Open WhatsApp to get started'
+                    : invite.status === 'stale'
+                      ? `Remind ${contact.fullName.split(' ')[0]}`
                       : 'Send invite via WhatsApp'}
                 </ThemedText>
               )}

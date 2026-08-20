@@ -549,6 +549,12 @@ export async function updateContact(
   formData: {
     fullName: string;
     relationship?: string;
+    /** Lets an existing contact be marked as the account holder's own
+     * tracked profile after the fact. Without this, a contact created
+     * without picking "Myself" could never become one — and the dashboard
+     * would keep offering to send them an invite link to their own number,
+     * which WhatsApp cannot deliver. */
+    relationshipType?: "self" | "family_caregiver";
     age?: number;
     gender?: string;
     weightKg?: number;
@@ -573,11 +579,38 @@ export async function updateContact(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
 
+  // "self" is one per workspace. Enforced here rather than in the modal:
+  // the client doesn't know the other contacts, and this is the invariant
+  // the dashboard's self/invite branching depends on.
+  if (formData.relationshipType === "self") {
+    const { data: target } = await supabase
+      .from("adults_contacts")
+      .select("workspace_id")
+      .eq("id", contactId)
+      .maybeSingle();
+    if (target?.workspace_id) {
+      const { data: clash } = await supabase
+        .from("adults_contacts")
+        .select("id, full_name")
+        .eq("workspace_id", target.workspace_id)
+        .eq("relationship_type", "self")
+        .is("deleted_at", null)
+        .neq("id", contactId)
+        .maybeSingle();
+      if (clash) {
+        return { error: `${clash.full_name} is already set as you. Change that first.` };
+      }
+    }
+  }
+
   const { error } = await supabase
     .from("adults_contacts")
     .update({
       full_name: formData.fullName,
-      relationship: formData.relationship || null,
+      // A self contact never carries a free-text relationship — "self"
+      // lives in relationship_type instead (same rule as addContact).
+      relationship: formData.relationshipType === "self" ? null : formData.relationship || null,
+      ...(formData.relationshipType ? { relationship_type: formData.relationshipType } : {}),
       age: formData.age || null,
       gender: formData.gender || null,
       weight_kg: formData.weightKg || null,

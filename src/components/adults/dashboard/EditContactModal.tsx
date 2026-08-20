@@ -129,6 +129,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
         body: JSON.stringify({
           fullName,
           relationship: relationship === "self" ? undefined : relationship || undefined,
+          relationshipType: relationship === "self" ? "self" : "family_caregiver",
           age: age ? Number(age) : undefined,
           gender: gender || undefined,
           weightKg: weightKg ? Number(weightKg) : undefined,
@@ -195,7 +196,12 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           <Field label="Relationship">
             <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inputClass}>
               <option value="">Select</option>
-              {contact.relationshipType === "self" && <option value="self">Myself</option>}
+              {/* Offered whether or not this contact is already "self".
+                  Showing it only for an existing self contact meant one
+                  created without it could never be corrected — leaving the
+                  dashboard offering to send them an invite link to their
+                  own number. One-per-workspace is enforced server-side. */}
+              <option value="self">Myself</option>
               {RELATIONSHIPS.map((r) => (
                 <option key={r} value={r.toLowerCase()}>{r}</option>
               ))}
