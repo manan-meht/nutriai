@@ -23,6 +23,15 @@ describe("the form handles a list", () => {
     expect(settings()).toMatch(/key=\{editingId \?\? "new"\}/);
   });
 
+  it("gives all three row actions the same clickable affordance", () => {
+    // "Edit" had an underline and the other two were plain coloured text,
+    // so "Make main" read as a label rather than a control.
+    const rows = settings().slice(settings().indexOf("locations.map((loc)"), settings().indexOf("{rowError &&"));
+    expect((rows.match(/className=\{ROW_ACTION\}/g) ?? []).length).toBe(3);
+    expect(settings()).toMatch(/const ROW_ACTION =/);
+    expect(settings()).toMatch(/focus-visible:outline-2/);
+  });
+
   it("offers add, edit, make main and remove", () => {
     expect(settings()).toMatch(/\+ Add another location/);
     expect(settings()).toMatch(/setPrimaryCoachLocation\(loc\.id\)/);

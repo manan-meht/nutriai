@@ -376,6 +376,14 @@ function ServicesSection({
   );
 }
 
+/** Shared affordance for the per-location row actions. They sit in a row
+ * of plain text, so without an underline they read as labels rather than
+ * controls — which is exactly how "Make main" was missed. Disabled state
+ * included, since these run server actions. */
+const ROW_ACTION =
+  "underline underline-offset-2 hover:no-underline disabled:opacity-50 disabled:no-underline " +
+  "rounded focus-visible:outline-2 focus-visible:outline-offset-2";
+
 type LocationDraft = SettingsData["locations"][number];
 
 const BLANK_LOCATION: LocationDraft = {
@@ -451,7 +459,12 @@ function LocationSection({
                 )}
               </span>
               <span className="flex shrink-0 items-center gap-3 text-sm">
-                <button type="button" onClick={() => openEditor(loc)} className="underline underline-offset-2">
+                <button
+                  type="button"
+                  onClick={() => openEditor(loc)}
+                  className={ROW_ACTION}
+                  aria-current={editingId === loc.id ? "true" : undefined}
+                >
                   {editingId === loc.id ? "Editing" : "Edit"}
                 </button>
                 {!loc.isPrimary && (
@@ -464,7 +477,8 @@ function LocationSection({
                         if (!r.ok) setRowError(r.error);
                       })
                     }
-                    style={{ color: T.onSurfaceVariant }}
+                    className={ROW_ACTION}
+                    style={{ color: T.primary }}
                   >
                     Make main
                   </button>
@@ -481,6 +495,7 @@ function LocationSection({
                         else if (editingId === loc.id) openEditor(null);
                       })
                     }
+                    className={ROW_ACTION}
                     style={{ color: T.error }}
                   >
                     Remove
