@@ -86,6 +86,36 @@ const STEPS = [
   { n: "03", title: "Publish and get booked", body: "Appear in search, take bookings, and get paid automatically." },
 ] as const;
 
+/** A marketing photo.
+ *
+ * next/image is deliberately not used: these are fixed, hand-picked assets
+ * on a static marketing page, and the optimiser adds a Worker round-trip
+ * per request for no gain over a correctly sized webp. Dimensions are
+ * stated so the browser reserves the space and the hero does not shift
+ * under the CTA as it loads. */
+function MarketingImage({
+  src,
+  alt,
+  aspect = "aspect-[4/5]",
+  priority,
+}: {
+  src: string;
+  alt: string;
+  aspect?: string;
+  priority?: boolean;
+}) {
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading={priority ? "eager" : "lazy"}
+      // eslint-disable-next-line @next/next/no-img-element
+      className={`w-full ${aspect} rounded-3xl object-cover`}
+      style={{ backgroundColor: TOKENS.surfaceLowest }}
+    />
+  );
+}
+
 export function CoachLanding() {
   const signupHref = getSignupUrl({
     product: "gym",
@@ -103,7 +133,8 @@ export function CoachLanding() {
       <Nav signupHref={signupHref} loginHref={loginHref} />
 
       {/* ---- Hero: the business, not the food log ---- */}
-      <header className="mx-auto max-w-[1280px] px-5 pt-16 pb-20 md:px-16 md:pt-28 md:pb-32">
+      <header className="mx-auto grid max-w-[1280px] items-center gap-12 px-5 pt-16 pb-20 md:grid-cols-12 md:gap-16 md:px-16 md:pt-28 md:pb-32">
+        <div className="md:col-span-7">
         <p
           className="text-xs font-semibold uppercase tracking-[0.05em]"
           style={{ color: TOKENS.primary }}
@@ -150,6 +181,19 @@ export function CoachLanding() {
         >
           {PRICING_LINE}
         </p>
+        </div>
+
+        {/* Ordered AFTER the copy so on mobile it follows the pricing line
+            rather than pushing it below the fold — the commercial model is
+            the thing that must be seen without scrolling. On desktop it
+            takes the right-hand half, which was empty. */}
+        <div className="md:col-span-5">
+          <MarketingImage
+            src="/marketing/coach-hero.webp"
+            alt="A trainer coaching a client through a kettlebell squat in a naturally lit gym"
+            priority
+          />
+        </div>
       </header>
 
       {/* ---- The gap this closes ---- */}
@@ -170,6 +214,13 @@ export function CoachLanding() {
             <p className="mt-4 text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
               Tistra Coach handles the business so you can spend your time actually coaching.
             </p>
+            <div className="mt-8">
+              <MarketingImage
+                src="/marketing/coach-practice.webp"
+                alt="A coach correcting one client's form during a small outdoor group session in a Singapore park"
+                aspect="aspect-[16/9]"
+              />
+            </div>
           </div>
         </div>
       </Section>

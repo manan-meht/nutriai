@@ -4,6 +4,9 @@ node_modules/
 .vercel/
 .env*.local
 .env
+# Any env backup/copy — a live key must never be one `git add -A` away
+.env*.bak*
+.env.local.*
 *.log
 *.tsbuildinfo
 apps/mobile/*.aab
