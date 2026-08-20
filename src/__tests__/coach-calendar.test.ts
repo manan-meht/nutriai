@@ -144,3 +144,36 @@ describe("the prompt appears where a coach is thinking about their week", () => 
     expect(compact).toMatch(/busy times/);
   });
 });
+
+describe("busy blocks are visible in the coach's own week", () => {
+  const queries = () => src("lib/club/coach-queries.ts");
+  const view = () => src("components/coach/CoachCalendar.tsx");
+
+  it("the week returns them as opaque ranges", () => {
+    // Without them a coach sees a slot missing from their availability
+    // with no visible reason, which reads as a bug in Tistra rather than
+    // as their own dentist appointment.
+    expect(queries()).toMatch(/busyBlocks: Array<\{ startsAt: string; endsAt: string \}>/);
+    expect(queries()).toMatch(/fetchBusyBlocks\(admin, profile\.id, weekStart, weekEnd\)/);
+  });
+
+  it("carries times and nothing else", () => {
+    // There is no field here that could hold a title even if Google sent
+    // one — which it doesn't, given the free/busy scope.
+    const shape = queries().slice(queries().indexOf("busyBlocks: (externalBusy"));
+    expect(shape).toMatch(/startsAt: b\.startsAt\.toISOString\(\), endsAt: b\.endsAt\.toISOString\(\)/);
+    expect(shape.slice(0, 300)).not.toMatch(/summary|title|attendee/i);
+  });
+
+  it("renders them unlabelled, beneath real bookings", () => {
+    expect(view()).toMatch(/day\.busyBlocks\.map/);
+    expect(view()).toMatch(/>Busy</);
+    // Sessions are rendered after, so a booking always wins the space.
+    expect(view().indexOf("day.busyBlocks.map")).toBeLessThan(view().indexOf("day.sessions.map"));
+  });
+
+  it("explains the hatching rather than leaving it a mystery", () => {
+    expect(view()).toMatch(/Busy in your Google Calendar/);
+    expect(view()).toMatch(/never what they&rsquo;re for/);
+  });
+});

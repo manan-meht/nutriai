@@ -48,6 +48,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
   const todayKey = new Date().toISOString().slice(0, 10);
 
   const totalSessions = week.days.reduce((n, d) => n + d.sessions.length, 0);
+  const hasBusy = week.days.some((d) => d.busyBlocks.length > 0);
 
   return (
     <>
@@ -68,6 +69,22 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
           </div>
         }
       />
+
+      {hasBusy && (
+        <p className="mb-4 flex items-center gap-2 text-xs" style={{ color: T.onSurfaceVariant }}>
+          <span
+            aria-hidden="true"
+            className="inline-block h-3.5 w-6 rounded"
+            style={{
+              backgroundColor: T.surfaceContainer,
+              backgroundImage:
+                "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0 6px, transparent 6px 12px)",
+            }}
+          />
+          Busy in your Google Calendar — clients can&rsquo;t book these times. We only see the
+          times, never what they&rsquo;re for.
+        </p>
+      )}
 
       {totalSessions === 0 && (
         <p
@@ -116,6 +133,32 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
                       aria-hidden="true"
                     />
                   ))}
+
+                  {/* Google busy blocks, beneath sessions so a real
+                      booking always wins the space. Hatched and unlabelled
+                      because that is genuinely all we know — the free/busy
+                      scope returns times and nothing else. */}
+                  {day.busyBlocks.map((b) => {
+                    const top = pct(minuteOfDay(b.startsAt));
+                    const height = ((minuteOfDay(b.endsAt) - minuteOfDay(b.startsAt)) / VISIBLE_MINUTES) * 100;
+                    return (
+                      <div
+                        key={`${b.startsAt}-${b.endsAt}`}
+                        className="absolute inset-x-1 overflow-hidden rounded-lg px-2 py-1 text-[11px] leading-tight"
+                        style={{
+                          top: `${top}%`,
+                          height: `${Math.max(height, 3)}%`,
+                          backgroundColor: T.surfaceContainer,
+                          color: T.onSurfaceVariant,
+                          backgroundImage:
+                            "repeating-linear-gradient(45deg, rgba(0,0,0,0.045) 0 6px, transparent 6px 12px)",
+                        }}
+                        title={`Busy in your Google Calendar · ${timeFmt.format(new Date(b.startsAt))}`}
+                      >
+                        <span className="block truncate font-medium">Busy</span>
+                      </div>
+                    );
+                  })}
 
                   {/* Booked sessions */}
                   {day.sessions.map((s) => {
