@@ -8,7 +8,7 @@ import { CoachPayments } from "@/components/coach/CoachPayments";
 export default async function CoachPaymentsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const admin = createServiceClient();
   const profile = await getCoachProfile(admin, user.id);

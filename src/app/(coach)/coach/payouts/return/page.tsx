@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function PayoutReturnPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const admin = createServiceClient();
   const { data: coach } = await admin

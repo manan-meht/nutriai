@@ -16,29 +16,30 @@ import type {
 } from "@/types";
 
 export function getSignupUrl(params: GetSignupUrlParams): string {
-  // The adults product has no dedicated /signup route group — it shares the
-  // "/signup" route with gym and resolves which product to show from the
-  // ?product= query param (falling back to NEXT_PUBLIC_PRODUCT otherwise).
-  // Always include it explicitly so this never silently defaults to gym.
-  const base = params.product === "gym" ? "/gym/signup" : "/signup";
+  // One signup route for every product: "/signup", told which product to
+  // show by ?product=. The old /gym/signup path still redirects here (308,
+  // see middleware) for links already circulating, but nothing generates it
+  // any more — the coach product is not gym-specific, and its public URL
+  // shouldn't say it is.
+  //
+  // The param is always explicit, so this can never silently fall back to
+  // NEXT_PUBLIC_PRODUCT and sign someone up for the wrong thing.
   const qs = new URLSearchParams({
     source: params.source,
     variant: params.variant,
-    ...(params.product !== "gym" ? { product: params.productParam ?? params.product } : {}),
+    product: params.productParam ?? (params.product === "gym" ? "coach" : params.product),
     ...(params.experimentId ? { exp: params.experimentId } : {}),
   });
-  return `${base}?${qs.toString()}`;
+  return `/signup?${qs.toString()}`;
 }
 
 export function getLoginUrl(params: GetLoginUrlParams): string {
   // Same reasoning as getSignupUrl — "/login" is shared and must be told
   // explicitly which product it's for.
-  const base = params.product === "gym" ? "/gym/login" : "/login";
   const qsParams: Record<string, string> = {};
   if (params.source) qsParams.source = params.source;
-  if (params.product !== "gym") qsParams.product = params.product;
-  const qs = Object.keys(qsParams).length ? new URLSearchParams(qsParams) : null;
-  return qs ? `${base}?${qs.toString()}` : base;
+  qsParams.product = params.product === "gym" ? "coach" : params.product;
+  return `/login?${new URLSearchParams(qsParams).toString()}`;
 }
 
 export function getDemoUrl(product: ProductType): string {

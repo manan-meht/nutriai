@@ -28,7 +28,10 @@ const THEME = {
     // /gym/dashboard nutrition view.
     label: "Tistra Coach",
     dashboardUrl: "/dashboard",
-    switchUrl: (mode: Mode) => (mode === "signin" ? "/gym/signup" : "/gym/login"),
+    // The /gym auth paths are retired; the canonical coach auth URLs
+    // are the shared routes with ?product=coach.
+    switchUrl: (mode: Mode) =>
+      mode === "signin" ? "/signup?product=coach" : "/login?product=coach",
   },
   adults: {
     accent: "bg-[#6750A4] hover:bg-[#4F378A] focus-visible:ring-[#6750A4]",
@@ -245,7 +248,12 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
         </Link>
       </p>
 
-      {mode === "signup" && (
+      {/* Tistra Health's health disclaimer, on Tistra Health's signup only.
+          Tistra Coach and Tistra Club are business surfaces — a coach
+          creating an account to take bookings is not being offered nutrition
+          advice, and showing them a medical disclaimer both confuses what
+          they are signing up for and dilutes the notice where it matters. */}
+      {mode === "signup" && product === "adults" && (
         <p className="text-center text-xs text-gray-400 leading-relaxed">
           Tistra Health is a tracking and awareness tool only. It does not provide medical advice, diagnosis,
           treatment, or personalized nutrition therapy. AI-generated summaries may be inaccurate or incomplete. For

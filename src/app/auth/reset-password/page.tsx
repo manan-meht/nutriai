@@ -12,7 +12,7 @@ function ResetPasswordForm() {
   const accentBtn = product === "gym"
     ? "bg-purple-600 hover:bg-purple-700"
     : "bg-rose-600 hover:bg-rose-700";
-  const loginUrl = product === "gym" ? "/gym/login" : "/adults/login";
+  const loginUrl = product === "gym" ? "/login?product=coach" : "/adults/login";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

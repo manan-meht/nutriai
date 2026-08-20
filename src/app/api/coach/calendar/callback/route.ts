@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/gym/login", request.url));
+  if (!user) return NextResponse.redirect(new URL("/login?product=coach", request.url));
 
   // The coach declined, or Google refused.
   if (url.searchParams.get("error")) return settings("declined");

@@ -521,7 +521,7 @@ export interface GetSignupUrlParams {
   variant: LandingVariant;
   experimentId?: string;
   /** Overrides the "product" query-string value while `product` above still
-   * decides the base route (/signup vs /gym/signup) — lets a CTA say
+   * decides which product /signup shows — lets a CTA say
    * "family"/"me"/"coach" for clarity/attribution even though those all
    * resolve to the same underlying adults/gym product. See
    * resolveProductFromHostname's alias handling in resolve-product.ts. */

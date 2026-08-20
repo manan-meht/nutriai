@@ -19,7 +19,7 @@ function ForgotPasswordForm() {
   const accentBtn = product === "gym"
     ? "bg-purple-600 hover:bg-purple-700"
     : "bg-rose-600 hover:bg-rose-700";
-  const loginUrl = product === "club" ? "/login?product=club" : product === "gym" ? "/gym/login" : "/adults/login";
+  const loginUrl = product === "club" ? "/login?product=club" : product === "gym" ? "/login?product=coach" : "/adults/login";
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);

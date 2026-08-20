@@ -1,5 +1,20 @@
 import Link from "next/link";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/club/config";
+
+/** The commercial model, stated the same way everywhere it appears.
+ *
+ * Built from the same constant the marketplace charges with, so the page
+ * cannot advertise one number while checkout takes another. Previously the
+ * page said "a small percentage", which a coach deciding whether to join
+ * cannot act on — and which reads as evasive next to a competitor quoting
+ * a figure.
+ *
+ * "card processing included" is the load-bearing half: the 10% absorbs
+ * Stripe's fee, so there is no second deduction to discover later. */
+const PRICING_LINE =
+  `Free to set up. No monthly fee. We take ${DEFAULT_PLATFORM_FEE_PERCENT}% only when you get paid ` +
+  `\u2014 card processing included.`;
 
 // Marketing page for Tistra Coach — the coaching business platform served
 // at coach.tistrahealth.com.
@@ -125,8 +140,15 @@ export function CoachLanding() {
           </Link>
         </div>
 
-        <p className="mt-6 text-sm" style={{ color: TOKENS.onSurfaceVariant }}>
-          Free to set up. You're charged only when you get paid.
+        {/* Sits directly under the CTA, above the fold at both 390px and
+            1440px: the commercial model is the first question a coach asks,
+            and burying it costs the signup. max-w keeps the sentence to two
+            lines on mobile rather than a ragged four. */}
+        <p
+          className="mt-6 max-w-xl text-sm leading-6"
+          style={{ color: TOKENS.onSurfaceVariant }}
+        >
+          {PRICING_LINE}
         </p>
       </header>
 
@@ -296,8 +318,7 @@ export function CoachLanding() {
               Start taking bookings this week.
             </h2>
             <p className="mt-4 max-w-lg text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
-              Setting up a profile is free. We take a small percentage only when a client
-              pays you — nothing else.
+              {PRICING_LINE}
             </p>
           </div>
           <Link
@@ -315,8 +336,12 @@ export function CoachLanding() {
         style={{ borderColor: TOKENS.outlineVariant }}
       >
         <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-5 py-10 text-sm md:flex-row md:items-center md:justify-between md:px-16">
+          {/* Tistra Coach is not a feature of Tistra Health. The family is
+              Tistra: Club is the consumer marketplace, Coach is the operating
+              system behind it, Health is an optional nutrition integration. */}
           <p style={{ color: TOKENS.onSurfaceVariant }}>
-            Tistra Coach — part of Tistra Health.
+            Tistra Coach powers coaches on Tistra Club.{" "}
+            <span className="whitespace-nowrap">A Tistra product.</span>
           </p>
           <nav className="flex flex-wrap gap-6" style={{ color: TOKENS.onSurfaceVariant }}>
             <Link href="/privacy" className="hover:underline">Privacy</Link>

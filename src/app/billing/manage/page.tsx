@@ -28,7 +28,7 @@ export default async function BillingManagePage({ searchParams }: BillingManageP
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect(billingModule === "gym" ? "/gym/login" : "/adults/login");
+  if (!user) redirect(billingModule === "gym" ? "/login?product=coach" : "/adults/login");
 
   const admin = createServiceClient();
   const { data: profile } = await supabase

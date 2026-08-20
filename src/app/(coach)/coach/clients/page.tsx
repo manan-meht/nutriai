@@ -7,7 +7,7 @@ import { CoachClients } from "@/components/coach/CoachClients";
 export default async function CoachClientsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const admin = createServiceClient();
   const profile = await getCoachProfile(admin, user.id);

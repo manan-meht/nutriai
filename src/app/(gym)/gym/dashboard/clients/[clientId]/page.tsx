@@ -9,7 +9,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
   const { clientId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const details = await getClientDetails(clientId);
   if (!details) notFound();

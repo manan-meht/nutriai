@@ -9,6 +9,7 @@ import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
 import { isClubHost } from "@/lib/club/host";
 import { isCoachHost } from "@/lib/coach/routes";
+import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 
 /** Where a successful sign-in should land, per surface.
  *
@@ -54,7 +55,21 @@ export async function generateMetadata({ searchParams }: SignupPageProps): Promi
     Object.entries(params).filter((e): e is [string, string] => typeof e[1] === "string")
   );
   const surface = resolveAuthSurface(hostname, rawParams);
-  return { icons: { icon: faviconForProduct(surface === "club" ? "adults" : surface) } };
+  // The title is what a coach sees in the browser tab and what gets shared.
+  // Inheriting the root layout's Tistra Health title told them they were
+  // signing up for the wrong product.
+  const title =
+    surface === "gym" ? "Create a Tistra Coach account"
+    : surface === "club" ? "Create a Tistra Club account"
+    : "Create a Tistra Health account";
+  return {
+    title,
+    icons: { icon: faviconForProduct(surface === "club" ? "adults" : surface) },
+    // Coach signup has one canonical home, on the coach product's own host.
+    ...(surface === "gym"
+      ? { alternates: { canonical: `${COACH_CANONICAL_ORIGIN}/signup` } }
+      : {}),
+  };
 }
 
 export default async function SignupPage({
@@ -97,7 +112,29 @@ export default async function SignupPage({
         <h1 className="text-2xl font-bold text-gray-900 mb-1">{title}</h1>
         <p className="text-gray-500 text-sm mb-8">Get started for free.</p>
         <AuthForm product={product} mode="signup" next={next} />
+        <ProductFooter product={product} />
       </div>
     </div>
+  );
+}
+
+/** Whose product this signup belongs to, said once at the bottom.
+ *
+ * Tistra Coach and Tistra Club are business surfaces and get the Tistra
+ * family line; Tistra Health keeps its own footer, since its medical
+ * disclaimer (in AuthForm) is the notice that matters there. */
+function ProductFooter({ product }: { product: AuthSurface }) {
+  if (product === "adults") return null;
+  const name = product === "gym" ? "Tistra Coach" : "Tistra Club";
+  return (
+    <footer className="mt-10 border-t border-gray-100 pt-6 text-center text-xs text-gray-400">
+      <p>
+        <span className="font-medium text-gray-500">{name}</span> — A Tistra product.
+      </p>
+      <nav className="mt-2 flex justify-center gap-4">
+        <Link href="/privacy" className="hover:text-gray-600 hover:underline">Privacy</Link>
+        <Link href="/terms" className="hover:text-gray-600 hover:underline">Terms</Link>
+      </nav>
+    </footer>
   );
 }

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.redirect(new URL("/gym/login", request.url));
+  if (!user) return NextResponse.redirect(new URL("/login?product=coach", request.url));
   if (!calendarConfigured()) {
     return NextResponse.redirect(new URL("/settings?calendar=unavailable", request.url));
   }

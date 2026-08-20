@@ -13,7 +13,7 @@ import { discoverCoaches, getCoachPublicProfile } from "@/lib/club/discovery";
 const src = (p: string) => fs.readFileSync(path.join(__dirname, "..", p), "utf-8");
 /** Comments describe the rule and would satisfy the negative assertions
  * below on their own — strip them so the checks read the code. */
-const code = (p: string) => src(p).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+const code = (p: string) => src(p).replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
 
 const PROFILE_ROWS = [
   { id: "real-1", is_demo: false, display_name: "Real Coach" },

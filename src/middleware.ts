@@ -142,8 +142,15 @@ export async function middleware(request: NextRequest) {
     const [, product, mode] = productLoginSignupMatch;
     const url = request.nextUrl.clone();
     url.pathname = `/${mode}`;
-    url.searchParams.set("product", product);
-    return NextResponse.redirect(url);
+    // "coach" rather than "gym": same product (resolveProductFromHostname
+    // aliases it), but the coach product is not gym-specific and the URL a
+    // visitor lands on shouldn't say otherwise.
+    url.searchParams.set("product", product === "gym" ? "coach" : product);
+    // 308, not the default 307: these paths are retired, and a permanent
+    // redirect lets browsers and search engines stop asking. The method and
+    // body are preserved either way; the clone carries source/variant and
+    // every other query param through untouched.
+    return NextResponse.redirect(url, 308);
   }
 
   const response = await updateSession(request);

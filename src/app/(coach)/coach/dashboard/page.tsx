@@ -10,7 +10,7 @@ import { CoachDashboard } from "@/components/coach/CoachDashboard";
 export default async function CoachDashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const data = await getCoachDashboard(createServiceClient(), user.id);
   // Signed in, but not a coach — send them to set one up rather than 404.

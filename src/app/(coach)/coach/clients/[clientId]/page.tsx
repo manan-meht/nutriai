@@ -14,7 +14,7 @@ export default async function CoachClientPage({
   const { clientId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/gym/login");
+  if (!user) redirect("/login?product=coach");
 
   const admin = createServiceClient();
   const coach = await getCoachProfile(admin, user.id);

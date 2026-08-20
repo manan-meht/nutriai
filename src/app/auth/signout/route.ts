@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   // tistra_last_product cookie middleware already sets whenever a user
   // visits /adults/dashboard or /gym/dashboard instead.
   const lastProduct = (await cookies()).get("tistra_last_product")?.value;
-  let loginPath = lastProduct === "adults" ? "/adults/login" : "/gym/login";
+  let loginPath = lastProduct === "adults" ? "/adults/login" : "/login?product=coach";
 
   // Tistra Club runs on its own host, so bouncing a club member to a
   // product login on the main domain would strand them. A form may post a

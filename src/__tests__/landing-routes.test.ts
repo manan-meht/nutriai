@@ -14,10 +14,12 @@ describe("getLoginUrl", () => {
     expect(url).toContain("product=adults");
   });
 
-  it("does not need ?product= for gym, which has its own /gym/login route", () => {
+  it("sends the coach product to the shared /login, never /gym/login", () => {
+    // /gym/* is retired: the coach product is not gym-specific, and the
+    // URL a coach lands on shouldn't tell them it is.
     const url = getLoginUrl({ product: "gym", source: "nav" });
-    expect(url).toBe("/gym/login?source=nav");
-    expect(url).not.toContain("product=");
+    expect(url).toBe("/login?source=nav&product=coach");
+    expect(url).not.toContain("/gym/");
   });
 
   it("still works when no source is given", () => {
@@ -33,9 +35,17 @@ describe("getSignupUrl", () => {
     expect(url).toContain("product=adults");
   });
 
-  it("does not need ?product= for gym, which has its own /gym/signup route", () => {
+  it("sends the coach product to the shared /signup, never /gym/signup", () => {
     const url = getSignupUrl({ product: "gym", source: "nav", variant: "immersive" });
-    expect(url).toBe("/gym/signup?source=nav&variant=immersive");
-    expect(url).not.toContain("product=");
+    expect(url).toBe("/signup?source=nav&variant=immersive&product=coach");
+    expect(url).not.toContain("/gym/");
+  });
+
+  it("keeps attribution intact on the migrated route", () => {
+    // source and variant are what the signup funnel is measured by; the
+    // route change must not cost them.
+    const url = getSignupUrl({ product: "gym", source: "coach_landing", variant: "standard" });
+    expect(url).toContain("source=coach_landing");
+    expect(url).toContain("variant=standard");
   });
 });
