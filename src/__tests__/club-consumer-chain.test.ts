@@ -81,7 +81,7 @@ describe("club links resolve to real routes", () => {
 
   it("every step of the booking funnel exists, as a visitor types it", () => {
     // The clean URLs a visitor actually sees on tistra.club.
-    for (const route of ["/", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
+    for (const route of ["/", "/browse", "/coaches/x", "/coaches/x/book", "/checkout/x", "/bookings", "/bookings/x", "/profile"]) {
       expect([route, resolvesOnClubHost(route)]).toEqual([route, true]);
     }
   });

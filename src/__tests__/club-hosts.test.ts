@@ -87,6 +87,8 @@ describe("club URLs carry no /club prefix", () => {
     "app/(club)/club/bookings/page.tsx",
     "app/(club)/club/bookings/[bookingId]/page.tsx",
     "app/(club)/club/profile/page.tsx",
+    "app/(club)/club/browse/page.tsx",
+    "components/club/SwipeFeed.tsx",
     "app/(club)/club/actions.ts",
   ];
 
@@ -228,6 +230,12 @@ describe("Coach OS URLs carry no /coach prefix", () => {
     const { servesCoachApp, isLocalDevHost } = require("@/lib/coach/routes");
     expect(isLocalDevHost("localhost:3001")).toBe(true);
     expect(isLocalDevHost("127.0.0.1")).toBe(true);
+    // Phone-on-the-same-wifi testing reaches the dev server by the
+    // machine's LAN address; production requests never carry one.
+    expect(isLocalDevHost("192.168.1.169:3001")).toBe(true);
+    expect(isLocalDevHost("10.0.0.5")).toBe(true);
+    expect(isLocalDevHost("172.20.0.7")).toBe(true);
+    expect(isLocalDevHost("172.32.0.1")).toBe(false); // outside the 172.16-31 private block
     expect(servesCoachApp("localhost:3001")).toBe(true);
     expect(servesCoachApp("coach.tistra.club")).toBe(true);
     expect(servesCoachApp("tistrahealth.com")).toBe(false);

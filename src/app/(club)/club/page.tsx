@@ -42,6 +42,14 @@ export default async function ClubDiscoverPage({
         {CLUB_BRANDING.tagline}
       </p>
 
+      <Link
+        href="/browse"
+        className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium"
+        style={{ backgroundColor: T.primary, color: T.onPrimary }}
+      >
+        <span aria-hidden="true">⇅</span> Swipe through coaches
+      </Link>
+
       {/* Skill chips. Data-driven from club_skills — never a hardcoded list. */}
       <div className="-mx-5 mt-5 overflow-x-auto px-5">
         <div className="flex w-max gap-2 pb-1">
