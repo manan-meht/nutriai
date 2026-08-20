@@ -1,3 +1,4 @@
+import { isStripeTestMode } from "@/lib/club/stripe-connect";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { CoachShell } from "@/components/coach/CoachShell";
@@ -103,6 +104,7 @@ export default async function CoachSettingsPage() {
       payoutsEnabled: coach.stripe_payouts_enabled,
       hasAccount: !!coach.stripe_account_id,
       feePercent: await getPlatformFeePercent(admin),
+      testMode: isStripeTestMode(),
     },
     bookingPreferences: {
       bufferBeforeMinutes: coach.buffer_before_minutes,

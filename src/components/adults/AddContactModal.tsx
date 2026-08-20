@@ -208,8 +208,13 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
               </Field>
             </div>
             {!isSelfPlan && (
-              <Field label="Relationship">
-                <select value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inp}>
+              /* Required: this drives relationship_type, which decides
+                 whether the dashboard treats this person as the account
+                 holder or as someone to send an invite to. Left blank it
+                 silently filed them as "family_caregiver" — which is how a
+                 user ended up being asked to WhatsApp her own number. */
+              <Field label="Relationship" required>
+                <select required value={relationship} onChange={(e) => setRelationship(e.target.value)} className={inp}>
                   <option value="">Select</option>
                   {!hasSelfContact && <option value="self">Myself</option>}
                   {RELATIONSHIPS.map((r) => <option key={r} value={r.toLowerCase()}>{r}</option>)}

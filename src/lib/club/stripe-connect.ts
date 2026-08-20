@@ -27,6 +27,21 @@ function apiKey(): string {
   return key;
 }
 
+/** Whether the configured Stripe key is a test key.
+ *
+ * Production ran on a test key for a month without anyone noticing, because
+ * nothing that a person looks at says which mode it is in. That is cheap to
+ * miss and expensive to discover: a coach who completes Connect onboarding
+ * against a test key has a test account, and every "payment" a client makes
+ * is play money. Surfaced in the coach's own payouts panel rather than only
+ * in logs, so the person with the most to lose is the one who sees it.
+ *
+ * Absent key => not "test": callers already handle a missing key, and
+ * claiming test mode when nothing is configured would be a different lie. */
+export function isStripeTestMode(): boolean {
+  return process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") === true;
+}
+
 function toForm(input: Record<string, unknown>): URLSearchParams {
   const params = new URLSearchParams();
   const walk = (value: unknown, key: string) => {

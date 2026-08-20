@@ -21,6 +21,9 @@ export interface PayoutState {
   payoutsEnabled: boolean;
   hasAccount: boolean;
   feePercent: number;
+  /** The platform is running against Stripe test keys. Real money cannot
+   * move, and any account set up now exists only in test mode. */
+  testMode?: boolean;
 }
 
 const COPY: Record<PayoutState["status"], { label: string; tone: "ok" | "wait" | "bad"; detail: string }> = {
@@ -85,6 +88,21 @@ export function PayoutsSection({ state }: { state: PayoutState }) {
           {copy.label}
         </span>
       </div>
+
+      {/* Test mode is not a detail a coach can be expected to infer. Placed
+          above the fee explanation and the connect button, because both are
+          meaningless while it is showing: no real money can move, and an
+          account created now exists only in Stripe's test mode. */}
+      {state.testMode && (
+        <p
+          className="mt-4 rounded-xl px-4 py-3 text-sm"
+          style={{ backgroundColor: T.errorContainer, color: T.onErrorContainer }}
+        >
+          <strong>Test mode.</strong> Tistra is connected to Stripe&rsquo;s test environment, so no
+          real payment can be taken and any account set up here is a test account. Payouts will work
+          once Tistra switches to live payments.
+        </p>
+      )}
 
       {/* Stated plainly rather than buried in terms: a coach should know
           what they keep, and that the number is all-in, before they connect

@@ -161,6 +161,17 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   // "About them" is wrong once "Myself" is selected — matches the person
   // this section is actually about, same personalization pattern as
   // NutritionGoalFields' personDisplay.
+  /** Relationship drives relationship_type, which decides whether the
+   * dashboard treats this person as the account holder or as someone to
+   * invite. Blank silently meant "family_caregiver", which is how a user
+   * ended up being asked to WhatsApp her own number.
+   *
+   * Enforced on add only: contacts created before this may have none, and
+   * blocking an unrelated edit in order to fix that would be worse than
+   * leaving it. The Relationship picker is still shown when editing. */
+  const missingRelationship =
+    product === 'adults' && !isSelfPlan && mode === 'add' && !relationship;
+
   const isSelfRelationship = product === 'adults' && relationship === 'self';
   const aboutSectionTitle = isSelfRelationship
     ? 'About you'
@@ -182,7 +193,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       </Field>
 
       {product === 'adults' && !isSelfPlan && (
-        <Field label="Relationship" color={theme.textSecondary}>
+        <Field label="Relationship" color={theme.textSecondary} required={mode === 'add'}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
             {(!hasSelfContact || relationship === 'self') && (
               <Chip label="Myself" active={relationship === 'self'} onPress={() => setRelationship('self')} theme={theme} />
@@ -433,7 +444,11 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Pressable style={[styles.submitButton, (loading || !fullName.trim()) && styles.disabled]} onPress={handleSubmit} disabled={loading || !fullName.trim()}>
+      <Pressable
+        style={[styles.submitButton, (loading || !fullName.trim() || missingRelationship) && styles.disabled]}
+        onPress={handleSubmit}
+        disabled={loading || !fullName.trim() || missingRelationship}
+      >
         {loading ? <ActivityIndicator color="#fff" /> : (
           <Text style={styles.submitButtonText}>{mode === 'add' ? 'Add' : 'Save'}</Text>
         )}
@@ -442,10 +457,13 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   );
 }
 
-function Field({ label, color, children }: { label: string; color: string; children: React.ReactNode }) {
+function Field({ label, color, required, children }: { label: string; color: string; required?: boolean; children: React.ReactNode }) {
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color }]}>{label}</Text>
+      <Text style={[styles.fieldLabel, { color }]}>
+        {label}
+        {required ? <Text style={styles.fieldRequired}> *</Text> : null}
+      </Text>
       {children}
     </View>
   );
@@ -475,6 +493,7 @@ const styles = StyleSheet.create({
   targetsContent: { marginTop: 12 },
   hidden: { height: 0, opacity: 0, overflow: 'hidden' },
   field: { marginBottom: 16 },
+  fieldRequired: { color: '#EF4444' },
   fieldLabel: { fontSize: 13, fontWeight: '500', marginBottom: 6 },
   input: {
     borderWidth: 1,
