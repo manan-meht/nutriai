@@ -22,7 +22,7 @@ export default async function CoachSettingsPage() {
   // click "become a coach" before they can enter anything.
   let { data: coach } = await admin
     .from("coach_profiles")
-    .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+    .select("id, display_name, headline, bio, years_coaching, status, photo_url, languages, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
     .eq("profile_id", user.id)
     .maybeSingle();
 
@@ -35,7 +35,7 @@ export default async function CoachSettingsPage() {
         display_name: profile?.full_name?.trim() || "New coach",
         status: "draft",
       })
-      .select("id, display_name, headline, bio, years_coaching, status, photo_url, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
+      .select("id, display_name, headline, bio, years_coaching, status, photo_url, languages, stripe_payouts_enabled, stripe_account_id, stripe_onboarding_status, buffer_before_minutes, buffer_after_minutes, min_notice_hours, max_advance_days, cancellation_full_refund_hours, cancellation_partial_refund_percent")
       .single();
     coach = created;
   }
@@ -65,6 +65,15 @@ export default async function CoachSettingsPage() {
     resolveSignedCoachPhotoUrls(admin, (media ?? []).map((m: any) => m.storage_path)),
   ]);
 
+  // Upcoming closures only — past time off is history a coach can't act on.
+  const { data: timeOff } = await admin
+    .from("coach_availability_exceptions")
+    .select("id, starts_at, ends_at, reason")
+    .eq("coach_profile_id", coach.id)
+    .eq("exception_type", "blocked")
+    .gte("ends_at", new Date().toISOString())
+    .order("starts_at");
+
   const { data: areas } = await admin
     .from("coach_service_areas")
     .select("area_name")
@@ -78,10 +87,17 @@ export default async function CoachSettingsPage() {
       headline: coach.headline,
       bio: coach.bio,
       yearsCoaching: coach.years_coaching,
+      languages: Array.isArray(coach.languages) ? coach.languages : [],
       status: coach.status,
       photoUrl: signedPortrait ?? null,
     },
     calendar: await getCalendarState(admin, coach.id),
+    timeOff: (timeOff ?? []).map((e: any) => ({
+      id: e.id,
+      startsAt: e.starts_at,
+      endsAt: e.ends_at,
+      reason: e.reason,
+    })),
     payouts: {
       status: coach.stripe_onboarding_status,
       payoutsEnabled: coach.stripe_payouts_enabled,

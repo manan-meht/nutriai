@@ -9,7 +9,7 @@ import { BOUNDS, describeCancellationPolicy } from "@/lib/club/booking-preferenc
 import { PayoutsSection, type PayoutState } from "./PayoutsSection";
 import { CalendarSection } from "./CalendarSection";
 import type { CalendarConnectionState } from "@/lib/club/calendar";
-import { formatMoney, SG_NEIGHBOURHOODS } from "@/lib/club/config";
+import { formatMoney, SG_NEIGHBOURHOODS, CLUB_MARKET } from "@/lib/club/config";
 import {
   updateCoachProfile,
   setCoachSkills,
@@ -20,6 +20,8 @@ import {
   setAvailabilityRules,
   setCoachPublished,
   updateBookingPreferences,
+  addAvailabilityException,
+  removeAvailabilityException,
 } from "@/app/(coach)/coach/actions";
 
 // Coach profile / onboarding. One page rather than a wizard: a returning
@@ -38,6 +40,7 @@ export interface SettingsData {
     headline: string | null;
     bio: string | null;
     yearsCoaching: number | null;
+    languages: string[];
     status: string;
     photoUrl: string | null;
   };
@@ -45,6 +48,7 @@ export interface SettingsData {
   gallery: Array<{ id: string; url: string }>;
   payouts: PayoutState;
   calendar: CalendarConnectionState;
+  timeOff: Array<{ id: string; startsAt: string; endsAt: string; reason: string | null }>;
   bookingPreferences: {
     bufferBeforeMinutes: number;
     bufferAfterMinutes: number;
@@ -95,6 +99,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
       <ServicesSection services={data.services} skills={data.allSkills} />
       <LocationSection location={data.location} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
+      <TimeOffSection entries={data.timeOff} />
       <BookingPreferencesSection preferences={data.bookingPreferences} />
       <CalendarSection state={data.calendar} />
       <PayoutsSection state={data.payouts} />
@@ -157,6 +162,7 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
     headline: profile.headline ?? "",
     bio: profile.bio ?? "",
     yearsCoaching: profile.yearsCoaching?.toString() ?? "",
+    languages: profile.languages.length > 0 ? profile.languages : ["English"],
   });
   const { pending, error, saved, save } = useSaver();
 
@@ -184,6 +190,16 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
           inputMode="numeric"
         />
       </Field>
+
+      <LanguagesField
+        selected={form.languages}
+        onChange={(next) =>
+          // Never let it reach empty: the public profile renders whatever
+          // is here, and no languages at all reads as an error rather than
+          // a choice.
+          setForm({ ...form, languages: next.length > 0 ? next : ["English"] })
+        }
+      />
       {error && <ErrorNote>{error}</ErrorNote>}
       <SaveRow
         pending={pending}
@@ -195,6 +211,7 @@ function ProfileSection({ profile }: { profile: SettingsData["profile"] }) {
               headline: form.headline,
               bio: form.bio,
               yearsCoaching: form.yearsCoaching ? Number(form.yearsCoaching) : undefined,
+              languages: form.languages,
             })
           )
         }
@@ -929,6 +946,158 @@ function BookingPreferencesSection({
               cancellationPartialRefundPercent: num(form.cancellationPartialRefundPercent),
             })
           )
+        }
+      />
+    </Section>
+  );
+}
+
+
+/** Languages a coach can actually coach in.
+ *
+ * The public profile has always shown a Languages line, but nothing could
+ * set it — the action defaulted every coach to English, so a Mandarin- or
+ * Malay-speaking coach in Singapore was advertised as English-only. A
+ * public claim nobody can correct is worse than no claim.
+ */
+const COMMON_LANGUAGES = ["English", "Mandarin", "Malay", "Tamil", "Cantonese", "Hindi", "Japanese", "Korean"];
+
+function LanguagesField({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  return (
+    <Field label="Languages you coach in">
+      <div className="flex flex-wrap gap-2">
+        {COMMON_LANGUAGES.map((lang) => {
+          const on = selected.includes(lang);
+          return (
+            <button
+              key={lang}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? selected.filter((l) => l !== lang) : [...selected, lang])}
+              className="rounded-full border px-3 py-1.5 text-xs font-medium"
+              style={
+                on
+                  ? { backgroundColor: T.primary, color: T.onPrimary, borderColor: T.primary }
+                  : { borderColor: T.outlineVariant, color: T.onSurfaceVariant }
+              }
+            >
+              {lang}
+            </button>
+          );
+        })}
+      </div>
+    </Field>
+  );
+}
+
+/** One-off closures: a holiday, a competition, a Tuesday off.
+ *
+ * The weekly grid answers "when do you normally work"; this answers "when
+ * are you away". Without it a coach going on holiday has to switch off
+ * whole weekdays and remember to switch them back — and every client sees
+ * a permanently narrower coach in the meantime.
+ */
+function TimeOffSection({ entries }: { entries: SettingsData["timeOff"] }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [reason, setReason] = useState("");
+  const { pending, error, saved, save } = useSaver();
+  const [removing, startRemoving] = useTransition();
+
+  const dayFmt = new Intl.DateTimeFormat("en-SG", {
+    timeZone: CLUB_MARKET.timezone,
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return (
+    <Section
+      title="Time off"
+      description="Block a holiday or a one-off day. Your weekly hours stay as they are."
+    >
+      {entries.length > 0 && (
+        <ul className="mb-4 flex flex-col gap-2">
+          {entries.map((e) => (
+            <li
+              key={e.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-2.5"
+              style={{ borderColor: T.outlineVariant }}
+            >
+              <span className="text-sm">
+                <span className="font-medium">
+                  {dayFmt.format(new Date(e.startsAt))} – {dayFmt.format(new Date(e.endsAt))}
+                </span>
+                {e.reason && (
+                  <span style={{ color: T.onSurfaceVariant }}> · {e.reason}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                disabled={removing}
+                onClick={() => startRemoving(async () => { await removeAvailabilityException(e.id); })}
+                className="text-sm underline underline-offset-2"
+                style={{ color: T.error }}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-[1fr_1fr_1.4fr]">
+        <Field label="From">
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="w-full rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+          />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="w-full rounded-xl border px-4 py-3 text-sm"
+            style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+          />
+        </Field>
+        <Field label="Reason (optional)" hint="Only you see this">
+          <Input value={reason} onChange={setReason} />
+        </Field>
+      </div>
+
+      {error && <ErrorNote>{error}</ErrorNote>}
+      <SaveRow
+        pending={pending}
+        saved={saved}
+        onSave={() =>
+          save(async () => {
+            if (!from || !to) return { ok: false as const, error: "Pick both dates." };
+            // Whole days, in the market's timezone: a coach picking 5–7
+            // means all three days off, not 00:00 to 00:00.
+            const startsAt = new Date(`${from}T00:00:00+08:00`).toISOString();
+            const endsAt = new Date(`${to}T23:59:59+08:00`).toISOString();
+            if (new Date(endsAt) <= new Date(startsAt)) {
+              return { ok: false as const, error: "The end date is before the start date." };
+            }
+            const result = await addAvailabilityException({ startsAt, endsAt, type: "blocked", reason });
+            if (result.ok) {
+              setFrom("");
+              setTo("");
+              setReason("");
+            }
+            return result;
+          })
         }
       />
     </Section>

@@ -383,6 +383,38 @@ export async function addAvailabilityException(input: {
   }
 
   const admin = createServiceClient();
+
+  // Blocking time that already has sessions in it would strand real
+  // clients: the booking survives, but it now sits outside the coach's
+  // availability, so nobody is told and the coach may not notice until
+  // someone turns up. Name the clash and let them cancel deliberately.
+  if (input.type === "blocked") {
+    const { data: clashes } = await admin
+      .from("bookings")
+      .select("starts_at, coach_services(name)")
+      .eq("coach_profile_id", coach.id)
+      .in("status", ["CONFIRMED", "PAYMENT_PENDING"])
+      .lt("starts_at", input.endsAt)
+      .gt("ends_at", input.startsAt)
+      .order("starts_at");
+
+    if (clashes && clashes.length > 0) {
+      const when = new Intl.DateTimeFormat("en-SG", {
+        timeZone: CLUB_MARKET.timezone,
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(new Date((clashes[0] as any).starts_at));
+      const extra = clashes.length > 1 ? ` and ${clashes.length - 1} more` : "";
+      return {
+        ok: false,
+        error: `You have a session booked on ${when}${extra} in that period. Cancel it first if you're not available.`,
+      };
+    }
+  }
+
   const { error } = await admin.from("coach_availability_exceptions").insert({
     coach_profile_id: coach.id,
     starts_at: input.startsAt,
