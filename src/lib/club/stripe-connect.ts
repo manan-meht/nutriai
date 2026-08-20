@@ -37,6 +37,26 @@ function toForm(input: Record<string, unknown>): URLSearchParams {
   return params;
 }
 
+/** A Stripe API failure, carrying the machine-readable code so callers can
+ * branch on WHICH failure rather than pattern-matching a message. */
+export class StripeApiError extends Error {
+  constructor(message: string, readonly code: string | undefined, readonly status: number) {
+    super(message);
+    this.name = "StripeApiError";
+  }
+}
+
+/** True when Stripe says the object simply isn't there.
+ *
+ * The case that matters: Connect accounts are scoped to a mode, so an
+ * acct_ created in test mode does not exist under a live key. Switching
+ * the platform to live turns every stored account id into a dangling
+ * reference, and treating that as a hard error strands the coach — they
+ * cannot onboard, because the code believes they already did. */
+function isMissingResource(error: unknown): boolean {
+  return error instanceof StripeApiError && (error.code === "resource_missing" || error.status === 404);
+}
+
 async function stripe<T = any>(method: "GET" | "POST", path: string, body?: Record<string, unknown>): Promise<T> {
   const url = method === "GET" && body ? `${STRIPE_API}${path}?${toForm(body)}` : `${STRIPE_API}${path}`;
   const res = await fetch(url, {
@@ -48,7 +68,13 @@ async function stripe<T = any>(method: "GET" | "POST", path: string, body?: Reco
     body: method === "POST" && body ? toForm(body).toString() : undefined,
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json?.error?.message ?? `Stripe error (${res.status})`);
+  if (!res.ok) {
+    throw new StripeApiError(
+      json?.error?.message ?? `Stripe error (${res.status})`,
+      json?.error?.code,
+      res.status
+    );
+  }
   return json as T;
 }
 
@@ -111,7 +137,22 @@ export async function ensureConnectAccount(
     .eq("id", coachProfileId)
     .maybeSingle();
 
-  if (coach?.stripe_account_id) return coach.stripe_account_id;
+  if (coach?.stripe_account_id) {
+    // Confirm it exists under the CURRENT key before handing it back. A
+    // stored id from the other mode (or a deleted account) would otherwise
+    // be returned here and blow up in createOnboardingLink, leaving the
+    // coach with no route to getting paid.
+    try {
+      await stripe<any>("GET", `/accounts/${coach.stripe_account_id}`);
+      return coach.stripe_account_id;
+    } catch (error) {
+      if (!isMissingResource(error)) throw error;
+      console.warn(
+        `[connect] ${coach.stripe_account_id} is not present under the current Stripe key; re-onboarding coach ${coachProfileId}`
+      );
+      await clearConnectAccount(admin, coachProfileId);
+    }
+  }
 
   // Stripe asks every account for a business website, which a
   // self-employed coach almost never has — and being unable to answer is
@@ -175,13 +216,40 @@ export async function createDashboardLink(accountId: string): Promise<string> {
   return link.url;
 }
 
+/** Forgets a Connect account that no longer resolves, so the coach is
+ * offered onboarding again instead of being told they are already set up.
+ * Never called for a real failure — only for a confirmed missing account. */
+async function clearConnectAccount(admin: SupabaseClient, coachProfileId: string): Promise<void> {
+  await admin
+    .from("coach_profiles")
+    .update({
+      stripe_account_id: null,
+      stripe_onboarding_status: "not_started",
+      // The critical field: leaving this true would let checkout attempt a
+      // destination charge to an account that isn't there.
+      stripe_payouts_enabled: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", coachProfileId);
+}
+
 /** Re-reads the account from Stripe and stores what it says. */
 export async function refreshAccountState(
   admin: SupabaseClient,
   coachProfileId: string,
   accountId: string
 ): Promise<AccountState> {
-  const account = await stripe<any>("GET", `/accounts/${accountId}`);
+  let account: any;
+  try {
+    account = await stripe<any>("GET", `/accounts/${accountId}`);
+  } catch (error) {
+    if (!isMissingResource(error)) throw error;
+    // Same mode-switch case as ensureConnectAccount. Reporting
+    // "not_started" is both true and actionable; throwing would only
+    // surface a Stripe error on the coach's payouts page.
+    await clearConnectAccount(admin, coachProfileId);
+    return { accountId, status: "not_started", payoutsEnabled: false, requirements: [] };
+  }
   const state = readAccountState(account);
 
   await admin
