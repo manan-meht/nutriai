@@ -106,8 +106,16 @@ export async function middleware(request: NextRequest) {
         return NextResponse.redirect(url, 308);
       }
 
+      // The deck IS the homepage. /browse stays alive as its old address
+      // so bookmarks and stale sign-in defaults land on the same place.
+      if (pathname === "/browse") {
+        const url = request.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url, 308);
+      }
+
       const url = request.nextUrl.clone();
-      url.pathname = `/club${pathname === "/" ? "" : pathname}`;
+      url.pathname = pathname === "/" ? "/club/browse" : `/club${pathname}`;
       return NextResponse.rewrite(url);
     }
   } else if (isLocalDevHost(host) && !isSharedPath && isClubAppPath(pathname)) {

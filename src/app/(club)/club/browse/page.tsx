@@ -20,6 +20,11 @@ import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "Tistra Club | Find a coach in Singapore",
+  description: "Choose a skill, meet the right coach, and start moving forward.",
+};
+
 // The Stitch type system pairs Hanken Grotesk with Inter; the hero carries
 // the page, so it gets the real face rather than an approximation.
 // Self-hosted by next/font at build time — no runtime font CDN.

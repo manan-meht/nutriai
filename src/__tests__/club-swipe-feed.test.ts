@@ -111,8 +111,9 @@ describe("count and list view", () => {
     expect(code(feed())).not.toMatch(/available this week/);
   });
 
-  it("Browse all is a styled, tracked secondary action", () => {
+  it("Browse all is a styled, tracked secondary action pointing at the list's home", () => {
     expect(feed()).toMatch(/>\s*Browse all\s*</);
+    expect(feed()).toMatch(/href="\/coaches"/);
     expect(feed()).toMatch(/trackClubEvent\("list_view_clicked"\)/);
   });
 });
@@ -170,7 +171,8 @@ describe("analytics", () => {
 describe("entry points still hold", () => {
   it("signing in on the club lands on the feed", () => {
     for (const f of ["app/(public)/login/page.tsx", "app/(public)/signup/page.tsx"]) {
-      expect(src(f)).toMatch(/"\/browse" : "\/club\/browse"/);
+      // The deck is the club homepage now.
+      expect(src(f)).toMatch(/"\/" : "\/club\/browse"/);
     }
   });
 

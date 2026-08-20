@@ -26,7 +26,7 @@ function defaultNextFor(surface: AuthSurface, hostname: string): string {
   if (surface === "club") {
     // Signing in lands on the swipe feed — greeting, motivating line, then
     // one coach per swipe. The list stays a tab away at the root.
-    return isClubHost(hostname) ? "/browse" : "/club/browse";
+    return isClubHost(hostname) ? "/" : "/club/browse";
   }
   return "/adults/dashboard";
 }

@@ -8,6 +8,11 @@ import { CLUB_BRANDING } from "@/lib/club/config";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = {
+  title: "All coaches | Tistra Club",
+  description: "Every published coach on Tistra Club, with real availability.",
+};
+
 export default async function ClubDiscoverPage({
   searchParams,
 }: {
@@ -30,7 +35,7 @@ export default async function ClubDiscoverPage({
     const merged = { skill: params.skill, travels: params.travels, ...over };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
     const s = p.toString();
-    return s ? `/?${s}` : "/";
+    return s ? `/coaches?${s}` : "/coaches";
   };
 
   return (

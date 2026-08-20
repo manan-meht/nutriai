@@ -80,7 +80,7 @@ describe("club URLs carry no /club prefix", () => {
   const CLUB_UI = [
     "components/club/ClubChrome.tsx",
     "components/club/CoachCardList.tsx",
-    "app/(club)/club/page.tsx",
+    "app/(club)/club/coaches/page.tsx",
     "app/(club)/club/coaches/[coachId]/page.tsx",
     "app/(club)/club/coaches/[coachId]/book/page.tsx",
     "app/(club)/club/checkout/[holdId]/page.tsx",
@@ -127,9 +127,17 @@ describe("middleware canonicalises club URLs", () => {
     expect(mw).toMatch(/NextResponse\.redirect\(url, 308\)/);
   });
 
-  it("rewrites clean paths into the /club route group", () => {
-    expect(mw).toMatch(/url\.pathname = `\/club\$\{pathname === "\/" \? "" : pathname\}`/);
+  it("serves the deck at the club root and rewrites other clean paths", () => {
+    // "/" on a club host is the swipe deck; everything else maps into the
+    // route group unchanged, so /coaches is the list and /coaches/<id> a
+    // profile.
+    expect(mw).toMatch(/url\.pathname = pathname === "\/" \? "\/club\/browse" : `\/club\$\{pathname\}`/);
     expect(mw).toMatch(/NextResponse\.rewrite\(url\)/);
+  });
+
+  it("keeps /browse alive as a redirect to the new home", () => {
+    // Bookmarks and stale sign-in defaults from the week it lived there.
+    expect(mw).toMatch(/pathname === "\/browse"/);
   });
 
   it("sends /club on a non-club host to the club's own origin", () => {

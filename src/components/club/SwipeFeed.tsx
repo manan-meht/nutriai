@@ -231,7 +231,7 @@ export function SwipeFeed({
               {filtered.length === 1 ? "1 coach" : `${filtered.length} coaches`} in {marketName}
             </p>
             <Link
-              href="/"
+              href="/coaches"
               onClick={() => trackClubEvent("list_view_clicked")}
               className="rounded-full px-2 py-1 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               style={{ color: O.primary }}
