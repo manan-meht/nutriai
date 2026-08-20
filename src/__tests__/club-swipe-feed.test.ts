@@ -60,8 +60,10 @@ describe("the first coach peeks into the initial viewport", () => {
     expect(feed()).toMatch(/absolute inset-x-0 top-0 z-20/);
   });
 
-  it("the scroll index accounts for the short cover", () => {
-    expect(feed()).toMatch(/coverH/);
+  it("the cover is index 0, so the first coach is index 1", () => {
+    // Position is observed, not derived from the cover's height — see the
+    // "measured, not computed" block below.
+    expect(feed()).toMatch(/data-deck-index="0"/);
   });
 });
 
@@ -183,5 +185,71 @@ describe("entry points still hold", () => {
   it("browse remains a registered club segment", () => {
     const { CLUB_APP_SEGMENTS } = require("@/lib/club/host");
     expect(CLUB_APP_SEGMENTS).toContain("browse");
+  });
+});
+
+describe("deck position is measured, not computed", () => {
+  it("tracks the visible section with an IntersectionObserver", () => {
+    // Sections are sized in dvh, which tracks the DYNAMIC viewport — on a
+    // phone it changes as the URL bar collapses. Dividing scrollTop by
+    // clientHeight therefore drifted, the error compounded down the deck,
+    // and the last two cards both reported "12 / 12".
+    expect(feed()).toMatch(/new IntersectionObserver/);
+    expect(feed()).toMatch(/data-deck-index/);
+    expect(code(feed())).not.toMatch(/scrollTop \/ /);
+    expect(code(feed())).not.toMatch(/onScroll=/);
+  });
+
+  it("marks every section, cover included, so indices line up", () => {
+    expect(feed()).toMatch(/data-deck-index="0"/);
+    expect(feed()).toMatch(/data-deck-index=\{i \+ 1\}/);
+  });
+
+  it("re-observes when filtering changes the sections", () => {
+    expect(feed()).toMatch(/\}, \[filtered\.length\]\)/);
+  });
+
+  it("picks the most-visible section so a half-scroll doesn't flicker", () => {
+    expect(feed()).toMatch(/intersectionRatio/);
+  });
+});
+
+describe("card layout on a phone", () => {
+  it("coach meta clears the fixed Filters/counter row", () => {
+    // The chrome sits at safe-area + 12px and is ~40px tall; meta at pt-6
+    // put the coach's name underneath it.
+    expect(feed()).toMatch(/paddingTop: "calc\(env\(safe-area-inset-top\) \+ 64px\)"/);
+  });
+
+  it("keeps the photo subject clear of the meta block", () => {
+    expect(feed()).toMatch(/objectPosition: "center 40%"/);
+  });
+});
+
+/** Reads intrinsic dimensions from a lossy WebP's VP8 bitstream header —
+ * the file itself, not a filename convention that could go stale. */
+function webpSize(buf: Buffer): { width: number; height: number } {
+  const i = buf.indexOf("VP8 ", 12);
+  if (i === -1) throw new Error("not a lossy WebP");
+  // 4-byte tag, 4-byte size, 3-byte start code, then 14-bit w/h.
+  const off = i + 8 + 6;
+  return {
+    width: buf.readUInt16LE(off) & 0x3fff,
+    height: buf.readUInt16LE(off + 2) & 0x3fff,
+  };
+}
+
+describe("placeholder photos match the card shape", () => {
+  it("are portrait, not squares cropped to their middle", () => {
+    // 560x560 in a 390x844 card showed the middle ~44%, upscaled 1.5x.
+    const dir = path.join(__dirname, "..", "..", "public", "coach-photos");
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".webp"));
+    expect(files.length).toBeGreaterThan(0);
+    for (const f of files) {
+      const { width, height } = webpSize(fs.readFileSync(path.join(dir, f)));
+      expect([f, height > width]).toEqual([f, true]);
+      // And large enough for a 3x phone screen rather than upscaled.
+      expect([f, width >= 800]).toEqual([f, true]);
+    }
   });
 });

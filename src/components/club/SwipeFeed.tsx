@@ -82,25 +82,44 @@ export function SwipeFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    // The cover is shorter than a viewport, so index 0 ends at the cover's
-    // own height, not at one full screen.
-    const coverH = (el.firstElementChild as HTMLElement | null)?.offsetHeight ?? el.clientHeight;
-    const top = el.scrollTop;
-    const i = top < coverH / 2 ? 0 : 1 + Math.round((top - coverH) / el.clientHeight);
-    setIndex((prev) => {
-      if (prev === i) return prev;
-      if (i > 0) {
-        setHasInteracted((was) => {
-          if (!was) trackClubEvent("coach_feed_started");
-          return true;
-        });
-      }
-      return i;
-    });
-  }, []);
+  // Which section is on screen, measured rather than computed.
+  //
+  // This used to derive the index from scrollTop divided by clientHeight.
+  // Sections are sized in dvh, which tracks the DYNAMIC viewport — on a
+  // phone it changes as the URL bar collapses — so container height and
+  // section height disagree, the error compounds down the deck, and the
+  // last two cards both reported "12 / 12". An observer asks the browser
+  // what is actually visible instead, which cannot drift.
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const sections = Array.from(root.querySelectorAll<HTMLElement>("[data-deck-index]"));
+    if (sections.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Most-visible wins, so a half-scrolled position never flickers.
+        const best = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (!best) return;
+        const i = Number((best.target as HTMLElement).dataset.deckIndex);
+        setIndex((prev) => (prev === i ? prev : i));
+        if (i > 0) {
+          setHasInteracted((was) => {
+            if (!was) trackClubEvent("coach_feed_started");
+            return true;
+          });
+        }
+      },
+      { root, threshold: [0.5, 0.75] }
+    );
+
+    sections.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+    // Re-observed when the filtered set changes, since sections are
+    // added and removed with it.
+  }, [filtered.length]);
 
   const selectSkill = useCallback((next: string | null) => {
     setSkill(next);
@@ -120,7 +139,6 @@ export function SwipeFeed({
   return (
     <div
       ref={containerRef}
-      onScroll={onScroll}
       tabIndex={0}
       role="feed"
       aria-label="Coaches, one per screen — swipe up or press arrow keys for the next"
@@ -153,6 +171,7 @@ export function SwipeFeed({
 
       {/* ---- Cover: 72dvh, so the first real coach peeks below it ---- */}
       <section
+        data-deck-index="0"
         className="relative flex h-[72dvh] w-full snap-start snap-always flex-col overflow-hidden px-5 sm:px-10"
         aria-label="Choose a skill"
       >
@@ -288,6 +307,7 @@ export function SwipeFeed({
         filtered.map((c, i) => (
           <section
             key={c.id}
+            data-deck-index={i + 1}
             className="h-[100dvh] w-full snap-start snap-always sm:flex sm:justify-center sm:px-8 sm:py-5"
             aria-label={c.name}
           >
@@ -303,7 +323,11 @@ export function SwipeFeed({
                   loading={i === 0 ? "eager" : "lazy"}
                   decoding="async"
                   draggable={false}
+                  // Sources are portrait (900x1350) to match the card, so
+                  // cover barely crops; object-position keeps the subject
+                  // out from behind the meta block at the top.
                   className="absolute inset-0 h-full w-full object-cover"
+                  style={{ objectPosition: "center 40%" }}
                 />
               ) : (
                 <div className="absolute inset-0" style={{ background: O.backdrop }} />
@@ -328,7 +352,13 @@ export function SwipeFeed({
                 aria-label={`${c.name} — view profile and book`}
               />
 
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-5 pt-6 sm:px-7">
+              {/* Cleared past the fixed Filters/counter row above, which
+                  was overlapping the coach's name on mobile. The chrome is
+                  safe-area + 12px offset and ~40px tall. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 z-20 px-5 sm:px-7"
+                style={{ paddingTop: "calc(env(safe-area-inset-top) + 64px)" }}
+              >
                 <h2 className="text-[28px] font-bold leading-tight tracking-[-0.015em] text-white sm:text-[32px]">
                   {c.name}
                 </h2>
