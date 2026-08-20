@@ -5,6 +5,7 @@ import { haversineKm } from "./travel/provider";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "./config";
 import { resolveCoachPhoto, resolveCoachGallery } from "./placeholder-photos";
 import { resolveSignedCoachPhotoUrl } from "./media";
+import { fetchBusyBlocks } from "./calendar";
 
 // Consumer-side discovery and booking reads.
 //
@@ -357,6 +358,19 @@ export async function getBookableSlots(
     admin.from("booking_holds").select("starts_at, ends_at").eq("coach_profile_id", coachProfileId).is("released_at", null).is("booking_id", null).gt("expires_at", now.toISOString()),
   ]);
 
+  // A coach's own calendar, when connected. null means "no usable
+  // connection" and is treated as no extra busy time — the same position
+  // as before the integration existed. A FAILED read is never silently
+  // turned into "free": fetchBusyBlocks marks the connection needs_reauth
+  // so the coach is told, rather than quietly offering slots they are busy
+  // in.
+  const externalBusy = await fetchBusyBlocks(
+    admin,
+    coachProfileId,
+    now,
+    new Date(now.getTime() + days * 864e5)
+  );
+
   return calculateAvailableSlots({
     now,
     timezone: CLUB_MARKET.timezone,
@@ -371,6 +385,7 @@ export async function getBookableSlots(
     busy: [
       ...(booked ?? []).map((b: any) => ({ startsAt: new Date(b.starts_at), endsAt: new Date(b.ends_at) })),
       ...(holds ?? []).map((h: any) => ({ startsAt: new Date(h.starts_at), endsAt: new Date(h.ends_at) })),
+      ...(externalBusy ?? []),
     ],
     exceptions: (exceptions ?? []).map((e: any) => ({
       startsAt: new Date(e.starts_at),

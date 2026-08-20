@@ -5,6 +5,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
 import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { disconnectCalendar } from "@/lib/club/calendar";
 import { checkUpload, coachMediaPath, MAX_GALLERY_IMAGES } from "@/lib/club/media";
 import { validateBookingPreferences, type BookingPreferences } from "@/lib/club/booking-preferences";
 import {
@@ -666,4 +667,16 @@ export async function refreshPayoutStatus(): Promise<ActionResult> {
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Couldn't reach Stripe." };
   }
+}
+
+/** Detaches the coach's Google Calendar. The stored tokens are deleted
+ * rather than flagged — keeping credentials for a connection a coach has
+ * explicitly ended is not defensible. */
+export async function disconnectCoachCalendar(): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  await disconnectCalendar(createServiceClient(), coach.id);
+  revalidateCoach();
+  return { ok: true };
 }

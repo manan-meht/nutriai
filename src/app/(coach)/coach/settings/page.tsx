@@ -6,6 +6,7 @@ import { CoachSettings, type SettingsData } from "@/components/coach/CoachSettin
 import { publishBlockers } from "@/lib/club/ranking";
 import { resolveSignedCoachPhotoUrl, resolveSignedCoachPhotoUrls } from "@/lib/club/media";
 import { getPlatformFeePercent } from "@/lib/club/platform-fee";
+import { getCalendarState } from "@/lib/club/calendar";
 
 // Coach profile / onboarding. This route is also the landing place for a
 // brand-new coach: /coach/dashboard redirects here when no coach_profiles
@@ -80,6 +81,7 @@ export default async function CoachSettingsPage() {
       status: coach.status,
       photoUrl: signedPortrait ?? null,
     },
+    calendar: await getCalendarState(admin, coach.id),
     payouts: {
       status: coach.stripe_onboarding_status,
       payoutsEnabled: coach.stripe_payouts_enabled,
