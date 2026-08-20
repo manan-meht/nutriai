@@ -198,15 +198,23 @@ export function CoachLanding() {
 
       {/* ---- The gap this closes ---- */}
       <Section>
-        <div className="grid gap-10 md:grid-cols-12 md:gap-16">
-          <div className="md:col-span-5">
+        {/* Label, heading and body are one column, the photo the other.
+            Splitting the heading from its own paragraphs left the heading
+            stranded above a tall empty half while the text and the image
+            stacked in the other — the photo read as belonging to the
+            paragraph rather than to the section.
+
+            Text is FIRST in the DOM and moved right only at md, so the
+            reading order stays label -> heading -> body -> photo on a
+            phone, while desktop alternates against the hero (text left,
+            image right) instead of repeating it. */}
+        <div className="grid items-center gap-10 md:grid-cols-12 md:gap-16">
+          <div className="md:col-span-6 md:order-2">
             <SectionLabel>The problem</SectionLabel>
             <h2 className="mt-4 text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
               Coaching is the easy part.
             </h2>
-          </div>
-          <div className="md:col-span-7">
-            <p className="text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+            <p className="mt-6 text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
               Finding clients, agreeing times over WhatsApp, remembering who owes you for
               last Tuesday, working out whether you can get from East Coast to Bukit Timah
               in half an hour — that's the part that eats the week.
@@ -214,13 +222,13 @@ export function CoachLanding() {
             <p className="mt-4 text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
               Tistra Coach handles the business so you can spend your time actually coaching.
             </p>
-            <div className="mt-8">
-              <MarketingImage
-                src="/marketing/coach-practice.webp"
-                alt="A coach correcting one client's form during a small outdoor group session in a Singapore park"
-                aspect="aspect-[16/9]"
-              />
-            </div>
+          </div>
+          <div className="md:col-span-6 md:order-1">
+            <MarketingImage
+              src="/marketing/coach-practice.webp"
+              alt="A coach correcting one client's form during a small outdoor group session in a Singapore park"
+              aspect="aspect-[16/9]"
+            />
           </div>
         </div>
       </Section>
