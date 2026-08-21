@@ -41,7 +41,11 @@ describe("the first coach peeks into the initial viewport", () => {
   it("cover is 72dvh inside a full-viewport snap container", () => {
     // 72dvh cover + mandatory snap = the real first card's top 28% shows
     // at scroll position 0, and the first swipe snaps it to full screen.
-    expect(feed()).toMatch(/h-\[72dvh\][^"]*snap-start/);
+    // 72dvh only when there IS a card to peek. With no coaches at all the
+    // cover fills the screen instead, so the page is one screen with no
+    // scroll that ends in a dead end.
+    expect(feed()).toMatch(/isEmptyMarket \? "h-\[100dvh\]" : "h-\[72dvh\]"/);
+    expect(feed()).toMatch(/snap-start/);
     expect(feed()).toMatch(/h-\[100dvh\] w-full snap-y snap-mandatory/);
   });
 

@@ -163,7 +163,7 @@ describe("the demo says what it is", () => {
 describe("the empty public deck", () => {
   it("explains itself instead of rendering a blank feed", () => {
     const feed = code("components/club/SwipeFeed.tsx");
-    expect(feed).toMatch(/coaches\.length === 0 \?/);
+    expect(feed).toMatch(/const isEmptyMarket = coaches\.length === 0;/);
     expect(feed).toMatch(/signing up the first coaches/);
   });
 
@@ -179,11 +179,16 @@ describe("the empty public deck", () => {
   });
 
   it("distinguishes 'none at all' from 'none for this skill'", () => {
-    // Offering "Browse all coaches" when there are none is a dead end.
+    // Offering "Browse all coaches" when there are none is a dead end, so
+    // the two states say different things and live in different places:
+    // the empty market in the cover (one screen, no scroll), the empty
+    // filter in the panel below the deck.
     const feed = code("components/club/SwipeFeed.tsx");
-    const empty = feed.slice(feed.indexOf("filtered.length === 0 ?"));
-    expect(empty).toMatch(/No coaches for this skill yet\./);
-    expect(empty).toMatch(/Coach with Tistra/);
+    const panel = feed.slice(feed.indexOf("isEmptyMarket ? null : filtered.length === 0 ?"));
+    expect(panel).toMatch(/No coaches for this skill yet\./);
+    expect(panel).not.toMatch(/Coach with Tistra/);
+    // The empty-market call to action sits above it, in the cover.
+    expect(feed.slice(0, feed.indexOf("isEmptyMarket ? null :"))).toMatch(/Coach with Tistra/);
     // The CTA goes to the Tistra Coach landing page, not straight into the
     // signup form: someone arriving from the club deck has not yet been
     // told what the coach product is or what it costs.
