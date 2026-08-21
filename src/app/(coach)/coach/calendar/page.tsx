@@ -5,14 +5,20 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { CoachCalendar } from "@/components/coach/CoachCalendar";
 import { CalendarSection } from "@/components/coach/CalendarSection";
 import { getCalendarState } from "@/lib/club/calendar";
+import { CLUB_MARKET } from "@/lib/club/config";
+import { zonedDateString, zonedWeekday, zonedTimeToInstant } from "@/lib/club/time";
 
-/** Monday of the week containing `date`, at local midnight. */
+/** Monday 00:00 of the week containing `date`, in the MARKET's timezone.
+ *
+ * setHours() would give the SERVER's midnight — 08:00 Singapore time on a
+ * UTC Worker — so the week silently started eight hours late and Monday's
+ * early morning fell outside it entirely. */
 function weekStartOf(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const offset = (d.getDay() + 6) % 7; // Monday-first
-  d.setDate(d.getDate() - offset);
-  return d;
+  const tz = CLUB_MARKET.timezone;
+  const weekday = zonedWeekday(date, tz); // 0 = Sunday
+  const mondayOffset = (weekday + 6) % 7;
+  const dayKey = zonedDateString(new Date(date.getTime() - mondayOffset * 864e5), tz);
+  return zonedTimeToInstant(dayKey, 0, tz);
 }
 
 export default async function CoachCalendarPage({

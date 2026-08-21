@@ -103,10 +103,17 @@ export function CalendarSection({
         </p>
       ) : (
         <>
-          {state.email && (
+          {/* The account's address is often unknown, and deliberately so:
+              we ask Google for calendar.freebusy and nothing else, and that
+              scope carries no right to read the user's email. Rather than
+              hide the whole line (which left a connected coach with no
+              confirmation at all), name the calendar generically. Widening
+              the scope just to print an address would trade the strongest
+              part of the privacy story for a nicety. */}
+          {(state.status === "connected" || state.email) && (
             <p className="mt-3 text-sm" style={{ color: T.onSurfaceVariant }}>
               {state.status === "connected" ? "Reading busy times from" : "Was connected to"}{" "}
-              <span style={{ color: T.onSurface }}>{state.email}</span>
+              <span style={{ color: T.onSurface }}>{state.email ?? "your Google Calendar"}</span>
               {state.lastSyncedAt && state.status === "connected" && (
                 <> · last checked {new Date(state.lastSyncedAt).toLocaleString("en-SG")}</>
               )}

@@ -4,6 +4,7 @@ import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config
 import { profileQualityScore, publishBlockers } from "./ranking";
 import { resolveSignedCoachPhotoUrl } from "./media";
 import { fetchBusyBlocks } from "./calendar";
+import { zonedDateString, zonedWeekday, zonedTimeToInstant, eachZonedDate } from "./time";
 
 // Data layer for the Coach OS. Every screen reads from here rather than
 // querying Supabase inline, so authorization ("is this row actually this
@@ -299,26 +300,33 @@ export async function getCoachCalendarWeek(
     fetchBusyBlocks(admin, profile.id, weekStart, weekEnd),
   ]);
 
-  const localDateKey = (d: Date) => {
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-    return local.toISOString().slice(0, 10);
-  };
+  // Every key here is the coach's MARKET day, not the server's.
+  //
+  // This previously mixed three clocks: the day key came from UTC, busy
+  // blocks were grouped by the server's local date, and the grid positions
+  // everything in Singapore time. On Workers the server is UTC, so a busy
+  // block between 00:00 and 06:00 SGT was filed under the previous day AND
+  // drawn above the top of the grid — it vanished. Sessions had the same
+  // flaw: an 01:00 SGT booking is 17:00Z the day before.
+  //
+  // zonedDateString/zonedWeekday are the same helpers the availability
+  // engine uses, so the calendar and the slots a client is offered now
+  // agree about which day a time belongs to.
+  const tz = CLUB_MARKET.timezone;
+  const dayKeys = eachZonedDate(weekStart, new Date(weekStart.getTime() + 6 * 864e5), tz).slice(0, 7);
 
-  const days = Array.from({ length: 7 }, (_, i) => {
-    const date = new Date(weekStart.getTime() + i * 864e5);
-    const weekday = date.getDay();
-    const dayKey = date.toISOString().slice(0, 10);
+  const days = dayKeys.map((dayKey) => {
+    // Midday avoids any ambiguity at a DST edge when reading the weekday.
+    const weekday = zonedWeekday(zonedTimeToInstant(dayKey, 12 * 60, tz), tz);
     return {
       date: dayKey,
       weekday,
       workingWindows: (rules.data ?? [])
         .filter((r: any) => r.weekday === weekday)
         .map((r: any) => ({ startMinute: r.start_minute, endMinute: r.end_minute })),
-      sessions: sessions.filter((s) => s.startsAt.slice(0, 10) === dayKey),
-      // Same local-date grouping the sessions use, so a block lands on the
-      // day a coach would say it belongs to.
+      sessions: sessions.filter((s) => zonedDateString(new Date(s.startsAt), tz) === dayKey),
       busyBlocks: (externalBusy ?? [])
-        .filter((b) => localDateKey(b.startsAt) === dayKey)
+        .filter((b) => zonedDateString(b.startsAt, tz) === dayKey)
         .map((b) => ({ startsAt: b.startsAt.toISOString(), endsAt: b.endsAt.toISOString() })),
     };
   });

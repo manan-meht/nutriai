@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CLUB_TOKENS as T } from "./tokens";
 import { CoachPageHeader } from "./CoachShell";
 import { CLUB_MARKET } from "@/lib/club/config";
+import { zonedDateString } from "@/lib/club/time";
 import type { CalendarWeek } from "@/lib/club/coach-queries";
 
 // Weekly calendar: working hours as background shading, real bookings laid
@@ -12,9 +13,12 @@ import type { CalendarWeek } from "@/lib/club/coach-queries";
 // event titles, attendees or descriptions, so private calendar detail
 // cannot reach the browser even by accident (spec).
 
-const DAY_START_MINUTE = 6 * 60; // 06:00
-const DAY_END_MINUTE = 22 * 60; // 22:00
-const VISIBLE_MINUTES = DAY_END_MINUTE - DAY_START_MINUTE;
+// The grid's default window. It EXPANDS to fit anything outside it (see
+// visibleWindow) rather than clipping: a 05:00 swim session or a late busy
+// block used to be positioned at a negative offset and disappear off the
+// top of the grid, which reads as "the calendar isn't syncing".
+const DEFAULT_START_MINUTE = 6 * 60; // 06:00
+const DEFAULT_END_MINUTE = 22 * 60; // 22:00
 
 const timeFmt = new Intl.DateTimeFormat("en-SG", {
   timeZone: CLUB_MARKET.timezone,
@@ -38,14 +42,40 @@ function minuteOfDay(iso: string): number {
   return (at.hour === 24 ? 0 : at.hour) * 60 + at.minute;
 }
 
-const pct = (minute: number) => ((minute - DAY_START_MINUTE) / VISIBLE_MINUTES) * 100;
+/** Widens the default window to contain every session, busy block and
+ * working window in the week, rounded out to the hour. */
+function visibleWindow(week: CalendarWeek): { start: number; end: number } {
+  let start = DEFAULT_START_MINUTE;
+  let end = DEFAULT_END_MINUTE;
+  const widen = (from: number, to: number) => {
+    if (Number.isFinite(from)) start = Math.min(start, Math.floor(from / 60) * 60);
+    if (Number.isFinite(to)) end = Math.max(end, Math.ceil(to / 60) * 60);
+  };
+  for (const day of week.days) {
+    for (const w of day.workingWindows) widen(w.startMinute, w.endMinute);
+    for (const b of day.busyBlocks) widen(minuteOfDay(b.startsAt), minuteOfDay(b.endsAt));
+    for (const sn of day.sessions) widen(minuteOfDay(sn.startsAt), minuteOfDay(sn.endsAt));
+  }
+  return { start: Math.max(0, start), end: Math.min(24 * 60, Math.max(end, start + 60)) };
+}
 
 export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekStart: string }) {
   const start = new Date(weekStart);
   const end = new Date(start.getTime() + 6 * 864e5);
-  const prev = new Date(start.getTime() - 7 * 864e5).toISOString().slice(0, 10);
-  const next = new Date(start.getTime() + 7 * 864e5).toISOString().slice(0, 10);
-  const todayKey = new Date().toISOString().slice(0, 10);
+  // Market time throughout: toISOString() yields the UTC date, which is
+  // the previous day for any Singapore morning before 08:00 — that made
+  // "today" highlight the wrong column and the week links skew.
+  const prev = zonedDateString(new Date(start.getTime() - 7 * 864e5), CLUB_MARKET.timezone);
+  const next = zonedDateString(new Date(start.getTime() + 7 * 864e5), CLUB_MARKET.timezone);
+  const todayKey = zonedDateString(new Date(), CLUB_MARKET.timezone);
+
+  const { start: dayStartMinute, end: dayEndMinute } = visibleWindow(week);
+  const visibleMinutes = dayEndMinute - dayStartMinute;
+  const pct = (minute: number) => ((minute - dayStartMinute) / visibleMinutes) * 100;
+  /** A block that ends past midnight is reported by Google as ending on the
+   * next day; clamp so it fills to the bottom instead of inverting. */
+  const span = (from: number, to: number) =>
+    (Math.max(0, Math.min(to, dayEndMinute) - Math.max(from, dayStartMinute)) / visibleMinutes) * 100;
 
   const totalSessions = week.days.reduce((n, d) => n + d.sessions.length, 0);
   const hasBusy = week.days.some((d) => d.busyBlocks.length > 0);
@@ -127,7 +157,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
                       className="absolute inset-x-0"
                       style={{
                         top: `${pct(w.startMinute)}%`,
-                        height: `${((w.endMinute - w.startMinute) / VISIBLE_MINUTES) * 100}%`,
+                        height: `${span(w.startMinute, w.endMinute)}%`,
                         backgroundColor: T.surfaceContainerLow,
                       }}
                       aria-hidden="true"
@@ -140,7 +170,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
                       scope returns times and nothing else. */}
                   {day.busyBlocks.map((b) => {
                     const top = pct(minuteOfDay(b.startsAt));
-                    const height = ((minuteOfDay(b.endsAt) - minuteOfDay(b.startsAt)) / VISIBLE_MINUTES) * 100;
+                    const height = span(minuteOfDay(b.startsAt), minuteOfDay(b.endsAt));
                     return (
                       <div
                         key={`${b.startsAt}-${b.endsAt}`}
@@ -163,7 +193,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
                   {/* Booked sessions */}
                   {day.sessions.map((s) => {
                     const top = pct(minuteOfDay(s.startsAt));
-                    const height = ((minuteOfDay(s.endsAt) - minuteOfDay(s.startsAt)) / VISIBLE_MINUTES) * 100;
+                    const height = span(minuteOfDay(s.startsAt), minuteOfDay(s.endsAt));
                     return (
                       <Link
                         key={s.id}
@@ -192,7 +222,7 @@ export function CoachCalendar({ week, weekStart }: { week: CalendarWeek; weekSta
       </div>
 
       <p className="mt-4 text-xs" style={{ color: T.onSurfaceVariant }}>
-        Showing {Math.floor(DAY_START_MINUTE / 60)}:00–{Math.floor(DAY_END_MINUTE / 60)}:00 ·
+        Showing {Math.floor(dayStartMinute / 60)}:00–{Math.floor(dayEndMinute / 60)}:00 ·
         times in {CLUB_MARKET.timezone.replace("_", " ")}
       </p>
     </>
