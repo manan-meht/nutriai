@@ -1,6 +1,6 @@
 // Bump this whenever PRIVACY_SECTIONS changes — Play/App Store reviewers
 // and users both rely on this to know the policy is current, not stale.
-export const PRIVACY_LAST_UPDATED = "July 19, 2026";
+export const PRIVACY_LAST_UPDATED = "August 21, 2026";
 
 export interface PrivacyBlock {
   type: "p" | "ul" | "p-link";
@@ -123,14 +123,39 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
     ],
   },
   {
+    // Required by Google before an app requesting a Calendar scope can be
+    // verified: the policy has to state what Google user data is accessed,
+    // why, how it is stored and shared, and how to revoke it — and it must
+    // carry the Limited Use sentence verbatim. Its absence is the most
+    // common reason verification is refused.
     number: 10,
+    heading: "Google Calendar (Tistra Coach)",
+    blocks: [
+      p("Coaches using Tistra Coach can connect a Google Calendar so that Tistra does not offer clients a session time the coach is already busy. Connecting is optional, and the rest of Tistra Coach works without it."),
+      p("Tistra requests a single Google permission: calendar.freebusy. That permission returns only the start and end times of periods marked busy. It does not give Tistra access to event titles, descriptions, guests, locations, attachments, or any other calendar content — Tistra never asks Google for them, so they never reach us."),
+      ul([
+        "What we receive: busy time ranges from the coach's primary calendar, for the period being scheduled.",
+        "What we use it for: hiding times the coach is already busy from their availability, and nothing else.",
+        "Storage: the access and refresh tokens Google issues are encrypted before being stored. Busy times are held briefly in memory to avoid repeated calls and are not saved as calendar records.",
+        "Sharing: busy times are never sold, never used for advertising, never used to train AI models, and are not shared with other users. A client booking a session sees only which times are unavailable, never why.",
+        "Revoking: disconnecting Google Calendar in Tistra Coach settings deletes the stored tokens immediately. Access can also be revoked at any time from the coach's Google Account permissions page.",
+      ]),
+      pLink(
+        "Tistra's use and transfer of information received from Google APIs to any other app adheres to the Google API Services User Data Policy, including the Limited Use requirements. The policy is available at",
+        "https://developers.google.com/terms/api-services-user-data-policy",
+        "Google API Services User Data Policy"
+      ),
+    ],
+  },
+  {
+    number: 11,
     heading: "Security",
     blocks: [
       p("Data is stored securely using industry-standard practices. Access to personal data is limited to authorized Tistra personnel who need it to operate or improve the Service."),
     ],
   },
   {
-    number: 11,
+    number: 12,
     heading: "Cross-border data transfers",
     blocks: [
       p("Tistra is based in Singapore, and users may be located in India or other markets. As a result, your data may be processed in countries other than the one you live in, by Tistra or its service providers, in order to provide the Service."),

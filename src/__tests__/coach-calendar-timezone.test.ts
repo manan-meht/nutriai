@@ -100,3 +100,41 @@ describe("the connected calendar is named even without an email", () => {
     expect(cal).not.toMatch(/userinfo\.email|auth\/calendar\.readonly|openid/);
   });
 });
+
+describe("the privacy policy discloses the Google Calendar data", () => {
+  // Google will not verify an app requesting a Calendar scope unless the
+  // policy says what is accessed, why, how it is stored and shared, and how
+  // to revoke it — and carries the Limited Use sentence.
+  const policy = () => src("app/(public)/privacy/content.ts");
+
+  it("carries the Limited Use sentence Google looks for", () => {
+    expect(policy()).toMatch(
+      /adheres to the Google API Services User Data Policy, including the Limited Use requirements/
+    );
+    expect(policy()).toMatch(/developers\.google\.com\/terms\/api-services-user-data-policy/);
+  });
+
+  it("names the exact scope and what it excludes", () => {
+    const t = policy();
+    expect(t).toMatch(/calendar\.freebusy/);
+    expect(t).toMatch(/does not give Tistra access to event titles/);
+  });
+
+  it("states storage, sharing and revocation", () => {
+    const t = policy();
+    expect(t).toMatch(/encrypted before being stored/);
+    expect(t).toMatch(/never used to train AI models/);
+    expect(t).toMatch(/deletes the stored tokens immediately/);
+  });
+
+  it("matches what the code actually requests — the claim must stay true", () => {
+    // If the scope is ever widened, this policy becomes a false statement.
+    const cal = src("lib/club/calendar.ts");
+    expect(cal).toContain('"https://www.googleapis.com/auth/calendar.freebusy"');
+    expect(policy()).toMatch(/a single Google permission/);
+  });
+
+  it("bumps the last-updated date, which reviewers check for staleness", () => {
+    expect(policy()).toMatch(/PRIVACY_LAST_UPDATED = "August 21, 2026"/);
+  });
+});
