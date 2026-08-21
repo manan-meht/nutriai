@@ -60,8 +60,15 @@ describe("the first coach peeks into the initial viewport", () => {
     expect((feed().match(/filtered\.map\(/g) ?? []).length).toBe(1);
   });
 
-  it("card meta is anchored to the card top, so the peek carries it", () => {
-    expect(feed()).toMatch(/absolute inset-x-0 top-0 z-20/);
+  it("card meta is first in the card, so the peek carries it", () => {
+    // The card is a column — name, framed photo, button — so the meta is
+    // at the top by document order rather than by absolute positioning.
+    // What matters is unchanged: the 28% peek shows who the coach is.
+    const card = feed().slice(feed().indexOf("<article"));
+    const metaAt = card.indexOf("{c.name}");
+    const photoAt = card.indexOf("src={c.photo}");
+    expect(metaAt).toBeGreaterThan(-1);
+    expect(photoAt).toBeGreaterThan(metaAt);
   });
 
   it("the cover is index 0, so the first coach is index 1", () => {
@@ -228,8 +235,14 @@ describe("card layout on a phone", () => {
     expect(feed()).toMatch(/paddingTop: "calc\(env\(safe-area-inset-top\) \+ 64px\)"/);
   });
 
-  it("keeps the photo subject clear of the meta block", () => {
-    expect(feed()).toMatch(/objectPosition: "center 40%"/);
+  it("frames the photo with space on every side, rather than bleeding it", () => {
+    // It used to fill the whole screen behind a scrim, which is what made
+    // it read as a background rather than a portrait of the coach.
+    const f = feed();
+    expect(f).toMatch(/mx-5 mt-5 min-h-0 flex-1 overflow-hidden rounded-2xl/);
+    expect(f).toMatch(/objectPosition: "center 35%"/);
+    // No scrim: the meta sits on the card surface now, not over the photo.
+    expect(f).not.toMatch(/linear-gradient\(to bottom, rgba\(6,10,26/);
   });
 });
 

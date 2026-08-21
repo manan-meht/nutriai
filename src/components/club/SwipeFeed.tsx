@@ -256,6 +256,22 @@ export function SwipeFeed({
             Choose a skill, meet the right coach, and start moving forward.
           </p>
 
+          {/* The marketplace is new and thin. Saying so is better than
+              letting a visitor conclude it from a short deck — and it turns
+              the honest fact into the reason to keep going, by pointing at
+              the coaches who ARE here. Shown only once there is someone to
+              scroll to; with nobody at all the empty state below says it
+              instead. */}
+          {!isEmptyMarket && (
+            <p
+              className="mx-auto mt-5 max-w-md text-center text-[13.5px] leading-relaxed"
+              style={{ color: O.onSurfaceVariant }}
+            >
+              We&rsquo;re still signing up coaches in {marketName}. Scroll down to meet the ones
+              already taking bookings.
+            </p>
+          )}
+
           {isEmptyMarket ? (
             /* Sits directly under the hero copy so the whole page is one
                screen: nothing here is reachable by scrolling, because
@@ -390,51 +406,28 @@ export function SwipeFeed({
             aria-label={c.name}
           >
             <article
-              className="relative h-full w-full overflow-hidden rounded-t-[28px] sm:max-w-4xl sm:rounded-3xl"
+              className="relative flex h-full w-full flex-col overflow-hidden rounded-t-[28px] sm:max-w-4xl sm:rounded-3xl"
               style={{ backgroundColor: O.surfaceContainerLow }}
             >
-              {c.photo ? (
-                // eslint-disable-next-line @next/next/no-img-element -- signed storage URLs and local placeholders
-                <img
-                  src={c.photo}
-                  alt=""
-                  loading={i === 0 ? "eager" : "lazy"}
-                  decoding="async"
-                  draggable={false}
-                  // Sources are portrait (900x1350) to match the card, so
-                  // cover barely crops; object-position keeps the subject
-                  // out from behind the meta block at the top.
-                  className="absolute inset-0 h-full w-full object-cover"
-                  style={{ objectPosition: "center 40%" }}
-                />
-              ) : (
-                <div className="absolute inset-0" style={{ background: O.backdrop }} />
-              )}
-
-              {/* Meta lives at the TOP so the 28% peek carries it; heavier
-                  scrim up there, lighter middle, enough at the foot for the
-                  CTA. */}
-              <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    "linear-gradient(to bottom, rgba(6,10,26,0.88) 0%, rgba(6,10,26,0.38) 30%, rgba(6,10,26,0.06) 55%, rgba(6,10,26,0.72) 100%)",
-                }}
-              />
-
               {/* A swipe is a scroll, never a click — paging past a coach
-                  cannot trigger this. */}
+                  cannot trigger this. Sits beneath the content so the
+                  button below stays independently clickable. */}
               <Link
                 href={`/coaches/${c.id}`}
-                className="absolute inset-0 z-10"
+                className="absolute inset-0 z-0"
                 aria-label={`${c.name} — view profile and book`}
               />
 
-              {/* Cleared past the fixed Filters/counter row above, which
-                  was overlapping the coach's name on mobile. The chrome is
-                  safe-area + 12px offset and ~40px tall. */}
+              {/* Meta first, on the card's own surface rather than over the
+                  photo. It used to be white text on a scrim, which is why
+                  the photo needed to bleed to the edges; with the photo
+                  framed below, the text has a solid ground and no scrim is
+                  needed at all.
+
+                  Cleared past the fixed Filters/counter row above, which
+                  was overlapping the coach's name on mobile. */}
               <div
-                className="pointer-events-none absolute inset-x-0 top-0 z-20 px-5 sm:px-7"
+                className="pointer-events-none relative z-10 px-5 sm:px-7"
                 style={{ paddingTop: "calc(env(safe-area-inset-top) + 64px)" }}
               >
                 <h2 className="text-[28px] font-bold leading-tight tracking-[-0.015em] text-white sm:text-[32px]">
@@ -467,13 +460,36 @@ export function SwipeFeed({
                 </p>
               </div>
 
+              {/* The photo: inset on every side so it reads as a portrait
+                  of the coach rather than a background. flex-1 lets it take
+                  whatever height is left between the name and the button,
+                  so it adapts to a long name or a small screen instead of
+                  being pinned to a percentage. */}
               <div
-                className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex px-5 sm:justify-end sm:px-7"
+                className="pointer-events-none relative z-10 mx-5 mt-5 min-h-0 flex-1 overflow-hidden rounded-2xl sm:mx-7"
+                style={{ backgroundColor: O.backdrop }}
+              >
+                {c.photo && (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed storage URLs and local placeholders
+                  <img
+                    src={c.photo}
+                    alt=""
+                    loading={i === 0 ? "eager" : "lazy"}
+                    decoding="async"
+                    draggable={false}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: "center 35%" }}
+                  />
+                )}
+              </div>
+
+              <div
+                className="relative z-10 flex px-5 pt-5 sm:justify-end sm:px-7"
                 style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}
               >
                 <Link
                   href={`/coaches/${c.id}`}
-                  className="pointer-events-auto flex w-full items-center justify-center rounded-full py-3.5 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto sm:px-8"
+                  className="flex w-full items-center justify-center rounded-full py-3.5 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:w-auto sm:px-8"
                   style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
                 >
                   View Profile

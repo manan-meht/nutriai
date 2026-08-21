@@ -36,9 +36,12 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
         </p>
       )}
 
-      {/* Photo-led hero, matching the discovery feed — arriving from a
-          large card onto a thumbnail read as a different product. */}
-      <div className="-mx-5 mt-3 overflow-hidden sm:mx-0 sm:rounded-3xl">
+      {/* Photo-led, but not full-bleed. Edge-to-edge at 4:3 took the top
+          half of a phone screen before the coach's name was reachable —
+          the first coach on the marketplace said it was too big. Centred
+          and capped so it reads as a portrait of the coach rather than a
+          banner, and so the name, rating and price sit above the fold. */}
+      <div className="mx-auto mt-3 w-full max-w-[320px] overflow-hidden rounded-3xl">
         <CoachPhotoPager photos={coach.photos} name={coach.displayName} eager aspectClassName="aspect-[4/3]" />
       </div>
 
