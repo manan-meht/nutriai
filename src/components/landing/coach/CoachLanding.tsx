@@ -56,7 +56,7 @@ const CAPABILITIES = [
   {
     label: "Scheduling",
     title: "Availability that understands travel",
-    body: "Connect your calendar and set your hours. Tistra never offers a slot you can't physically reach — it accounts for where your last session was and how long it takes to get across town.",
+    body: "Connect your Google Calendar and set your hours. Tistra reads only your free/busy times, so it never offers a slot you can't physically reach — it accounts for where your last session was and how long it takes to get across town.",
   },
   {
     label: "Clients",
@@ -82,7 +82,7 @@ const CAPABILITIES = [
 
 const STEPS = [
   { n: "01", title: "Build your profile", body: "Skills, services, rates, where you coach and how far you'll travel." },
-  { n: "02", title: "Connect your calendar", body: "We read only free/busy — never your event titles, guests or notes." },
+  { n: "02", title: "Connect your Google Calendar", body: "Optional. Tistra reads only your free/busy times — never your event titles, guests, locations or notes." },
   { n: "03", title: "Publish and get booked", body: "Appear in search, take bookings, and get paid automatically." },
 ] as const;
 
@@ -152,6 +152,15 @@ export function CoachLanding() {
         >
           Get discovered by new clients, fill your calendar without the back-and-forth,
           take payment automatically, and keep every client's progress in one place.
+        </p>
+        <p
+          className="mt-4 max-w-2xl text-[15px] leading-6"
+          style={{ color: TOKENS.onSurfaceVariant }}
+        >
+          Tistra Coach is the scheduling, payments and client-management app for independent
+          coaches and personal trainers. Coaches can optionally connect a Google Calendar so
+          Tistra never offers a client a time they are already busy — it reads free/busy
+          times only.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -346,10 +355,10 @@ export function CoachLanding() {
           <div className="mt-5 grid gap-6 md:grid-cols-3 md:gap-10">
             <p className="text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
               <strong className="font-medium" style={{ color: TOKENS.onSurface }}>
-                Your calendar stays private.
+                Your Google Calendar stays private.
               </strong>{" "}
-              We read free/busy only. Clients see that a time is unavailable — never what
-              you were doing.
+              Tistra asks Google for free/busy times only. Clients see that a time is
+              unavailable — never what you were doing.
             </p>
             <p className="text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
               <strong className="font-medium" style={{ color: TOKENS.onSurface }}>

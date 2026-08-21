@@ -153,3 +153,40 @@ describe("Tistra Health itself is untouched", () => {
     expect(code(AUTH_FORM)).toMatch(/label: "Tistra Health"/);
   });
 });
+
+describe("the homepage satisfies Google's brand review", () => {
+  // Google rejected verification twice over this page: "your homepage does
+  // not explain the purpose of your app", and the consent-screen app name
+  // not matching the name on the homepage. A reviewer has to be able to
+  // read what the app IS and why it wants Google data.
+  const landing = () => code(LANDING);
+
+  it("states in one sentence what Tistra Coach is", () => {
+    expect(landing()).toMatch(/Tistra Coach is the scheduling, payments and client-management app/);
+  });
+
+  it("names Google Calendar, not just 'your calendar'", () => {
+    // "Connect your calendar" told a reviewer nothing about which calendar
+    // or what is read from it.
+    const t = landing();
+    expect(t).toMatch(/Connect your Google Calendar/);
+    expect(t).toMatch(/reads only your free\/busy times/);
+  });
+
+  it("says the integration is optional and scope-limited", () => {
+    const t = landing();
+    expect(t).toMatch(/Optional\./);
+    expect(t).toMatch(/never your event titles, guests, locations or notes/);
+  });
+
+  it("presents Tistra Coach as the product name on its own homepage", () => {
+    // The consent screen must be configured with this same name.
+    const t = landing();
+    expect(t).toMatch(/Tistra <span[^>]*>Coach<\/span>|Tistra Coach/);
+  });
+
+  it("keeps the homepage claim true to the requested scope", () => {
+    const cal = src("lib/club/calendar.ts");
+    expect(cal).toContain('"https://www.googleapis.com/auth/calendar.freebusy"');
+  });
+});
