@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  experimental: {
+    // Server Actions cap request bodies at 1MB by default. Coach photo
+    // uploads go through an action and are validated at 8MB
+    // (MAX_UPLOAD_BYTES), so every real phone photo threw before our own
+    // check could run — the coach got a full-page "Something went wrong"
+    // rather than a message. Headroom over 8MB covers multipart encoding.
+    serverActions: { bodySizeLimit: "12mb" },
+  },
 };
 
 export default nextConfig;

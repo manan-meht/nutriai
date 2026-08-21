@@ -88,6 +88,12 @@ export function SwipeFeed({
   const [index, setIndex] = useState(0);
   const [hasInteracted, setHasInteracted] = useState(false);
 
+  /** No coaches exist at all — as opposed to none matching a chip. There
+   * is nothing to swipe to, so the deck's geometry (a 72dvh cover with the
+   * first card peeking below) has nothing to reveal and only creates a
+   * scroll that ends in a dead end. The page becomes one screen. */
+  const isEmptyMarket = coaches.length === 0;
+
   const filtered = useMemo(
     () => (skill ? coaches.filter((c) => c.skillSlugs.includes(skill)) : coaches),
     [coaches, skill]
@@ -190,7 +196,9 @@ export function SwipeFeed({
       {/* ---- Cover: 72dvh, so the first real coach peeks below it ---- */}
       <section
         data-deck-index="0"
-        className="relative flex h-[72dvh] w-full snap-start snap-always flex-col overflow-hidden px-5 sm:px-10"
+        className={`relative flex w-full snap-start snap-always flex-col overflow-hidden px-5 sm:px-10 ${
+          isEmptyMarket ? "h-[100dvh]" : "h-[72dvh]"
+        }`}
         aria-label="Choose a skill"
       >
         {/* Branding + location */}
@@ -248,6 +256,36 @@ export function SwipeFeed({
             Choose a skill, meet the right coach, and start moving forward.
           </p>
 
+          {isEmptyMarket ? (
+            /* Sits directly under the hero copy so the whole page is one
+               screen: nothing here is reachable by scrolling, because
+               there is nothing below it. */
+            <div className="mx-auto mt-8 flex max-w-md flex-col items-center text-center">
+              <p className="text-[17px] font-semibold" style={{ color: O.onSurface }}>
+                We&rsquo;re signing up the first coaches in {marketName}.
+              </p>
+              <p className="mt-2 text-[15px] leading-relaxed" style={{ color: O.onSurfaceVariant }}>
+                Nobody is bookable yet. If you coach here, this is the moment to claim your spot.
+              </p>
+              <a
+                href={COACH_LANDING_URL}
+                onClick={() => trackClubEvent("coach_landing_clicked", { from: "empty_deck" })}
+                className="mt-6 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
+              >
+                Coach with Tistra
+              </a>
+              <a
+                href="/demo"
+                onClick={() => trackClubEvent("demo_clicked", { from: "empty_deck" })}
+                className="mt-4 text-[14px] underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2"
+                style={{ color: O.onSurfaceVariant }}
+              >
+                See how it works
+              </a>
+            </div>
+          ) : (
+            <>
           {/* Skill filters: priority chips first, the rest behind More.
               Mobile scrolls the row; desktop wraps and centres. */}
           <div
@@ -295,6 +333,8 @@ export function SwipeFeed({
               Browse all
             </Link>
           </div>
+            </>
+          )}
         </div>
 
         {/* Swipe affordance, attached to the peeking card below. Retires
@@ -304,6 +344,7 @@ export function SwipeFeed({
             hasInteracted || filtered.length === 0 ? "pointer-events-none opacity-0" : "opacity-100"
           }`}
           aria-hidden={hasInteracted || filtered.length === 0}
+          hidden={isEmptyMarket}
         >
           <span aria-hidden="true" className="swipe-nudge text-lg leading-none" style={{ color: O.onSurfaceVariant }}>
             ⌃
@@ -316,10 +357,10 @@ export function SwipeFeed({
       </section>
 
       {/* ---- The deck: one real coach per screen, first one peeking ---- */}
-      {filtered.length === 0 ? (
+      {isEmptyMarket ? null : filtered.length === 0 ? (
         <section
           className="h-[100dvh] w-full snap-start snap-always px-5 sm:px-10"
-          aria-label={coaches.length === 0 ? "No coaches yet" : "No matching coaches"}
+          aria-label="No matching coaches"
         >
           {/* Content sits in the top third so the peek under the cover
               shows the message, never a blank slab. */}
@@ -327,50 +368,17 @@ export function SwipeFeed({
             className="mx-auto flex max-w-md flex-col items-center rounded-t-[28px] px-6 pb-10 pt-9 text-center sm:rounded-3xl"
             style={{ backgroundColor: O.surfaceContainerLow }}
           >
-            {coaches.length === 0 ? (
-              /* Nothing is loaded at all — the market is still opening.
-                 Saying so plainly beats an empty deck that reads as a
-                 broken page, and the only honest next step for a visitor
-                 here is to become one of the first coaches. */
-              <>
-                <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
-                  We&rsquo;re signing up the first coaches in {marketName}.
-                </p>
-                <p className="mt-2 text-[15px]" style={{ color: O.onSurfaceVariant }}>
-                  Nobody is bookable yet. If you coach here, this is the moment to claim your spot.
-                </p>
-                <a
-                  href={COACH_LANDING_URL}
-                  onClick={() => trackClubEvent("coach_landing_clicked", { from: "empty_deck" })}
-                  className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                  style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
-                >
-                  Coach with Tistra
-                </a>
-                <a
-                  href="/demo"
-                  onClick={() => trackClubEvent("demo_clicked", { from: "empty_deck" })}
-                  className="mt-4 text-[14px] underline underline-offset-2 hover:no-underline focus-visible:outline-2 focus-visible:outline-offset-2"
-                  style={{ color: O.onSurfaceVariant }}
-                >
-                  See how it works
-                </a>
-              </>
-            ) : (
-              <>
-                <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
-                  No coaches for this skill yet.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => selectSkill(null)}
-                  className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-                  style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
-                >
-                  Browse all coaches
-                </button>
-              </>
-            )}
+            <p className="text-[19px] font-semibold" style={{ color: O.onSurface }}>
+              No coaches for this skill yet.
+            </p>
+            <button
+              type="button"
+              onClick={() => selectSkill(null)}
+              className="mt-5 rounded-full px-6 py-3 text-[15px] font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              style={{ backgroundColor: O.primaryContainer, color: O.onPrimaryContainer }}
+            >
+              Browse all coaches
+            </button>
           </div>
         </section>
       ) : (

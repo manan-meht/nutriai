@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { downscaleImage } from "@/lib/club/downscale-image";
 import { uploadCoachPhoto, addCoachGalleryImage, deleteCoachGalleryImage } from "@/app/(coach)/coach/actions";
 import { CLUB_TOKENS as T } from "./tokens";
 import { MAX_GALLERY_IMAGES } from "@/lib/club/media";
@@ -85,11 +86,19 @@ function PortraitUpload({ photoUrl }: { photoUrl: string | null }) {
           e.target.value = "";
           if (!file) return;
           setError(null);
-          const body = new FormData();
-          body.set("photo", file);
           start(async () => {
-            const result = await uploadCoachPhoto(body);
-            if (!result.ok) setError(result.error);
+            try {
+              const body = new FormData();
+              body.set("photo", await downscaleImage(file));
+              const result = await uploadCoachPhoto(body);
+              if (!result.ok) setError(result.error);
+            } catch {
+              // A throw here used to escape the transition and hit the
+              // error boundary, replacing the whole settings page with
+              // "Something went wrong" — which is what a coach saw when
+              // their photo exceeded the Server Action body limit.
+              setError("That photo couldn't be uploaded. Please try again, or pick a smaller one.");
+            }
           });
         }}
       />
@@ -124,8 +133,12 @@ function GalleryUpload({ gallery }: { gallery: Array<{ id: string; url: string }
                 const body = new FormData();
                 body.set("mediaId", g.id);
                 start(async () => {
-                  const result = await deleteCoachGalleryImage(body);
-                  if (!result.ok) setError(result.error);
+                  try {
+                    const result = await deleteCoachGalleryImage(body);
+                    if (!result.ok) setError(result.error);
+                  } catch {
+                    setError("That photo couldn't be removed. Please try again.");
+                  }
                 });
               }}
               className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full text-xs leading-none shadow"
@@ -160,11 +173,15 @@ function GalleryUpload({ gallery }: { gallery: Array<{ id: string; url: string }
           e.target.value = "";
           if (!file) return;
           setError(null);
-          const body = new FormData();
-          body.set("photo", file);
           start(async () => {
-            const result = await addCoachGalleryImage(body);
-            if (!result.ok) setError(result.error);
+            try {
+              const body = new FormData();
+              body.set("photo", await downscaleImage(file));
+              const result = await addCoachGalleryImage(body);
+              if (!result.ok) setError(result.error);
+            } catch {
+              setError("That photo couldn't be uploaded. Please try again, or pick a smaller one.");
+            }
           });
         }}
       />
