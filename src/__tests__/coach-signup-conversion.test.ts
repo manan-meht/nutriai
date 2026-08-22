@@ -58,6 +58,10 @@ describe("the tag lives on its own page", () => {
     // Without it here no _gcl_aw cookie is written, so a later conversion
     // cannot be attributed to the click — and Google's tag check, which
     // fetches the domain root, reports the tag as missing.
+    // The coach host's ROOT is served by the shared root page's gym
+    // branch, not by /coach — that is the URL the ad click lands on and
+    // the one Google's checker fetches.
+    expect(code("app/(public)/page.tsx")).toMatch(/<GoogleAdsTag \/>/);
     expect(code("app/(public)/coach/page.tsx")).toMatch(/<GoogleAdsTag \/>/);
   });
 

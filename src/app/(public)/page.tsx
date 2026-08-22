@@ -14,6 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { UnifiedHome } from "@/components/home/UnifiedHome";
 import { CoachLanding } from "@/components/landing/coach/CoachLanding";
+import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 import { MasterHome } from "@/components/home/MasterHome";
 import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 import nextDynamic from "next/dynamic";
@@ -164,5 +165,14 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
   // Coach page rather than Tistra Health's nutrition-tracking pitch. The
   // landing-page experiment doesn't apply here: it was built to compare
   // variants of GymImmersiveLanding, which this replaces.
-  return <CoachLanding />;
+  // The Google tag belongs here, not only on /coach: coach.tistra.club's
+  // ROOT is served by this branch, and the root is the URL an ad click
+  // lands on and the one Google's tag check fetches. Inside the gym branch
+  // so it never renders for Tistra Health.
+  return (
+    <>
+      <GoogleAdsTag />
+      <CoachLanding />
+    </>
+  );
 }
