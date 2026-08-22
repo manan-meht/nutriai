@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Reveal } from "@/components/motion/Reveal";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/club/config";
 
@@ -134,7 +135,7 @@ export function CoachLanding() {
 
       {/* ---- Hero: the business, not the food log ---- */}
       <header className="mx-auto grid max-w-[1280px] items-center gap-12 px-5 pt-16 pb-20 md:grid-cols-12 md:gap-16 md:px-16 md:pt-28 md:pb-32">
-        <div className="md:col-span-7">
+        <Reveal className="md:col-span-7">
         <p
           className="text-xs font-semibold uppercase tracking-[0.05em]"
           style={{ color: TOKENS.primary }}
@@ -190,19 +191,20 @@ export function CoachLanding() {
         >
           {PRICING_LINE}
         </p>
-        </div>
+        </Reveal>
 
         {/* Ordered AFTER the copy so on mobile it follows the pricing line
             rather than pushing it below the fold — the commercial model is
             the thing that must be seen without scrolling. On desktop it
             takes the right-hand half, which was empty. */}
-        <div className="md:col-span-5">
+        <Reveal className="md:col-span-5" direction="right" delay={120}>
           <MarketingImage
             src="/marketing/coach-hero.webp"
+
             alt="A trainer coaching a client through a kettlebell squat in a naturally lit gym"
             priority
           />
-        </div>
+        </Reveal>
       </header>
 
       {/* ---- The gap this closes ---- */}
@@ -218,7 +220,7 @@ export function CoachLanding() {
             phone, while desktop alternates against the hero (text left,
             image right) instead of repeating it. */}
         <div className="grid items-center gap-10 md:grid-cols-12 md:gap-16">
-          <div className="md:col-span-6 md:order-2">
+          <Reveal className="md:col-span-6 md:order-2" direction="right">
             <SectionLabel>The problem</SectionLabel>
             <h2 className="mt-4 text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
               Coaching is the easy part.
@@ -231,28 +233,30 @@ export function CoachLanding() {
             <p className="mt-4 text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
               Tistra Coach handles the business so you can spend your time actually coaching.
             </p>
-          </div>
-          <div className="md:col-span-6 md:order-1">
+          </Reveal>
+          <Reveal className="md:col-span-6 md:order-1" direction="left">
             <MarketingImage
               src="/marketing/coach-practice.webp"
               alt="A coach correcting one client's form during a small outdoor group session in a Singapore park"
               aspect="aspect-[16/9]"
             />
-          </div>
+          </Reveal>
         </div>
       </Section>
 
       {/* ---- Capabilities ---- */}
       <Section id="features">
+        <Reveal>
         <SectionLabel>What you get</SectionLabel>
         <h2 className="mt-4 max-w-2xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
           Everything a coaching business needs, and nothing it doesn't.
         </h2>
+        </Reveal>
         <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {CAPABILITIES.map((c) => (
+          {CAPABILITIES.map((c, i) => (
+            <Reveal key={c.label} delay={i * 70} className="h-full">
             <article
-              key={c.label}
-              className="rounded-2xl border p-7"
+              className="h-full rounded-2xl border p-7"
               style={{ backgroundColor: TOKENS.surfaceLowest, borderColor: TOKENS.outlineVariant }}
             >
               <p
@@ -266,6 +270,7 @@ export function CoachLanding() {
                 {c.body}
               </p>
             </article>
+            </Reveal>
           ))}
         </div>
       </Section>
@@ -321,13 +326,16 @@ export function CoachLanding() {
 
       {/* ---- How it works ---- */}
       <Section id="how-it-works">
+        <Reveal>
         <SectionLabel>Getting started</SectionLabel>
         <h2 className="mt-4 max-w-2xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
           Set up once, then get on with coaching.
         </h2>
+        </Reveal>
         <ol className="mt-12 grid gap-8 md:grid-cols-3 md:gap-10">
-          {STEPS.map((s) => (
+          {STEPS.map((s, i) => (
             <li key={s.n}>
+              <Reveal delay={i * 90}>
               <div
                 className="text-sm font-semibold tabular-nums"
                 style={{ color: TOKENS.primary }}
@@ -340,6 +348,7 @@ export function CoachLanding() {
               <p className="mt-2 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
                 {s.body}
               </p>
+              </Reveal>
             </li>
           ))}
         </ol>
