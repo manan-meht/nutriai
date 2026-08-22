@@ -114,9 +114,18 @@ describe("the tag lives on its own page", () => {
 });
 
 describe("it only fires on a real publish", () => {
+  it("navigates with a real page load, so gtag reports the URL", () => {
+    // The tag is mounted by the (coach) layout and does not re-run on a
+    // client-side route change; router.push would mean no pageview for
+    // /settings/published, and a URL-based conversion would never fire.
+    const t = code(SETTINGS);
+    expect(t).toMatch(/window\.location\.assign/);
+    expect(t).not.toMatch(/router\.push\("\/settings\/published"\)/);
+  });
+
   it("redirects to the page when publishing, never when pausing", () => {
     const t = code(SETTINGS);
-    expect(t).toMatch(/if \(!published\) router\.push\("\/settings\/published"\)/);
+    expect(t).toMatch(/if \(!published\) window\.location\.assign\("\/settings\/published"\)/);
   });
 
   it("does not redirect when the publish failed", () => {

@@ -156,7 +156,13 @@ function PublishSection({ status, blockers }: { status: string; blockers: string
             // Only on the way IN. Pausing is not a conversion and must not
             // land on the "you're live" page — which would also fire the
             // Google Ads tag for a coach who just took themselves offline.
-            if (!published) router.push("/settings/published");
+            //
+            // A full page load, not router.push: the Google tag is mounted
+            // by the (coach) layout and does NOT re-run on a client-side
+            // route change, so gtag would never report a pageview for
+            // /settings/published and a URL-based conversion could never
+            // fire. Costs one navigation on the rarest action a coach takes.
+            if (!published) window.location.assign("/settings/published");
           })
         }
       >
