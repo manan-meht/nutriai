@@ -111,3 +111,18 @@ alter table bookings
   add column if not exists pack_purchase_id uuid references club_pack_purchases(id) on delete set null;
 
 create index if not exists bookings_pack_idx on bookings (pack_purchase_id);
+
+-- ---------------------------------------------------------------------
+-- Access control
+-- ---------------------------------------------------------------------
+-- Same posture as every other club table (migration 0056): RLS on with no
+-- policies, so anon and authenticated keys get nothing and only the
+-- service-role client behind server actions and API routes can read or
+-- write.
+--
+-- It matters more here than most. club_attendees holds children's names
+-- and dates of birth, and club_pack_purchases is a wallet — anyone able to
+-- write classes_used could spend or restore someone else's credits.
+alter table club_attendees enable row level security;
+alter table coach_class_packs enable row level security;
+alter table club_pack_purchases enable row level security;

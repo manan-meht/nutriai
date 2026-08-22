@@ -89,6 +89,32 @@ describe("an attendee is not a user", () => {
   });
 });
 
+describe("the new tables are not reachable by a browser key", () => {
+  const migration = () =>
+    fs.readFileSync(
+      path.join(__dirname, "..", "..", "supabase/migrations/0061_attendees_and_class_packs.sql"),
+      "utf-8"
+    );
+
+  it("enables RLS on every table it creates", () => {
+    // Same posture as the rest of the club schema: RLS on, no policies, so
+    // only the service-role client can touch these. club_attendees holds
+    // children's names and dates of birth; club_pack_purchases is a wallet,
+    // and a writable classes_used would let anyone spend someone else's
+    // credits.
+    const sql = migration();
+    const created = [...sql.matchAll(/create table if not exists (\w+)/g)].map((m) => m[1]);
+    expect(created.length).toBeGreaterThan(0);
+    for (const table of created) {
+      expect(sql).toContain(`alter table ${table} enable row level security`);
+    }
+  });
+
+  it("grants nothing back with a policy", () => {
+    expect(migration()).not.toMatch(/create policy/);
+  });
+});
+
 describe("the booking keeps its own record of who attended", () => {
   it("snapshots the name alongside the id", () => {
     // Same reason price and cancellation terms are snapshotted: who
