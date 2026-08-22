@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { CLUB_TOKENS as T } from "./tokens";
 import { CoachPhotoSection } from "./CoachPhotoSection";
 import { CoachLocationMap } from "./CoachLocationMap";
@@ -113,6 +114,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
 // ---- Sections --------------------------------------------------------
 
 function PublishSection({ status, blockers }: { status: string; blockers: string[] }) {
+  const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [liveBlockers, setLiveBlockers] = useState(blockers);
@@ -149,7 +151,12 @@ function PublishSection({ status, blockers }: { status: string; blockers: string
             if (!res.ok) {
               setError(res.error);
               if (res.blockers) setLiveBlockers(res.blockers);
+              return;
             }
+            // Only on the way IN. Pausing is not a conversion and must not
+            // land on the "you're live" page — which would also fire the
+            // Google Ads tag for a coach who just took themselves offline.
+            if (!published) router.push("/settings/published");
           })
         }
       >
