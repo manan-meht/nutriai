@@ -23,8 +23,19 @@ import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 
 export const dynamic = "force-dynamic";
 
-/** From Google Ads -> Goals -> Conversions -> your action -> "Install the
- * tag yourself". Looks like "AbC-D_efG-h12_3-Q". Empty until then. */
+/** Deliberately empty.
+ *
+ * The live conversion is URL-based ("Page load"): Google Ads watches for
+ * this page's URL and the account tag, mounted by the (coach) layout,
+ * reports it. That is why publishing navigates with a full page load
+ * rather than router.push — a client-side route change would never report
+ * a pageview for this URL, and nothing would count.
+ *
+ * Fill this in only if the conversion is ever switched to an event-based
+ * action, which is the more reliable form: it fires on the action itself
+ * rather than on a URL match. Get the label from Google Ads -> Goals ->
+ * Conversions -> the action -> "Install the tag yourself"; it is the part
+ * after the slash, e.g. "AbC-D_efG-h12". */
 const CONVERSION_LABEL = "";
 
 export const metadata = {
