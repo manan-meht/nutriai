@@ -71,7 +71,7 @@ describe("an attendee is not a user", () => {
    * a block comment and swallow real code. The prose explains the rule and
    * would satisfy these negative checks on its own. */
   const code = () =>
-    src().replace(/^\s*\/\/.*$/gm, "").replace(/^\s*\*.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    src().replace(/^\s*\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
 
   it("has no auth, contact details or notification path", () => {
     const t = code();

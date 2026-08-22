@@ -25,7 +25,10 @@ import {
   deleteCoachLocation,
   addAvailabilityException,
   removeAvailabilityException,
+  upsertClassPack,
+  setClassPackActive,
 } from "@/app/(coach)/coach/actions";
+import { PACK_SIZES, packPriceProblem, perClassCents, savingPercent } from "@/lib/club/class-packs";
 
 // Coach profile / onboarding. One page rather than a wizard: a returning
 // coach editing their rate shouldn't have to walk six steps, and the
@@ -71,6 +74,14 @@ export interface SettingsData {
     travelEnabled: boolean;
     skillId: string | null;
   }>;
+  classPacks: Array<{
+    id: string;
+    serviceId: string;
+    classCount: number;
+    priceCents: number;
+    isActive: boolean;
+    expiresAfterDays: number;
+  }>;
   locations: Array<{
     id: string;
     label: string;
@@ -100,7 +111,7 @@ export function CoachSettings({ data }: { data: SettingsData }) {
       <CoachPhotoSection photoUrl={data.profile.photoUrl} gallery={data.gallery} />
       <ProfileSection profile={data.profile} />
       <SkillsSection allSkills={data.allSkills} selectedIds={data.selectedSkillIds} />
-      <ServicesSection services={data.services} skills={data.allSkills} />
+      <ServicesSection services={data.services} skills={data.allSkills} classPacks={data.classPacks} />
       <LocationSection locations={data.locations} travel={data.travel} />
       <AvailabilitySection rules={data.availability} />
       <TimeOffSection entries={data.timeOff} />
@@ -278,9 +289,11 @@ function SkillsSection({
 function ServicesSection({
   services,
   skills,
+  classPacks,
 }: {
   services: SettingsData["services"];
   skills: SettingsData["allSkills"];
+  classPacks: SettingsData["classPacks"];
 }) {
   const [adding, setAdding] = useState(services.length === 0);
   const [draft, setDraft] = useState({ name: "", skillId: "", duration: "60", price: "70", travel: false });
@@ -312,6 +325,13 @@ function ServicesSection({
               >
                 {s.isActive ? "Deactivate" : "Reactivate"}
               </button>
+              {/* Packs belong under the class they discount. Listing them
+                  separately would make a coach match pack to class by
+                  name, which is where mispriced packs come from. */}
+              <PacksForService
+                service={s}
+                packs={classPacks.filter((p) => p.serviceId === s.id)}
+              />
             </li>
           ))}
         </ul>
@@ -417,6 +437,129 @@ const BLANK_LOCATION: LocationDraft = {
  * each editor carries a Google map, and mounting several would load the
  * Maps API repeatedly for places the coach isn't editing.
  */
+/** The 5/10/20 packs offered against one class.
+ *
+ * Shows the per-class price and the saving as the coach types, because
+ * those are the two numbers a client will see and the coach is otherwise
+ * doing the division in their head. The same validation runs on the server
+ * — this is the courtesy, not the guard. */
+function PacksForService({
+  service,
+  packs,
+}: {
+  service: SettingsData["services"][number];
+  packs: SettingsData["classPacks"];
+}) {
+  const [open, setOpen] = useState(false);
+  const [size, setSize] = useState<number>(PACK_SIZES[1]);
+  const [price, setPrice] = useState("");
+  const { pending, error, save } = useSaver();
+  const [, startToggle] = useTransition();
+
+  const priceCents = Math.round(Number(price || 0) * 100);
+  const problem = price ? packPriceProblem(service.priceCents, priceCents, size) : null;
+  const per = priceCents > 0 ? perClassCents(priceCents, size) : 0;
+  const saving = priceCents > 0 ? savingPercent(service.priceCents, priceCents, size) : 0;
+
+  return (
+    <div className="w-full basis-full border-t pt-3" style={{ borderColor: T.outlineVariant }}>
+      {packs.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1.5">
+          {packs.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs" style={{ opacity: p.isActive ? 1 : 0.55 }}>
+              <span style={{ color: T.onSurface }}>
+                <strong>{p.classCount} classes</strong> · {formatMoney(p.priceCents)}
+              </span>
+              <span style={{ color: T.onSurfaceVariant }}>
+                {formatMoney(perClassCents(p.priceCents, p.classCount))} a class
+                {savingPercent(service.priceCents, p.priceCents, p.classCount) > 0
+                  ? ` · save ${savingPercent(service.priceCents, p.priceCents, p.classCount)}%`
+                  : ""}
+              </span>
+              <button
+                type="button"
+                className={ROW_ACTION}
+                style={{ color: T.primary }}
+                onClick={() => startToggle(async () => { await setClassPackActive(p.id, !p.isActive); })}
+              >
+                {p.isActive ? "Stop selling" : "Sell again"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {open ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs" style={{ color: T.onSurfaceVariant }}>
+              Classes
+              <select
+                value={size}
+                onChange={(e) => setSize(Number(e.target.value))}
+                className="ml-2 rounded-lg border px-2 py-1.5 text-sm"
+                style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+              >
+                {PACK_SIZES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs" style={{ color: T.onSurfaceVariant }}>
+              Pack price
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                inputMode="decimal"
+                placeholder={String(Math.round((service.priceCents * size * 0.85) / 100))}
+                className="ml-2 w-24 rounded-lg border px-2 py-1.5 text-sm"
+                style={{ borderColor: T.outlineVariant, backgroundColor: T.surfaceContainerLowest }}
+              />
+            </label>
+          </div>
+
+          {/* The two numbers the client will actually see. */}
+          {priceCents > 0 && !problem && (
+            <p className="text-xs" style={{ color: T.onSurfaceVariant }}>
+              {formatMoney(per)} a class{saving > 0 ? ` · saves ${saving}%` : ""} · normally{" "}
+              {formatMoney(service.priceCents * size)}
+            </p>
+          )}
+          {problem && <p className="text-xs" style={{ color: T.error }}>{problem}</p>}
+          {error && <ErrorNote>{error}</ErrorNote>}
+
+          <div className="flex gap-2">
+            <Button
+              pending={pending}
+              onClick={() =>
+                save(async () => {
+                  const res = await upsertClassPack({ serviceId: service.id, classCount: size, priceCents });
+                  // Only clear the form on success — a rejected price must
+                  // stay on screen next to the reason it was rejected.
+                  if (res.ok) {
+                    setOpen(false);
+                    setPrice("");
+                  }
+                  return res;
+                })
+              }
+            >
+              Add pack
+            </Button>
+            <Button variant="secondary" onClick={() => { setOpen(false); setPrice(""); }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className={ROW_ACTION} style={{ color: T.primary }} onClick={() => setOpen(true)}>
+          {packs.length ? "Add another pack" : "Offer a discounted pack"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function LocationSection({
   locations,
   travel,

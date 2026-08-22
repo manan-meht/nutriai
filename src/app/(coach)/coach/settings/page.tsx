@@ -42,13 +42,14 @@ export default async function CoachSettingsPage() {
   }
   if (!coach) redirect("/dashboard");
 
-  const [allSkills, mySkills, services, locations, travel, availability] = await Promise.all([
+  const [allSkills, mySkills, services, locations, travel, availability, classPacks] = await Promise.all([
     admin.from("club_skills").select("id, name, slug").eq("is_active", true).order("sort_order"),
     admin.from("coach_skills").select("skill_id").eq("coach_profile_id", coach.id),
     admin.from("coach_services").select("id, name, duration_minutes, price_cents, is_active, travel_enabled, skill_id").eq("coach_profile_id", coach.id).order("created_at"),
     admin.from("coach_locations").select("id, label, neighbourhood, address_is_public, is_primary, latitude, longitude, address_line, postal_code").eq("coach_profile_id", coach.id).eq("is_active", true).order("is_primary", { ascending: false }).order("created_at"),
     admin.from("coach_travel_rules").select("travel_enabled, max_travel_km, travel_buffer_minutes").eq("coach_profile_id", coach.id).maybeSingle(),
     admin.from("coach_availability_rules").select("weekday, start_minute, end_minute").eq("coach_profile_id", coach.id).eq("is_active", true),
+    admin.from("coach_class_packs").select("id, service_id, class_count, price_cents, is_active, expires_after_days").eq("coach_profile_id", coach.id).order("class_count"),
   ]);
 
   // Photos live in a private bucket, so both the portrait and the gallery
@@ -128,6 +129,17 @@ export default async function CoachSettingsPage() {
       isActive: s.is_active,
       travelEnabled: s.travel_enabled,
       skillId: s.skill_id,
+    })),
+    // Packs hang off a service, so the UI can show them under the class
+    // they discount rather than as a separate list a coach has to
+    // reconcile by name.
+    classPacks: (classPacks.data ?? []).map((p: any) => ({
+      id: p.id,
+      serviceId: p.service_id,
+      classCount: p.class_count,
+      priceCents: p.price_cents,
+      isActive: p.is_active,
+      expiresAfterDays: p.expires_after_days,
     })),
     locations: (locations.data ?? []).map((l: any) => ({
       id: l.id,

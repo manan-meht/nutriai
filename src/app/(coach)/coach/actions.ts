@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { publishBlockers } from "@/lib/club/ranking";
+import { packPriceProblem } from "@/lib/club/class-packs";
 import { CLUB_MARKET, COACH_MEDIA_BUCKET } from "@/lib/club/config";
 import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 import { disconnectCalendar } from "@/lib/club/calendar";
@@ -213,6 +214,86 @@ export async function setServiceActive(serviceId: string, isActive: boolean): Pr
     .from("coach_services")
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
     .eq("id", serviceId)
+    .eq("coach_profile_id", coach.id);
+  if (error) return { ok: false, error: error.message };
+  revalidateCoach();
+  return { ok: true };
+}
+
+// ---- Class packs ----------------------------------------------------
+
+/** Creates or repricies a pack: 5, 10 or 20 of one service for less than
+ * the singles cost.
+ *
+ * The single price is read from the service here rather than trusted from
+ * the client, because it is what the discount is validated against — a
+ * forged one would let a coach publish a "pack" dearer than buying singly.
+ */
+export async function upsertClassPack(input: {
+  id?: string;
+  serviceId: string;
+  classCount: number;
+  priceCents: number;
+  expiresAfterDays?: number;
+}): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+
+  const admin = createServiceClient();
+
+  // Scoped by coach id: a forged service id belonging to someone else
+  // matches nothing rather than attaching a pack to their service.
+  const { data: service } = await admin
+    .from("coach_services")
+    .select("id, price_cents")
+    .eq("id", input.serviceId)
+    .eq("coach_profile_id", coach.id)
+    .maybeSingle();
+  if (!service) return { ok: false, error: "That class no longer exists." };
+
+  const problem = packPriceProblem(service.price_cents, Math.round(input.priceCents), input.classCount);
+  if (problem) return { ok: false, error: problem };
+
+  const payload = {
+    coach_profile_id: coach.id,
+    service_id: input.serviceId,
+    class_count: input.classCount,
+    price_cents: Math.round(input.priceCents),
+    currency: CLUB_MARKET.currency,
+    expires_after_days: input.expiresAfterDays && input.expiresAfterDays > 0 ? Math.round(input.expiresAfterDays) : 365,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = input.id
+    ? await admin.from("coach_class_packs").update(payload).eq("id", input.id).eq("coach_profile_id", coach.id)
+    : await admin.from("coach_class_packs").insert(payload);
+
+  if (error) {
+    // The unique (service_id, class_count) constraint: a coach can only
+    // have one 10-pack per class, and saying so is clearer than the
+    // database's own wording.
+    if (/duplicate key|unique/i.test(error.message)) {
+      return { ok: false, error: `You already have a ${input.classCount}-class pack for this class.` };
+    }
+    return { ok: false, error: error.message };
+  }
+  revalidateCoach();
+  return { ok: true };
+}
+
+/** Withdraws a pack from sale.
+ *
+ * Never deletes: credits already bought reference this row, and a client
+ * part-way through a 10-pack must keep the terms they paid for. Deactivating
+ * stops new sales and leaves existing packs untouched. */
+export async function setClassPackActive(packId: string, isActive: boolean): Promise<ActionResult> {
+  const coach = await requireCoachProfile();
+  if (!coach) return NOT_AUTHED;
+  const admin = createServiceClient();
+  const { error } = await admin
+    .from("coach_class_packs")
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .eq("id", packId)
     .eq("coach_profile_id", coach.id);
   if (error) return { ok: false, error: error.message };
   revalidateCoach();
