@@ -4,6 +4,7 @@ import { stripeProvider } from "@/lib/billing/providers/stripe-provider";
 import { processProviderWebhook } from "@/lib/billing/webhook-handler";
 import { createServiceClient } from "@/lib/supabase/server";
 import { settleFromCheckoutSession } from "@/lib/club/payments";
+import { settlePackFromCheckoutSession } from "@/lib/club/pack-purchases";
 
 // Stripe requires the raw, unparsed request body to verify the signature —
 // never call request.json() before this.
@@ -25,6 +26,14 @@ export async function POST(request: NextRequest) {
   });
   if (clubOutcome) return NextResponse.json({ received: true, result: "club_booking" });
 
+  // Class packs share this endpoint too, told apart by pack_purchase_id in
+  // the session metadata the same way a booking is told apart by hold_id.
+  const packOutcome = await handleClubPackEvent(rawBody, signature).catch((err) => {
+    console.error("[stripe webhook] club pack error:", err instanceof Error ? err.message : err);
+    return false;
+  });
+  if (packOutcome) return NextResponse.json({ received: true, result: "club_pack" });
+
   const outcome = await processProviderWebhook(stripeProvider, "stripe", rawBody, signature).catch((err) => {
     console.error("[stripe webhook] processing error:", err instanceof Error ? err.message : err);
     return { result: "ignored" as const, reason: "internal error" };
@@ -37,6 +46,40 @@ export async function POST(request: NextRequest) {
   // Always 200 for everything else (duplicate/ignored/processed) so Stripe
   // doesn't retry events we've already handled or intentionally skip.
   return NextResponse.json({ received: true, result: outcome.result });
+}
+
+/** Credits a class pack when its Checkout session completes.
+ *
+ * Returns true when the event was a pack purchase and was handled, so the
+ * subscription pipeline is not asked to make sense of it.
+ *
+ * activatePackPurchase is idempotent, so this racing the return page is
+ * fine — whichever arrives first credits the pack. */
+async function handleClubPackEvent(rawBody: string, signature: string | null): Promise<boolean> {
+  if (!signature) return false;
+
+  let event: any;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return false;
+  }
+  if (event?.type !== "checkout.session.completed") return false;
+
+  const session = event?.data?.object;
+  const packPurchaseId: string | undefined = session?.metadata?.pack_purchase_id;
+  if (!packPurchaseId || !session?.id) return false;
+
+  const verified = await stripeProvider.verifyWebhookSignature(rawBody, signature);
+  if (!verified.valid) {
+    console.error("[stripe webhook] club pack event failed signature check");
+    return false;
+  }
+
+  // Re-reads the session from Stripe rather than trusting the payload.
+  const result = await settlePackFromCheckoutSession(createServiceClient(), session.id);
+  if (!result.ok) console.error("[stripe webhook] pack settle failed:", result.message);
+  return true;
 }
 
 /** Settles a marketplace booking when its Checkout session completes.

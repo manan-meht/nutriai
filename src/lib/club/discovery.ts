@@ -280,6 +280,17 @@ export interface CoachPublicProfile extends Omit<CoachCard, "nextSlot"> {
     currency: string;
     travelEnabled: boolean;
   }>;
+  /** Discounted multi-class packs, grouped under the class they discount.
+   * Only active ones — a withdrawn pack stays in the table because bought
+   * credits reference it, but must not be sold again. */
+  packs: Array<{
+    id: string;
+    serviceId: string;
+    serviceName: string;
+    classCount: number;
+    priceCents: number;
+    currency: string;
+  }>;
   reviews: Array<{ id: string; rating: number; body: string | null; tags: string[]; createdAt: string; authorName: string }>;
   cancellationFullRefundHours: number;
   /** Seeded example. The profile stays reachable by URL — a link that
@@ -317,13 +328,14 @@ export async function getCoachPublicProfile(
   const c: any = isMissingDemoColumn(first.error) ? (await withoutDemo()).data : first.data;
   if (!c) return null;
 
-  const [services, skills, locations, travel, media, reviews] = await Promise.all([
+  const [services, skills, locations, travel, media, reviews, packs] = await Promise.all([
     admin.from("coach_services").select("id, name, description, duration_minutes, price_cents, currency, travel_enabled").eq("coach_profile_id", c.id).eq("is_active", true).order("price_cents"),
     admin.from("coach_skills").select("club_skills(name, slug)").eq("coach_profile_id", c.id),
     admin.from("coach_locations").select("neighbourhood, is_primary").eq("coach_profile_id", c.id).eq("is_active", true),
     admin.from("coach_travel_rules").select("travel_enabled").eq("coach_profile_id", c.id).maybeSingle(),
     admin.from("coach_media").select("storage_path, sort_order").eq("coach_profile_id", c.id).eq("media_type", "image").order("sort_order"),
     admin.from("club_reviews").select("id, rating, body, tags, created_at, profiles!club_reviews_client_profile_id_fkey(full_name)").eq("coach_profile_id", c.id).eq("moderation_status", "published").order("created_at", { ascending: false }).limit(10),
+    admin.from("coach_class_packs").select("id, service_id, class_count, price_cents, currency").eq("coach_profile_id", c.id).eq("is_active", true).order("class_count"),
   ]);
 
   const primary = (locations.data ?? []).find((l: any) => l.is_primary) ?? (locations.data ?? [])[0];
@@ -391,6 +403,22 @@ export async function getCoachPublicProfile(
         authorName: (p?.full_name ?? "A client").split(" ")[0],
       };
     }),
+    packs: (packs.data ?? [])
+      .map((p: any) => {
+        const svc = (services.data ?? []).find((s: any) => s.id === p.service_id);
+        return svc
+          ? {
+              id: p.id,
+              serviceId: p.service_id,
+              serviceName: svc.name,
+              classCount: p.class_count,
+              priceCents: p.price_cents,
+              currency: p.currency,
+            }
+          : null;
+      })
+      // A pack whose class was deactivated has nothing to book against.
+      .filter((p): p is NonNullable<typeof p> => p !== null),
     cancellationFullRefundHours: c.cancellation_full_refund_hours,
     isDemo: c.is_demo ?? true,
   };

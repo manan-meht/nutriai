@@ -6,7 +6,10 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { createHold, releaseHold, syncBookingLock } from "@/lib/club/holds";
 import { getBookableSlots } from "@/lib/club/discovery";
 import { checkout } from "@/lib/club/payments";
-import { createBookingCheckoutSession, stripeCheckoutConfigured } from "@/lib/club/checkout-session";
+import { createBookingCheckoutSession, createPackCheckoutSession, stripeCheckoutConfigured } from "@/lib/club/checkout-session";
+import { createPendingPackPurchase } from "@/lib/club/pack-purchases";
+import { getPlatformFeePercent } from "@/lib/club/platform-fee";
+import { splitAmount } from "@/lib/club/config";
 import { CLUB_MARKET } from "@/lib/club/config";
 import { calculateRefund, type CancellationPolicySnapshot } from "@/lib/club/booking-state";
 
@@ -228,4 +231,70 @@ export async function cancelBookingAction(formData: FormData) {
 
   revalidatePath("/bookings");
   redirect(`/bookings/${bookingId}`);
+}
+
+
+/** Starts checkout for a class pack.
+ *
+ * Everything that decides the charge — the price, the coach, the fee — is
+ * read server-side from the pack row. The form supplies only which pack,
+ * so a tampered amount cannot become the charge.
+ */
+export async function buyPackAction(formData: FormData) {
+  const packId = String(formData.get("packId") ?? "");
+  const coachId = String(formData.get("coachId") ?? "");
+  // Supplied by the page, which knows the real host and protocol. Building
+  // it here would repeat the bug that sent a paying client to
+  // https://localhost — the payment went through, the browser showed a TLS
+  // error, and no booking existed.
+  const origin = String(formData.get("origin") ?? "");
+
+  const profileId = await currentProfileId();
+  if (!profileId) redirect(`/login?product=club&next=${encodeURIComponent(`/coaches/${coachId}`)}`);
+
+  const admin = createServiceClient();
+
+  const { data: coach } = await admin
+    .from("coach_profiles")
+    .select("display_name, stripe_account_id, stripe_payouts_enabled")
+    .eq("id", coachId)
+    .maybeSingle();
+  if (!coach) redirect("/");
+  if (!coach.stripe_account_id || !coach.stripe_payouts_enabled) {
+    redirect(`/coaches/${coachId}?error=${encodeURIComponent("This coach can't take payments yet.")}`);
+  }
+
+  const created = await createPendingPackPurchase(admin, { packId, clientProfileId: profileId });
+  if ("error" in created) {
+    redirect(`/coaches/${coachId}?error=${encodeURIComponent(created.error)}`);
+  }
+
+  const [{ data: service }, { data: profile }] = await Promise.all([
+    admin.from("coach_services").select("name").eq("id", created.serviceId).maybeSingle(),
+    admin.from("profiles").select("email").eq("id", profileId).maybeSingle(),
+  ]);
+
+  const feePercent = await getPlatformFeePercent(admin);
+  const { platformFeeCents } = splitAmount(created.priceCents, feePercent);
+
+  let url: string;
+  try {
+    const session = await createPackCheckoutSession({
+      purchaseId: created.purchaseId,
+      coachProfileId: coachId,
+      connectedAccountId: coach.stripe_account_id,
+      description: `${created.classCount} x ${service?.name ?? "class"} with ${coach.display_name}`,
+      priceCents: created.priceCents,
+      platformFeeCents,
+      currency: created.currency,
+      clientEmail: profile?.email ?? undefined,
+      successUrl: `${origin}/packs/complete?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${origin}/coaches/${coachId}?error=${encodeURIComponent("Payment cancelled.")}`,
+    });
+    url = session.url;
+  } catch (err) {
+    redirect(`/coaches/${coachId}?error=${encodeURIComponent(err instanceof Error ? err.message : "Couldn't start payment.")}`);
+  }
+
+  redirect(url);
 }

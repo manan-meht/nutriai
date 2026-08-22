@@ -115,9 +115,71 @@ export async function createBookingCheckoutSession(
 export interface SessionOutcome {
   paid: boolean;
   holdId: string | null;
+  /** Set instead of holdId when the session paid for a class pack. Both
+   * the return page and the webhook branch on which one is present. */
+  packPurchaseId: string | null;
   paymentIntentId: string | null;
   amountTotal: number | null;
   currency: string | null;
+}
+
+export interface PackSessionRequest {
+  purchaseId: string;
+  coachProfileId: string;
+  connectedAccountId: string;
+  description: string;
+  priceCents: number;
+  platformFeeCents: number;
+  currency: string;
+  clientEmail?: string;
+  successUrl: string;
+  cancelUrl: string;
+}
+
+/** Checkout for a class pack.
+ *
+ * Same destination charge as a single booking — the coach is paid at once
+ * and the platform fee is inclusive — so buying ten classes is never a way
+ * to pay a different rate than buying them one at a time.
+ *
+ * The fee is passed in rather than recomputed here: it was already worked
+ * out and written to the purchase row, and recomputing risks the charge
+ * and the record disagreeing if the platform rate changes mid-checkout.
+ *
+ * No expires_at. A booking session is capped because it holds a slot that
+ * must be released; a pack holds nothing, so an abandoned tab costs
+ * nobody anything.
+ */
+export async function createPackCheckoutSession(
+  req: PackSessionRequest
+): Promise<{ url: string; sessionId: string }> {
+  const session = await stripe<any>("POST", "/checkout/sessions", {
+    mode: "payment",
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: req.currency.toLowerCase(),
+          unit_amount: req.priceCents,
+          product_data: { name: req.description },
+        },
+      },
+    ],
+    payment_intent_data: {
+      application_fee_amount: req.platformFeeCents,
+      transfer_data: { destination: req.connectedAccountId },
+      // on_behalf_of is deliberately absent — see stripe-connect.ts.
+      metadata: { pack_purchase_id: req.purchaseId, coach_profile_id: req.coachProfileId },
+    },
+    // Also on the session: checkout.session.completed carries the session,
+    // and the webhook reads the id from here to tell a pack from a booking.
+    metadata: { pack_purchase_id: req.purchaseId, coach_profile_id: req.coachProfileId },
+    customer_email: req.clientEmail,
+    success_url: req.successUrl,
+    cancel_url: req.cancelUrl,
+  });
+
+  return { url: session.url, sessionId: session.id };
 }
 
 /** Reads a session back. Used on return from Stripe and by the webhook, so
@@ -127,6 +189,7 @@ export async function readCheckoutSession(sessionId: string): Promise<SessionOut
   return {
     paid: s.payment_status === "paid",
     holdId: s.metadata?.hold_id ?? null,
+    packPurchaseId: s.metadata?.pack_purchase_id ?? null,
     paymentIntentId: typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null,
     amountTotal: s.amount_total ?? null,
     currency: s.currency ?? null,

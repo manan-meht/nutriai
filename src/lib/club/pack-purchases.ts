@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPlatformFeePercent } from "./platform-fee";
 import { splitAmount } from "./config";
 import { packExpiryDate, creditsRemaining, type PackCredits } from "./class-packs";
+import { readCheckoutSession } from "./checkout-session";
 
 /**
  * Buying a class pack, and spending the credits it creates.
@@ -239,4 +240,27 @@ export async function refundPackCredit(
   // Unlink first-class: the credit is back, and this booking must not be
   // able to return it twice.
   await admin.from("bookings").update({ pack_purchase_id: null }).eq("id", bookingId);
+}
+
+
+/**
+ * Settles a pack purchase from a Checkout session.
+ *
+ * The session is re-read from Stripe rather than trusted: a success_url can
+ * be visited directly, so arriving on the return page is not proof of
+ * payment. Called from both the return page and the webhook — whichever
+ * arrives first credits the pack, the other is a no-op.
+ */
+export async function settlePackFromCheckoutSession(
+  admin: SupabaseClient,
+  sessionId: string
+): Promise<PackPurchaseResult> {
+  const outcome = await readCheckoutSession(sessionId);
+  if (!outcome.paid) return { ok: false, message: "Payment hasn't completed." };
+  if (!outcome.packPurchaseId) return { ok: false, message: "That payment isn't linked to a pack." };
+
+  return activatePackPurchase(admin, {
+    purchaseId: outcome.packPurchaseId,
+    paymentIntentId: outcome.paymentIntentId,
+  });
 }

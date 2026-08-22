@@ -6,12 +6,23 @@ import { CoachPhotoPager } from "@/components/club/CoachPhotoPager";
 import { getCoachPublicProfile } from "@/lib/club/discovery";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { formatMoney } from "@/lib/club/config";
+import { perClassCents, savingPercent } from "@/lib/club/class-packs";
+import { buyPackAction } from "@/app/(club)/club/actions";
+import { headers } from "next/headers";
+import { isLocalDevHost } from "@/lib/club/host";
 
 export const dynamic = "force-dynamic";
 
 export default async function CoachProfilePage({ params }: { params: Promise<{ coachId: string }> }) {
   const { coachId } = await params;
   const coach = await getCoachPublicProfile(createServiceClient(), coachId);
+
+  // Same derivation as the checkout page: a hardcoded https:// once sent a
+  // paying client to https://localhost, which has no TLS.
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "tistra.club";
+  const proto = requestHeaders.get("x-forwarded-proto") ?? (isLocalDevHost(host) ? "http" : "https");
+  const origin = `${proto}://${host}`;
   // Unpublished/paused coaches are not publicly readable — 404 rather than
   // an empty page, so a paused profile can't be browsed via a stale link.
   if (!coach) notFound();
@@ -60,6 +71,52 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
         {coach.sessionCount > 0 && <Fact label="Sessions taught" value={String(coach.sessionCount)} />}
         <Fact label="Free cancellation" value={`${coach.cancellationFullRefundHours}h before`} />
       </dl>
+
+      {coach.packs.length > 0 && (
+        <>
+          <h2 className="mb-1 mt-8 text-lg font-semibold tracking-[-0.01em]">Class packs</h2>
+          <p className="mb-3 text-sm" style={{ color: T.onSurfaceVariant }}>
+            Buy several classes up front and pay less for each one. Book them whenever suits you.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {coach.packs.map((p) => {
+              const single = coach.services.find((s) => s.id === p.serviceId)?.priceCents ?? 0;
+              const per = perClassCents(p.priceCents, p.classCount);
+              const saving = savingPercent(single, p.priceCents, p.classCount);
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-4 rounded-2xl border p-4"
+                  style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant }}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium">{p.classCount} × {p.serviceName}</p>
+                    <p className="mt-0.5 text-sm" style={{ color: T.onSurfaceVariant }}>
+                      {formatMoney(per, p.currency)} a class
+                      {saving > 0 ? ` · save ${saving}%` : ""}
+                    </p>
+                  </div>
+                  {/* A form, not a link: buying starts a Stripe session and
+                      creates a pending purchase, neither of which belongs
+                      behind a GET a browser might prefetch. */}
+                  <form action={buyPackAction} className="shrink-0">
+                    <input type="hidden" name="packId" value={p.id} />
+                    <input type="hidden" name="coachId" value={coach.coachProfileId} />
+                    <input type="hidden" name="origin" value={origin} />
+                    <button
+                      type="submit"
+                      className="rounded-full px-4 py-2.5 text-sm font-medium"
+                      style={{ backgroundColor: T.primary, color: T.onPrimary }}
+                    >
+                      {formatMoney(p.priceCents, p.currency)}
+                    </button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
 
       <h2 className="mb-3 mt-8 text-lg font-semibold tracking-[-0.01em]">Sessions</h2>
       <ul className="flex flex-col gap-2">
