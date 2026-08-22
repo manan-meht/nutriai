@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Script from "next/script";
+import { GOOGLE_ADS_ID } from "@/components/marketing/GoogleAdsTag";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCoachProfile } from "@/lib/club/coach-queries";
@@ -22,13 +23,14 @@ import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 
 export const dynamic = "force-dynamic";
 
+/** From Google Ads -> Goals -> Conversions -> your action -> "Install the
+ * tag yourself". Looks like "AbC-D_efG-h12_3-Q". Empty until then. */
+const CONVERSION_LABEL = "";
+
 export const metadata = {
   title: "Your profile is live | Tistra Coach",
   robots: { index: false, follow: false },
 };
-
-/** Google Ads. Scoped to this page deliberately — see the note above. */
-const GOOGLE_ADS_ID = "AW-18404074450";
 
 export default async function CoachPublishedPage() {
   const supabase = await createClient();
@@ -46,18 +48,17 @@ export default async function CoachPublishedPage() {
 
   return (
     <CoachShell active="settings" coachName={profile.displayName} photoUrl={profile.photoUrl}>
-      <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`}
-        strategy="afterInteractive"
-      />
-      <Script id="google-ads-coach-signup" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', '${GOOGLE_ADS_ID}');
-        `}
-      </Script>
+      {/* The conversion itself. Separate from the base tag above, because
+          loading gtag is not a conversion — this is the line that reports
+          one, and it needs the conversion LABEL from Google Ads appended to
+          the account id. Until CONVERSION_LABEL is filled in it stays
+          inert rather than reporting an unlabelled event Google would
+          silently drop. */}
+      {CONVERSION_LABEL && (
+        <Script id="google-ads-coach-signup-conversion" strategy="afterInteractive">
+          {`gtag('event', 'conversion', {'send_to': '${GOOGLE_ADS_ID}/${CONVERSION_LABEL}'});`}
+        </Script>
+      )}
 
       <section
         className="mx-auto max-w-xl rounded-2xl border p-8 text-center"

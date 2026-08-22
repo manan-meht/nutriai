@@ -20,7 +20,7 @@ const SETTINGS = "components/coach/CoachSettings.tsx";
 
 describe("the tag lives on its own page", () => {
   it("loads gtag with the Ads account", () => {
-    const t = code(PAGE);
+    const t = code("components/marketing/GoogleAdsTag.tsx");
     expect(t).toMatch(/AW-18404074450/);
     expect(t).toMatch(/googletagmanager\.com\/gtag\/js/);
     expect(t).toMatch(/gtag\('config', '\$\{GOOGLE_ADS_ID\}'\)/);
@@ -32,8 +32,36 @@ describe("the tag lives on its own page", () => {
     expect(t).not.toMatch(/googletagmanager/);
   });
 
-  it("is on no other page either", () => {
-    // A stray copy anywhere else double-counts.
+  it("covers every page of the coach product, per Google's instruction", () => {
+    // Landing (where the ad click lands), the shared auth pages when they
+    // are serving Tistra Coach, and every Coach OS page via the layout.
+    expect(code("app/(coach)/layout.tsx")).toMatch(/<GoogleAdsTag \/>/);
+    expect(code("app/(public)/signup/page.tsx")).toMatch(/product === "gym" && <GoogleAdsTag \/>/);
+    expect(code("app/(public)/login/page.tsx")).toMatch(/product === "gym" && <GoogleAdsTag \/>/);
+  });
+
+  it("never renders twice on one page — Google warns against that", () => {
+    // The confirmation page sits inside the (coach) layout, so its own copy
+    // would be a second tag on the same page.
+    expect(code(PAGE)).not.toMatch(/<GoogleAdsTag \/>/);
+  });
+
+  it("does not leak onto Tistra Health or Tistra Club", () => {
+    // signup and login are one shared route across three products.
+    const signup = code("app/(public)/signup/page.tsx");
+    expect(signup).toMatch(/product === "gym" &&/);
+    expect(code("app/(club)/club/browse/page.tsx")).not.toMatch(/GoogleAdsTag/);
+    expect(code("app/layout.tsx")).not.toMatch(/GoogleAdsTag/);
+  });
+
+  it("is on the landing page, where ad clicks arrive", () => {
+    // Without it here no _gcl_aw cookie is written, so a later conversion
+    // cannot be attributed to the click — and Google's tag check, which
+    // fetches the domain root, reports the tag as missing.
+    expect(code("app/(public)/coach/page.tsx")).toMatch(/<GoogleAdsTag \/>/);
+  });
+
+  it("defines the account id once, not copied per page", () => {
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -46,7 +74,38 @@ describe("the tag lives on its own page", () => {
     };
     walk(path.join(__dirname, "..", "app"));
     walk(path.join(__dirname, "..", "components"));
+    expect(hits).toEqual(["components/marketing/GoogleAdsTag.tsx"]);
+  });
+
+  it("keeps the conversion EVENT off every page but the confirmation", () => {
+    // A stray copy anywhere else double-counts.
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.tsx?$/.test(entry.name) && fs.readFileSync(full, "utf-8").includes("'event', 'conversion'")) {
+          hits.push(path.relative(path.join(__dirname, ".."), full));
+        }
+      }
+    };
+    walk(path.join(__dirname, "..", "app"));
+    walk(path.join(__dirname, "..", "components"));
     expect(hits).toEqual([PAGE]);
+  });
+
+  it("loading the tag is not treated as a conversion", () => {
+    // The base tag is on the landing page. If the conversion event were in
+    // it, every ad click would count as a signup.
+    expect(code("components/marketing/GoogleAdsTag.tsx")).not.toMatch(/'conversion'/);
+  });
+
+  it("stays inert until the conversion label is filled in", () => {
+    // An unlabelled conversion event is silently dropped by Google, which
+    // looks identical to working.
+    const t = code(PAGE);
+    expect(t).toMatch(/const CONVERSION_LABEL = /);
+    expect(t).toMatch(/\{CONVERSION_LABEL && \(/);
   });
 });
 

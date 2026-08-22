@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AuthForm } from "@/components/auth/AuthForm";
+import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
 import type { AuthSurface } from "@/lib/auth";
@@ -85,6 +86,7 @@ export default async function LoginPage({
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
+      {product === "gym" && <GoogleAdsTag />}
       <div className="max-w-sm w-full">
         <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 mb-8 block">
           ← Back

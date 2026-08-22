@@ -10,6 +10,7 @@ import type { AuthSurface } from "@/lib/auth";
 import { isClubHost } from "@/lib/club/host";
 import { isCoachHost } from "@/lib/coach/routes";
 import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
+import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 
 /** Where a successful sign-in should land, per surface.
  *
@@ -105,6 +106,7 @@ export default async function SignupPage({
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-6 py-12">
+      {product === "gym" && <GoogleAdsTag />}
       <div className="max-w-sm w-full">
         <Link href="/" className="text-sm text-gray-400 hover:text-gray-600 mb-8 block">
           ← Back

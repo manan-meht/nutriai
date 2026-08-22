@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CoachLanding } from "@/components/landing/coach/CoachLanding";
+import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 
 export function generateMetadata(): Metadata {
   return {
@@ -28,5 +29,10 @@ export function generateMetadata(): Metadata {
 // Deliberately static — see ../family/page.tsx for the bundle-size
 // reasoning that applies to every marketing route.
 export default function CoachMarketingPage() {
-  return <CoachLanding />;
+  return (
+    <>
+      <GoogleAdsTag />
+      <CoachLanding />
+    </>
+  );
 }
