@@ -1,5 +1,3 @@
-import Script from "next/script";
-
 /** Google Ads global site tag.
  *
  * Belongs on every page an ad click can land on, NOT only on the
@@ -16,20 +14,25 @@ import Script from "next/script";
 export const GOOGLE_ADS_ID = "AW-18404074450";
 
 export function GoogleAdsTag() {
+  // Plain <script>, not next/script.
+  //
+  // next/script's afterInteractive puts only a <link rel="preload"> in the
+  // head and injects the real tag after hydration. The tag worked, but
+  // Google's "test installation" check looks for the literal script it
+  // gave you and reported the tag as not installed. React hoists an async
+  // <script src> to the head, so this produces exactly what Google asks
+  // for: the tag in the document head, in the served HTML.
   return (
     <>
-      <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`}
-        strategy="afterInteractive"
+      <script async src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`} />
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${GOOGLE_ADS_ID}');`,
+        }}
       />
-      <Script id="google-ads-base" strategy="afterInteractive">
-        {`
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', '${GOOGLE_ADS_ID}');
-        `}
-      </Script>
     </>
   );
 }

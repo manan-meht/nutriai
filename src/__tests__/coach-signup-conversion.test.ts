@@ -19,6 +19,17 @@ const PAGE = "app/(coach)/coach/settings/published/page.tsx";
 const SETTINGS = "components/coach/CoachSettings.tsx";
 
 describe("the tag lives on its own page", () => {
+  it("emits a real script tag, not next/script's preload", () => {
+    // next/script afterInteractive puts only <link rel="preload"> in the
+    // head and injects the tag after hydration. It worked, but Google's
+    // installation check looks for the literal script it hands you and
+    // reported the tag as missing.
+    const t = code("components/marketing/GoogleAdsTag.tsx");
+    expect(t).toMatch(/<script async src=\{`https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=\$\{GOOGLE_ADS_ID\}`\} \/>/);
+    expect(t).not.toMatch(/next\/script/);
+    expect(t).not.toMatch(/strategy=/);
+  });
+
   it("loads gtag with the Ads account", () => {
     const t = code("components/marketing/GoogleAdsTag.tsx");
     expect(t).toMatch(/AW-18404074450/);
