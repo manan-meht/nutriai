@@ -716,9 +716,54 @@ function defaultMealTypeByTime(date: Date, timezone?: string): MealType {
  * an EXPLICIT user correction ("change to lunch") must bypass this and be
  * saved exactly as asked; see detectMealTypeChange's call site in
  * conversation-handler.ts, which does not call this function. */
-export function resolveMealLabel(mealType: MealType, now: Date = new Date(), timezone?: string): MealType {
+export function resolveMealLabel(
+  mealType: MealType,
+  now: Date = new Date(),
+  timezone?: string,
+  opts: { userStated?: boolean } = {}
+): MealType {
   if (isDrinkMealType(mealType)) return mealType;
+  // A meal type the PERSON stated beats the clock. The time-of-day default
+  // exists because the model guessing "breakfast" from a photo of eggs at
+  // 9pm is usually wrong — but it was applied unconditionally, so someone
+  // replying "this is my snack" to a dinner logged at 8pm got told
+  // "I've updated dinner". Their answer was discarded, not misunderstood.
+  if (opts.userStated) return mealType;
   return defaultMealTypeByTime(now, timezone);
+}
+
+/** The meal type a person named in their own words, or null.
+ *
+ * Deliberately narrow: it matches someone LABELLING the meal ("this is a
+ * snack", "make it breakfast"), not merely mentioning a word in passing
+ * ("I had a snack earlier, this is dinner" must not match "snack"). A
+ * false positive here relabels a meal the person did not ask to relabel,
+ * which is worse than missing one. */
+export function statedMealType(text: string | null | undefined): MealType | null {
+  if (!text) return null;
+  const t = text.toLowerCase().trim();
+  const names: Array<[MealType, RegExp]> = [
+    ["breakfast", /breakfast/],
+    ["lunch", /lunch/],
+    ["dinner", /dinner|supper/],
+    ["snack", /snacks?/],
+  ];
+  // "this is my snack", "it's a snack", "change to snack", "mark as snack",
+  // "log as snack", "make it snack" — a statement about THIS meal.
+  const LABELLING = [
+    /\b(?:this|it|that)\s+(?:is|was|'s)\s+(?:my|a|an|the)?\s*$/,
+    /\b(?:change|changed|switch|move|mark|log|save|make)\s+(?:it|this|that)?\s*(?:to|as|into)?\s*$/,
+    /^(?:it'?s|this is|actually,?\s*(?:it'?s|this is))\s+(?:my|a|an|the)?\s*$/,
+  ];
+  for (const [type, pattern] of names) {
+    const m = t.match(pattern);
+    if (!m || m.index === undefined) continue;
+    const before = t.slice(0, m.index);
+    if (LABELLING.some((p) => p.test(before))) return type;
+    // Bare answer to "what meal was this?" — the whole message is the word.
+    if (t.replace(/[^a-z]/g, "") === type) return type;
+  }
+  return null;
 }
 
 export function formatMealLabel(mealType: MealType): string {

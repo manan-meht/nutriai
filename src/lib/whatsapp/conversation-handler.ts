@@ -15,6 +15,7 @@ import {
   pickDiscardAck,
   pickUndoAck,
   resolveMealLabel,
+  statedMealType,
   formatMealLabel,
   avgProtein,
   avgCal,
@@ -1245,7 +1246,14 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
    * after those assignments have run. */
   async function finalizeEstimate(
     analysis: FoodAnalysisResult,
-    opts: { existing?: PendingMeal; isClarificationResolution?: boolean } = {}
+    opts: {
+      existing?: PendingMeal;
+      isClarificationResolution?: boolean;
+      /** Set when the person named the meal type themselves in a
+       * correction. Overrides the time-of-day default, which otherwise
+       * relabelled "this is my snack" back to dinner at 8pm. */
+      statedMealType?: MealType | null;
+    } = {}
   ) {
     const decision = computeSaveDecision(analysis);
 
@@ -1263,7 +1271,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
 
-    const resolvedLabel = resolveMealLabel(analysis.meal_type, new Date(), contactTimezone);
+    const resolvedLabel = opts.statedMealType
+      ? resolveMealLabel(opts.statedMealType, new Date(), contactTimezone, { userStated: true })
+      : resolveMealLabel(analysis.meal_type, new Date(), contactTimezone);
     const existing = opts.existing;
 
     // Updating an already-saved meal (a correction, or a clarification
@@ -1371,7 +1381,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       await recordPortionCorrectionFeedback(previous, analysis, correctionText, previous.status === "saved" ? previous.savedMealId : undefined);
     }
 
-    await finalizeEstimate(analysis, { existing: previous ?? undefined, isClarificationResolution: opts.isClarificationResolution });
+    await finalizeEstimate(analysis, {
+      existing: previous ?? undefined,
+      isClarificationResolution: opts.isClarificationResolution,
+      statedMealType: statedMealType(correctionText),
+    });
   }
 
   // "My Progress" — send the end-user dashboard link. Only offered when
