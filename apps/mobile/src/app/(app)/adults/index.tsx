@@ -441,6 +441,14 @@ export default function AdultsContactListScreen() {
             Send feedback
           </ThemedText>
         </Pressable>
+        {/* Account, and with it deletion. App Review has to be able to
+            FIND this — a deletion route that exists but is unreachable
+            from the app's main screen fails 5.1.1(v) as surely as none. */}
+        <Pressable style={styles.footerButton} onPress={() => router.push('/account')}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Account
+          </ThemedText>
+        </Pressable>
         <Pressable
           style={styles.footerButton}
           onPress={() => {

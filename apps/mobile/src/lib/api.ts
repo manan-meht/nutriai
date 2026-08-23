@@ -416,6 +416,17 @@ export const api = {
   // for that).
   getMyProducts: () => apiFetch<MyProductsResponse>("/me/products"),
 
+  /** Permanently deletes the signed-in account. The confirmation string is
+   * required by the endpoint — see apps/mobile-api/src/app/me/delete-account
+   * — so a mis-tap cannot reach an irreversible call. */
+  deleteMyAccount: () =>
+    apiRequest<{ ok: boolean }>("/me/delete-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: "DELETE" }),
+    }),
+
+
   // `self: true` mirrors the web app's one-time ?self=1 redirect param —
   // pass it the first time someone lands here having picked "Self" rather
   // than "Family" from the product picker (see (app)/index.tsx), so a
