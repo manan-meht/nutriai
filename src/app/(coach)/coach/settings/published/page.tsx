@@ -74,16 +74,24 @@ export default async function CoachPublishedPage() {
           it needs the conversion LABEL appended to the account id.
 
           Plain <script>, not next/script, for the same reason as the base
-          tag: this runs during parse, right after the head tag has defined
-          gtag, so the conversion is reported on the initial page load
-          rather than waiting on hydration. Guarded on the label so an
-          unlabelled event — which Google drops silently, looking exactly
-          like success — can never be sent. */}
+          tag: this runs during parse rather than waiting on hydration.
+
+          It re-declares the dataLayer queue instead of assuming the base
+          tag's gtag already exists. React hoists scripts into the head,
+          and this one must not depend on landing after the base tag: if it
+          ran first, gtag would be undefined and the conversion lost
+          silently. Pushing to dataLayer is order-independent — gtag.js
+          drains whatever it finds queued when it loads.
+
+          Guarded on the label so an unlabelled event — which Google drops
+          silently, looking exactly like success — can never be sent. */}
       {CONVERSION_LABEL && (
         <script
           id="google-ads-coach-signup-conversion"
           dangerouslySetInnerHTML={{
-            __html: `gtag('event', 'conversion', {`
+            __html: `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('event', 'conversion', {`
               + `'send_to': '${GOOGLE_ADS_ID}/${CONVERSION_LABEL}',`
               + `'value': ${CONVERSION_VALUE},`
               + `'currency': '${CONVERSION_CURRENCY}'});`,
