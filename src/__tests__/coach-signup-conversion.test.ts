@@ -57,12 +57,30 @@ describe("the tag lives on its own page", () => {
     expect(code(PAGE)).not.toMatch(/<GoogleAdsTag \/>/);
   });
 
-  it("does not leak onto Tistra Health or Tistra Club", () => {
-    // signup and login are one shared route across three products.
+  it("does not leak onto Tistra Health", () => {
+    // signup and login are one shared route across three products, so the
+    // tag there is branched rather than unconditional.
     const signup = code("app/(public)/signup/page.tsx");
     expect(signup).toMatch(/product === "gym" &&/);
-    expect(code("app/(club)/club/browse/page.tsx")).not.toMatch(/GoogleAdsTag/);
+    // The root layout wraps all three products, including Tistra Health.
     expect(code("app/layout.tsx")).not.toMatch(/GoogleAdsTag/);
+  });
+
+  it("covers Tistra Club too, exactly once per page", () => {
+    // Google reported the tag missing while it lived only on the coach
+    // host: its check fetches the domain registered on the Ads account.
+    // A layout, so a new club route cannot miss the tag — and so no club
+    // PAGE carries its own copy, which would put two tags on one page.
+    expect(code("app/(club)/layout.tsx")).toMatch(/<GoogleAdsTag \/>/);
+    for (const page of [
+      "app/(club)/club/browse/page.tsx",
+      "app/(club)/club/demo/page.tsx",
+      "app/(club)/club/coaches/page.tsx",
+      "app/(club)/club/bookings/page.tsx",
+      "app/(club)/club/profile/page.tsx",
+    ]) {
+      expect(code(page)).not.toMatch(/GoogleAdsTag/);
+    }
   });
 
   it("is on the landing page, where ad clicks arrive", () => {
