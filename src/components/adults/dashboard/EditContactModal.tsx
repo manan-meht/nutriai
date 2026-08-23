@@ -209,7 +209,7 @@ export function EditContactModal({ contact, onClose, onSaved }: Props) {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Age">
-              <input type="number" value={age} onChange={(e) => setAge(e.target.value)} className={inputClass} />
+              <input type="number" value={age} onChange={(e) => setAge(e.target.value)} min="1" max="120" className={inputClass} />
             </Field>
             <Field label="Gender">
               <select value={gender} onChange={(e) => setGender(e.target.value)} className={inputClass}>

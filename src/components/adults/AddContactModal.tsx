@@ -223,7 +223,7 @@ export function AddContactModal({ workspaceId, caregiverName, hasSelfContact, is
             )}
             <Field label="Age">
               <input value={age} onChange={(e) => setAge(e.target.value)}
-                placeholder="65" type="number" min="40" max="110" className={inp} />
+                placeholder="35" type="number" min="1" max="120" className={inp} />
             </Field>
             <Field label="Gender">
               <select value={gender} onChange={(e) => setGender(e.target.value)} className={inp}>
