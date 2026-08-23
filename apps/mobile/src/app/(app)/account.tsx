@@ -79,7 +79,9 @@ export default function AccountScreen() {
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary" style={styles.body}>
             Billing and transaction records are kept for up to seven years, as our
-            privacy policy explains, because we are required to keep them.
+            privacy policy explains, because we are required to keep them. Where
+            that applies, your personal details are erased from them and your
+            login is closed for good.
           </ThemedText>
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.label}>
