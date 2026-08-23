@@ -3,6 +3,9 @@ import { getPlatformFeePercent } from "./platform-fee";
 import { splitAmount } from "./config";
 import { packExpiryDate, creditsRemaining, type PackCredits } from "./class-packs";
 import { readCheckoutSession } from "./checkout-session";
+import { convertHoldToBooking } from "./holds";
+import { attachCoachLocationToBooking } from "./locations";
+import { CLUB_MARKET } from "./config";
 
 /**
  * Buying a class pack, and spending the credits it creates.
@@ -204,7 +207,11 @@ export async function spendPackCredit(
     return { ok: false, message: "That class was just booked with this pack. Please try again." };
   }
 
-  await admin.from("bookings").update({ pack_purchase_id: pack.id }).eq("id", input.bookingId);
+  // Redemption passes no booking id — the booking does not exist until the
+  // hold converts, and it links itself afterwards.
+  if (input.bookingId) {
+    await admin.from("bookings").update({ pack_purchase_id: pack.id }).eq("id", input.bookingId);
+  }
   return { ok: true };
 }
 
@@ -263,4 +270,129 @@ export async function settlePackFromCheckoutSession(
     purchaseId: outcome.packPurchaseId,
     paymentIntentId: outcome.paymentIntentId,
   });
+}
+
+
+/**
+ * Books a held slot using a class already paid for.
+ *
+ * Order is the whole design. The credit is spent FIRST, and only then is
+ * the hold converted:
+ *
+ *  - spend then convert: if the conversion fails the credit is returned,
+ *    and the client is where they started.
+ *  - convert then spend: a failed spend leaves a confirmed booking nobody
+ *    paid for, and the coach is owed money with nothing to collect against.
+ *
+ * The first failure is recoverable and the second is not, so the order is
+ * chosen for which one we can undo.
+ *
+ * No Stripe involved. The money moved when the pack was bought; this is
+ * delivery against it.
+ */
+export async function bookWithPackCredit(
+  admin: SupabaseClient,
+  input: {
+    holdId: string;
+    purchaseId: string;
+    clientProfileId: string;
+    clientNote?: string | null;
+  },
+  now: Date = new Date()
+): Promise<{ ok: true; bookingId: string } | { ok: false; message: string }> {
+  const { data: hold } = await admin
+    .from("booking_holds")
+    .select("id, coach_profile_id, client_profile_id, service_id, booking_id, released_at, expires_at")
+    .eq("id", input.holdId)
+    .maybeSingle();
+  if (!hold) return { ok: false, message: "That hold no longer exists." };
+  if (hold.client_profile_id !== input.clientProfileId) return { ok: false, message: "That hold isn't yours." };
+  if (hold.booking_id) return { ok: true, bookingId: hold.booking_id };
+  if (hold.released_at || new Date(hold.expires_at) <= now) {
+    return { ok: false, message: "That slot was released. Please pick another time." };
+  }
+
+  // The pack has to belong to this client AND to this coach's service —
+  // credits are not transferable between coaches, and a pack bought for
+  // one class cannot silently pay for a different one.
+  const { data: pack } = await admin
+    .from("club_pack_purchases")
+    .select("id, client_profile_id, coach_profile_id, service_id, classes_total, classes_used, status, expires_at")
+    .eq("id", input.purchaseId)
+    .maybeSingle();
+  if (!pack) return { ok: false, message: "That pack no longer exists." };
+  if (pack.client_profile_id !== input.clientProfileId) return { ok: false, message: "That pack isn't yours." };
+  if (pack.coach_profile_id !== hold.coach_profile_id || pack.service_id !== hold.service_id) {
+    return { ok: false, message: "That pack can't be used for this class." };
+  }
+
+  const { data: service } = await admin
+    .from("coach_services")
+    .select("skill_id, currency")
+    .eq("id", hold.service_id)
+    .maybeSingle();
+  const { data: coach } = await admin
+    .from("coach_profiles")
+    .select("cancellation_full_refund_hours, cancellation_partial_refund_percent")
+    .eq("id", hold.coach_profile_id)
+    .maybeSingle();
+
+  // Captured BEFORE spending. Reading it back off `pack` after the spend
+  // assumes the row object was not mutated in place, which is true of
+  // PostgREST's JSON copies and not true of every client — and the rollback
+  // has to restore a number, not whatever it finds.
+  const usedBeforeSpend = pack.classes_used;
+
+  // 1. Spend. Compare-and-swap, so two tabs cannot take the same credit.
+  const spent = await spendPackCredit(admin, { purchaseId: pack.id, bookingId: "" }, now);
+  if (!spent.ok) return { ok: false, message: spent.message };
+
+  // 2. Convert. The slot lock is re-checked here, so someone else taking
+  //    the slot in between fails cleanly.
+  // Wrapped: convertHoldToBooking can THROW as well as return a failure —
+  // a malformed slot range does — and an exception here would keep the
+  // credit while creating no booking, which is the one outcome the
+  // spend-first ordering exists to prevent.
+  let converted: Awaited<ReturnType<typeof convertHoldToBooking>>;
+  try {
+    converted = await convertHoldToBooking(admin, input.holdId, {
+      serviceId: hold.service_id,
+      skillId: service?.skill_id ?? null,
+    // Zero: the client is not charged now. What they paid is recorded on
+    // the pack, and a per-class figure here would double-count in revenue.
+      priceCents: 0,
+      travelFeeCents: 0,
+      currency: service?.currency ?? CLUB_MARKET.currency,
+      timezone: CLUB_MARKET.timezone,
+      cancellationPolicySnapshot: {
+        fullRefundHours: coach?.cancellation_full_refund_hours ?? 24,
+        partialRefundPercent: coach?.cancellation_partial_refund_percent ?? 50,
+        paidWithPack: true,
+      },
+      clientNote: input.clientNote ?? null,
+    });
+  } catch (err) {
+    await admin
+      .from("club_pack_purchases")
+      .update({ classes_used: usedBeforeSpend, updated_at: now.toISOString() })
+      .eq("id", pack.id);
+    return { ok: false, message: err instanceof Error ? err.message : "Couldn't book that slot." };
+  }
+
+  if (!converted.ok) {
+    // Hand the credit back. This is the recoverable half of the ordering
+    // decision above.
+    await admin
+      .from("club_pack_purchases")
+      .update({ classes_used: usedBeforeSpend, updated_at: now.toISOString() })
+      .eq("id", pack.id);
+    return { ok: false, message: converted.message };
+  }
+
+  // Link the booking to the pack now that it exists, so a cancellation can
+  // find the credit to return.
+  await admin.from("bookings").update({ pack_purchase_id: pack.id }).eq("id", converted.bookingId);
+  await attachCoachLocationToBooking(admin, converted.bookingId, hold.coach_profile_id);
+
+  return { ok: true, bookingId: converted.bookingId };
 }

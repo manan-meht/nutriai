@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { ClubChrome, StickyAction } from "@/components/club/ClubChrome";
 import { HoldCountdown } from "@/components/club/HoldCountdown";
-import { payAction, startBookingCheckout, releaseHoldAction } from "../../actions";
+import { payAction, startBookingCheckout, releaseHoldAction, payWithPackAction } from "../../actions";
+import { usablePacks } from "@/lib/club/pack-purchases";
 import { stripeCheckoutConfigured } from "@/lib/club/checkout-session";
 import { headers } from "next/headers";
 import { isLocalDevHost } from "@/lib/club/host";
@@ -55,6 +56,14 @@ export default async function CheckoutPage({
   // Scheme comes from the request, not a constant. Hardcoding https sent
   // Stripe's return URL to https://localhost:3001, which has no TLS — the
   // payment succeeded and the client landed on a browser error.
+  // Classes this client has already paid for against THIS service. Empty
+  // for almost everyone, so the paid flow below is untouched.
+  const credits = await usablePacks(admin, {
+    clientProfileId: hold.client_profile_id,
+    serviceId: hold.service_id,
+  }).catch(() => []);
+  const creditsLeft = credits.reduce((n, p) => n + (p.classesTotal - p.classesUsed), 0);
+
   const requestHeaders = await headers();
   const host = requestHeaders.get("host") ?? "tistra.club";
   const proto = requestHeaders.get("x-forwarded-proto") ?? (isLocalDevHost(host) ? "http" : "https");
@@ -94,6 +103,25 @@ export default async function CheckoutPage({
         </p>
       </section>
 
+      {creditsLeft > 0 && (
+        <form action={payWithPackAction} className="mt-4 rounded-2xl border p-4" style={{ borderColor: T.primary }}>
+          <input type="hidden" name="holdId" value={hold.id} />
+          <p className="text-sm font-medium">
+            You have {creditsLeft} {creditsLeft === 1 ? "class" : "classes"} left in your pack
+          </p>
+          <p className="mt-1 text-sm" style={{ color: T.onSurfaceVariant }}>
+            Use one for this session — nothing more to pay.
+          </p>
+          <button
+            type="submit"
+            className="mt-3 w-full rounded-full py-3.5 text-[15px] font-medium"
+            style={{ backgroundColor: T.primary, color: T.onPrimary }}
+          >
+            Use 1 class from my pack
+          </button>
+        </form>
+      )}
+
       {/* Real payment when Stripe is configured and the coach can be paid;
           the mock only runs in development, and says so rather than looking
           like a completed purchase. */}
@@ -108,9 +136,17 @@ export default async function CheckoutPage({
           style={{ backgroundColor: T.surfaceContainerLowest, borderColor: T.outlineVariant, color: T.onSurface }}
         />
         <StickyAction>
-          <button type="submit" className="w-full rounded-full py-4 text-[15px] font-medium"
-                  style={{ backgroundColor: T.primary, color: T.onPrimary }}>
-            {live ? "Pay" : "Pay (test mode)"} {formatMoney(service.price_cents, service.currency)}
+          <button
+            type="submit"
+            className="w-full rounded-full py-4 text-[15px] font-medium"
+            style={
+              creditsLeft > 0
+                ? { backgroundColor: T.surfaceContainerLowest, color: T.onSurface, border: `1px solid ${T.outlineVariant}` }
+                : { backgroundColor: T.primary, color: T.onPrimary }
+            }
+          >
+            {creditsLeft > 0 ? "Pay separately instead — " : live ? "Pay " : "Pay (test mode) "}
+            {formatMoney(service.price_cents, service.currency)}
           </button>
           {!live && (
             <p className="mt-2 text-center text-xs" style={{ color: T.warning }}>

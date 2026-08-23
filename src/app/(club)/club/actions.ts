@@ -7,7 +7,7 @@ import { createHold, releaseHold, syncBookingLock } from "@/lib/club/holds";
 import { getBookableSlots } from "@/lib/club/discovery";
 import { checkout } from "@/lib/club/payments";
 import { createBookingCheckoutSession, createPackCheckoutSession, stripeCheckoutConfigured } from "@/lib/club/checkout-session";
-import { createPendingPackPurchase } from "@/lib/club/pack-purchases";
+import { createPendingPackPurchase, usablePacks, bookWithPackCredit } from "@/lib/club/pack-purchases";
 import { getPlatformFeePercent } from "@/lib/club/platform-fee";
 import { splitAmount } from "@/lib/club/config";
 import { CLUB_MARKET } from "@/lib/club/config";
@@ -297,4 +297,45 @@ export async function buyPackAction(formData: FormData) {
   }
 
   redirect(url);
+}
+
+
+/** Books a held slot with a class the client already paid for.
+ *
+ * Which pack is chosen server-side rather than submitted: the form says
+ * "use a credit", and the oldest-expiring usable pack is spent, so a client
+ * cannot direct the spend at a pack that expires later and lose the one
+ * expiring sooner.
+ */
+export async function payWithPackAction(formData: FormData) {
+  const holdId = String(formData.get("holdId") ?? "");
+  const clientNote = String(formData.get("clientNote") ?? "").trim() || null;
+
+  const profileId = await currentProfileId();
+  if (!profileId) redirect("/login?product=club");
+
+  const admin = createServiceClient();
+  const { data: hold } = await admin
+    .from("booking_holds")
+    .select("id, client_profile_id, service_id")
+    .eq("id", holdId)
+    .maybeSingle();
+  if (!hold || hold.client_profile_id !== profileId) redirect("/");
+
+  const packs = await usablePacks(admin, { clientProfileId: profileId, serviceId: hold.service_id });
+  if (packs.length === 0) {
+    redirect(`/checkout/${holdId}?error=${encodeURIComponent("You have no classes left in a pack for this class.")}`);
+  }
+
+  const result = await bookWithPackCredit(admin, {
+    holdId,
+    purchaseId: packs[0].id,
+    clientProfileId: profileId,
+    clientNote,
+  });
+
+  if (!result.ok) {
+    redirect(`/checkout/${holdId}?error=${encodeURIComponent(result.message)}`);
+  }
+  redirect(`/bookings/${result.bookingId}?new=1`);
 }
