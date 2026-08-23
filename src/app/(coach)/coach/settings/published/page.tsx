@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Script from "next/script";
 import { GOOGLE_ADS_ID } from "@/components/marketing/GoogleAdsTag";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
@@ -23,20 +22,25 @@ import { CLUB_CANONICAL_ORIGIN } from "@/lib/club/host";
 
 export const dynamic = "force-dynamic";
 
-/** Deliberately empty.
+/** The conversion label from Google Ads, the part after the slash in
+ * "<GOOGLE_ADS_ID>/<label>" (Goals -> Conversions -> the action ->
+ * "Install the tag yourself").
  *
- * The live conversion is URL-based ("Page load"): Google Ads watches for
- * this page's URL and the account tag, mounted by the (coach) layout,
- * reports it. That is why publishing navigates with a full page load
- * rather than router.push — a client-side route change would never report
- * a pageview for this URL, and nothing would count.
+ * This action is event-based, not URL-based. The earlier URL-based setup
+ * never reported anything: Google Ads shows a conversion action as
+ * unconnected until it actually RECEIVES a conversion, and an event with
+ * no label is silently dropped. Firing the labelled event is what makes
+ * the action go live.
  *
- * Fill this in only if the conversion is ever switched to an event-based
- * action, which is the more reliable form: it fires on the action itself
- * rather than on a URL match. Get the label from Google Ads -> Goals ->
- * Conversions -> the action -> "Install the tag yourself"; it is the part
- * after the slash, e.g. "AbC-D_efG-h12". */
-const CONVERSION_LABEL = "";
+ * Publishing still navigates with a full page load rather than
+ * router.push — a client-side route change would not run this script. */
+const CONVERSION_LABEL = "3TrvCLHh6uUcENLH38dE";
+
+/** Value Google Ads attributes to one coach signup. Reported so the
+ * campaign optimises on a conversion worth something rather than a bare
+ * count; SGD to match the Ads account's currency. */
+const CONVERSION_VALUE = 1.0;
+const CONVERSION_CURRENCY = "SGD";
 
 export const metadata = {
   title: "Your profile is live | Tistra Coach",
@@ -65,10 +69,26 @@ export default async function CoachPublishedPage() {
           the account id. Until CONVERSION_LABEL is filled in it stays
           inert rather than reporting an unlabelled event Google would
           silently drop. */}
+      {/* The conversion itself. Separate from the base tag, because loading
+          gtag is not a conversion — this is the line that reports one, and
+          it needs the conversion LABEL appended to the account id.
+
+          Plain <script>, not next/script, for the same reason as the base
+          tag: this runs during parse, right after the head tag has defined
+          gtag, so the conversion is reported on the initial page load
+          rather than waiting on hydration. Guarded on the label so an
+          unlabelled event — which Google drops silently, looking exactly
+          like success — can never be sent. */}
       {CONVERSION_LABEL && (
-        <Script id="google-ads-coach-signup-conversion" strategy="afterInteractive">
-          {`gtag('event', 'conversion', {'send_to': '${GOOGLE_ADS_ID}/${CONVERSION_LABEL}'});`}
-        </Script>
+        <script
+          id="google-ads-coach-signup-conversion"
+          dangerouslySetInnerHTML={{
+            __html: `gtag('event', 'conversion', {`
+              + `'send_to': '${GOOGLE_ADS_ID}/${CONVERSION_LABEL}',`
+              + `'value': ${CONVERSION_VALUE},`
+              + `'currency': '${CONVERSION_CURRENCY}'});`,
+          }}
+        />
       )}
 
       <section

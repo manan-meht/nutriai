@@ -133,12 +133,26 @@ describe("the tag lives on its own page", () => {
     expect(code("components/marketing/GoogleAdsTag.tsx")).not.toMatch(/'conversion'/);
   });
 
-  it("stays inert until the conversion label is filled in", () => {
-    // An unlabelled conversion event is silently dropped by Google, which
-    // looks identical to working.
+  it("sends the labelled conversion Google Ads issued", () => {
+    // Google Ads reports a conversion action as unconnected until it
+    // receives a conversion, and drops an unlabelled event silently —
+    // which looks identical to working. The label is what makes it real.
     const t = code(PAGE);
-    expect(t).toMatch(/const CONVERSION_LABEL = /);
+    expect(t).toMatch(/const CONVERSION_LABEL = "3TrvCLHh6uUcENLH38dE"/);
+    // Kept guarded, so blanking the label disables the event rather than
+    // sending one Google will throw away.
     expect(t).toMatch(/\{CONVERSION_LABEL && \(/);
+    expect(t).toMatch(/'send_to': '\$\{GOOGLE_ADS_ID\}\/\$\{CONVERSION_LABEL\}'/);
+    expect(t).toMatch(/'value': \$\{CONVERSION_VALUE\}/);
+    expect(t).toMatch(/'currency': '\$\{CONVERSION_CURRENCY\}'/);
+  });
+
+  it("reports the conversion on page load, not after hydration", () => {
+    // next/script's afterInteractive waits for hydration; a plain script
+    // runs during parse, just after the head tag defined gtag.
+    const t = code(PAGE);
+    expect(t).not.toMatch(/next\/script/);
+    expect(t).not.toMatch(/strategy=/);
   });
 });
 
