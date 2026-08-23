@@ -7,10 +7,13 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
+import { useColorScheme } from 'react-native';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
 import { scopedEmail } from '@/lib/auth';
 import { signInWithProvider, type OAuthProvider } from '@/lib/oauth';
+import { signInWithApple, AppleSignInCancelled } from '@/lib/apple-auth';
+import { AppleSignInButton } from '@/components/apple-sign-in-button';
 import { setPendingProductSelection } from '@/lib/product-intent';
 import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
@@ -25,11 +28,16 @@ const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults'; subtitle: string }> =
 
 export default function SignupScreen() {
   const theme = useTheme();
+  // Apple's button must contrast with the background it sits on, so it
+  // needs the scheme itself, which useTheme resolves away.
+  const scheme = useColorScheme();
+  const colorScheme = scheme === 'dark' ? 'dark' : 'light';
   const { product } = useLocalSearchParams<{ product?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
 
@@ -74,6 +82,23 @@ export default function SignupScreen() {
     }
   }
 
+  async function handleApple() {
+    setError(null);
+    setAppleLoading(true);
+    try {
+      // Same product-intent write the other providers do before handing
+      // off — see lib/product-intent.ts.
+      await setPendingProductSelection(product as Product);
+      await signInWithApple();
+    } catch (err) {
+      // Dismissing Apple's sheet is not an error worth showing.
+      if (err instanceof AppleSignInCancelled) return;
+      setError(err instanceof Error ? err.message : 'Sign-in failed.');
+    } finally {
+      setAppleLoading(false);
+    }
+  }
+
   async function handleOAuth(provider: OAuthProvider) {
     setError(null);
     setOauthLoading(provider);
@@ -93,7 +118,7 @@ export default function SignupScreen() {
     }
   }
 
-  const anyLoading = loading || oauthLoading !== null;
+  const anyLoading = loading || oauthLoading !== null || appleLoading;
 
   if (emailSent) {
     return (
@@ -158,6 +183,14 @@ export default function SignupScreen() {
         </Pressable>
 
         <ThemedView type="backgroundElement" style={styles.divider} />
+
+        <AppleSignInButton
+          mode="signUp"
+          onPress={handleApple}
+          loading={appleLoading}
+          disabled={anyLoading}
+          colorScheme={colorScheme}
+        />
 
         <Pressable
           style={[styles.button, styles.oauthButton, { borderColor: theme.backgroundSelected }, anyLoading && styles.disabled]}
