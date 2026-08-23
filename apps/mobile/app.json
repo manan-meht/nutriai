@@ -9,7 +9,14 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/images/icon.png",
-      "bundleIdentifier": "com.tistrahealth.app"
+      "bundleIdentifier": "com.tistrahealth.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Tistra Health uses your camera so you can photograph a meal and get its nutrition estimate.",
+        "NSPhotoLibraryUsageDescription": "Tistra Health needs access to your photos so you can choose a meal picture you have already taken.",
+        "NSPhotoLibraryAddUsageDescription": "Tistra Health saves a meal photo back to your library when you ask it to.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.tistrahealth.app",
