@@ -1,4 +1,5 @@
 import fs from "fs";
+import { percentChange } from "@/lib/admin/metrics-math";
 import path from "path";
 
 // The admin dashboard's metrics feed.
@@ -37,12 +38,32 @@ describe("metrics read the tables the app actually writes", () => {
     expect(code(ROUTE)).not.toMatch(/gte\("logged_at"/);
   });
 
-  it("counts users as tracked people, not auth accounts", () => {
-    // profiles also holds coaches and staff — 85 rows against 35 real
-    // Tistra Health users.
+  it("separates accounts from the people they track", () => {
+    // These were the same number under two labels: totalUsers counted
+    // adults_contacts, so "total users" and the contact total could never
+    // disagree even though one account commonly adds several contacts.
     const t = code(ROUTE);
-    expect(t).toMatch(/\.from\("adults_contacts"\)[\s\S]{0,120}deleted_at/);
+    // Users = distinct workspace owners, so holding a self AND a family
+    // workspace is still one person.
+    expect(t).toMatch(/from\("workspaces"\)[\s\S]{0,120}owner_id/);
+    expect(t).toMatch(/eq\("type", "adults"\)/);
+    // profiles also holds coaches and staff, so it is still never the source.
     expect(t).not.toMatch(/from\("profiles"\)/);
+  });
+
+  it("counts contacts from the tracked-people table, excluding removals", () => {
+    const t = code(ROUTE);
+    expect(t).toMatch(/\.from\("adults_contacts"\)[\s\S]{0,160}deleted_at/);
+    // A removed contact is not someone being tracked; counting them would
+    // make the total drift upward forever.
+    expect(t).toMatch(/is\("deleted_at", null\)/);
+  });
+
+  it("reports contacts over the same windows as everything else", () => {
+    const t = code(ROUTE);
+    for (const k of ["contacts7d", "contacts30d", "contactsTotal"]) {
+      expect(t).toContain(k);
+    }
   });
 
   it("reports total AND active users, so active is readable as a share", () => {
@@ -85,5 +106,75 @@ describe("a broken metric fails loudly", () => {
     const t = code(ROUTE);
     expect(t.match(/throw new Error\(/g)?.length).toBeGreaterThanOrEqual(5);
     expect(t).toMatch(/status: 500/);
+  });
+});
+
+describe("percentage change against the previous window", () => {
+  it("reports growth and decline", () => {
+    expect(percentChange(82, 40)).toBe(105);
+    expect(percentChange(40, 80)).toBe(-50);
+  });
+
+  it("reports no change as zero, not null", () => {
+    // Flat is a real, useful answer — distinct from "cannot say".
+    expect(percentChange(8, 8)).toBe(0);
+  });
+
+  it("refuses to invent a percentage out of an empty window", () => {
+    // Growth from zero is either infinity or an arbitrary 100%, and both
+    // read as real movement on a dashboard. The caller has to handle it.
+    expect(percentChange(4, 0)).toBeNull();
+    expect(percentChange(0, 0)).toBeNull();
+  });
+
+  it("handles a window falling to zero", () => {
+    expect(percentChange(0, 20)).toBe(-100);
+  });
+
+  it("rounds to whole percent", () => {
+    expect(percentChange(7, 3)).toBe(133);
+    expect(Number.isInteger(percentChange(7, 3))).toBe(true);
+  });
+});
+
+describe("comparison windows", () => {
+  const t = code(ROUTE);
+
+  it("compares against an equal-length window, not since-the-beginning", () => {
+    // 7d is measured against days 8-14, and 30d against days 31-60.
+    expect(t).toMatch(/daysAgoIso\(14\)/);
+    expect(t).toMatch(/daysAgoIso\(60\)/);
+  });
+
+  it("closes the previous window where the current one opens", () => {
+    // Half-open, so a row on the boundary is not counted in both.
+    expect(t).toMatch(/until: since7d/);
+    expect(t).toMatch(/until: since30d/);
+    expect(t).toMatch(/\.lt\("created_at", window\.until\)/);
+  });
+});
+
+describe("top photo submitters", () => {
+  const t = code(ROUTE);
+
+  it("returns counts, never the photos themselves", () => {
+    // A metrics dashboard has no business rendering real meal photos.
+    expect(t).toMatch(/interface TopSubmitter[\s\S]{0,80}photos: number/);
+    expect(t).not.toMatch(/topPhotoSubmitters[\s\S]{0,400}select\("[^"]*image_url[^"]*"\)/);
+  });
+
+  it("counts only rows that actually carry a photo", () => {
+    expect(t).toMatch(/topPhotoSubmitters[\s\S]{0,600}not\("image_url", "is", null\)/);
+  });
+
+  it("keeps a submitter whose contact row has since been removed", () => {
+    // Their meal_logs survive the soft delete; dropping them would make the
+    // table disagree with the photo count above it.
+    expect(t).toMatch(/\|\| "Unknown"/);
+  });
+
+  it("is ordered by volume and capped", () => {
+    expect(t).toMatch(/sort\(\(a, b\) => b\[1\] - a\[1\]\)/);
+    expect(t).toMatch(/slice\(0, limit\)/);
   });
 });

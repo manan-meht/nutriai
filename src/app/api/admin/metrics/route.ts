@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { percentChange } from "@/lib/admin/metrics-math";
 
 // Internal metrics feed for the tistra-corp admin dashboard (tistra.sg/admin).
 // Not user-facing — bearer-token auth only, same pattern as the cron route
@@ -26,18 +27,28 @@ function daysAgoIso(days: number): string {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+/** A half-open time window: `since` inclusive, `until` exclusive. The
+ * exclusive end is what lets the current and preceding windows abut without
+ * double-counting a row that lands exactly on the boundary. */
+interface Window {
+  since?: string;
+  until?: string;
+}
+
+
 /** Meals that arrived with a photo. `created_at` is when we received it;
  * `logged_at` is when the person says they ate, which is not the same
  * question and drifts when someone back-dates a meal. */
 async function photoCount(
   db: ReturnType<typeof createServiceClient>,
-  since?: string
+  window: Window = {}
 ): Promise<number> {
   let query = db
     .from("meal_logs")
     .select("id", { count: "exact", head: true })
     .not("image_url", "is", null);
-  if (since) query = query.gte("created_at", since);
+  if (window.since) query = query.gte("created_at", window.since);
+  if (window.until) query = query.lt("created_at", window.until);
   const { count, error } = await query;
   if (error) throw new Error(`meal_logs: ${error.message}`);
   return count ?? 0;
@@ -48,10 +59,11 @@ async function photoCount(
  * than assuming one product. */
 async function activeUsers(
   db: ReturnType<typeof createServiceClient>,
-  since?: string
+  window: Window = {}
 ): Promise<number> {
   let query = db.from("meal_logs").select("adults_contact_id, client_id");
-  if (since) query = query.gte("created_at", since);
+  if (window.since) query = query.gte("created_at", window.since);
+  if (window.until) query = query.lt("created_at", window.until);
   const { data, error } = await query;
   if (error) throw new Error(`meal_logs: ${error.message}`);
   const people = new Set<string>();
@@ -62,40 +74,157 @@ async function activeUsers(
   return people.size;
 }
 
-async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
-  const since7d = daysAgoIso(7);
-  const since30d = daysAgoIso(30);
-
-  // Total users is the people being tracked, not auth accounts: the
-  // profiles table also holds coaches and staff, who are not Tistra Health
-  // users and would inflate this by more than double.
-  const totalUsersQuery = db
+/** People being tracked. One account commonly adds several — a parent
+ * tracking two children is one user and three contacts — so this answers a
+ * different question from the user count and the dashboard shows both.
+ *
+ * Soft-deleted rows are excluded: a removed contact is not someone Tistra is
+ * tracking, and counting them would make the total drift upward forever. */
+async function contactCount(
+  db: ReturnType<typeof createServiceClient>,
+  window: Window = {}
+): Promise<number> {
+  let query = db
     .from("adults_contacts")
     .select("id", { count: "exact", head: true })
     .is("deleted_at", null);
+  if (window.since) query = query.gte("created_at", window.since);
+  if (window.until) query = query.lt("created_at", window.until);
+  const { count, error } = await query;
+  if (error) throw new Error(`adults_contacts: ${error.message}`);
+  return count ?? 0;
+}
 
-  const [photos7d, photos30d, photosTotal, active7d, active30d, activeEver, totalUsers] =
-    await Promise.all([
-      photoCount(db, since7d),
-      photoCount(db, since30d),
-      photoCount(db),
-      activeUsers(db, since7d),
-      activeUsers(db, since30d),
-      activeUsers(db),
-      totalUsersQuery.then(({ count, error }) => {
-        if (error) throw new Error(`adults_contacts: ${error.message}`);
-        return count ?? 0;
-      }),
-    ]);
+/** Account holders on Tistra Health — the people who signed up, as opposed
+ * to the contacts they added.
+ *
+ * Counts distinct workspace OWNERS rather than workspaces, because one
+ * person can hold more than one (a self workspace and a family workspace),
+ * and counting rows would report them twice. Scoped to type "adults": the
+ * gym workspace is Tistra Coach and does not belong in a Health figure. */
+async function healthUserCount(db: ReturnType<typeof createServiceClient>): Promise<number> {
+  const { data, error } = await db.from("workspaces").select("owner_id").eq("type", "adults");
+  if (error) throw new Error(`workspaces: ${error.message}`);
+  const owners = new Set<string>();
+  for (const row of (data ?? []) as Array<{ owner_id: string | null }>) {
+    if (row.owner_id) owners.add(row.owner_id);
+  }
+  return owners.size;
+}
+
+/** Who sent the most meal photos in the window, by count.
+ *
+ * Counts only, never the images: this dashboard is a metrics view, and real
+ * people's meal photos have no business being rendered on it.
+ *
+ * Grouped in memory rather than SQL because PostgREST has no GROUP BY — the
+ * row set here is one id per photo over a week, which is small enough that
+ * the round trip costs less than a database function would to maintain. */
+interface TopSubmitter {
+  name: string;
+  photos: number;
+}
+
+async function topPhotoSubmitters(
+  db: ReturnType<typeof createServiceClient>,
+  since: string,
+  limit = 10
+): Promise<TopSubmitter[]> {
+  const { data, error } = await db
+    .from("meal_logs")
+    .select("adults_contact_id")
+    .not("image_url", "is", null)
+    .not("adults_contact_id", "is", null)
+    .gte("created_at", since);
+  if (error) throw new Error(`meal_logs: ${error.message}`);
+
+  const counts = new Map<string, number>();
+  for (const row of (data ?? []) as Array<{ adults_contact_id: string }>) {
+    counts.set(row.adults_contact_id, (counts.get(row.adults_contact_id) ?? 0) + 1);
+  }
+
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+  if (top.length === 0) return [];
+
+  const { data: people, error: nameError } = await db
+    .from("adults_contacts")
+    .select("id, full_name")
+    .in("id", top.map(([id]) => id));
+  if (nameError) throw new Error(`adults_contacts: ${nameError.message}`);
+
+  const nameById = new Map(
+    ((people ?? []) as Array<{ id: string; full_name: string | null }>).map((r) => [
+      r.id,
+      (r.full_name ?? "").trim(),
+    ])
+  );
+
+  // A soft-deleted contact keeps its meal_logs, so a name can be missing
+  // here even though the photos are real. Showing the count against a
+  // placeholder beats dropping rows and having the table not add up.
+  return top.map(([id, photos]) => ({ name: nameById.get(id) || "Unknown", photos }));
+}
+
+async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
+  const since7d = daysAgoIso(7);
+  const since30d = daysAgoIso(30);
+  // The equal-length window immediately before each current one, so a
+  // percentage compares like with like: days 8-14 against days 1-7.
+  const since14d = daysAgoIso(14);
+  const since60d = daysAgoIso(60);
+  const prev7d: Window = { since: since14d, until: since7d };
+  const prev30d: Window = { since: since60d, until: since30d };
+
+  const [
+    photos7d, photos30d, photosTotal, photosPrev7d, photosPrev30d,
+    active7d, active30d, activeEver, activePrev7d, activePrev30d,
+    contacts7d, contacts30d, contactsTotal, contactsPrev7d, contactsPrev30d,
+    totalUsers, topSubmitters7d,
+  ] = await Promise.all([
+    photoCount(db, { since: since7d }),
+    photoCount(db, { since: since30d }),
+    photoCount(db),
+    photoCount(db, prev7d),
+    photoCount(db, prev30d),
+    activeUsers(db, { since: since7d }),
+    activeUsers(db, { since: since30d }),
+    activeUsers(db),
+    activeUsers(db, prev7d),
+    activeUsers(db, prev30d),
+    contactCount(db, { since: since7d }),
+    contactCount(db, { since: since30d }),
+    contactCount(db),
+    contactCount(db, prev7d),
+    contactCount(db, prev30d),
+    healthUserCount(db),
+    topPhotoSubmitters(db, since7d),
+  ]);
 
   return {
     photosPosted7d: photos7d,
     photosPosted30d: photos30d,
     photosPostedTotal: photosTotal,
+    photosPosted7dChangePct: percentChange(photos7d, photosPrev7d),
+    photosPosted30dChangePct: percentChange(photos30d, photosPrev30d),
+
     activeUsers7d: active7d,
     activeUsers30d: active30d,
     activeUsersTotal: activeEver,
+    activeUsers7dChangePct: percentChange(active7d, activePrev7d),
+    activeUsers30dChangePct: percentChange(active30d, activePrev30d),
+
+    // Accounts, not people tracked. This previously counted adults_contacts,
+    // which made "total users" and the contact total the same number under
+    // two different labels.
     totalUsers,
+
+    contacts7d,
+    contacts30d,
+    contactsTotal,
+    contacts7dChangePct: percentChange(contacts7d, contactsPrev7d),
+    contacts30dChangePct: percentChange(contacts30d, contactsPrev30d),
+
+    topSubmitters7d,
   };
 }
 
