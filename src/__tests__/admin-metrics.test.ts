@@ -178,3 +178,37 @@ describe("top photo submitters", () => {
     expect(t).toMatch(/slice\(0, limit\)/);
   });
 });
+
+describe("the team's own accounts are excluded", () => {
+  const t = code(ROUTE);
+
+  it("filters Health figures on an explicit flag, not an email pattern", () => {
+    // Matching '%manan%' would silently reclassify a genuine customer who
+    // happens to share a name, and the count would just quietly drop.
+    expect(t).toMatch(/eq\("is_test", true\)/);
+    expect(t).not.toMatch(/email/i);
+  });
+
+  it("excludes them from users, contacts, photos and submitters alike", () => {
+    // A flag applied to only some figures is worse than none: the totals
+    // stop reconciling with each other.
+    expect(t).toMatch(/eq\("type", "adults"\)[\s\S]{0,80}eq\("is_test", false\)/);
+    const excludes = t.match(/not\("workspace_id", "in", testIdList\(testIds\)\)/g) ?? [];
+    expect(excludes.length).toBe(4); // photos, active users, contacts, submitters
+  });
+
+  it("skips the filter when nothing is flagged", () => {
+    // PostgREST renders an empty list as `in.()` and rejects it as a syntax
+    // error rather than reading it as "exclude nothing" — the same trap the
+    // club metrics hit with an empty coach list.
+    const guards = t.match(/testIds\.length > 0/g) ?? [];
+    expect(guards.length).toBe(4);
+  });
+
+  it("reads the flag once and threads it through", () => {
+    // Re-querying per metric would be 17 extra round trips for a value that
+    // cannot change mid-request.
+    expect(t).toMatch(/const testIds = await testWorkspaceIds\(db\)/);
+    expect((t.match(/await testWorkspaceIds\(db\)/g) ?? []).length).toBe(1);
+  });
+});

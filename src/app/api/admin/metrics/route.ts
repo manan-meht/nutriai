@@ -35,18 +35,46 @@ interface Window {
   until?: string;
 }
 
+/** Workspace ids belonging to the team's own accounts.
+ *
+ * Every Tistra Health figure is filtered against these, the same way every
+ * club figure is scoped to non-demo coaches. Returned as a list rather than
+ * applied as a join because PostgREST cannot express one, and the flagged
+ * set is small and stays small — so excluding it is cheaper than restricting
+ * to the (ever-growing) set of real ones. */
+async function testWorkspaceIds(
+  db: ReturnType<typeof createServiceClient>
+): Promise<string[]> {
+  const { data, error } = await db.from("workspaces").select("id").eq("is_test", true);
+  if (error) throw new Error(`workspaces: ${error.message}`);
+  return (data ?? []).map((row) => (row as { id: string }).id);
+}
+
+/** PostgREST's exclusion list for the test workspaces.
+ *
+ * Callers must skip the filter entirely when there is nothing to exclude:
+ * an empty list renders as `in.()`, which PostgREST rejects as a syntax
+ * error rather than reading as "exclude nothing" — the same trap the club
+ * metrics hit with an empty coach list. */
+function testIdList(ids: string[]): string {
+  return `(${ids.join(",")})`;
+}
+
 
 /** Meals that arrived with a photo. `created_at` is when we received it;
  * `logged_at` is when the person says they ate, which is not the same
  * question and drifts when someone back-dates a meal. */
 async function photoCount(
   db: ReturnType<typeof createServiceClient>,
+  testIds: string[],
   window: Window = {}
 ): Promise<number> {
-  let query = db
+  const base = db
     .from("meal_logs")
     .select("id", { count: "exact", head: true })
     .not("image_url", "is", null);
+  let query =
+    testIds.length > 0 ? base.not("workspace_id", "in", testIdList(testIds)) : base;
   if (window.since) query = query.gte("created_at", window.since);
   if (window.until) query = query.lt("created_at", window.until);
   const { count, error } = await query;
@@ -59,9 +87,12 @@ async function photoCount(
  * than assuming one product. */
 async function activeUsers(
   db: ReturnType<typeof createServiceClient>,
+  testIds: string[],
   window: Window = {}
 ): Promise<number> {
-  let query = db.from("meal_logs").select("adults_contact_id, client_id");
+  const base = db.from("meal_logs").select("adults_contact_id, client_id");
+  let query =
+    testIds.length > 0 ? base.not("workspace_id", "in", testIdList(testIds)) : base;
   if (window.since) query = query.gte("created_at", window.since);
   if (window.until) query = query.lt("created_at", window.until);
   const { data, error } = await query;
@@ -82,12 +113,15 @@ async function activeUsers(
  * tracking, and counting them would make the total drift upward forever. */
 async function contactCount(
   db: ReturnType<typeof createServiceClient>,
+  testIds: string[],
   window: Window = {}
 ): Promise<number> {
-  let query = db
+  const base = db
     .from("adults_contacts")
     .select("id", { count: "exact", head: true })
     .is("deleted_at", null);
+  let query =
+    testIds.length > 0 ? base.not("workspace_id", "in", testIdList(testIds)) : base;
   if (window.since) query = query.gte("created_at", window.since);
   if (window.until) query = query.lt("created_at", window.until);
   const { count, error } = await query;
@@ -103,7 +137,11 @@ async function contactCount(
  * and counting rows would report them twice. Scoped to type "adults": the
  * gym workspace is Tistra Coach and does not belong in a Health figure. */
 async function healthUserCount(db: ReturnType<typeof createServiceClient>): Promise<number> {
-  const { data, error } = await db.from("workspaces").select("owner_id").eq("type", "adults");
+  const { data, error } = await db
+    .from("workspaces")
+    .select("owner_id")
+    .eq("type", "adults")
+    .eq("is_test", false);
   if (error) throw new Error(`workspaces: ${error.message}`);
   const owners = new Set<string>();
   for (const row of (data ?? []) as Array<{ owner_id: string | null }>) {
@@ -127,15 +165,19 @@ interface TopSubmitter {
 
 async function topPhotoSubmitters(
   db: ReturnType<typeof createServiceClient>,
+  testIds: string[],
   since: string,
   limit = 10
 ): Promise<TopSubmitter[]> {
-  const { data, error } = await db
+  const unfiltered = db
     .from("meal_logs")
     .select("adults_contact_id")
     .not("image_url", "is", null)
     .not("adults_contact_id", "is", null)
     .gte("created_at", since);
+  const { data, error } = await (testIds.length > 0
+    ? unfiltered.not("workspace_id", "in", testIdList(testIds))
+    : unfiltered);
   if (error) throw new Error(`meal_logs: ${error.message}`);
 
   const counts = new Map<string, number>();
@@ -166,6 +208,12 @@ async function topPhotoSubmitters(
 }
 
 async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
+  // Fetched once and threaded through every query below. The team's own
+  // accounts are excluded from ALL Health figures, matching how the club
+  // side excludes demo coaches — without it the owner's throwaway signups
+  // are counted as customers.
+  const testIds = await testWorkspaceIds(db);
+
   const since7d = daysAgoIso(7);
   const since30d = daysAgoIso(30);
   // The equal-length window immediately before each current one, so a
@@ -181,23 +229,23 @@ async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
     contacts7d, contacts30d, contactsTotal, contactsPrev7d, contactsPrev30d,
     totalUsers, topSubmitters7d,
   ] = await Promise.all([
-    photoCount(db, { since: since7d }),
-    photoCount(db, { since: since30d }),
-    photoCount(db),
-    photoCount(db, prev7d),
-    photoCount(db, prev30d),
-    activeUsers(db, { since: since7d }),
-    activeUsers(db, { since: since30d }),
-    activeUsers(db),
-    activeUsers(db, prev7d),
-    activeUsers(db, prev30d),
-    contactCount(db, { since: since7d }),
-    contactCount(db, { since: since30d }),
-    contactCount(db),
-    contactCount(db, prev7d),
-    contactCount(db, prev30d),
+    photoCount(db, testIds, { since: since7d }),
+    photoCount(db, testIds, { since: since30d }),
+    photoCount(db, testIds),
+    photoCount(db, testIds, prev7d),
+    photoCount(db, testIds, prev30d),
+    activeUsers(db, testIds, { since: since7d }),
+    activeUsers(db, testIds, { since: since30d }),
+    activeUsers(db, testIds),
+    activeUsers(db, testIds, prev7d),
+    activeUsers(db, testIds, prev30d),
+    contactCount(db, testIds, { since: since7d }),
+    contactCount(db, testIds, { since: since30d }),
+    contactCount(db, testIds),
+    contactCount(db, testIds, prev7d),
+    contactCount(db, testIds, prev30d),
     healthUserCount(db),
-    topPhotoSubmitters(db, since7d),
+    topPhotoSubmitters(db, testIds, since7d),
   ]);
 
   return {
