@@ -135,6 +135,6 @@ describe("the privacy policy discloses the Google Calendar data", () => {
   });
 
   it("bumps the last-updated date, which reviewers check for staleness", () => {
-    expect(policy()).toMatch(/PRIVACY_LAST_UPDATED = "August 21, 2026"/);
+    expect(policy()).toMatch(/PRIVACY_LAST_UPDATED = "August 24, 2026"/);
   });
 });

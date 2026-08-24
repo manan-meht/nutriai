@@ -1,3 +1,13 @@
+import { cookies, headers } from "next/headers";
+import {
+  CONSENT_COOKIE,
+  consentDefaultPayload,
+  consentRequiredFor,
+  parseConsent,
+  shouldShowBanner,
+} from "@/lib/privacy/consent";
+import { ConsentBanner } from "./ConsentBanner";
+
 /** Google Ads global site tag.
  *
  * Belongs on every page an ad click can land on, NOT only on the
@@ -13,26 +23,41 @@
  */
 export const GOOGLE_ADS_ID = "AW-18404074450";
 
-export function GoogleAdsTag() {
-  // Plain <script>, not next/script.
+export async function GoogleAdsTag() {
+  // cf-ipcountry is set by Cloudflare's edge and cannot be spoofed through a
+  // normal request header. This is a UX/compliance default, never a security
+  // boundary — the same posture as billing's country detection.
+  const headerStore = await headers();
+  const country = headerStore.get("cf-ipcountry");
+  const required = consentRequiredFor(country);
+
+  const cookieStore = await cookies();
+  const stored = parseConsent(cookieStore.get(CONSENT_COOKIE)?.value);
+
+  // ONE inline script, deliberately.
   //
-  // next/script's afterInteractive puts only a <link rel="preload"> in the
-  // head and injects the real tag after hydration. The tag worked, but
-  // Google's "test installation" check looks for the literal script it
-  // gave you and reported the tag as not installed. React hoists an async
-  // <script src> to the head, so this produces exactly what Google asks
-  // for: the tag in the document head, in the served HTML.
+  // Consent Mode is order-sensitive: the 'default' command must be processed
+  // before any config or event, or the tag fires under the wrong state. React
+  // hoists <script async src> into the head independently of where the JSX
+  // sits, so relying on the loader landing after a separate inline script
+  // would be relying on undefined ordering. Keeping the queue init, the
+  // consent default and the config in a single script makes their relative
+  // order a property of the script itself rather than of React's hoisting.
+  const bootstrap = `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent','default',${consentDefaultPayload({ required, stored })});
+gtag('js', new Date());
+gtag('config', '${GOOGLE_ADS_ID}');`;
+
   return (
     <>
+      <script dangerouslySetInnerHTML={{ __html: bootstrap }} />
+      {/* Plain <script>, not next/script: next/script's afterInteractive
+          emits only a <link rel="preload"> into the head and injects the real
+          tag after hydration, and Google's "test installation" check looks
+          for the literal script it gave you. */}
       <script async src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ADS_ID}`} />
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${GOOGLE_ADS_ID}');`,
-        }}
-      />
+      {shouldShowBanner({ required, stored }) && <ConsentBanner />}
     </>
   );
 }

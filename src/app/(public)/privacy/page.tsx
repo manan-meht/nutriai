@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
 import { PRIVACY_SECTIONS, PRIVACY_LAST_UPDATED } from "./content";
+import { ConsentPreferencesButton } from "@/components/marketing/ConsentPreferencesButton";
 
 export function generateMetadata(): Metadata {
   return {
@@ -74,7 +75,29 @@ export default function PrivacyPage() {
           ))}
 
           <section className="scroll-mt-20">
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">12. Contact</h2>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">13. Cookies and advertising</h2>
+            <div className="space-y-4 text-gray-700 leading-relaxed">
+              <p>
+                Tistra uses cookies that are strictly necessary to run the Service — keeping you
+                signed in, remembering your country for pricing, and recording your cookie choice
+                itself. These are always on, because the Service cannot work without them.
+              </p>
+              <p>
+                We also use Google Ads cookies to measure how well our advertising works. These are
+                not necessary to use Tistra. If you are in the EEA or the UK, we ask before setting
+                them and set nothing for advertising until you agree — if you decline, or simply
+                ignore the prompt, no advertising cookie is written. Elsewhere they are enabled by
+                default, in line with local law.
+              </p>
+              <p>
+                You can change or withdraw your choice at any time, and it takes effect immediately:
+              </p>
+              <div><ConsentPreferencesButton /></div>
+            </div>
+          </section>
+
+          <section className="scroll-mt-20">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">14. Contact</h2>
             <div className="space-y-4 text-gray-700 leading-relaxed">
               <p>For questions about this Privacy Policy, or to request data deletion or export, contact us at:</p>
               <p>

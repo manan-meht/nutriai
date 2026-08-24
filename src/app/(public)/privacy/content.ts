@@ -1,6 +1,6 @@
 // Bump this whenever PRIVACY_SECTIONS changes — Play/App Store reviewers
 // and users both rely on this to know the policy is current, not stale.
-export const PRIVACY_LAST_UPDATED = "August 21, 2026";
+export const PRIVACY_LAST_UPDATED = "August 24, 2026";
 
 export interface PrivacyBlock {
   type: "p" | "ul" | "p-link";
