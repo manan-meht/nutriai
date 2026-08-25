@@ -11,11 +11,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
       <header className="bg-[var(--color-dashboard-primary)] px-4 sm:px-6 py-3">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-x-6 gap-y-2">
-          <span className="text-white font-bold text-sm">Tistra Meal Review Console</span>
+          <span className="text-white font-bold text-sm">Tistra Admin</span>
           <nav className="flex gap-4 text-sm text-white/80 overflow-x-auto">
             <Link href="/admin" className="hover:text-white whitespace-nowrap">Review queue</Link>
             <Link href="/admin?tab=food-knowledge" className="hover:text-white whitespace-nowrap">Food knowledge</Link>
             <Link href="/admin?tab=model-quality" className="hover:text-white whitespace-nowrap">Model quality</Link>
+            <Link href="/admin/coaches" className="hover:text-white whitespace-nowrap">Coaches</Link>
           </nav>
           <span className="sm:ml-auto text-xs text-white/60 capitalize">{session.role.replace("_", " ")}</span>
         </div>

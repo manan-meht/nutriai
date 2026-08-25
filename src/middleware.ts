@@ -76,6 +76,11 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/terms") ||
+    // The admin console is one surface for the whole company, reachable from
+    // whichever host the person happened to be on. It is role-gated in its
+    // own layout, so exposing the path here grants nothing — without this the
+    // club host rewrites it to /club/admin and it 404s.
+    pathname.startsWith("/admin") ||
     /\.[a-z0-9]+$/i.test(pathname); // files (favicon, images, …)
 
   // Coach OS from the root of the coach host, same shape as the club but
