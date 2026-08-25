@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listCoaches, isReadyToPublish, outstanding, type AdminCoachRow } from "./data";
+import { Portrait } from "./Portrait";
 
 // Every coach on the platform, including the ones discovery hides.
 //
@@ -37,44 +38,6 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-/** The coach's own portrait, at the size it is actually judged at.
- *
- * Worth showing rather than linking: half of reviewing a roster is looking
- * at whether the photo is usable, and a URL cannot answer that. Cropped at
- * 35% from the top like the marketplace does — coach portraits put the face
- * in the upper third, so a centred crop takes the top of the head off. */
-function Portrait({ c }: { c: AdminCoachRow }) {
-  if (!c.photoUrl) {
-    return (
-      <div
-        className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-sm font-semibold text-gray-400"
-        title={c.blockers.photo ? "Photo uploaded but could not be signed" : "No photo uploaded"}
-      >
-        {initials(c.displayName) || "?"}
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- signed storage URL
-    <img
-      src={c.photoUrl}
-      alt={`${c.displayName}'s profile photo`}
-      loading="lazy"
-      className="h-20 w-20 shrink-0 rounded-lg border border-gray-200 object-cover"
-      style={{ objectPosition: "center 35%" }}
-    />
-  );
-}
-
 function CoachCard({ c }: { c: AdminCoachRow }) {
   const missing = outstanding(c.blockers);
   const ready = isReadyToPublish(c.blockers);
@@ -83,7 +46,7 @@ function CoachCard({ c }: { c: AdminCoachRow }) {
     <section className="rounded-xl border border-gray-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 gap-4">
-          <Portrait c={c} />
+          <Portrait name={c.displayName} photoUrl={c.photoUrl} hasUploadedPhoto={c.blockers.photo} />
           <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-bold text-gray-900">{c.displayName}</h2>
