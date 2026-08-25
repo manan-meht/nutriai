@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listCoaches, isReadyToPublish, outstanding, type AdminCoachRow } from "./data";
 import { Portrait } from "./Portrait";
+import { StripeLinks } from "./StripeLinks";
 
 // Every coach on the platform, including the ones discovery hides.
 //
@@ -173,6 +174,13 @@ function CoachCard({ c }: { c: AdminCoachRow }) {
           </ul>
         </div>
       </div>
+
+      <StripeLinks
+        coachProfileId={c.id}
+        coachName={c.displayName}
+        hasAccount={!!c.stripeAccountId}
+        payoutsEnabled={c.stripePayoutsEnabled}
+      />
 
       <div className="mt-4 flex flex-wrap gap-4 text-sm">
         {c.status === "published" && (
