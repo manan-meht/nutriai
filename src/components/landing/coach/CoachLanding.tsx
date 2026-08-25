@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { Reveal } from "@/components/motion/Reveal";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
-import { DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "@/lib/club/config";
-import { createServiceClient } from "@/lib/supabase/server";
-import { discoverCoaches, type CoachCard } from "@/lib/club/discovery";
+import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/club/config";
+import { coachPreview, type CoachPreview } from "@/lib/landing/coach-preview";
 import { ProfileMock } from "./ProfileMock";
 import { TrackedCta } from "./TrackedCta";
 import { StickyMobileCta } from "./StickyMobileCta";
@@ -97,62 +96,10 @@ const FUNNEL = [
   },
 ] as const;
 
-/** The coaches actually listed on Tistra Club, for the "this is what
- * clients see" section.
- *
- * Uses discoverCoaches — the same query the real marketplace runs — rather
- * than a hand-written one, so the preview cannot drift from the product it
- * is claiming to show. Scoped to is_demo: false, so the seeded example
- * coaches never appear here.
- *
- * Never throws: this is the destination for paid ad traffic, and a database
- * hiccup must cost one section, not the whole page and the click that paid
- * for it. */
-/** Cached across requests, because this is a paid-traffic landing page.
- *
- * discoverCoaches is built for a marketplace visitor filtering a search: it
- * runs seven queries, signs every photo URL, and asks Google Calendar for
- * each connected coach's busy blocks. Roughly a second, paid on every ad
- * click, to render three cards that change when a coach signs up — which is
- * currently about twice a week.
- *
- * Module-level TTL rather than a cache library, matching how club/calendar.ts
- * and club/geocode.ts already memoise inside a Worker instance. Five minutes
- * keeps "live coaches" honest while making the cost effectively zero.
- *
- * Never throws: a database hiccup must cost one section, not the whole page
- * and the click that paid for it. */
-const PREVIEW_TTL_MS = 5 * 60 * 1000;
-let previewCache: { at: number; coaches: CoachCard[] } | null = null;
-
-async function realCoaches(limit: number): Promise<CoachCard[]> {
-  if (previewCache && Date.now() - previewCache.at < PREVIEW_TTL_MS) {
-    return previewCache.coaches.slice(0, limit);
-  }
-  try {
-    const admin = createServiceClient();
-    const coaches = await discoverCoaches(admin, { demo: false });
-    previewCache = { at: Date.now(), coaches };
-    return coaches.slice(0, limit);
-  } catch {
-    // Serve a stale list rather than dropping the section, if we have one.
-    return previewCache?.coaches.slice(0, limit) ?? [];
-  }
-}
-
 function formatFrom(cents: number | null, currency: string): string | null {
   if (cents == null) return null;
   const symbol = currency === "SGD" ? "S$" : `${currency} `;
   return `${symbol}${Math.round(cents / 100)}`;
-}
-
-/** Turns the coach's genuine next opening into the line a client sees.
- * Absent when there is no upcoming slot — an invented "available soon" on a
- * fully booked coach is the kind of small lie that costs a booking. */
-function formatNextSlot(card: CoachCard): string | null {
-  if (!card.nextSlot) return null;
-  const when = new Date(card.nextSlot.startsAt);
-  return `Next: ${when.toLocaleDateString("en-SG", { weekday: "short", timeZone: CLUB_MARKET.timezone })} ${when.toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit", timeZone: CLUB_MARKET.timezone })}`;
 }
 
 /** Benefits, written as outcomes rather than features. */
@@ -227,7 +174,7 @@ const CAPABILITIES = [
 export async function CoachLanding() {
   // Three is enough to read as a marketplace without turning the section
   // into a directory that competes with the signup CTA.
-  const coaches = await realCoaches(3);
+  const coaches = await coachPreview(3);
 
   const signupHref = getSignupUrl({
     product: "gym",
@@ -408,17 +355,16 @@ export async function CoachLanding() {
             </h2>
             <p className="mt-4 max-w-2xl text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
               Clients browse Tistra Club by skill, neighbourhood and when they&rsquo;re free. These
-              coaches are live today &mdash; your profile sits alongside them, with your own rates
-              and your real availability.
+              coaches are live today &mdash; your profile sits alongside them, with your own
+              skills, rates and neighbourhood.
             </p>
           </Reveal>
 
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {coaches.map((c, i) => {
+            {coaches.map((c: CoachPreview, i: number) => {
               const from = formatFrom(c.startingPriceCents, c.currency);
-              const slot = formatNextSlot(c);
               return (
-                <Reveal key={c.coachProfileId} delay={i * 70} className="flex">
+                <Reveal key={c.id} delay={i * 70} className="flex">
                   <div
                     className="flex w-full flex-col overflow-hidden rounded-2xl border"
                     style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
@@ -462,19 +408,10 @@ export async function CoachLanding() {
                           {c.neighbourhood}
                         </p>
                       )}
-                      {/* Real availability, or nothing. No coach here has been
-                          reviewed yet, so there is deliberately no rating. */}
-                      {slot && (
-                        <p className="mt-3">
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
-                            style={{ backgroundColor: "#E6F4EC", color: "#0F7A4F" }}
-                          >
-                            <span aria-hidden="true">●</span>
-                            {slot}
-                          </span>
-                        </p>
-                      )}
+                      {/* No rating and no "next available" chip. Nobody here
+                          has been reviewed yet, and a live availability chip
+                          costs a Google Calendar round-trip per coach on a
+                          paid-traffic landing page — see lib/landing/coach-preview. */}
                       <div className="mt-auto pt-4">
                         {from && <p className="text-[15px] font-semibold">From {from}/session</p>}
                         <div
