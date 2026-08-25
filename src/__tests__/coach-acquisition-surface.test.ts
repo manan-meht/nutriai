@@ -61,11 +61,12 @@ describe("the commercial model is explicit", () => {
     // The hero CTA and the pricing line must be in the same block: a coach
     // should not have to scroll to learn what it costs.
     const landing = code(LANDING);
-    const cta = landing.indexOf("Start coaching on Tistra");
+    const cta = landing.indexOf("Get listed for free →");
     const price = landing.indexOf("{PRICING_LINE}");
     expect(cta).toBeGreaterThan(-1);
     expect(price).toBeGreaterThan(cta);
-    expect(landing.slice(cta, price)).not.toContain("<Section>");
+    // Still inside the hero <header>, not pushed into a later section.
+    expect(landing.slice(cta, price)).not.toContain("<Section");
   });
 });
 
