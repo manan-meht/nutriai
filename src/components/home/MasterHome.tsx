@@ -6,6 +6,9 @@ import { Reveal } from "@/components/motion/Reveal";
 import { UseCaseCards, type UseCaseCard } from "@/components/landing/shared/UseCaseCards";
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
+import { HealthFaq } from "./HealthFaq";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { tistraHealthGraph, SITE_URL } from "@/lib/seo/structured-data";
 
 // Coaching is not offered here. It is its own product on its own domain
 // (coach.tistrahealth.com) with its own marketplace, so Tistra Health's
@@ -48,6 +51,10 @@ const HOW_IT_WORKS = [
 export function MasterHome({ homeHref }: { homeHref: string }) {
   return (
     <div className="min-h-screen bg-white text-gray-900">
+      {/* Structured data lives on this page rather than in the shared root
+          layout: that layout also renders the (club) and (coach) route
+          groups, which are different products on different domains. */}
+      <JsonLd data={tistraHealthGraph(SITE_URL, true)} />
       <MarketingHeader variant="home" homeHref={homeHref} />
 
       <main>
@@ -258,7 +265,10 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
           </Reveal>
         </section>
 
-        {/* 6. Final CTA */}
+        {/* 6. Question-led FAQ — the answers backing the FAQPage JSON-LD above. */}
+        <HealthFaq />
+
+        {/* 7. Final CTA */}
         <section className="bg-gray-50 py-14">
           <Reveal>
             <div className="text-center max-w-2xl mx-auto px-6">

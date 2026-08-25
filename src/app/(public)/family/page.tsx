@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { AdultsImmersiveLanding } from "@/components/landing/immersive/AdultsImmersiveLanding";
 import { EXPERIMENT_IDS } from "@/lib/experiments/landing-page-experiment";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { tistraHealthGraph, SITE_URL } from "@/lib/seo/structured-data";
 
 export function generateMetadata(): Metadata {
   return {
@@ -27,6 +29,11 @@ export function generateMetadata(): Metadata {
 export default function FamilyMarketingPage() {
   return (
     <>
+      {/* Entity graph only — no FAQPage here. The FAQ answers are rendered
+          on the homepage, and claiming FAQPage on a page that doesn't show
+          the matching copy is a structured-data policy violation. Adding a
+          JSON-LD script keeps this page static; it renders at build time. */}
+      <JsonLd data={tistraHealthGraph(`${SITE_URL}/family`)} />
       <MarketingHeader variant="family" />
       <AdultsImmersiveLanding variant="immersive" experimentId={EXPERIMENT_IDS.adults} showNav={false} />
     </>
