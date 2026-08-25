@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
+import { resolveSignedCoachPhotoUrl } from "@/lib/club/media";
 
 /** Coach roster for the admin console.
  *
@@ -34,6 +35,8 @@ export interface AdminCoachRow {
   bio: string | null;
   yearsCoaching: number | null;
   languages: string[];
+  /** A short-lived signed URL, not the storage path: coach portraits live in
+   * a private bucket and would render as a broken image otherwise. */
   photoUrl: string | null;
   foundingFreeBookings: number;
   foundingFreeUsed: number;
@@ -104,6 +107,19 @@ export async function listCoaches(): Promise<AdminCoachRow[]> {
   const ruleBy = by(rules.data as { coach_profile_id: string; weekday: number; start_minute: number; end_minute: number; is_active: boolean }[] | null);
   const freeBy = by(payments.data as { coach_profile_id: string }[] | null);
 
+  // Signed in one pass rather than per card. A failure signs as null and the
+  // card falls back to initials — one unreadable portrait must not blank the
+  // roster.
+  const signedPhoto = new Map<string, string | null>();
+  await Promise.all(
+    rows.map(async (r) => {
+      signedPhoto.set(
+        r.id as string,
+        (await resolveSignedCoachPhotoUrl(admin, (r.photo_url as string) ?? null)) ?? null
+      );
+    })
+  );
+
   const skillName = new Map(((clubSkills.data ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
   const userById = new Map(
     (authUsers.data?.users ?? []).map((u) => [u.id, { email: u.email ?? null, lastSignInAt: u.last_sign_in_at ?? null }])
@@ -118,6 +134,8 @@ export async function listCoaches(): Promise<AdminCoachRow[]> {
     const user = userById.get(r.profile_id as string);
 
     const blockers: CoachBlockers = {
+      // The raw column, not the signed URL: a signing failure is our problem,
+      // not a missing photo on the coach's part.
       photo: !!r.photo_url,
       bio: !!r.bio,
       skills: (skillBy.get(id) ?? []).length,
@@ -141,7 +159,7 @@ export async function listCoaches(): Promise<AdminCoachRow[]> {
       bio: (r.bio as string) ?? null,
       yearsCoaching: (r.years_coaching as number) ?? null,
       languages: (r.languages as string[]) ?? [],
-      photoUrl: (r.photo_url as string) ?? null,
+      photoUrl: signedPhoto.get(id) ?? null,
       foundingFreeBookings: Number(r.founding_free_bookings ?? 0),
       foundingFreeUsed: (freeBy.get(id) ?? []).length,
       stripeAccountId: (r.stripe_account_id as string) ?? null,
