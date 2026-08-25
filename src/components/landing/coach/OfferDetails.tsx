@@ -52,6 +52,10 @@ export function OfferDetails({ freeBookings, feePercent }: { freeBookings: numbe
           After those {freeBookings}, Tistra takes {feePercent}% only when you get paid — card
           processing included. No contract, no notice period, unpublish whenever you like.
         </p>
+        <p>
+          Card and PayLah charges are set by the payment provider, not by Tistra, and still apply
+          during the offer. Tistra takes no commission on those first {freeBookings} bookings.
+        </p>
       </div>
     </details>
   );

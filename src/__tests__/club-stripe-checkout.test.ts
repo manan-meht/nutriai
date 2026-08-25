@@ -60,7 +60,29 @@ describe("the money is split the way the coach was told", () => {
   });
 
   it("reads the live fee rather than a constant", () => {
-    expect(session).toMatch(/getPlatformFeePercent\(admin\)/);
+    // The rate now resolves through resolveBookingFee, which applies the
+    // founding offer and otherwise falls through to getPlatformFeePercent.
+    // The rule this protects is unchanged: never a hardcoded percentage.
+    expect(session).toMatch(/resolveBookingFee\(admin, req\.coachProfileId, req\.priceCents\)/);
+    expect(src("lib/club/founding-offer.ts")).toMatch(/getPlatformFeePercent\(admin\)/);
+    expect(session).not.toMatch(/DEFAULT_PLATFORM_FEE_PERCENT/);
+  });
+
+  it("carries the founding-offer decision on the session, not a recount", () => {
+    // Another booking can take the coach's last free slot between checkout
+    // opening and settling. Recomputing at settlement would make the ledger
+    // disagree with the application_fee_amount Stripe actually took.
+    expect(session).toMatch(/founding_free: fee\.foundingFree \? "1" : "0"/);
+    expect(src("lib/club/payments.ts")).toMatch(/const foundingFree = outcome\.foundingFree/);
+  });
+
+  it("still charges the coach for card processing on a free booking", () => {
+    // These are destination charges: application_fee_amount is the platform's
+    // whole take and Stripe's cost comes out of it, so a literal zero would
+    // mean Tistra PAYS the card fee on every free booking.
+    const offer = src("lib/club/founding-offer.ts");
+    expect(offer).toMatch(/stripeProcessingCents/);
+    expect(offer).not.toMatch(/platformFeeCents: 0,/);
   });
 });
 

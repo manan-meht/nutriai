@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getPlatformFeePercent } from "./platform-fee";
-import { splitAmount } from "./config";
+import { resolveBookingFee } from "./founding-offer";
 
 // Stripe Checkout for a session booking.
 //
@@ -77,8 +77,9 @@ export async function createBookingCheckoutSession(
   admin: SupabaseClient,
   req: SessionRequest
 ): Promise<{ url: string; sessionId: string; platformFeeCents: number }> {
-  const feePercent = await getPlatformFeePercent(admin);
-  const { platformFeeCents } = splitAmount(req.priceCents, feePercent);
+  // Founding offer applied here, at the one place the money is decided.
+  const fee = await resolveBookingFee(admin, req.coachProfileId, req.priceCents);
+  const platformFeeCents = fee.platformFeeCents;
 
   const session = await stripe<any>("POST", "/checkout/sessions", {
     mode: "payment",
@@ -96,11 +97,26 @@ export async function createBookingCheckoutSession(
       application_fee_amount: platformFeeCents,
       transfer_data: { destination: req.connectedAccountId },
       // on_behalf_of is deliberately absent — see stripe-connect.ts.
-      metadata: { hold_id: req.holdId, coach_profile_id: req.coachProfileId },
+      // founding_free travels with the payment so settlement records what
+      // Stripe was actually told, rather than recomputing an allowance that
+      // may have been consumed by another booking in the meantime.
+      metadata: {
+        hold_id: req.holdId,
+        coach_profile_id: req.coachProfileId,
+        founding_free: fee.foundingFree ? "1" : "0",
+        fee_percent: String(fee.feePercent),
+      },
     },
     // Also on the session: the webhook reads it from here, since the
-    // session is what checkout.session.completed carries.
-    metadata: { hold_id: req.holdId, coach_profile_id: req.coachProfileId },
+    // session is what checkout.session.completed carries — and so does
+    // readCheckoutSession, which is where settlement learns whether this
+    // booking consumed a founding-offer free slot.
+    metadata: {
+      hold_id: req.holdId,
+      coach_profile_id: req.coachProfileId,
+      founding_free: fee.foundingFree ? "1" : "0",
+      fee_percent: String(fee.feePercent),
+    },
     customer_email: req.clientEmail,
     success_url: req.successUrl,
     cancel_url: req.cancelUrl,
@@ -121,6 +137,11 @@ export interface SessionOutcome {
   paymentIntentId: string | null;
   amountTotal: number | null;
   currency: string | null;
+  /** Whether this payment consumed one of the coach's founding-offer free
+   * bookings. Read from the session Stripe holds, never recomputed. */
+  foundingFree: boolean;
+  /** The commission percentage applied, for the ledger. */
+  feePercent: number | null;
 }
 
 export interface PackSessionRequest {
@@ -193,5 +214,7 @@ export async function readCheckoutSession(sessionId: string): Promise<SessionOut
     paymentIntentId: typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id ?? null,
     amountTotal: s.amount_total ?? null,
     currency: s.currency ?? null,
+    foundingFree: s.metadata?.founding_free === "1",
+    feePercent: s.metadata?.fee_percent != null ? Number(s.metadata.fee_percent) : null,
   };
 }

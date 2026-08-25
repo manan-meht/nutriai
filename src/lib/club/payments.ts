@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { convertHoldToBooking } from "./holds";
 import { splitAmount, DEFAULT_PLATFORM_FEE_PERCENT, CLUB_MARKET } from "./config";
+import { stripeProcessingCents } from "./founding-offer";
 import { attachCoachLocationToBooking } from "./locations";
 import { getPlatformFeePercent } from "./platform-fee";
 import { readCheckoutSession } from "./checkout-session";
@@ -162,6 +163,11 @@ export async function settlePayment(
     travelFeeCents: number;
     clientNote: string | null;
     cancellationPolicySnapshot: Record<string, unknown>;
+    /** True when this booking consumed one of the coach's founding-offer
+     * free bookings. Comes from the Stripe session, never recomputed. */
+    foundingFree?: boolean;
+    /** Commission percentage actually applied. 0 under the founding offer. */
+    feePercent?: number;
   }
 ): Promise<CheckoutResult> {
   const converted = await convertHoldToBooking(admin, input.holdId, {
@@ -205,7 +211,11 @@ export async function settlePayment(
       platform_fee_cents: input.platformFeeCents,
       coach_amount_cents: input.coachAmountCents,
       currency: input.currency,
-      platform_fee_percent: DEFAULT_PLATFORM_FEE_PERCENT,
+      // What was actually applied, not the standing rate: under the founding
+      // offer this is 0, and hardcoding the default would have made the
+      // ledger disagree with the money.
+      platform_fee_percent: input.feePercent ?? DEFAULT_PLATFORM_FEE_PERCENT,
+      founding_free: input.foundingFree ?? false,
       stripe_payment_intent_id: input.providerRef,
       status: "succeeded",
       paid_at: new Date().toISOString(),
@@ -260,8 +270,14 @@ export async function settleFromCheckoutSession(
   // The amount actually charged is authoritative — a price edited between
   // hold and payment must not change what the ledger records.
   const gross = outcome.amountTotal ?? service.price_cents;
-  const feePercent = await getPlatformFeePercent(admin);
-  const { platformFeeCents, coachAmountCents } = splitAmount(gross, feePercent);
+  // Trust the session over a fresh calculation: another booking may have
+  // taken the coach's last free slot between checkout opening and this
+  // settlement, and the ledger must record what Stripe actually charged.
+  const foundingFree = outcome.foundingFree;
+  const feePercent = foundingFree ? 0 : outcome.feePercent ?? (await getPlatformFeePercent(admin));
+  const { platformFeeCents, coachAmountCents } = foundingFree
+    ? { platformFeeCents: stripeProcessingCents(gross), coachAmountCents: gross - stripeProcessingCents(gross) }
+    : splitAmount(gross, feePercent);
 
   return settlePayment(admin, {
     holdId: outcome.holdId,
@@ -279,5 +295,7 @@ export async function settleFromCheckoutSession(
       fullRefundHours: coach.cancellation_full_refund_hours,
       partialRefundPercent: coach.cancellation_partial_refund_percent,
     },
+    foundingFree,
+    feePercent,
   });
 }

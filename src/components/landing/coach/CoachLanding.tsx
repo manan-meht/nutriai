@@ -3,6 +3,9 @@ import { Reveal } from "@/components/motion/Reveal";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/club/config";
 import { coachPreview, type CoachPreview } from "@/lib/landing/coach-preview";
+// The offer's size comes from the engine that enforces it, so the copy and
+// the money cannot drift apart.
+import { FOUNDING_FREE_BOOKINGS } from "@/lib/club/founding-offer";
 import { ProfileMock } from "./ProfileMock";
 import { TrackedCta } from "./TrackedCta";
 import { StickyMobileCta } from "./StickyMobileCta";
@@ -22,16 +25,7 @@ const PRICING_LINE =
   `Free to set up. No monthly fee. We take ${DEFAULT_PLATFORM_FEE_PERCENT}% only when you get paid ` +
   `— card processing included.`;
 
-/** How many bookings a founding coach keeps in full.
- *
- * A number, not "your first few": a coach deciding whether to join has to be
- * able to work out what the offer is worth to them.
- *
- * IMPORTANT: this is a commercial promise the checkout does not yet keep —
- * splitAmount still applies DEFAULT_PLATFORM_FEE_PERCENT to every booking.
- * Until that is implemented, every founding coach's first ten bookings have
- * to be reconciled by hand. */
-const FOUNDING_FREE_BOOKINGS = 10;
+
 
 // Marketing page for Tistra Coach — the coaching business platform served
 // at coach.tistrahealth.com and coach.tistra.club.
@@ -272,6 +266,14 @@ export async function CoachLanding() {
 
           <p className="mt-4 max-w-xl text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
             {PRICING_LINE}
+          </p>
+          {/* Named as the payment provider's charge, not ours: a coach who
+              discovers an unexplained deduction assumes the platform took it,
+              and "zero commission" then reads as a lie rather than a
+              deduction we never received. */}
+          <p className="mt-2 max-w-xl text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
+            Card and PayLah charges are set by the payment provider, not by Tistra, and apply to
+            every booking.
           </p>
         </Reveal>
 
