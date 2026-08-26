@@ -8,7 +8,17 @@ import {
 } from "@/lib/privacy/consent";
 import { ConsentBanner } from "./ConsentBanner";
 
-/** Google Ads global site tag.
+/** The Google tag: Google Ads plus GA4, from one loader.
+ *
+ * Google's install instructions say to paste its snippet on every page and
+ * to keep one tag per page. Those two instructions conflict once a tag
+ * already exists — pasting the GA4 snippet verbatim would put a SECOND
+ * gtag/js loader on the page. One loader can serve several destinations, so
+ * GA4 is added as another config command here instead.
+ *
+ * The loader still requests the Ads ID. Google's "test installation" check
+ * looks for the account it gave you, and that check has already reported
+ * this tag missing twice; there is no reason to make it hunt again.
  *
  * Belongs on every page an ad click can land on, NOT only on the
  * conversion page. The click arrives carrying a gclid, and this tag is what
@@ -22,6 +32,12 @@ import { ConsentBanner } from "./ConsentBanner";
  * only — see that page.
  */
 export const GOOGLE_ADS_ID = "AW-18404074450";
+
+/** GA4 measurement ID. Scoped to the same surfaces as the Ads tag — the
+ * club marketplace and the coach product — which is deliberate: analytics
+ * that covers a different surface than the ads cannot explain them. Tistra
+ * Health carries no Google tag at all and is not measured here. */
+export const GA4_MEASUREMENT_ID = "G-HWYL5L7KL2";
 
 export async function GoogleAdsTag() {
   // cf-ipcountry is set by Cloudflare's edge and cannot be spoofed through a
@@ -47,7 +63,8 @@ export async function GoogleAdsTag() {
 function gtag(){dataLayer.push(arguments);}
 gtag('consent','default',${consentDefaultPayload({ required, stored })});
 gtag('js', new Date());
-gtag('config', '${GOOGLE_ADS_ID}');`;
+gtag('config', '${GOOGLE_ADS_ID}');
+gtag('config', '${GA4_MEASUREMENT_ID}');`;
 
   return (
     <>

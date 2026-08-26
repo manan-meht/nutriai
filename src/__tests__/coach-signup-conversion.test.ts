@@ -190,3 +190,49 @@ describe("it only fires on a real publish", () => {
     expect(code(PAGE)).toMatch(/robots: \{ index: false, follow: false \}/);
   });
 });
+
+/** GA4 rides on the Ads tag rather than arriving as its own snippet.
+ *
+ * Google's GA4 install instructions say to paste a full snippet on every
+ * page AND to keep one Google tag per page. With a tag already installed
+ * those conflict: pasting verbatim yields two gtag/js loaders. One loader
+ * serves multiple destinations, so GA4 is a second config command.
+ */
+describe("GA4 shares the existing Google tag", () => {
+  const tag = fs.readFileSync(
+    path.join(__dirname, "..", "components", "marketing", "GoogleAdsTag.tsx"),
+    "utf-8"
+  );
+
+  it("configures the GA4 measurement ID", () => {
+    expect(tag).toMatch(/GA4_MEASUREMENT_ID = "G-HWYL5L7KL2"/);
+    expect(tag).toMatch(/gtag\('config', '\$\{GA4_MEASUREMENT_ID\}'\)/);
+  });
+
+  it("adds no second loader script", () => {
+    // The whole point: one <script async src=...gtag/js...> on the page.
+    expect((tag.match(/googletagmanager\.com\/gtag\/js/g) ?? []).length).toBe(1);
+    expect(tag).not.toMatch(/gtag\/js\?id=\$\{GA4_MEASUREMENT_ID\}/);
+  });
+
+  it("keeps the loader on the Ads ID that Google's install check looks for", () => {
+    expect(tag).toMatch(/gtag\/js\?id=\$\{GOOGLE_ADS_ID\}/);
+  });
+
+  it("configures GA4 after the consent default, never before", () => {
+    // Consent Mode is order-sensitive. GA4 respects analytics_storage, but
+    // only if the default is already in the queue when it configures.
+    const consent = tag.indexOf("gtag('consent','default'");
+    const ga4 = tag.indexOf("gtag('config', '${GA4_MEASUREMENT_ID}')");
+    expect(consent).toBeGreaterThan(-1);
+    expect(ga4).toBeGreaterThan(consent);
+  });
+
+  it("is covered by the analytics_storage consent signal", () => {
+    const consent = fs.readFileSync(
+      path.join(__dirname, "..", "lib", "privacy", "consent.ts"),
+      "utf-8"
+    );
+    expect(consent).toMatch(/"analytics_storage"/);
+  });
+});
