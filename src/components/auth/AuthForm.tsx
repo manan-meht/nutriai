@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { scopedEmail, type AuthSurface } from "@/lib/auth";
+import { track } from "@/lib/landing/track";
 
 type Product = AuthSurface;
 type Mode = "signin" | "signup";
@@ -74,6 +75,11 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    // Fires on the attempt, not on success — the gap between this and
+    // signup_completed IS the measurement: a rejected password, an address
+    // that already has an account, a Supabase error. Without both halves a
+    // failed signup is indistinguishable from never trying.
+    if (mode === "signup") track("signup_started", { product, method: "email" });
     try {
       const authEmail = scopedEmail(email, product);
       if (mode === "signup") {
@@ -93,6 +99,15 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
           setError("An account with this email already exists. Please sign in instead.");
           return;
         }
+        // Deliberately after the identities check above. Supabase reports
+        // success for an address that already has an account and sends
+        // nothing, so firing before this would count a non-signup.
+        //
+        // "Completed" means the confirmation email was sent, NOT that the
+        // account is usable — the visitor still has to click the link in
+        // it. That round trip is currently unmeasured; see the note in
+        // lib/landing/track.ts.
+        track("signup_completed", { product, method: "email" });
         setEmailSent(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
@@ -120,6 +135,11 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
   async function handleOAuth(provider: "google" | "facebook") {
     setError(null);
     setOauthLoading(provider);
+    // No matching signup_completed: the provider redirects away and returns
+    // through /auth/callback, so completion is not observable from here.
+    // An OAuth signup therefore shows as started-and-never-completed, which
+    // is worth knowing when reading the funnel.
+    if (mode === "signup") track("signup_started", { product, method: provider });
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,

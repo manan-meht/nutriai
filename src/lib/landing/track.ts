@@ -6,11 +6,19 @@
  * for free — under Consent Mode a denied EEA visitor queues nothing, which
  * is the behaviour we want and would have to rebuild otherwise.
  *
- * There is no GA4 property wired up yet, so today these land in Google Ads
- * only. They are still worth firing: Ads can promote any of them to a
- * conversion action, and the coach funnel currently has exactly one
- * conversion event, fired at the very bottom (profile published), which is
- * far too deep for the algorithm to learn from.
+ * These land in both Google Ads and GA4 (G-HWYL5L7KL2), which share the one
+ * tag — see components/marketing/GoogleAdsTag.tsx. Worth firing in Ads
+ * regardless of GA4: any of them can be promoted to a conversion action,
+ * and the coach funnel otherwise has exactly one conversion event, fired at
+ * the very bottom (profile published), which is far too deep for the
+ * algorithm to learn from.
+ *
+ * KNOWN GAP: signup_completed means the confirmation email was sent, not
+ * that the account is usable. The visitor still has to open that email and
+ * click the link, which returns through /auth/callback — a server redirect
+ * with no tag on it. Nothing measures that round trip, and for cold ad
+ * traffic it is the likeliest place the funnel dies. Closing it means
+ * firing an event on the first authenticated page a new coach lands on.
  */
 
 /** The events this page fires. A union rather than a string so a typo
