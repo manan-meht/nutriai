@@ -7,7 +7,7 @@ import { AuthForm } from "@/components/auth/AuthForm";
 import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 import { resolveProductFromHostname } from "@/lib/product/resolve-product";
 import { faviconForProduct } from "@/lib/product/icons";
-import type { AuthSurface } from "@/lib/auth";
+import { resolveAuthSurface, type AuthSurface } from "@/lib/auth";
 import { isClubHost } from "@/lib/club/host";
 import { isCoachHost } from "@/lib/coach/routes";
 
@@ -36,11 +36,7 @@ function defaultNextFor(surface: AuthSurface, hostname: string): string {
 /** Which auth surface this request belongs to. Kept separate from
  * ProductType: Tistra Club is a third sign-in surface, not a third value of
  * the gym/adults product used throughout the workspace code. */
-function resolveAuthSurface(hostname: string, params: URLSearchParams): AuthSurface {
-  if (isClubHost(hostname)) return "club";
-  if (params.get("product") === "club") return "club";
-  return resolveProductFromHostname(hostname, params) ?? "adults";
-}
+
 
 
 interface LoginPageProps {
