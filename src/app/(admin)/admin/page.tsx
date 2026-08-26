@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getReviewQueue, getMealReviewDetail, listFoodKnowledge, getModelQualityMetrics, type QueueFilters } from "./actions";
 import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
 import { StatusBadge, priorityMood, reviewStatusMood } from "@/components/admin/StatusBadge";
+import { PhotoPlaceholder } from "@/components/admin/PhotoPlaceholder";
 import { ReviewForm } from "@/components/admin/ReviewForm";
 import { FoodKnowledgeTable } from "@/components/admin/FoodKnowledgeTable";
 import { ModelQualityView } from "@/components/admin/ModelQualityView";
@@ -130,7 +131,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                     // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
                     <img src={item.imageUrl} alt="" loading="lazy" className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
                   ) : (
-                    <div className="w-16 h-16 rounded-xl bg-gray-100 flex-shrink-0" />
+                    <PhotoPlaceholder hasStoredPhoto={item.hasStoredPhoto} className="w-16 h-16 rounded-xl" />
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2 mb-1">
@@ -180,7 +181,7 @@ async function MealReviewQueueTab({ sp }: { sp: AdminSearchParams }) {
                         // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
                         <img src={item.imageUrl} alt="" loading="lazy" className="w-10 h-10 rounded-lg object-cover" />
                       ) : (
-                        <div className="w-10 h-10 rounded-lg bg-gray-100" />
+                        <PhotoPlaceholder hasStoredPhoto={item.hasStoredPhoto} className="w-10 h-10 rounded-lg" />
                       )}
                     </td>
                     <td className="p-3 text-gray-600 whitespace-nowrap">
@@ -245,7 +246,18 @@ async function MealReviewDetailTab({
   return (
     <div className="space-y-4">
       <Link href={backHref} className="text-sm text-[var(--color-dashboard-primary)] font-medium">← Back to queue</Link>
-      <ReviewForm detail={detail} returnQuery={returnQuery} />
+      {/* key is load-bearing, not a list-rendering habit.
+          "Save and next" navigates to the same route with a different ?id,
+          so React keeps the ReviewForm instance mounted and every
+          useState(initialValue) holds the PREVIOUS meal's data. The photo
+          and caption update (rendered straight from props) while the food
+          items, macros, toggles, notes and review status do not — and
+          foodItems is what buildInput() saves, so a second "Save and next"
+          wrote the previous meal's macros into this meal's meal_logs row.
+          Keying on the submission id remounts the form, which is exactly
+          the intended semantics: a different submission is a different
+          form, not the same form with new props. */}
+      <ReviewForm key={detail.submission.id} detail={detail} returnQuery={returnQuery} />
     </div>
   );
 }

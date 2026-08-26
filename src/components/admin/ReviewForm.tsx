@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { MealReviewDetail, SaveReviewInput, CorrectedFoodItem } from "@/app/(admin)/admin/actions";
 import { saveHumanReview, escalateReview, getNextPendingMealId } from "@/app/(admin)/admin/actions";
 import { StatusBadge, reviewStatusMood } from "@/components/admin/StatusBadge";
+import { PhotoPlaceholder } from "@/components/admin/PhotoPlaceholder";
 import {
   FOOD_CATEGORIES,
   foodCategoryLabel,
@@ -245,8 +246,26 @@ export function ReviewForm({ detail, returnQuery = "" }: { detail: Detail; retur
               {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL */}
               <img src={submission.imageUrl} alt="Meal submission" className="w-full max-h-96 object-cover" />
             </button>
+          ) : submission.hasStoredPhoto ? (
+            // A photo exists in storage but would not sign. That is our
+            // bug, not the user's, and it must not read as "no photo" —
+            // the reviewer would judge a meal whose evidence we simply
+            // failed to load.
+            <div className="h-64 flex flex-col items-center justify-center gap-1 px-6 text-center">
+              <p className="text-sm font-medium text-red-700">Photo could not be loaded</p>
+              <p className="text-xs text-gray-500">
+                A photo was uploaded for this meal but the signed URL failed. This is a storage
+                problem on our side — don&apos;t review it as though nothing was sent.
+              </p>
+            </div>
           ) : (
-            <div className="h-64 flex items-center justify-center text-gray-400 text-sm">No photo available</div>
+            <div className="h-64 flex flex-col items-center justify-center gap-1 px-6 text-center">
+              <p className="text-sm font-medium text-gray-700">Described in text — no photo sent</p>
+              <p className="text-xs text-gray-500">
+                This meal was logged from the caption below. Everything the AI produced was
+                inferred from those words.
+              </p>
+            </div>
           )}
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2 text-sm">
@@ -268,7 +287,7 @@ export function ReviewForm({ detail, returnQuery = "" }: { detail: Detail; retur
                     // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL
                     <img src={m.imageUrl} alt={m.mealType} className="w-14 h-14 rounded-lg object-cover" />
                   ) : (
-                    <div className="w-14 h-14 rounded-lg bg-gray-100" />
+                    <PhotoPlaceholder hasStoredPhoto={m.hasStoredPhoto} className="w-14 h-14 rounded-lg" />
                   )}
                 </a>
               ))}
@@ -327,7 +346,21 @@ export function ReviewForm({ detail, returnQuery = "" }: { detail: Detail; retur
 
         {mealLog && mealLog.foods.some((f: any) => f.visible_quantity) && (
           <div className="bg-white rounded-2xl border border-gray-100 p-4 text-sm">
-            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">Visible quantities</p>
+            {/* One prompt serves both the photo and the text-only path, and
+                it asks for visible_quantity ("what you actually counted/saw")
+                either way — so these strings exist even when there was no
+                image. Labelling them "visible" on a text-logged meal invites
+                a reviewer to confirm quantities nobody could observe, and a
+                confirmed review feeds food_knowledge_base. */}
+            <p className="text-xs font-semibold text-[var(--color-dashboard-primary)] uppercase tracking-widest mb-2">
+              {submission.hasStoredPhoto ? "Visible quantities" : "Estimated quantities (from description)"}
+            </p>
+            {!submission.hasStoredPhoto && (
+              <p className="mb-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+                No photo was sent, so these are inferred from the caption rather than observed.
+                There is nothing to check them against beyond the user&apos;s own words.
+              </p>
+            )}
             <div className="space-y-1">
               {mealLog.foods
                 .filter((f: any) => f.visible_quantity)

@@ -50,6 +50,13 @@ export interface QueueFilters {
 export interface QueueItem {
   id: string;
   imageUrl: string | null;
+  /** Whether a photo was ever stored for this submission.
+   *
+   * Distinct from `imageUrl`, which is also null when signing the URL
+   * failed. Without this the two collapse: a meal the user described in
+   * text looks exactly like a photo we could not load, so a real storage
+   * bug is invisible and a text-logged meal looks broken. */
+  hasStoredPhoto: boolean;
   submittedAt: string;
   mealType: string;
   source: string;
@@ -122,6 +129,7 @@ export async function getReviewQueue(
     return {
       id: row.id,
       imageUrl: signedImageUrls[i] ?? null,
+      hasStoredPhoto: !!row.image_url,
       submittedAt: row.submitted_at,
       mealType: row.meal_type,
       source: row.source,
@@ -158,6 +166,9 @@ export interface MealReviewDetail {
   submission: {
     id: string;
     imageUrl: string | null;
+    /** See QueueItem.hasStoredPhoto — "never sent one" vs "we could not
+     * sign it" are different facts and need to read differently. */
+    hasStoredPhoto: boolean;
     caption: string | null;
     submittedAt: string;
     mealType: string;
@@ -232,7 +243,7 @@ export interface MealReviewDetail {
     totalFatMax: number;
     foods: any[];
   } | null;
-  sameDaySubmissions: Array<{ id: string; imageUrl: string | null; mealType: string; submittedAt: string }>;
+  sameDaySubmissions: Array<{ id: string; imageUrl: string | null; hasStoredPhoto: boolean; mealType: string; submittedAt: string }>;
   /** Existing food_knowledge_base entries (name + aliases only) for the
    * per-item review UI's autocomplete — matching against these instead of
    * typing a fresh name each time keeps the knowledge base from
@@ -319,6 +330,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
     submission: {
       id: row.id,
       imageUrl: submissionImageUrl ?? null,
+      hasStoredPhoto: !!row.image_url,
       caption: row.caption,
       submittedAt: row.submitted_at,
       mealType: row.meal_type,
@@ -406,6 +418,7 @@ export async function getMealReviewDetail(mealSubmissionId: string): Promise<Mea
     sameDaySubmissions: (sameDayRows ?? []).map((r: any, i: number) => ({
       id: r.id,
       imageUrl: sameDayImageUrls[i] ?? null,
+      hasStoredPhoto: !!r.image_url,
       mealType: r.meal_type,
       submittedAt: r.submitted_at,
     })),
