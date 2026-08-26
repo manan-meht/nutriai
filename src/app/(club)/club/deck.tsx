@@ -1,6 +1,8 @@
 import { Hanken_Grotesk } from "next/font/google";
 import { createServiceClient } from "@/lib/supabase/server";
 import { discoverCoaches, listSkills } from "@/lib/club/discovery";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { clubMarketplaceGraph, CLUB_URL } from "@/lib/seo/club-structured-data";
 import { SwipeFeed, type SwipeCoach, type SwipeSkill } from "@/components/club/SwipeFeed";
 import { nextAvailableLabel } from "@/components/club/CoachCardList";
 import { formatMoney, CLUB_MARKET } from "@/lib/club/config";
@@ -83,6 +85,15 @@ export async function CoachDeck({
 
   return (
     <div className={hanken.className}>
+      {/* No FAQPage here: the swipe deck renders no FAQ copy, and claiming
+          FAQPage without the matching visible answers is a policy
+          violation. The answers live on /coaches, which emits it. */}
+      <JsonLd
+        data={clubMarketplaceGraph(
+          CLUB_URL,
+          coaches.map((c) => ({ ...c, isDemo: demo }))
+        )}
+      />
       <SwipeFeed
         skills={orderedSkills}
         primaryCount={prioritised.length}

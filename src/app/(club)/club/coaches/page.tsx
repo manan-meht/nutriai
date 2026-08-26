@@ -5,6 +5,9 @@ import { CoachCardList } from "@/components/club/CoachCardList";
 import { discoverCoaches, listSkills } from "@/lib/club/discovery";
 import { CLUB_TOKENS as T } from "@/components/coach/tokens";
 import { CLUB_BRANDING } from "@/lib/club/config";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { ClubFaq } from "@/components/club/ClubFaq";
+import { clubMarketplaceGraph, CLUB_URL } from "@/lib/seo/club-structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +47,24 @@ export default async function ClubDiscoverPage({
     return s ? `/coaches?${s}` : "/coaches";
   };
 
+  // The canonical listing URL, without the filter query string: a
+  // skill-filtered view is the same collection narrowed, not a separate
+  // entity, and giving each filter its own @id would fragment it.
+  const pageUrl = `${CLUB_URL}/coaches`;
+
   return (
     <ClubChrome active="discover">
+      {/* Demo coaches are passed through as isDemo so the ItemList stays
+          empty on the ?demo=1 view — a seeded profile has no label in
+          structured data, so listing one is simply a false claim that a
+          bookable coach exists. */}
+      <JsonLd
+        data={clubMarketplaceGraph(
+          pageUrl,
+          coaches.map((c: any) => ({ ...c, isDemo: demo })),
+          true
+        )}
+      />
       <h1 className="text-[2rem] font-semibold leading-9 tracking-[-0.02em] text-balance">
         {activeSkill ? `${activeSkill.name} in Singapore` : "Find a coach in Singapore"}
       </h1>
@@ -84,6 +103,8 @@ export default async function ClubDiscoverPage({
       </p>
 
       <CoachCardList coaches={coaches} filtered={!!params.skill || params.travels === "1"} />
+
+      <ClubFaq />
     </ClubChrome>
   );
 }

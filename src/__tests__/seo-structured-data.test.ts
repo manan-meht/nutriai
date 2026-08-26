@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { tistraHealthGraph, SITE_URL } from "@/lib/seo/structured-data";
 import { HEALTH_FAQ } from "@/lib/seo/faq";
+import { HEALTH_LLMS_TXT } from "@/lib/seo/llms-txt";
 
 // Structured data fails silently: an invalid graph renders exactly like a
 // valid one and simply stops being read, with nothing in any log. These
@@ -179,7 +180,10 @@ describe("the FAQ section is machine-readable", () => {
 });
 
 describe("llms.txt", () => {
-  const txt = fs.readFileSync(path.join(__dirname, "..", "..", "public", "llms.txt"), "utf-8");
+  // Read from the module, not public/llms.txt: the document moved to a
+  // route handler so each host can be served its own (see lib/seo/llms-txt.ts).
+  // Cross-host resolution is covered in club-seo.test.ts.
+  const txt = HEALTH_LLMS_TXT;
 
   it("opens with an H1 and a blockquote summary, per the spec", () => {
     const lines = txt.split("\n");

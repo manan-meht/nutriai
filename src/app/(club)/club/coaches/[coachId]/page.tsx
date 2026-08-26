@@ -10,6 +10,8 @@ import { perClassCents, savingPercent } from "@/lib/club/class-packs";
 import { buyPackAction } from "@/app/(club)/club/actions";
 import { headers } from "next/headers";
 import { isLocalDevHost } from "@/lib/club/host";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { coachProfileGraph, CLUB_URL } from "@/lib/seo/club-structured-data";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +29,37 @@ export default async function CoachProfilePage({ params }: { params: Promise<{ c
   // an empty page, so a paused profile can't be browsed via a stale link.
   if (!coach) notFound();
 
+  // Always the canonical club origin, never the request host: this is the
+  // page's identity, and a preview or www host would otherwise mint a
+  // second entity for the same coach.
+  const graph = coachProfileGraph(
+    {
+      coachProfileId: coach.coachProfileId,
+      displayName: coach.displayName,
+      headline: coach.headline,
+      neighbourhood: coach.neighbourhood,
+      skills: coach.skills,
+      startingPriceCents: coach.startingPriceCents,
+      currency: coach.currency,
+      ratingAverage: coach.ratingAverage,
+      reviewCount: coach.reviewCount,
+      isDemo: coach.isDemo,
+      bio: coach.bio,
+      yearsCoaching: coach.yearsCoaching,
+      languages: coach.languages,
+      photoUrl: coach.photoUrl,
+      services: coach.services,
+      cancellationFullRefundHours: coach.cancellationFullRefundHours,
+    },
+    `${CLUB_URL}/coaches/${coach.coachProfileId}`
+  );
+
   return (
     <ClubChrome hideNav>
+      {/* null for a demo profile — see coachProfileGraph. The page still
+          renders and still says it is a demo; it just makes no
+          machine-readable claim about a person who does not exist. */}
+      {graph && <JsonLd data={graph} />}
       <Link href="/" className="text-sm" style={{ color: T.onSurfaceVariant }}>← Back</Link>
 
       {/* An example profile stays reachable — old links shouldn't 404 —
