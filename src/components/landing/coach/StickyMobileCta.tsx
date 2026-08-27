@@ -15,7 +15,15 @@ import { TrackedCta } from "./TrackedCta";
  * competing "Get listed" buttons at the moment of commitment is a way to
  * lose the click, not win it.
  */
-export function StickyMobileCta({ href }: { href: string }) {
+export function StickyMobileCta({
+  href,
+  spotsRemaining,
+}: {
+  href: string;
+  /** null once the places are gone, so the bar stops advertising them
+   * rather than showing a zero next to a Claim button. */
+  spotsRemaining: number | null;
+}) {
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -39,13 +47,23 @@ export function StickyMobileCta({ href }: { href: string }) {
       aria-hidden={!shown}
       {...(!shown ? { inert: "" as unknown as boolean } : {})}
     >
+      {/* The count sits above the button rather than inside it: a coach
+          decides on the offer, then presses. Putting a number on the button
+          makes the button harder to read at a glance, which is the one job
+          it has on a phone. */}
+      {spotsRemaining != null && (
+        <p className="mb-2 text-center text-[11px] font-medium" style={{ color: "#4A4455" }}>
+          Only {spotsRemaining} Founding Coach {spotsRemaining === 1 ? "spot" : "spots"} remaining
+        </p>
+      )}
       <TrackedCta
         href={href}
-        event="sticky_mobile_get_listed_click"
-        className="flex w-full items-center justify-center rounded-full px-6 py-3.5 text-[16px] font-medium text-white"
+        event="founding_cta_click"
+        props={{ foundingSpotsRemaining: spotsRemaining ?? 0, placement: "sticky" }}
+        className="flex w-full items-center justify-center rounded-full px-6 py-4 text-[16px] font-medium text-white"
         style={{ backgroundColor: "#630ED4" }}
       >
-        Get listed for free →
+        Claim my Founding Coach spot
       </TrackedCta>
     </div>
   );

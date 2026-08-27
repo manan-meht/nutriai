@@ -24,14 +24,61 @@
 /** The events this page fires. A union rather than a string so a typo
  * becomes a build error instead of a silently missing funnel step. */
 export type LandingEvent =
-  | "hero_get_listed_click"
-  | "nav_get_listed_click"
-  | "sticky_mobile_get_listed_click"
-  | "final_get_listed_click"
-  | "see_how_it_works_click"
-  | "founding_offer_details_click"
+  // Page and section visibility. Section events fire once, when the section
+  // is actually seen — a coach who never scrolls to the pricing section did
+  // not "bounce off the pricing", and the two need telling apart.
+  | "coach_landing_view"
+  | "founding_offer_view"
+  | "marketplace_preview_view"
+  | "pricing_section_view"
+  | "faq_view"
+  // Intent.
+  // One CTA event with a placement, not five near-identical names. The
+  // question is never "did the sticky bar fire" — it is "which placement
+  // converts", and that is a breakdown, not five separate reports.
+  | "founding_cta_click"
+  | "navbar_signup_click"
+  | "onboarding_help_click"
+  // Conversion.
   | "signup_started"
   | "signup_completed";
+
+/** Properties worth attaching to every landing event.
+ *
+ * `foundingSpotsRemaining` is the interesting one: if conversion moves as
+ * the number falls, the scarcity is doing work; if it does not, the page is
+ * being read for other reasons and the offer card can be simplified. */
+export interface LandingEventProps {
+  source?: string;
+  campaign?: string;
+  device?: "mobile" | "desktop";
+  landingVariant?: string;
+  foundingSpotsRemaining?: number;
+  /** Where on the page a CTA was pressed. */
+  placement?: "hero" | "offer_card" | "sticky" | "final" | "navbar" | "onboarding";
+  [key: string]: string | number | undefined;
+}
+
+/** Best-effort device class from the viewport, matching the CSS breakpoint
+ * the page itself switches on (md = 768px) so "mobile" in analytics means
+ * the same thing as "mobile" in the layout. */
+export function deviceClass(): "mobile" | "desktop" {
+  if (typeof window === "undefined") return "desktop";
+  return window.innerWidth < 768 ? "mobile" : "desktop";
+}
+
+/** UTM and click-id params, read from the current URL.
+ *
+ * Ads attribution is already handled by the gclid cookie the Google tag
+ * writes; this is for our own funnel reporting, so a campaign can be
+ * matched to the section people actually reached. */
+export function campaignParams(): Pick<LandingEventProps, "source" | "campaign"> {
+  if (typeof window === "undefined") return {};
+  const q = new URLSearchParams(window.location.search);
+  const source = q.get("utm_source") ?? q.get("source") ?? undefined;
+  const campaign = q.get("utm_campaign") ?? undefined;
+  return { ...(source ? { source } : {}), ...(campaign ? { campaign } : {}) };
+}
 
 declare global {
   interface Window {
@@ -40,10 +87,16 @@ declare global {
   }
 }
 
-export function track(event: LandingEvent, params?: Record<string, string | number>): void {
+export function track(event: LandingEvent, params?: LandingEventProps): void {
   if (typeof window === "undefined") return;
   // Optional call, not a guard-and-throw: the tag is absent in local dev and
   // blocked by plenty of real browsers. A missing analytics call must never
   // be the reason a CTA does not navigate.
-  window.gtag?.("event", event, params ?? {});
+  // Campaign and device are attached here rather than at every call site,
+  // so a new event cannot ship without them.
+  window.gtag?.("event", event, {
+    ...campaignParams(),
+    device: deviceClass(),
+    ...(params ?? {}),
+  });
 }

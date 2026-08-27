@@ -56,7 +56,14 @@ describe("the signup funnel reports itself", () => {
 
 describe("every declared landing event is actually fired", () => {
   const trackSrc = read("lib/landing/track.ts");
-  const declared = [...trackSrc.matchAll(/\|\s*"([a-z_]+)"/g)].map((m) => m[1]);
+  // Scoped to the LandingEvent declaration. Reading the whole file swept up
+  // union members from other types in it ("mobile", "campaign", placement
+  // values) and reported them as dead events.
+  const union = trackSrc.slice(
+    trackSrc.indexOf("export type LandingEvent ="),
+    trackSrc.indexOf(";", trackSrc.indexOf("export type LandingEvent ="))
+  );
+  const declared = [...union.matchAll(/\|\s*"([a-z_]+)"/g)].map((m) => m[1]);
 
   // Walks the tree rather than listing files. A hardcoded list is how this
   // check gives a false positive: the first draft missed OfferDetails.tsx

@@ -13,6 +13,19 @@ interface AuthFormProps {
   product: Product;
   mode: Mode;
   next?: string;
+  /** Set when a coach arrived via "Help me set it up" on the landing page.
+   *
+   * Stored in Supabase user metadata rather than a coach_profiles column,
+   * because no coach profile exists yet at signup — the draft row is only
+   * created on first visit to /coach/settings. Metadata captures the
+   * intent at the moment it is expressed, and the admin roster already
+   * reads auth users, so it surfaces there without a migration.
+   *
+   * Email signup only. signInWithOAuth takes no user metadata and the
+   * redirect leaves before we could write any, so a coach who picks
+   * "Help me set it up" and then signs up with Google is not flagged.
+   */
+  onboardingHelp?: boolean;
 }
 
 // Same purple used across the marketing site (/, /family, /coach, /me) —
@@ -58,7 +71,7 @@ const THEME = {
   },
 } as const;
 
-export function AuthForm({ product, mode, next }: AuthFormProps) {
+export function AuthForm({ product, mode, next, onboardingHelp }: AuthFormProps) {
   const theme = THEME[product];
   const supabase = createClient();
 
@@ -79,14 +92,17 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
     // signup_completed IS the measurement: a rejected password, an address
     // that already has an account, a Supabase error. Without both halves a
     // failed signup is indistinguishable from never trying.
-    if (mode === "signup") track("signup_started", { product, method: "email" });
+    if (mode === "signup") track("signup_started", { product, method: "email", ...(onboardingHelp ? { onboardingHelp: 1 } : {}) });
     try {
       const authEmail = scopedEmail(email, product);
       if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
           email: authEmail,
           password,
-          options: { emailRedirectTo: redirectTo },
+          options: {
+            emailRedirectTo: redirectTo,
+            ...(onboardingHelp ? { data: { needs_onboarding_help: true } } : {}),
+          },
         });
         if (error) throw error;
         // Supabase doesn't return an error for an email that's already
@@ -107,7 +123,7 @@ export function AuthForm({ product, mode, next }: AuthFormProps) {
         // account is usable — the visitor still has to click the link in
         // it. That round trip is currently unmeasured; see the note in
         // lib/landing/track.ts.
-        track("signup_completed", { product, method: "email" });
+        track("signup_completed", { product, method: "email", ...(onboardingHelp ? { onboardingHelp: 1 } : {}) });
         setEmailSent(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });

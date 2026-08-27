@@ -52,6 +52,15 @@ function CoachCard({ c }: { c: AdminCoachRow }) {
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-bold text-gray-900">{c.displayName}</h2>
             <StatusPill status={c.status} />
+            {c.needsOnboardingHelp && (
+              <span
+                className="rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide"
+                style={{ backgroundColor: "#EDE0FF", color: "#4F0BAA" }}
+                title="Asked for help building their profile when they signed up"
+              >
+                wants setup help
+              </span>
+            )}
             {c.isDemo && (
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 demo

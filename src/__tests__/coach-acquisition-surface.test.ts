@@ -57,16 +57,21 @@ describe("the commercial model is explicit", () => {
     expect(landing.match(/\{PRICING_LINE\}/g)?.length).toBe(2);
   });
 
-  it("sits with the CTA rather than in the FAQ", () => {
-    // The hero CTA and the pricing line must be in the same block: a coach
-    // should not have to scroll to learn what it costs.
+  it("tells a coach what it costs without scrolling", () => {
+    // The original form of this check required PRICING_LINE itself beside
+    // the hero CTA. The page now leads with the Founding Coach offer rather
+    // than the commission, so the 10% sits in its own section — but the
+    // requirement it was protecting is unchanged and is met more directly:
+    // the cost of joining is stated at the point of decision, in the offer
+    // card and under the button, above the fold.
     const landing = code(LANDING);
-    const cta = landing.indexOf("Get listed for free →");
-    const price = landing.indexOf("{PRICING_LINE}");
-    expect(cta).toBeGreaterThan(-1);
-    expect(price).toBeGreaterThan(cta);
-    // Still inside the hero <header>, not pushed into a later section.
-    expect(landing.slice(cta, price)).not.toContain("<Section");
+    const hero = landing.slice(0, landing.indexOf("2. We promote you"));
+    expect(hero).toMatch(/Claim my Founding Coach spot/);
+    expect(hero).toMatch(/Free to join · No card required · No monthly fee/);
+
+    const card = code("components/landing/coach/FoundingOfferCard.tsx");
+    expect(card).toMatch(/0% commission on your first \$\{FREE_BOOKINGS\} bookings/);
+    expect(card).toMatch(/No monthly subscription/);
   });
 });
 

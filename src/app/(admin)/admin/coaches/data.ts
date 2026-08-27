@@ -38,6 +38,10 @@ export interface AdminCoachRow {
   /** A short-lived signed URL, not the storage path: coach portraits live in
    * a private bucket and would render as a broken image otherwise. */
   photoUrl: string | null;
+  /** Asked for help building their profile at signup — see AuthForm's
+   * onboardingHelp. Read from auth user metadata, which is where the
+   * preference is captured; there is no coach_profiles column for it. */
+  needsOnboardingHelp: boolean;
   foundingFreeBookings: number;
   foundingFreeUsed: number;
   stripeAccountId: string | null;
@@ -122,7 +126,14 @@ export async function listCoaches(): Promise<AdminCoachRow[]> {
 
   const skillName = new Map(((clubSkills.data ?? []) as { id: string; name: string }[]).map((s) => [s.id, s.name]));
   const userById = new Map(
-    (authUsers.data?.users ?? []).map((u) => [u.id, { email: u.email ?? null, lastSignInAt: u.last_sign_in_at ?? null }])
+    (authUsers.data?.users ?? []).map((u) => [
+      u.id,
+      {
+        email: u.email ?? null,
+        lastSignInAt: u.last_sign_in_at ?? null,
+        needsOnboardingHelp: (u.user_metadata as Record<string, unknown> | null)?.needs_onboarding_help === true,
+      },
+    ])
   );
   void profileIds;
 
@@ -160,6 +171,7 @@ export async function listCoaches(): Promise<AdminCoachRow[]> {
       yearsCoaching: (r.years_coaching as number) ?? null,
       languages: (r.languages as string[]) ?? [],
       photoUrl: signedPhoto.get(id) ?? null,
+      needsOnboardingHelp: user?.needsOnboardingHelp ?? false,
       foundingFreeBookings: Number(r.founding_free_bookings ?? 0),
       foundingFreeUsed: (freeBy.get(id) ?? []).length,
       stripeAccountId: (r.stripe_account_id as string) ?? null,

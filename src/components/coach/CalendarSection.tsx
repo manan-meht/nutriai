@@ -54,8 +54,9 @@ export function CalendarSection({
         <p className="text-sm" style={{ color: T.onSurfaceVariant }}>
           {state.status === "not_connected" || state.status === "error" ? (
             <>
-              Connect Google Calendar and Tistra will stop offering times you&rsquo;re already busy.
-              We only ever see <strong style={{ color: T.onSurface }}>busy times</strong>.
+              <strong style={{ color: T.onSurface }}>Optional:</strong> connect Google Calendar and
+              Tistra will stop offering times you&rsquo;re already busy. We only ever see{" "}
+              <strong style={{ color: T.onSurface }}>busy times</strong>.
             </>
           ) : (
             <>Google stopped accepting our access, so your calendar isn&rsquo;t being checked.</>
@@ -79,9 +80,25 @@ export function CalendarSection({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold">Calendar</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold">Calendar</h2>
+            {/* Explicitly optional. It has never been a publish blocker —
+                publishBlockers covers photo, bio, skills, services, location,
+                availability and payouts — but presenting it as an unlabelled
+                step in the setup list made it read as required, and a coach
+                who thinks they must hand over calendar access before going
+                live is a coach who stalls there. */}
+            <span
+              className="rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+              style={{ backgroundColor: T.surfaceContainerLow, color: T.onSurfaceVariant }}
+            >
+              Optional
+            </span>
+          </div>
           <p className="mt-1 max-w-xl text-sm" style={{ color: T.onSurfaceVariant }}>
             Connect Google Calendar and Tistra will stop offering times you&rsquo;re already busy.
+            You can publish your profile and take bookings without it — your working hours and
+            Tistra bookings are used either way.
           </p>
         </div>
         <span

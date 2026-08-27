@@ -1,48 +1,58 @@
 import Link from "next/link";
-import { Reveal } from "@/components/motion/Reveal";
 import { getSignupUrl, getLoginUrl } from "@/lib/landing/routes";
+import { coachPreview } from "@/lib/landing/coach-preview";
+import { foundingSpots } from "@/lib/landing/founding-spots";
+import { COACH_MARKET } from "@/lib/landing/coach-market";
 import { DEFAULT_PLATFORM_FEE_PERCENT } from "@/lib/club/config";
-import { coachPreview, type CoachPreview } from "@/lib/landing/coach-preview";
 // The offer's size comes from the engine that enforces it, so the copy and
 // the money cannot drift apart.
 import { FOUNDING_FREE_BOOKINGS } from "@/lib/club/founding-offer";
 import { ProfileMock } from "./ProfileMock";
 import { TrackedCta } from "./TrackedCta";
 import { StickyMobileCta } from "./StickyMobileCta";
-import { OfferDetails } from "./OfferDetails";
+import { FoundingOfferCard } from "./FoundingOfferCard";
+import { FoundingSpotsLine } from "./FoundingSpots";
+import { FoundingBadge } from "./FoundingBadge";
+import { MarketplacePreview } from "./MarketplacePreview";
+import { CoachFaq } from "./CoachFaq";
+import { SectionView } from "./SectionView";
+import { PageView } from "./PageView";
 
-/** The commercial model, stated the same way everywhere it appears.
+// Marketing page for Tistra Coach, served at coach.tistra.club.
+//
+// Sells one thing above the fold: Tistra helps you get more clients. The
+// previous version led with practice management — scheduling, payments,
+// client records — which is a real product but answers a question a coach
+// only asks AFTER their calendar is full. Cold ad traffic has not asked it.
+// Those features are still here, in section nine, under a heading that says
+// as much.
+//
+// The Founding Coach offer is the conversion mechanism and it is stated in
+// full rather than teased: 0% on the first bookings, funded promotion,
+// personal setup help, no subscription, no exclusivity. What it deliberately
+// does NOT say is that clients are guaranteed. We can commit to spending on
+// promotion; we cannot commit to outcomes, and a coach who joins believing
+// otherwise leaves within a month and tells other coaches why.
+//
+// Market-specific copy comes from lib/landing/coach-market.ts so that
+// opening Bengaluru is editing one object, not grepping for "Singapore".
+//
+// Visual language is unchanged: warm off-white ground, deep charcoal type
+// (never pure black), Tistra purple reserved for high-intent actions only.
+
+/** The commercial model, stated the same way wherever it appears.
  *
- * Built from the same constant the marketplace charges with, so the page
- * cannot advertise one number while checkout takes another. Previously the
- * page said "a small percentage", which a coach deciding whether to join
- * cannot act on — and which reads as evasive next to a competitor quoting
- * a figure.
+ * Built from the constant the marketplace actually charges with, so the page
+ * cannot advertise one number while checkout takes another. "Card processing
+ * included" is the load-bearing half: the fee absorbs Stripe's cut, so there
+ * is no second deduction to discover later.
  *
- * "card processing included" is the load-bearing half: the 10% absorbs
- * Stripe's fee, so there is no second deduction to discover later. */
+ * It no longer leads the page — the Founding Coach offer does — but it is
+ * stated plainly rather than softened. A coach who has to hunt for the
+ * number assumes the worst, and is right to. */
 const PRICING_LINE =
   `Free to set up. No monthly fee. We take ${DEFAULT_PLATFORM_FEE_PERCENT}% only when you get paid ` +
   `— card processing included.`;
-
-
-
-// Marketing page for Tistra Coach — the coaching business platform served
-// at coach.tistrahealth.com and coach.tistra.club.
-//
-// Rebuilt around one promise: Tistra gets you clients. The previous version
-// led with "run your entire coaching practice from one place", which is
-// practice-management software positioning — true, but it answers a question
-// a coach only asks AFTER they have enough clients to need managing. Cold ad
-// traffic has not asked it yet. The page now tells one story above the fold,
-// get discovered -> get booked -> get paid, and everything below it is that
-// story again in more detail.
-//
-// Visual language is unchanged: warm off-white ground, deep charcoal type
-// (never pure black), Tistra purple reserved for high-intent actions only,
-// and generous editorial spacing. Tokens are scoped to this subtree rather
-// than added globally, since Tistra Health's own surfaces use a different
-// palette.
 
 const TOKENS = {
   surface: "#FBF8FF",
@@ -56,102 +66,52 @@ const TOKENS = {
   primaryContainer: "#EDE0FF",
 } as const;
 
-/** The three-line promise, repeated as chips under the hero copy so it is
- * skimmable in the two seconds before someone decides to scroll. */
-const HERO_CHIPS = ["Find new clients", "Manage bookings", "Get paid"] as const;
+/** What a coach otherwise has to do alone. Named specifically, because
+ * "marketing is hard" persuades nobody who is already doing it. */
+const BURDENS = [
+  "Build and maintain a website",
+  "Post constantly to stay visible",
+  "Work out Google Ads",
+  "Chase leads through DMs",
+  "Juggle scheduling and payments",
+] as const;
 
-/** The funnel, as the coach experiences it. One section, three steps, in
- * the order money actually moves. */
+/** The funnel, in the order money moves. */
 const FUNNEL = [
   {
     n: "01",
     kicker: "Get discovered",
-    title: "Your profile, in front of people searching",
-    body:
-      "Create your coach profile with your skills, pricing, location and availability. " +
-      "Potential clients find you through Tistra Club.",
+    body: "People find you based on the skills you teach, your location, availability and profile.",
   },
   {
     n: "02",
     kicker: "Get booked",
-    title: "They pick a time that actually works",
-    body:
-      "Clients choose a session and an available time without endless messages back and forth. " +
-      "Connect your Google Calendar and Tistra reads only your free/busy times, so it never " +
-      "offers a slot you cannot make.",
+    body: "Clients choose a session and book without endless WhatsApp back-and-forth.",
   },
   {
     n: "03",
     kicker: "Get paid",
-    title: "Money arrives without you chasing it",
-    body:
-      "Clients pay when they book. Tistra handles payment processing and keeps your bookings " +
-      "and session records organised automatically.",
+    body: "Tistra handles payment and keeps the booking organised.",
   },
 ] as const;
 
-function formatFrom(cents: number | null, currency: string): string | null {
-  if (cents == null) return null;
-  const symbol = currency === "SGD" ? "S$" : `${currency} `;
-  return `${symbol}${Math.round(cents / 100)}`;
-}
-
-/** Benefits, written as outcomes rather than features. */
-const BENEFITS = [
-  {
-    title: "More ways to get clients",
-    body:
-      "Your profile is discoverable through Tistra Club, and through the client acquisition " +
-      "campaigns we run to bring people to it.",
-  },
-  {
-    title: "Less admin",
-    body:
-      "Availability, booking and scheduling happen without endless WhatsApp messages, and " +
-      "without you holding your week in your head.",
-  },
-  {
-    title: "Simple payments",
-    body:
-      "Clients pay when they book, and your session records stay organised automatically — " +
-      "no invoices, no chasing, no spreadsheet.",
-  },
-] as const;
-
-/** The reassurance strip. Every line is a commitment the product already
- * keeps — nothing aspirational, because a coach who finds one of these
- * untrue will not believe the other four. */
-const REASSURANCE = [
-  "No monthly fee",
-  "No long-term contract",
-  "Publish or unpublish anytime",
-  "Google Calendar shows free/busy only",
-  "Secure payment processing",
-] as const;
-
-/** The six surfaces of the product, in the order a coach actually meets
- * them: get found, get booked, run the day, get paid, keep clients
- * improving, and — last — nutrition. */
+/** Practice management, kept but demoted. Every line is something the
+ * product does today. */
 const CAPABILITIES = [
-  {
-    label: "Marketplace",
-    title: "Get found by people looking for your skill",
-    body: "A profile that shows your services, rates and genuine availability. Clients filter by skill, neighbourhood and time, and book the slot themselves.",
-  },
   {
     label: "Scheduling",
     title: "Availability that understands travel",
-    body: "Connect your Google Calendar and set your hours. Tistra reads only your free/busy times, so it never offers a slot you can't physically reach — it accounts for where your last session was and how long it takes to get across town.",
+    body: "Connect your Google Calendar and set your hours. Tistra reads only your free/busy times, and accounts for how long it takes to get across town — so it never offers a slot you can't physically reach.",
+  },
+  {
+    label: "Payments",
+    title: "Paid without chasing anyone",
+    body: "Clients pay when they book. Payouts land in your own account on a schedule you can see, with a clear record of every session, fee and refund.",
   },
   {
     label: "Clients",
     title: "Every client, in one place",
     body: "Session history, notes, homework and goals. Pick up exactly where you left off, even when it's been three weeks.",
-  },
-  {
-    label: "Payments",
-    title: "Paid without chasing anyone",
-    body: "Clients pay when they book. Payouts land in your account on a schedule you can see, with a clear record of every session, fee and refund.",
   },
   {
     label: "Progress",
@@ -161,14 +121,14 @@ const CAPABILITIES = [
   {
     label: "Nutrition",
     title: "Nutrition guidance, when it's relevant",
-    body: "If a client chooses to share it, you'll see a simple summary of how their week's eating is going — powered by Tistra Health. One feature among several, and only ever with their explicit permission.",
+    body: "If a client chooses to share it, you'll see a simple summary of how their week's eating is going, powered by Tistra Health — and only ever with their explicit permission.",
   },
 ] as const;
 
 export async function CoachLanding() {
-  // Three is enough to read as a marketplace without turning the section
-  // into a directory that competes with the signup CTA.
-  const coaches = await coachPreview(3);
+  // Both cheap and both safe to fail: the preview degrades to no section,
+  // the count degrades to no scarcity line. Neither can 500 an ads landing.
+  const [coaches, spots] = await Promise.all([coachPreview(3), foundingSpots()]);
 
   const signupHref = getSignupUrl({
     product: "gym",
@@ -177,422 +137,350 @@ export async function CoachLanding() {
     productParam: "coach",
   });
   const loginHref = getLoginUrl({ product: "gym", source: "coach_landing" });
+  const ctaProps = { foundingSpotsRemaining: spots.remaining };
 
   return (
-    <div
-      style={{ backgroundColor: TOKENS.surface, color: TOKENS.onSurface }}
-      className="min-h-screen font-[system-ui,-apple-system,'Segoe_UI',sans-serif] antialiased"
-    >
-      <Nav signupHref={signupHref} loginHref={loginHref} />
+    <div style={{ backgroundColor: TOKENS.surface, color: TOKENS.onSurface }}>
+      <PageView spotsRemaining={spots.remaining} />
+      <Nav signupHref={signupHref} loginHref={loginHref} spotsRemaining={spots.remaining} />
 
-      {/* ---- Hero: get clients, in five seconds ---- */}
-      <header className="mx-auto grid max-w-[1280px] items-center gap-10 px-5 pt-10 pb-14 md:grid-cols-12 md:gap-16 md:px-16 md:pt-16 md:pb-16">
-        {/* Copy first in the DOM, so on a phone the headline and CTA occupy
-            the first viewport and the mockup follows. A large image before
-            the CTA is the single most reliable way to lose mobile ad
-            traffic. */}
-        <Reveal className="md:col-span-6">
-          <p
-            className="text-xs font-semibold uppercase tracking-[0.05em]"
-            style={{ color: TOKENS.primary }}
-          >
-            Now signing up our first coaches in Singapore
-          </p>
-
-          <h1 className="mt-4 max-w-2xl text-[2.125rem] font-semibold leading-[2.5rem] tracking-[-0.02em] text-balance md:text-[3.25rem] md:leading-[3.5rem]">
-            Get more coaching clients.
-            <br />
-            <span style={{ color: TOKENS.primary }}>We handle the rest.</span>
-          </h1>
-
-          <p className="mt-5 max-w-xl text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
-            Get discovered by people looking for your skills. Let them book, pay and schedule
-            sessions with you — all in one place.
-          </p>
-
-          {/* Chips, not cards: three words each, scannable without reading. */}
-          <ul className="mt-6 flex flex-wrap gap-2">
-            {HERO_CHIPS.map((chip) => (
-              <li
-                key={chip}
-                className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[14px]"
-                style={{
-                  borderColor: TOKENS.outlineVariant,
-                  backgroundColor: TOKENS.surfaceLowest,
-                  color: TOKENS.onSurface,
-                }}
+      {/* ---------------------------------------------------------- 1. Hero */}
+      <SectionView event="founding_offer_view" props={ctaProps}>
+        <section className="mx-auto max-w-[1280px] px-5 pb-12 pt-8 md:px-16 md:pb-16 md:pt-14">
+          <div className="grid items-start gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
+            <div>
+              <p
+                className="text-xs font-semibold uppercase tracking-[0.06em]"
+                style={{ color: TOKENS.onSurfaceVariant }}
               >
-                <span aria-hidden="true" style={{ color: TOKENS.primary }}>
-                  ✓
-                </span>
-                {chip}
-              </li>
-            ))}
-          </ul>
+                {COACH_MARKET.eyebrow}
+              </p>
 
-          {/* One dominant action. The secondary is a text link, deliberately
-              not an outlined button of equal size — two equal buttons make a
-              visitor choose between them instead of clicking the one that
-              matters. */}
-          <div className="mt-8 flex flex-col items-start gap-3">
-            <TrackedCta
-              href={signupHref}
-              event="hero_get_listed_click"
-              className="inline-flex w-full items-center justify-center rounded-full px-8 py-4 text-[16px] font-semibold text-white transition-colors sm:w-auto"
-              style={{ backgroundColor: TOKENS.primary }}
-            >
-              Get listed for free →
-            </TrackedCta>
-            <p className="text-[13px]" style={{ color: TOKENS.onSurfaceVariant }}>
-              No monthly fees · Quick setup
-            </p>
-            <TrackedCta
-              href="#how-it-works"
-              event="see_how_it_works_click"
-              className="text-[15px] underline underline-offset-4"
-              style={{ color: TOKENS.onSurfaceVariant }}
-            >
-              See how it works ↓
-            </TrackedCta>
-          </div>
-
-          {/* The offer, compressed. It answers "why now", which is the second
-              question — so it sits below the CTA as one line that expands,
-              rather than three paragraphs someone has to read past. */}
-          <OfferDetails
-            freeBookings={FOUNDING_FREE_BOOKINGS}
-            feePercent={DEFAULT_PLATFORM_FEE_PERCENT}
-          />
-
-          <p className="mt-4 max-w-xl text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
-            {PRICING_LINE}
-          </p>
-          {/* Named as the payment provider's charge, not ours: a coach who
-              discovers an unexplained deduction assumes the platform took it,
-              and "zero commission" then reads as a lie rather than a
-              deduction we never received. */}
-          <p className="mt-2 max-w-xl text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
-            Card and PayLah charges are set by the payment provider, not by Tistra, and apply to
-            every booking.
-          </p>
-        </Reveal>
-
-        <Reveal className="md:col-span-6" direction="right" delay={120}>
-          <ProfileMock />
-        </Reveal>
-      </header>
-
-      {/* ---- The funnel ---- */}
-      <Section id="how-it-works">
-        <Reveal>
-          <SectionLabel>How Tistra works</SectionLabel>
-          <h2 className="mt-4 max-w-2xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
-            From profile to paying client.
-          </h2>
-          <p className="mt-4 max-w-2xl text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-            Discover → Book → Pay. Three steps, and Tistra does the middle one for you.
-          </p>
-        </Reveal>
-
-        <ol className="mt-10 grid gap-6 md:grid-cols-3 md:gap-8">
-          {FUNNEL.map((s, i) => (
-            <li key={s.n} className="relative flex">
-              <Reveal delay={i * 90} className="flex w-full">
-                <div
-                  className="h-full rounded-2xl border p-6"
-                  style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-[13px] font-semibold tabular-nums"
-                      style={{ backgroundColor: TOKENS.primaryContainer, color: TOKENS.primary }}
-                    >
-                      {s.n}
-                    </span>
-                    <span className="text-[13px] font-semibold uppercase tracking-[0.04em]" style={{ color: TOKENS.primary }}>
-                      {s.kicker}
-                    </span>
-                  </div>
-                  <h3 className="mt-4 text-lg font-medium leading-6 text-balance">{s.title}</h3>
-                  <p className="mt-2 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-                    {s.body}
-                  </p>
-                </div>
-              </Reveal>
-              {/* The connector that makes three cards read as one funnel.
-                  Decorative, so it is hidden from assistive tech and drops
-                  away entirely when the cards stack on a phone. */}
-              {i < FUNNEL.length - 1 && (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-[-1.35rem] top-1/2 hidden -translate-y-1/2 text-xl md:block"
-                  style={{ color: TOKENS.outlineVariant }}
-                >
-                  →
-                </span>
-              )}
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      {/* ---- What the client sees ----
-
-          Real listings, not mockups: these are the coaches genuinely live on
-          Tistra Club right now, rendered from the same query the marketplace
-          itself runs. A coach reading this is looking at the page their own
-          profile will join, which is a stronger argument than any
-          illustration of one.
-
-          The whole section disappears when there are no live coaches. An
-          empty marketplace shown to a prospective coach argues against
-          joining, and a fabricated one would be a lie they discover on day
-          two. */}
-      {coaches.length > 0 && (
-        <Section>
-          <Reveal>
-            <SectionLabel>The marketplace</SectionLabel>
-            <h2 className="mt-4 max-w-2xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
-              This is what clients see.
-            </h2>
-            <p className="mt-4 max-w-2xl text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-              Clients browse Tistra Club by skill, neighbourhood and when they&rsquo;re free. These
-              coaches are live today &mdash; your profile sits alongside them, with your own
-              skills, rates and neighbourhood.
-            </p>
-          </Reveal>
-
-          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {coaches.map((c: CoachPreview, i: number) => {
-              const from = formatFrom(c.startingPriceCents, c.currency);
-              return (
-                <Reveal key={c.id} delay={i * 70} className="flex">
-                  <div
-                    className="flex w-full flex-col overflow-hidden rounded-2xl border"
-                    style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
-                  >
-                    {/* Square. Coach portraits are shot portrait or square —
-                        these three are 1.00, 0.89 and 0.86 — so the landscape
-                        strip this replaced was discarding more than half the
-                        image height and cutting heads off. A square keeps
-                        essentially all of Jo's photo and around 88% of the
-                        other two.
-
-                        The marketplace itself uses 4:5, which is better still
-                        for a portrait, but at this width that makes a 722px
-                        card and roughly 2,200px of scroll on a phone — too
-                        much for a section whose job is to sell the idea, not
-                        to be browsed. */}
-                    <div className="aspect-square w-full overflow-hidden" style={{ backgroundColor: TOKENS.primaryContainer }}>
-                      {c.photoUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={c.photoUrl}
-                          alt=""
-                          loading="lazy"
-                          className="h-full w-full object-cover"
-                          // Same bias the marketplace itself uses (SwipeFeed):
-                          // coach portraits put the face in the upper third, so a
-                          // centred crop takes the top of the head off.
-                          style={{ objectPosition: "center 35%" }}
-                        />
-                      )}
-                    </div>
-                    <div className="flex flex-1 flex-col p-5">
-                      <p className="text-[16px] font-semibold">{c.displayName}</p>
-                      {c.skills.length > 0 && (
-                        <p className="mt-1 text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
-                          {c.skills.join(" · ")}
-                        </p>
-                      )}
-                      {c.neighbourhood && (
-                        <p className="mt-1 text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
-                          {c.neighbourhood}
-                        </p>
-                      )}
-                      {/* No rating and no "next available" chip. Nobody here
-                          has been reviewed yet, and a live availability chip
-                          costs a Google Calendar round-trip per coach on a
-                          paid-traffic landing page — see lib/landing/coach-preview. */}
-                      <div className="mt-auto pt-4">
-                        {from && <p className="text-[15px] font-semibold">From {from}/session</p>}
-                        <div
-                          className="mt-3 w-full rounded-full border py-2 text-center text-[13px] font-medium"
-                          style={{ borderColor: TOKENS.outlineVariant, color: TOKENS.onSurfaceVariant }}
-                          aria-hidden="true"
-                        >
-                          View profile
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Reveal>
-              );
-            })}
-          </div>
-          <p className="mt-5 text-[13px]" style={{ color: TOKENS.onSurfaceVariant }}>
-            Live coaches on Tistra Club. Ratings appear once clients start leaving them.
-          </p>
-        </Section>
-      )}
-
-      {/* ---- Benefits ---- */}
-      <Section id="features">
-        <Reveal>
-          <SectionLabel>Why coaches join</SectionLabel>
-          <h2 className="mt-4 max-w-2xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
-            Spend less time finding and managing clients.
-          </h2>
-        </Reveal>
-        <div className="mt-10 grid gap-6 md:grid-cols-3 md:gap-8">
-          {BENEFITS.map((b, i) => (
-            <Reveal key={b.title} delay={i * 90}>
-              <h3
-                className="border-t pt-4 text-lg font-medium"
-                style={{ borderColor: TOKENS.outlineVariant }}
+              <h1
+                className="mt-3 max-w-2xl text-[2.375rem] font-semibold leading-[2.75rem] tracking-[-0.02em] text-balance md:text-[3.5rem] md:leading-[3.75rem]"
+                style={{ color: TOKENS.onSurface }}
               >
-                {b.title}
-              </h3>
-              <p className="mt-2 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-                {b.body}
-              </p>
-            </Reveal>
-          ))}
-        </div>
-      </Section>
+                Get more coaching clients.
+              </h1>
 
-      {/* ---- The differentiator, given its own room ---- */}
-      <Section>
-        <div
-          className="rounded-3xl px-7 py-10 md:px-16 md:py-12"
-          style={{ backgroundColor: TOKENS.primaryContainer }}
-        >
-          <div className="grid gap-10 md:grid-cols-12 md:gap-16">
-            <div className="md:col-span-6">
-              <SectionLabel>Why coaches stay</SectionLabel>
-              <h2 className="mt-4 text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
-                It knows you can&apos;t be in two places at once.
-              </h2>
-              <p className="mt-5 text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
-                Most booking tools treat your day as a row of empty boxes. Tistra checks the
-                journey between sessions, so a client in Bukit Timah can&apos;t book the slot
-                straight after your East Coast session.
+              <p
+                className="mt-4 max-w-xl text-[17px] leading-7 md:text-[19px] md:leading-8"
+                style={{ color: TOKENS.onSurfaceVariant }}
+              >
+                Join Tistra Club as a Founding Coach and get discovered by people looking for the
+                skills you teach.
               </p>
+
+              <p
+                className="mt-4 max-w-xl rounded-2xl px-4 py-3.5 text-[16px] leading-6 md:text-[17px]"
+                style={{ backgroundColor: TOKENS.primaryContainer, color: TOKENS.onSurface }}
+              >
+                We&rsquo;ll help build your profile and{" "}
+                <span className="font-semibold">
+                  actively promote you to potential clients using Tistra&rsquo;s own marketing
+                  budget.
+                </span>
+              </p>
+
+              {/* On desktop the offer card carries the CTA. On a phone the
+                  card sits below the fold, so the hero needs its own. */}
+              <div className="mt-6 lg:hidden">
+                <TrackedCta
+                  href={signupHref}
+                  event="founding_cta_click"
+                  props={{ ...ctaProps, placement: "hero" }}
+                  className="flex w-full items-center justify-center rounded-full px-6 py-4 text-[16px] font-medium text-white"
+                  style={{ backgroundColor: TOKENS.primary }}
+                >
+                  Claim my Founding Coach spot
+                </TrackedCta>
+                <p className="mt-3 text-center text-[13px]" style={{ color: TOKENS.onSurfaceVariant }}>
+                  Free to join · No card required · No monthly fee
+                </p>
+                <FoundingSpotsLine spots={spots} className="mt-3 text-center" />
+              </div>
             </div>
-            <div className="md:col-span-6">
-              <ul className="space-y-4">
-                {CAPABILITIES.map((c) => (
-                  <li key={c.label}>
-                    <p className="text-[13px] font-semibold uppercase tracking-[0.04em]" style={{ color: TOKENS.primary }}>
-                      {c.label}
-                    </p>
-                    <p className="mt-1 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-                      <span className="font-medium" style={{ color: TOKENS.onSurface }}>
-                        {c.title}.
-                      </span>{" "}
-                      {c.body}
-                    </p>
+
+            <FoundingOfferCard spots={spots} signupHref={signupHref} className="lg:mt-1" />
+          </div>
+        </section>
+      </SectionView>
+
+      {/* ------------------------------------------------ 2. We promote you */}
+      <div style={{ backgroundColor: TOKENS.surfaceContainer }}>
+        <Section>
+          <h2
+            className="max-w-2xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+            style={{ color: TOKENS.onSurface }}
+          >
+            You coach. We&rsquo;ll work on getting you discovered.
+          </h2>
+
+          <div className="mt-8 grid gap-8 md:grid-cols-2 md:gap-12">
+            <div>
+              <p className="text-[15px] font-medium" style={{ color: TOKENS.onSurface }}>
+                Working independently usually means doing all of this yourself:
+              </p>
+              <ul className="mt-4 flex flex-col gap-2.5">
+                {BURDENS.map((b) => (
+                  <li key={b} className="flex items-start gap-2.5 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+                    <span aria-hidden="true" className="mt-2.5 h-1 w-1 shrink-0 rounded-full" style={{ backgroundColor: TOKENS.outlineVariant }} />
+                    {b}
                   </li>
                 ))}
               </ul>
             </div>
+
+            <div>
+              <p className="text-[16px] leading-7 md:text-[17px]" style={{ color: TOKENS.onSurface }}>
+                When people search for skills like {COACH_MARKET.skillExamples.slice(0, -1).join(", ")} or{" "}
+                {COACH_MARKET.skillExamples.slice(-1)[0]}, Tistra will actively promote relevant
+                coaches and skill pages.{" "}
+                <span className="font-semibold">
+                  Founding Coaches benefit from this promotion at Tistra&rsquo;s cost.
+                </span>
+              </p>
+              <p className="mt-4 text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
+                Promotion does not guarantee enquiries or bookings.
+              </p>
+            </div>
+          </div>
+        </Section>
+      </div>
+
+      {/* ------------------------------------------- 3. The consumer surface */}
+      <Section>
+        <MarketplacePreview coaches={coaches} />
+      </Section>
+
+      {/* -------------------------------------------------- 4. Three steps */}
+      <div style={{ backgroundColor: TOKENS.surfaceContainer }}>
+        <Section>
+          <h2
+            className="max-w-2xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+            style={{ color: TOKENS.onSurface }}
+          >
+            From profile to paid booking.
+          </h2>
+          <div className="mt-8 grid gap-5 md:grid-cols-3 md:gap-6">
+            {FUNNEL.map((step) => (
+              <div
+                key={step.n}
+                className="flex h-full flex-col rounded-2xl border p-5"
+                style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
+              >
+                <span className="text-[13px] font-semibold" style={{ color: TOKENS.primary }}>
+                  {step.n}
+                </span>
+                <h3 className="mt-2 text-[18px] font-semibold leading-6" style={{ color: TOKENS.onSurface }}>
+                  {step.kicker}
+                </h3>
+                <p className="mt-2 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+                  {step.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </div>
+
+      {/* ------------------------------------------ 5. Concierge onboarding */}
+      <Section>
+        <div className="grid items-center gap-8 md:grid-cols-[1.1fr_0.9fr] md:gap-12">
+          <div>
+            <h2
+              className="max-w-xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+              style={{ color: TOKENS.onSurface }}
+            >
+              Don&rsquo;t have time to build your profile? We&rsquo;ll help.
+            </h2>
+            <p className="mt-4 max-w-xl text-[16px] leading-7 md:text-[17px]" style={{ color: TOKENS.onSurfaceVariant }}>
+              Send us your Instagram, website or basic coaching details and we&rsquo;ll help get your
+              Tistra profile ready — photos, services, pricing and availability. Our first coaches
+              get this personally, from us.
+            </p>
+            <TrackedCta
+              href={`${signupHref}&help=1`}
+              event="onboarding_help_click"
+              props={{ ...ctaProps, placement: "onboarding" }}
+              className="mt-6 inline-flex items-center justify-center rounded-full border px-6 py-3 text-[15px] font-medium"
+              style={{ borderColor: TOKENS.primary, color: TOKENS.primary }}
+            >
+              Help me set it up
+            </TrackedCta>
+          </div>
+          <div className="lg:justify-self-end">
+            <ProfileMock />
           </div>
         </div>
       </Section>
 
-      {/* ---- Reassurance ---- */}
+      {/* ------------------------------------------------------- 6. Pricing */}
+      <SectionView event="pricing_section_view" props={ctaProps}>
+        <div style={{ backgroundColor: TOKENS.surfaceContainer }}>
+          <Section id="pricing">
+            <h2
+              className="max-w-2xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+              style={{ color: TOKENS.onSurface }}
+            >
+              Your first {FOUNDING_FREE_BOOKINGS} bookings: 0%.
+            </h2>
+            <div className="mt-6 grid gap-6 md:grid-cols-2 md:gap-12">
+              <div>
+                <p className="text-[17px] leading-7" style={{ color: TOKENS.onSurface }}>
+                  After your first {FOUNDING_FREE_BOOKINGS} bookings, Tistra takes {DEFAULT_PLATFORM_FEE_PERCENT}% only
+                  when you get paid.
+                </p>
+                <p className="mt-3 text-[16px] leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+                  No monthly subscription. No upfront fee. No payment to stay listed.
+                </p>
+                <p className="mt-3 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+                  {PRICING_LINE}
+                </p>
+              </div>
+              <div>
+                <p className="text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+                  That {DEFAULT_PLATFORM_FEE_PERCENT}% is what funds the marketplace: bringing clients in,
+                  making coaches findable, running bookings and payments, and keeping the platform
+                  going. Card processing is included in it, so there is no second deduction to
+                  discover later.
+                </p>
+                <p className="mt-3 text-[13px] leading-5" style={{ color: TOKENS.onSurfaceVariant }}>
+                  Card and PayLah charges are set by the payment provider, not by Tistra.
+                </p>
+              </div>
+            </div>
+          </Section>
+        </div>
+      </SectionView>
+
+      {/* -------------------------------------------------- 7. The badge */}
       <Section>
         <div
-          className="rounded-3xl border px-6 py-8 md:px-10 md:py-10"
-          style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceContainer }}
+          className="rounded-3xl border p-6 md:p-8"
+          style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
         >
-          <Reveal>
-            <SectionLabel>No surprises</SectionLabel>
-            <ul className="mt-5 flex flex-wrap gap-x-8 gap-y-3">
-              {REASSURANCE.map((r) => (
-                <li key={r} className="inline-flex items-center gap-2 text-[15px]">
-                  <span aria-hidden="true" style={{ color: TOKENS.primary }}>
-                    ✓
-                  </span>
-                  {r}
-                </li>
-              ))}
-            </ul>
-            {/* Kept verbatim for Google's brand review, which rejected this
-                page twice for not explaining what the app is or what it does
-                with Google data. Below the fold, where it informs rather than
-                interrupts the pitch. */}
-            <p className="mt-6 max-w-3xl text-[14px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-              Tistra Coach is the scheduling, payments and client-management app for independent
-              coaches and personal trainers. Connect your Google Calendar and Tistra reads only
-              your free/busy times — never your event titles, guests, locations or notes.
-              Optional. The rest of Tistra Coach works without it.
-            </p>
-            <p className="mt-3 max-w-3xl text-[14px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-              {PRICING_LINE}
-            </p>
-          </Reveal>
-        </div>
-      </Section>
-
-      {/* ---- Close ---- */}
-      <Section>
-        <div className="flex flex-col items-start gap-8 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h2 className="max-w-xl text-2xl font-medium leading-8 tracking-[-0.01em] text-balance md:text-[2rem] md:leading-10">
-              Ready to get discovered?
-            </h2>
-            <p className="mt-4 max-w-lg text-lg leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
-              Create your coach profile and be among the first coaches clients find on Tistra Club
-              Singapore.
-            </p>
-            <p className="mt-3 max-w-lg text-[14px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
-              Founding coaches keep 100% of their first {FOUNDING_FREE_BOOKINGS} bookings.
-            </p>
-          </div>
-          <div className="flex w-full flex-col items-start gap-2 sm:w-auto">
-            <TrackedCta
-              href={signupHref}
-              event="final_get_listed_click"
-              className="inline-flex w-full shrink-0 items-center justify-center rounded-full px-8 py-4 text-[16px] font-semibold text-white transition-colors sm:w-auto"
-              style={{ backgroundColor: TOKENS.primary }}
-            >
-              Get listed for free →
-            </TrackedCta>
-            <p className="text-[13px]" style={{ color: TOKENS.onSurfaceVariant }}>
-              No monthly fees · Quick setup
-            </p>
-          </div>
-        </div>
-      </Section>
-
-      <footer
-        className="mt-10 border-t pb-24 md:pb-0"
-        style={{ borderColor: TOKENS.outlineVariant }}
-      >
-        <div className="mx-auto flex max-w-[1280px] flex-col gap-4 px-5 py-10 text-sm md:flex-row md:items-center md:justify-between md:px-16">
-          {/* Tistra Coach is not a feature of Tistra Health. The family is
-              Tistra: Club is the consumer marketplace, Coach is the operating
-              system behind it, Health is an optional nutrition integration. */}
-          <p style={{ color: TOKENS.onSurfaceVariant }}>
-            Tistra Coach powers coaches on Tistra Club.{" "}
-            <span className="whitespace-nowrap">A Tistra product.</span>
+          <FoundingBadge />
+          <h2
+            className="mt-4 max-w-xl text-[1.5rem] font-semibold leading-8 tracking-[-0.02em] text-balance md:text-[1.875rem] md:leading-10"
+            style={{ color: TOKENS.onSurface }}
+          >
+            Founding Coaches are marked as such.
+          </h2>
+          <p className="mt-3 max-w-2xl text-[16px] leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+            Your profile carries a Founding Coach mark, recognising you as one of the first coaches
+            on Tistra Club. It&rsquo;s a note of who was here early — it doesn&rsquo;t change how you
+            rank or how clients book.
           </p>
-          <nav className="flex flex-wrap gap-6" style={{ color: TOKENS.onSurfaceVariant }}>
-            <Link href="/privacy" className="hover:underline">Privacy</Link>
-            <Link href="/terms" className="hover:underline">Terms</Link>
-            <Link href={loginHref} className="hover:underline">Sign in</Link>
-          </nav>
         </div>
-      </footer>
+      </Section>
 
-      {/* Phone only, and only after scrolling. */}
-      <StickyMobileCta href={signupHref} />
+      {/* ------------------------------------------ 8. Practice management */}
+      <div style={{ backgroundColor: TOKENS.surfaceContainer }}>
+        <Section id="features">
+          <h2
+            className="max-w-2xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+            style={{ color: TOKENS.onSurface }}
+          >
+            And once clients start booking, Tistra helps you run the rest.
+          </h2>
+          {/* One plain sentence saying what this app is. Google's brand
+              review rejected an earlier version of this page twice for not
+              explaining the product's purpose, so this must not be dropped
+              in a future rewrite. */}
+          <p className="mt-4 max-w-2xl text-[16px] leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+            Tistra Coach is the scheduling, payments and client-management app for independent
+            coaches — {PRICING_LINE}
+          </p>
+          <div className="mt-8 grid gap-5 md:grid-cols-2 md:gap-6">
+            {CAPABILITIES.map((c) => (
+              <div
+                key={c.label}
+                className="flex h-full flex-col rounded-2xl border p-5"
+                style={{ borderColor: TOKENS.outlineVariant, backgroundColor: TOKENS.surfaceLowest }}
+              >
+                <SectionLabel>{c.label}</SectionLabel>
+                <h3 className="mt-2 text-[17px] font-semibold leading-6" style={{ color: TOKENS.onSurface }}>
+                  {c.title}
+                </h3>
+                <p className="mt-2 text-[15px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+                  {c.body}
+                </p>
+              </div>
+            ))}
+          </div>
+          {/* Named integration and named scope. A reviewer must be able to
+              see which calendar and exactly what is read from it. */}
+          <p className="mt-6 max-w-2xl text-[14px] leading-6" style={{ color: TOKENS.onSurfaceVariant }}>
+            <span className="font-medium" style={{ color: TOKENS.onSurface }}>Optional.</span>{" "}
+            Connect your Google Calendar and Tistra reads only your free/busy times —
+            {" "}
+            never your event titles, guests, locations or notes. You can disconnect it at any time.
+          </p>
+        </Section>
+      </div>
+
+      {/* ------------------------------------------------------- 9. Trust */}
+      <Section>
+        <div className="max-w-2xl">
+          <h2
+            className="text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
+            style={{ color: TOKENS.onSurface }}
+          >
+            Built for independent coaches.
+          </h2>
+          <p className="mt-4 text-[17px] leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+            We built Tistra because great coaches shouldn&rsquo;t have to become full-time marketers
+            just to fill their calendars.
+          </p>
+          <p className="mt-4 text-[17px] leading-7 font-medium" style={{ color: TOKENS.onSurface }}>
+            We&rsquo;re personally onboarding our first group of coaches — which is why there are
+            only {COACH_MARKET.foundingCoachLimit} Founding Coach places to begin with.
+          </p>
+        </div>
+      </Section>
+
+      {/* --------------------------------------------------------- 10. FAQ */}
+      <div style={{ backgroundColor: TOKENS.surfaceContainer }}>
+        <Section>
+          <CoachFaq />
+        </Section>
+      </div>
+
+      {/* -------------------------------------------------- 11. Final CTA */}
+      <Section>
+        <div className="grid items-center gap-8 lg:grid-cols-[1fr_0.85fr] lg:gap-14">
+          <div>
+            <h2
+              className="max-w-xl text-[2rem] font-semibold leading-10 tracking-[-0.02em] text-balance md:text-[2.5rem] md:leading-[3rem]"
+              style={{ color: TOKENS.onSurface }}
+            >
+              Be one of Tistra&rsquo;s Founding Coaches.
+            </h2>
+            <p className="mt-4 max-w-lg text-[17px] leading-7" style={{ color: TOKENS.onSurfaceVariant }}>
+              Join our first group of independent coaches and let us help you get discovered.
+            </p>
+          </div>
+          <FoundingOfferCard spots={spots} signupHref={signupHref} placement="final" />
+        </div>
+      </Section>
+
+      <Footer />
+
+      <StickyMobileCta href={signupHref} spotsRemaining={spots.available ? spots.remaining : null} />
     </div>
   );
 }
 
-function Nav({ signupHref, loginHref }: { signupHref: string; loginHref: string }) {
+function Nav({
+  signupHref,
+  loginHref,
+  spotsRemaining,
+}: {
+  signupHref: string;
+  loginHref: string;
+  spotsRemaining: number;
+}) {
   return (
     <div
       className="sticky top-0 z-30 border-b backdrop-blur"
@@ -615,13 +503,46 @@ function Nav({ signupHref, loginHref }: { signupHref: string; loginHref: string 
           </Link>
           <TrackedCta
             href={signupHref}
-            event="nav_get_listed_click"
+            event="navbar_signup_click"
+            props={{ foundingSpotsRemaining: spotsRemaining, placement: "navbar" }}
             className="rounded-full px-4 py-3 text-[14px] font-medium text-white md:px-5 md:py-2.5 md:text-[15px]"
             style={{ backgroundColor: TOKENS.primary }}
           >
-            Get listed for free
+            Join as a Founding Coach
           </TrackedCta>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function Footer() {
+  return (
+    <div className="border-t" style={{ borderColor: TOKENS.outlineVariant }}>
+      <div
+        className="mx-auto max-w-[1280px] px-5 py-8 pb-24 text-[13px] md:px-16 md:pb-8"
+        style={{ color: TOKENS.onSurfaceVariant }}
+      >
+        {/* pb-24 on mobile clears the sticky CTA, so the last line of the
+            page is never sitting underneath it. */}
+        <p>
+          Tistra Coach powers coaches on Tistra Club. A Tistra product.
+        </p>
+        <p className="mt-2">
+          Coaches keep their own clients, rates and channels. Tistra does not guarantee enquiries or
+          bookings.
+        </p>
+        <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+          <Link href="/privacy" className="underline underline-offset-2">
+            Privacy
+          </Link>
+          <Link href="/terms" className="underline underline-offset-2">
+            Terms
+          </Link>
+          <Link href="https://tistra.club" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+            Tistra Club
+          </Link>
+        </p>
       </div>
     </div>
   );

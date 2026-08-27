@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef } from "react";
-import { track, type LandingEvent } from "@/lib/landing/track";
+import { track, type LandingEvent, type LandingEventProps } from "@/lib/landing/track";
 
 /** A CTA that reports itself before navigating.
  *
@@ -18,6 +19,7 @@ import { track, type LandingEvent } from "@/lib/landing/track";
 export function TrackedCta({
   href,
   event,
+  props,
   children,
   className,
   style,
@@ -25,6 +27,9 @@ export function TrackedCta({
 }: {
   href: string;
   event: LandingEvent;
+  /** Extra properties for this click — foundingSpotsRemaining, mostly, so a
+   * click can be read against how scarce the offer looked at the time. */
+  props?: LandingEventProps;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
@@ -32,6 +37,29 @@ export function TrackedCta({
   scroll?: boolean;
 }) {
   const fired = useRef(false);
+  const router = useRouter();
+
+  /** Carries utm_ params, gclid and fbclid from the landing URL into signup.
+   *
+   * Merged at click time rather than at render: these pages are static, and
+   * reading searchParams on the server would make every coach marketing
+   * route dynamic — which costs an ads landing page the one thing it cannot
+   * afford. The plain href stays on the anchor, so the link still works
+   * without JS, and a modified click (new tab, cmd-click) is left entirely
+   * to the browser.
+   */
+  function withCampaign(target: string): string {
+    const incoming = new URLSearchParams(window.location.search);
+    const carry = new URLSearchParams();
+    for (const [k, v] of incoming) {
+      if (k.startsWith("utm_") || k === "gclid" || k === "fbclid") carry.set(k, v);
+    }
+    if ([...carry].length === 0) return target;
+    const [path, existing = ""] = target.split("?");
+    const merged = new URLSearchParams(existing);
+    for (const [k, v] of carry) if (!merged.has(k)) merged.set(k, v);
+    return `${path}?${merged.toString()}`;
+  }
 
   return (
     <Link
@@ -42,7 +70,7 @@ export function TrackedCta({
       onClick={(e) => {
         if (fired.current) return;
         fired.current = true;
-        track(event);
+        track(event, props);
 
         // In-page anchors scroll smoothly. Done here rather than with a
         // global `scroll-behavior: smooth` on <html>, which would also
@@ -58,6 +86,14 @@ export function TrackedCta({
             window.history.replaceState(null, "", href);
           }
         }
+        else if (!e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.button === 0) {
+          const merged = withCampaign(href);
+          if (merged !== href) {
+            e.preventDefault();
+            router.push(merged);
+          }
+        }
+
         // Released shortly after, so an in-page anchor (which does not
         // unmount this component) can still be measured if clicked again
         // later in the session.

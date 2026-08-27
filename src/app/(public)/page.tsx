@@ -80,12 +80,22 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
     // Tistra Coach — the coaching business platform, not a food-logging
     // tool. Matches CoachLanding's positioning (see that component's note
     // on why the previous nutrition-first framing was replaced).
+    const description =
+      "Join Tistra Club as a Founding Coach: 0% commission on your first 10 bookings, " +
+      "Tistra-funded promotion of your profile, and personal help setting it up. " +
+      "No monthly fee, no exclusivity.";
     return {
-      title: "Tistra Coach | Run your coaching practice",
-      description:
-        "Get discovered by new clients, fill your calendar with travel-aware scheduling, take payment automatically, and track every client's progress. Built for coaches in Singapore.",
+      title: "Tistra Coach | Get more coaching clients",
+      description,
       alternates: { canonical: "/" },
       icons: { icon: faviconForProduct("gym") },
+      openGraph: {
+        title: "Get more coaching clients — become a Tistra Founding Coach",
+        description,
+        type: "website",
+        siteName: "Tistra Coach",
+      },
+      twitter: { card: "summary_large_image", title: "Get more coaching clients", description },
     };
   }
 

@@ -11,6 +11,7 @@ import { isClubHost } from "@/lib/club/host";
 import { isCoachHost } from "@/lib/coach/routes";
 import { COACH_CANONICAL_ORIGIN } from "@/lib/club/host";
 import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
+import { FoundingCoachBanner } from "@/components/landing/coach/FoundingCoachBanner";
 
 /** Where a successful sign-in should land, per surface.
  *
@@ -109,7 +110,12 @@ export default async function SignupPage({
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 mb-1">{title}</h1>
         <p className="text-gray-500 text-sm mb-8">Get started for free.</p>
-        <AuthForm product={product} mode="signup" next={next} />
+        {/* Only for a coach arriving from the landing page — the banner is
+            nonsense on a Health or Club signup. */}
+        {product === "gym" && params.source === "coach_landing" && (
+          <FoundingCoachBanner needsHelp={params.help === "1"} />
+        )}
+        <AuthForm product={product} mode="signup" next={next} onboardingHelp={params.help === "1"} />
         <ProductFooter product={product} />
       </div>
     </div>
