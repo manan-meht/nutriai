@@ -102,3 +102,23 @@ export function consentUpdatePayload(choice: ConsentChoice): Record<string, Cons
 export function shouldShowBanner(params: { required: boolean; stored: ConsentState }): boolean {
   return params.required && params.stored === null;
 }
+
+/** Whether hashed user data may be sent to Google for ad matching.
+ *
+ * Enhanced conversions attach a hashed email to the conversion event so
+ * Google can match it to a signed-in account. That is personal data
+ * processed for advertising, so it follows the same rule as ad_user_data
+ * in Consent Mode: allowed outside the EEA/UK, and inside only once the
+ * visitor has actually accepted.
+ *
+ * Deliberately a separate, explicit gate rather than trusting Consent Mode
+ * to withhold it internally. The payload is built server-side, so not
+ * emitting it at all is both stronger and auditable — you can read the
+ * page source and see that nothing was sent.
+ */
+export function enhancedConversionsAllowed(params: {
+  required: boolean;
+  stored: ConsentState;
+}): boolean {
+  return !params.required || params.stored === "granted";
+}

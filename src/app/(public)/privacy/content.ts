@@ -120,6 +120,11 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
         "Tistra does not use meal data for advertising.",
         "Tistra may use trusted service providers for hosting, WhatsApp messaging, AI processing, analytics, or payments — these providers process data on Tistra's behalf and are not permitted to use it for their own purposes.",
       ]),
+      // Enhanced conversions send a hashed email address to Google. That is
+      // personal data processed for advertising and has to be disclosed
+      // here, not just handled correctly in code.
+      p("When a coach publishes a profile on Tistra Coach after arriving from a Google ad, Tistra reports that as a conversion to Google Ads. Where advertising cookies have been accepted, that report includes the coach's email address, which is converted to an irreversible hash in the browser before it is sent — the address itself is never transmitted. Google uses the hash only to match the conversion to an existing Google account, so that advertising is measured accurately. Coaches in the EEA and UK who decline advertising cookies have no email address included, hashed or otherwise."),
+      p("Meal photos, nutrition data and health information are never included in advertising measurement, and are never shared with Google Ads or any other advertising provider."),
     ],
   },
   {

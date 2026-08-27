@@ -1,5 +1,8 @@
 import Link from "next/link";
+import { cookies, headers } from "next/headers";
 import { GOOGLE_ADS_ID } from "@/components/marketing/GoogleAdsTag";
+import { CONSENT_COOKIE, consentRequiredFor, parseConsent } from "@/lib/privacy/consent";
+import { userDataScript } from "@/lib/privacy/enhanced-conversions";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCoachProfile } from "@/lib/club/coach-queries";
@@ -61,6 +64,17 @@ export default async function CoachPublishedPage() {
 
   const publicUrl = `${CLUB_CANONICAL_ORIGIN}/coaches/${profile.id}`;
 
+  // Enhanced conversions, gated on the same signal as ad_user_data. An EEA
+  // visitor who has not accepted gets no user_data block emitted at all —
+  // not a denied one, none — so there is nothing for the tag to send even
+  // if Consent Mode were misconfigured.
+  const country = (await headers()).get("cf-ipcountry");
+  const stored = parseConsent((await cookies()).get(CONSENT_COOKIE)?.value);
+  const userData = userDataScript(user.email, {
+    required: consentRequiredFor(country),
+    stored,
+  });
+
   return (
     <CoachShell active="settings" coachName={profile.displayName} photoUrl={profile.photoUrl}>
       {/* The conversion itself. Separate from the base tag above, because
@@ -91,7 +105,7 @@ export default async function CoachPublishedPage() {
           dangerouslySetInnerHTML={{
             __html: `window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
-gtag('event', 'conversion', {`
+${userData}gtag('event', 'conversion', {`
               + `'send_to': '${GOOGLE_ADS_ID}/${CONVERSION_LABEL}',`
               + `'value': ${CONVERSION_VALUE},`
               + `'currency': '${CONVERSION_CURRENCY}'});`,
