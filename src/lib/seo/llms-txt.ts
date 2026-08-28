@@ -98,7 +98,7 @@ Tistra Club is early. The roster is small and deliberately so — each coach is 
 
 ## What is on offer
 
-- **Skill categories**: Acrobatics, Boxing, Calisthenics, Handstands, Inline Skating, Mobility, Muay Thai, Older Adult Strength, Personal Training, Pole, Running, Strength Training, Swimming, Tennis, Yoga.
+- **Skill categories**: Acrobatics, Boxing, Calisthenics, Dance, Handstands, Inline Skating, Latin Dance, Mobility, Muay Thai, Older Adult Strength, Personal Training, Pole, Running, Strength Training, Swimming, Tennis, Yoga.
 - **Where**: Singapore only. Coaches list the neighbourhoods they work in, and many travel to the client — house-call sessions are a distinct, marked service type rather than an informal arrangement.
 - **Prices**: set by each coach, in Singapore dollars, and shown before booking. Current listed private sessions run from roughly S$60 to S$160.
 - **Class packs**: several coaches sell discounted multi-class packs. Credits are bought once and spent on individual bookings later.

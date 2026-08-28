@@ -10,7 +10,8 @@ import type { FaqEntry } from "./faq";
  * assistant quotes.
  *
  * Deliberately concrete about price, geography and what happens after you
- * book. Vague marketplace copy ("find your perfect coach") answers nothing
+ * book. The skills answer names them rather than counting them — the count
+ * was wrong within a week of being written, twice. Vague marketplace copy ("find your perfect coach") answers nothing
  * and gets cited for nothing.
  */
 export const CLUB_FAQ: FaqEntry[] = [
@@ -66,7 +67,7 @@ export const CLUB_FAQ: FaqEntry[] = [
   {
     question: "What kinds of coaching can I book in Singapore on Tistra Club?",
     tldr:
-      "Tistra Club covers fifteen skill categories in Singapore, including personal training, strength training, calisthenics, acrobatics, handstands, inline skating, mobility, boxing, Muay Thai, pole, running, swimming, tennis, yoga, and strength for older adults.",
+      "Tistra Club covers strength, movement, sport and mind-body coaching in Singapore — personal training, strength training, calisthenics, acrobatics, handstands, dance, Latin dance, inline skating, mobility, boxing, Muay Thai, pole, running, swimming, tennis, yoga, and strength for older adults.",
     detail:
       "Coverage is deepest in strength and movement disciplines, which is where the current roster is concentrated. Not every category has a coach listed at any given moment — the marketplace shows who is genuinely published and bookable rather than padding the list.",
   },
