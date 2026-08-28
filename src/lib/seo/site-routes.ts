@@ -48,7 +48,11 @@ const HEALTH_ROUTES = [
 ];
 
 const CLUB_STATIC_ROUTES = ["/", "/coaches", "/privacy", "/terms"];
-const COACH_ROUTES = ["/", "/privacy", "/terms"];
+// /india is the India coach recruitment page. Listed so it can be indexed
+// on its own URL rather than depending on IP detection — a crawler in
+// Virginia would never be geolocated into India, so an IP-only India
+// experience would be invisible to search and to AI answers alike.
+const COACH_ROUTES = ["/", "/india", "/privacy", "/terms"];
 
 export interface SitemapEntry {
   url: string;

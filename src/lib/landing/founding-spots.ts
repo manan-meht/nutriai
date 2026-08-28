@@ -1,5 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/server";
-import { COACH_MARKET } from "./coach-market";
+import { COACH_MARKET, type CoachMarket } from "./coach-market";
 
 /** How many Founding Coach places are left.
  *
@@ -53,4 +53,18 @@ export async function foundingSpots(): Promise<FoundingSpots> {
   } catch {
     return spotsFrom(0);
   }
+}
+
+/** Founding places for a specific market.
+ *
+ * Singapore counts real coach profiles. India cannot yet: coach_profiles
+ * has no country column, so counting would report Singapore's coaches as
+ * India's. Until a market is stored per coach, India reports its full
+ * allocation — which is true today (there are none) and must be revisited
+ * the moment the first Indian coach signs up. Deliberately explicit rather
+ * than quietly reusing the global count and being wrong.
+ */
+export async function foundingSpotsFor(market: CoachMarket): Promise<FoundingSpots> {
+  if (market.id === "sg") return foundingSpots();
+  return spotsFrom(0, market.foundingCoachLimit);
 }
