@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { withDangerousMod } = require('@expo/config-plugins');
+const { withDangerousMod, withAndroidManifest, AndroidConfig } = require('@expo/config-plugins');
 
 // expo-dynamic-app-icon (v1.2.0, unmaintained) writes each dynamic icon as a
 // plain bitmap into mipmap-{m,h,x,xx,xxx}dpi and points the generated
@@ -68,6 +68,72 @@ function iconsFromProps(props) {
   return Object.entries(props).map(([name, entry]) => [name, entry?.image]);
 }
 
+// ---------------------------------------------------------------------------
+// Deep links must survive an icon change.
+//
+// expo-dynamic-app-icon switches icons by enabling an <activity-alias> and
+// DISABLING .MainActivity (see its withDynamicIcon.js — the aliases it emits
+// carry MAIN/LAUNCHER and nothing else). Every deep-link intent-filter lives
+// on .MainActivity, so the moment a user's icon changed, tistramobile:// URIs
+// stopped resolving on that device:
+//
+//   disabled: .MainActivity            <- owns the tistramobile:// filter
+//   enabled:  .MainActivitybowl_half
+//   $ am start -d "tistramobile://auth/callback"
+//   Error: unable to resolve Intent
+//
+// That silently broke Google/Facebook OAuth, the email-confirmation link and
+// password reset, for anyone who had logged meals for long enough to change
+// their icon. No error was shown — expo-web-browser simply waits forever for
+// a redirect that can never arrive. Confirmed on a Pixel 8 Pro running
+// build 40 via adb dumpsys.
+//
+// So every alias gets a copy of MainActivity's own deep-link filters. Copied
+// rather than hardcoded: the scheme set is whatever the app config and
+// expo-router put there (tistramobile and exp+tistra-mobile today), and a
+// hardcoded list would drift the next time either changes.
+
+/** True for an intent-filter that routes a URI, i.e. carries <data>. The
+ * MAIN/LAUNCHER filter has none, and must not be duplicated — two launcher
+ * entries per alias would show duplicate icons. */
+function isDeepLinkFilter(filter) {
+  return Array.isArray(filter?.data) && filter.data.length > 0;
+}
+
+function withDeepLinksOnIconAliases(config) {
+  return withAndroidManifest(config, (config) => {
+    const app = AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults);
+    const aliases = app['activity-alias'] ?? [];
+    if (aliases.length === 0) return config;
+
+    const mainActivity = (app.activity ?? []).find(
+      (a) => a.$?.['android:name'] === '.MainActivity'
+    );
+    const deepLinkFilters = (mainActivity?.['intent-filter'] ?? []).filter(isDeepLinkFilter);
+
+    if (deepLinkFilters.length === 0) {
+      // Louder than a silent no-op: reaching here means the filters moved or
+      // were renamed, and shipping the build anyway is what caused the bug
+      // this function exists to fix.
+      throw new Error(
+        'withAdaptiveDynamicIcons: .MainActivity has no intent-filter with <data>, so there are no deep-link filters to copy onto the icon aliases. Deep links would break for any user whose app icon changes. Check the scheme in app.json.'
+      );
+    }
+
+    for (const alias of aliases) {
+      const existing = alias['intent-filter'] ?? [];
+      // Idempotent: prebuild runs this repeatedly, and a fresh prebuild
+      // regenerates the aliases from scratch.
+      alias['intent-filter'] = [
+        ...existing.filter((f) => !isDeepLinkFilter(f)),
+        ...JSON.parse(JSON.stringify(deepLinkFilters)),
+      ];
+    }
+
+    return config;
+  });
+}
+
 module.exports = function withAdaptiveDynamicIcons(config, props) {
   const icons = iconsFromProps(props);
   if (icons.length === 0) {
@@ -84,6 +150,10 @@ module.exports = function withAdaptiveDynamicIcons(config, props) {
   }
 
   const includeMonochrome = !!config.android?.adaptiveIcon?.monochromeImage;
+
+  // Manifest first, so the aliases carry deep links regardless of what the
+  // dangerous mod below does to the icon resources.
+  config = withDeepLinksOnIconAliases(config);
 
   return withDangerousMod(config, [
     'android',
