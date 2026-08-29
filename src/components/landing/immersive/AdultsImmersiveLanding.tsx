@@ -16,6 +16,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { WhatsAppDemoBlock } from "../shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "../shared/DashboardPreviewBlock";
 import dynamic from "next/dynamic";
+import { AppStoreLinks } from "@/components/marketing/AppStoreLinks";
 
 const GymShaderBackground = dynamic(
   () => import("@/components/motion/GymShaderBackground").then((m) => ({ default: m.GymShaderBackground })),
@@ -105,6 +106,10 @@ export function AdultsImmersiveLanding({ variant, experimentId, showNav = true }
               </Link>
             </div>
           </Reveal>
+          {/* Not wrapped in Reveal: the badge is the one thing here a
+              visitor may be scanning for, and Reveal renders its children
+              at opacity 0 until an observer fires. */}
+          <AppStoreLinks source="family_hero" className="mt-6" />
         </div>
 
         {/* Hero image — right */}

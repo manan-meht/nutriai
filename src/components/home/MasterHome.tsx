@@ -6,6 +6,7 @@ import { Reveal } from "@/components/motion/Reveal";
 import { UseCaseCards, type UseCaseCard } from "@/components/landing/shared/UseCaseCards";
 import { WhatsAppDemoBlock } from "@/components/landing/shared/WhatsAppDemoBlock";
 import { DashboardPreviewBlock } from "@/components/landing/shared/DashboardPreviewBlock";
+import { AppStoreLinks } from "@/components/marketing/AppStoreLinks";
 import { HealthFaq } from "./HealthFaq";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { tistraHealthGraph, SITE_URL } from "@/lib/seo/structured-data";
@@ -86,6 +87,7 @@ export function MasterHome({ homeHref }: { homeHref: string }) {
                   See how it works
                 </a>
               </div>
+              <AppStoreLinks source="home_hero" className="mt-6" />
             </div>
           </Reveal>
           <Reveal direction="left" delay={100}>
