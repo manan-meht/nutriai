@@ -134,3 +134,35 @@ describe("the scheme the plugin propagates matches the app", () => {
     expect(appJson.expo.scheme).toBe("tistramobile");
   });
 });
+
+describe("plugin order in app.json", () => {
+  /** The fix depends entirely on this ordering and build 41 proved it.
+   *
+   * expo-dynamic-app-icon rebuilds the alias list from scratch on every
+   * run — removeIconActivityAlias then addIconActivityAlias — so whichever
+   * mod runs last wins. Expo runs the LAST-REGISTERED mod FIRST, so to run
+   * *after* the icon plugin this one must be listed *before* it.
+   *
+   * Listed the other way round (which is how it shipped), the filters were
+   * added and then immediately discarded: prebuild logged "filters per
+   * alias = [2,2,2,2]" and the generated manifest still had one each.
+   */
+  const names: string[] = (appJson.expo.plugins as unknown[]).map((p) =>
+    Array.isArray(p) ? String(p[0]) : String(p)
+  );
+
+  it("lists withAdaptiveDynamicIcons before expo-dynamic-app-icon", () => {
+    const adaptive = names.indexOf("./plugins/withAdaptiveDynamicIcons");
+    const dynamic = names.indexOf("expo-dynamic-app-icon");
+    expect(adaptive).toBeGreaterThan(-1);
+    expect(dynamic).toBeGreaterThan(-1);
+    expect(adaptive).toBeLessThan(dynamic);
+  });
+
+  it("throws rather than no-op if the aliases are missing", async () => {
+    // Which is what an order regression looks like from inside the mod.
+    const empty = manifestFixture();
+    empty.manifest.application[0]["activity-alias"] = [];
+    await expect(runPlugin(empty)).rejects.toThrow(/must run AFTER expo-dynamic-app-icon/);
+  });
+});

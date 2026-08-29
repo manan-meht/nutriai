@@ -50,7 +50,7 @@
       "expo-notifications",
       "./plugins/withConsistentKotlinJvmTarget",
       [
-        "expo-dynamic-app-icon",
+        "./plugins/withAdaptiveDynamicIcons",
         {
           "bowl_empty": {
             "image": "./assets/images/dynamic-icon/bowl-empty.png"
@@ -67,7 +67,7 @@
         }
       ],
       [
-        "./plugins/withAdaptiveDynamicIcons",
+        "expo-dynamic-app-icon",
         {
           "bowl_empty": {
             "image": "./assets/images/dynamic-icon/bowl-empty.png"

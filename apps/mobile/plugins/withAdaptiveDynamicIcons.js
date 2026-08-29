@@ -104,7 +104,21 @@ function withDeepLinksOnIconAliases(config) {
   return withAndroidManifest(config, (config) => {
     const app = AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults);
     const aliases = app['activity-alias'] ?? [];
-    if (aliases.length === 0) return config;
+    if (aliases.length === 0) {
+      // Not a benign no-op. expo-dynamic-app-icon rebuilds the alias list
+      // from scratch (removeIconActivityAlias, then addIconActivityAlias),
+      // so if it runs AFTER this mod it discards everything added here and
+      // the deep links are silently lost again. That is exactly what
+      // happened on build 41: the mod ran, added the filters, and the icon
+      // plugin then threw them away.
+      //
+      // Expo runs the LAST-REGISTERED mod FIRST, so to run after
+      // expo-dynamic-app-icon this plugin must be listed BEFORE it in
+      // app.json. No aliases here means that ordering has been undone.
+      throw new Error(
+        'withAdaptiveDynamicIcons: no <activity-alias> found. This mod must run AFTER expo-dynamic-app-icon, which means being listed BEFORE it in app.json (Expo runs the last-registered mod first). Check the plugin order.'
+      );
+    }
 
     const mainActivity = (app.activity ?? []).find(
       (a) => a.$?.['android:name'] === '.MainActivity'
