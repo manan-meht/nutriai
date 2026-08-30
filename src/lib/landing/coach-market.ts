@@ -35,6 +35,26 @@ export interface CoachMarket {
   /** Cities we can name in a headline when the visitor's own is known.
    * Lowercased for matching against cf.city. */
   cities: string[];
+
+  // ---- What actually differs between the two pages -------------------
+  /** False where Tistra cannot yet take a booking. Drives the "opening
+   * soon" notice, the conditional wording on the commission line, and the
+   * FAQ set — the page must never imply a client can pay us in a market
+   * where they cannot. */
+  live: boolean;
+  /** The line under the headline. */
+  heroSupport: string;
+  /** Attribution source on every CTA, so the two markets can be told
+   * apart in Ads and GA4. */
+  signupSource: string;
+  images: { hero: string; closing: string };
+  /** The image-led discipline cards. */
+  featured: { slug: string; label: string; image: string; alt: string }[];
+  /** The card floating over the hero photograph. Priced in the market's
+   * own currency — it showed S$120 on the India page until this moved out
+   * of the component. It illustrates what can be sold through Tistra and
+   * is labelled "Example session"; it is not a claim that anyone booked. */
+  exampleSession: { name: string; price: string; duration: string };
 }
 
 /** Singapore. The live ads destination — treat as frozen. */
@@ -47,6 +67,18 @@ export const SG_COACH_MARKET: CoachMarket = {
   foundingCoachLimit: 20,
   skillExamples: ["strength training", "handstands", "swimming", "mobility"],
   cities: [],
+  live: true,
+  heroSupport:
+    "Offer private 1-on-1 or small-group sessions. Tistra helps new clients discover, book and pay you.",
+  signupSource: "coach_landing",
+  images: { hero: "/marketing/coach-hero.webp", closing: "/marketing/coach-practice.webp" },
+  featured: [
+    { slug: "strength-training", label: "Strength", image: "/coach-photos/strength-training.webp", alt: "A strength coach at a squat rack" },
+    { slug: "handstands", label: "Handstands", image: "/coach-photos/handstands.webp", alt: "A handstand coach mid-balance" },
+    { slug: "tennis", label: "Tennis", image: "/coach-photos/tennis.webp", alt: "A tennis coach on court" },
+    { slug: "swimming", label: "Swimming", image: "/coach-photos/swimming.webp", alt: "A swimming coach at the poolside" },
+  ],
+  exampleSession: { name: "Private strength session", price: "S$120", duration: "60 min" },
 };
 
 /** India. Not yet transactable — Razorpay Route is not built, so this
@@ -61,6 +93,19 @@ export const IN_COACH_MARKET: CoachMarket = {
   foundingCoachLimit: 25,
   skillExamples: ["strength training", "yoga", "swimming", "mobility"],
   cities: ["mumbai", "delhi", "new delhi", "gurgaon", "gurugram", "noida", "bengaluru", "bangalore", "pune", "hyderabad", "chennai"],
+  live: false,
+  heroSupport:
+    "Tistra Club is opening in India. Join as a Founding Coach and be one of the first people clients find when we launch.",
+  signupSource: "coach_landing_in",
+  images: {
+    hero: "/marketing/india/coach-hero-in.webp",
+    closing: "/marketing/india/coach-practice-in.webp",
+  },
+  featured: [
+    { slug: "strength-training", label: "Strength", image: "/marketing/india/discipline-strength-in.webp", alt: "A strength coach working with a client in India" },
+    { slug: "yoga", label: "Yoga", image: "/marketing/india/discipline-yoga-in.webp", alt: "A yoga teacher guiding a student in India" },
+  ],
+  exampleSession: { name: "Private strength session", price: "₹1,500", duration: "60 min" },
 };
 
 export const COACH_MARKETS = { sg: SG_COACH_MARKET, in: IN_COACH_MARKET } as const;
@@ -104,4 +149,18 @@ export function cityForMarket(market: CoachMarket, rawCity: string | null | unde
     : key === "new delhi" ? "Delhi"
     : displayCity(key);
   return canonical;
+}
+
+/** Which coach market a request belongs to, from Cloudflare's edge country.
+ *
+ * cf-ipcountry is set by Cloudflare from the connecting IP and cannot be
+ * spoofed through a normal request header. This is a content decision, not
+ * a security boundary — the worst a wrong answer does is show the wrong
+ * market's copy, and both markets remain reachable by URL regardless.
+ *
+ * Anything that is not India resolves to Singapore, which keeps the
+ * default — and the Google Ads landing page — exactly as it was.
+ */
+export function coachMarketForCountry(country: string | null | undefined): CoachMarket {
+  return (country ?? "").toUpperCase() === "IN" ? IN_COACH_MARKET : SG_COACH_MARKET;
 }

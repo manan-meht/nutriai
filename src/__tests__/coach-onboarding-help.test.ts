@@ -43,13 +43,20 @@ describe("the request reaches manan@tistra.sg", () => {
 });
 
 describe("both landing pages raise it", () => {
+  it("the one landing links to signup with help=1", () => {
+    // Singapore and India are the same component now; the source comes
+    // from the market config so each still reports its own.
+    expect(code("components/landing/coach/CoachLanding.tsx")).toMatch(/\$\{signupHref\}&help=1/);
+    expect(code("components/landing/coach/CoachLanding.tsx")).toMatch(/source: market\.signupSource/);
+  });
+
   it.each([
-    ["components/landing/coach/CoachLanding.tsx", "coach_landing"],
-    ["components/landing/coach/IndiaCoachLanding.tsx", "coach_landing_in"],
-  ])("%s links to signup with help=1 and source %s", (file, source) => {
-    const src = code(file);
-    expect(src).toMatch(/\$\{signupHref\}&help=1/);
-    expect(src).toMatch(new RegExp(`source: "${source}"`));
+    ["sg", "coach_landing"],
+    ["in", "coach_landing_in"],
+  ])("the %s market reports source %s", (id, source) => {
+    const cfg = code("lib/landing/coach-market.ts");
+    expect(cfg).toMatch(new RegExp(`signupSource: "${source}"`));
+    expect(cfg).toMatch(new RegExp(`id: "${id}"`));
   });
 
   it("signup maps the India source to the India market", () => {

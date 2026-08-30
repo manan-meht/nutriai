@@ -65,13 +65,19 @@ describe("the commercial model is explicit", () => {
     // the cost of joining is stated at the point of decision, in the offer
     // card and under the button, above the fold.
     const landing = code(LANDING);
-    const hero = landing.slice(0, landing.indexOf("2. We promote you"));
-    expect(hero).toMatch(/Claim my Founding Coach spot/);
-    expect(hero).toMatch(/Free to join · No card required · No monthly fee/);
-
-    const card = code("components/landing/coach/FoundingOfferCard.tsx");
-    expect(card).toMatch(/0% commission on your first \$\{FREE_BOOKINGS\} bookings/);
-    expect(card).toMatch(/No monthly subscription/);
+    // The dark redesign replaced the offer card with a hero CTA plus a
+    // one-line cost summary, and a full-width 0% commission block further
+    // down. The requirement is unchanged and still met above the fold.
+    // The hero's copy and CTA live in HeroCopy, shared between the mobile
+    // and desktop arrangements so the two cannot drift — on mobile the
+    // photograph sits between the headline and this block.
+    const heroCopy = landing.slice(landing.indexOf("function HeroCopy"));
+    expect(heroCopy).toMatch(/Start coaching/);
+    expect(heroCopy).toMatch(/Free to join · No monthly fee · 0% on your first/);
+    expect(heroCopy).toMatch(/FOUNDING_FREE_BOOKINGS/);
+    // And it is genuinely in the hero, not further down the page.
+    const above = landing.slice(0, landing.indexOf("What do you coach"));
+    expect(above).toMatch(/<HeroCopy/);
   });
 });
 

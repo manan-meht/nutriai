@@ -15,6 +15,8 @@ import { createClient } from "@/lib/supabase/server";
 import { UnifiedHome } from "@/components/home/UnifiedHome";
 import { CoachLanding } from "@/components/landing/coach/CoachLanding";
 import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
+import { coachMarketForCountry } from "@/lib/landing/coach-market";
+import { visitorCity } from "@/lib/landing/visitor-city";
 import { MasterHome } from "@/components/home/MasterHome";
 import { getDashboardHrefForUser } from "@/lib/product/dashboard-href";
 import nextDynamic from "next/dynamic";
@@ -80,6 +82,30 @@ export async function generateMetadata(props: LandingPageProps): Promise<Metadat
     // Tistra Coach — the coaching business platform, not a food-logging
     // tool. Matches CoachLanding's positioning (see that component's note
     // on why the previous nutrition-first framing was replaced).
+    // The coach root serves India's copy to Indian visitors at the SAME
+    // URL (see the render branch below), so the metadata has to follow or
+    // an Indian visitor gets Singapore's title on India's page.
+    if (coachMarketForCountry(headerStore.get("cf-ipcountry")).id === "in") {
+      const inDescription =
+        "Tistra Club is opening in India. Join as a Founding Coach: help building your profile, " +
+        "Tistra-funded promotion, and 0% commission on your first 10 bookings when booking opens.";
+      return {
+        title: "Tistra Coach India | Get more coaching clients",
+        description: inDescription,
+        // Points at the India page's own URL rather than "/": the same
+        // content lives there permanently and is what should be indexed,
+        // while "/" varies by country.
+        alternates: { canonical: "https://coach.tistra.club/india" },
+        icons: { icon: faviconForProduct("gym") },
+        openGraph: {
+          title: "Tistra Club is opening in India — become a Founding Coach",
+          description: inDescription,
+          type: "website",
+          siteName: "Tistra Coach",
+        },
+      };
+    }
+
     const description =
       "Join Tistra Club as a Founding Coach: 0% commission on your first 10 bookings, " +
       "Tistra-funded promotion of your profile, and personal help setting it up. " +
@@ -179,6 +205,27 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
   // ROOT is served by this branch, and the root is the URL an ad click
   // lands on and the one Google's tag check fetches. Inside the gym branch
   // so it never renders for Tistra Health.
+  // India sees India's page at this same URL — no redirect, so a link to
+  // coach.tistra.club keeps working from anywhere and simply says the right
+  // thing. Anything that is not India falls through to CoachLanding
+  // unchanged, which is what the Google Ads campaign points at.
+  //
+  // This is geolocation, not cloaking: the branch is on the visitor's
+  // country and treats a crawler exactly like any other visitor from the
+  // same place. /india remains separately reachable and indexable, and the
+  // India variant's canonical points there.
+  //
+  // Free to do per request — this route is already force-dynamic.
+  const coachMarket = coachMarketForCountry(headerStore.get("cf-ipcountry"));
+  if (coachMarket.id === "in") {
+    return (
+      <>
+        <GoogleAdsTag />
+        <CoachLanding market={coachMarket} city={await visitorCity()} />
+      </>
+    );
+  }
+
   return (
     <>
       <GoogleAdsTag />

@@ -1,102 +1,185 @@
 import fs from "fs";
 import path from "path";
-import { SG_COACH_MARKET, IN_COACH_MARKET, COACH_MARKET, cityForMarket, displayCity } from "@/lib/landing/coach-market";
+import {
+  SG_COACH_MARKET,
+  IN_COACH_MARKET,
+  COACH_MARKET,
+  cityForMarket,
+  displayCity,
+  coachMarketForCountry,
+} from "@/lib/landing/coach-market";
 import { spotsFrom } from "@/lib/landing/founding-spots";
 
-/** coach.tistra.club/ is the live Google Ads destination for Singapore.
- * India must not be able to change it.
+/** Singapore and India are one page now, differing only by a market object.
  *
- * The guarantee is structural, not a promise: India is its own route and
- * its own component, and CoachLanding imports nothing India-shaped. These
- * assertions fail the moment someone "helpfully" refactors the two
- * together.
+ * They were two components. That guaranteed isolation but produced two
+ * design systems on the same URL — Indian visitors got the old light page
+ * while everyone else got the dark one. Merging trades a structural
+ * guarantee for a configuration one, so these assertions carry the weight
+ * the separation used to: Singapore is the live Google Ads destination and
+ * must stay correct, and India must never imply a client can pay us there.
  */
 const SRC = path.join(__dirname, "..");
 const read = (p: string) => fs.readFileSync(path.join(SRC, p), "utf-8");
 const code = (p: string) => read(p).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-const SG_PAGE = "components/landing/coach/CoachLanding.tsx";
-const IN_PAGE = "components/landing/coach/IndiaCoachLanding.tsx";
+const LANDING = "components/landing/coach/CoachLanding.tsx";
 
-describe("the Singapore ads page is isolated from India", () => {
-  const sg = code(SG_PAGE);
+describe("the market object carries every difference", () => {
+  const landing = code(LANDING);
 
-  it("names no India market", () => {
-    expect(sg).not.toMatch(/IN_COACH_MARKET|IndiaCoachLanding|India/);
+  it("hardcodes no market name in the page", () => {
+    expect(landing).not.toMatch(/["'>]Singapore/);
+    expect(landing).not.toMatch(/["'>]India/);
+    expect(landing).toMatch(/\$\{market\.name\}/);
   });
 
-  it("still resolves COACH_MARKET to Singapore", () => {
-    // The default export name and value are unchanged, so every existing
-    // import keeps pointing at Singapore.
+  it("takes imagery, copy, disciplines and attribution from the market", () => {
+    for (const key of [
+      "market.images.hero",
+      "market.images.closing",
+      "market.heroSupport",
+      "market.signupSource",
+      "market.skillExamples",
+    ]) {
+      expect(landing).toContain(key);
+    }
+    expect(landing).toMatch(/<CategoryCards market=\{market\}/);
+    expect(landing).toMatch(/<CoachFaq market=\{market\}/);
+  });
+
+  it("defaults to Singapore when no market is passed", () => {
+    // So an accidental <CoachLanding /> can never render India.
+    expect(landing).toMatch(/market = COACH_MARKET/);
     expect(COACH_MARKET).toBe(SG_COACH_MARKET);
-    expect(COACH_MARKET.name).toBe("Singapore");
-    expect(COACH_MARKET.currency).toBe("SGD");
-    expect(COACH_MARKET.foundingCoachLimit).toBe(20);
-  });
-
-  it("keeps the Singapore eyebrow and skills exactly as shipped", () => {
-    expect(SG_COACH_MARKET.eyebrow).toBe("For independent coaches in Singapore");
-    expect(SG_COACH_MARKET.skillExamples).toEqual([
-      "strength training", "handstands", "swimming", "mobility",
-    ]);
-  });
-
-  it("does not personalise Singapore by city", () => {
-    // Singapore is one city. A city headline there would be noise, and the
-    // ads page must not start varying per request.
-    expect(SG_COACH_MARKET.cities).toEqual([]);
-    expect(cityForMarket(SG_COACH_MARKET, "Singapore")).toBeNull();
-    expect(sg).not.toMatch(/visitorCity|cf\.city/);
-  });
-
-  it("is reached by a route that India cannot render", () => {
-    const indiaRoute = code("app/(public)/india/page.tsx");
-    expect(indiaRoute).toMatch(/IndiaCoachLanding/);
-    expect(indiaRoute).not.toMatch(/[^a-zA-Z]CoachLanding/);
   });
 });
 
-describe("India", () => {
-  const inPage = code(IN_PAGE);
+describe("Singapore, the ads destination", () => {
+  it("keeps its identity, allocation and disciplines", () => {
+    expect(SG_COACH_MARKET.name).toBe("Singapore");
+    expect(SG_COACH_MARKET.currency).toBe("SGD");
+    expect(SG_COACH_MARKET.foundingCoachLimit).toBe(20);
+    expect(SG_COACH_MARKET.live).toBe(true);
+    expect(SG_COACH_MARKET.signupSource).toBe("coach_landing");
+    expect(SG_COACH_MARKET.featured).toHaveLength(4);
+  });
 
-  it("uses its own market, currency and allocation", () => {
-    expect(IN_COACH_MARKET.name).toBe("India");
+  it("is not personalised by city", () => {
+    // Singapore is one city; a city headline there would be noise, and the
+    // ads landing page must not start varying per request.
+    expect(SG_COACH_MARKET.cities).toEqual([]);
+    expect(cityForMarket(SG_COACH_MARKET, "Singapore")).toBeNull();
+  });
+});
+
+describe("India never implies bookings work there", () => {
+  const landing = code(LANDING);
+
+  it("is flagged as not live", () => {
+    expect(IN_COACH_MARKET.live).toBe(false);
     expect(IN_COACH_MARKET.currency).toBe("INR");
-    expect(IN_COACH_MARKET.currencySymbol).toBe("₹");
     expect(IN_COACH_MARKET.foundingCoachLimit).toBe(25);
   });
 
-  it("does not count Singapore's coaches as its own", () => {
+  it("gates the 'not live' notice on exactly that flag", () => {
+    expect(landing).toMatch(/\{!market\.live && \(/);
+    expect(landing).toMatch(/Clients cannot book and\s+pay through Tistra in \{market\.name\} yet/);
+  });
+
+  it("makes the commission conditional on launch there", () => {
+    expect(landing).toMatch(/market\.live \? "" : " once bookings open in " \+ market\.name/);
+  });
+
+  it("does not count Singapore's coaches as India's", () => {
     // coach_profiles has no country column yet, so India reports its full
     // allocation rather than the global count.
     expect(spotsFrom(0, IN_COACH_MARKET.foundingCoachLimit)).toMatchObject({
-      total: 25, joined: 0, remaining: 25,
+      total: 25,
+      joined: 0,
+      remaining: 25,
     });
   });
 
-  it("says plainly that bookings are not live there", () => {
-    // The honest part. Payments run on Stripe Connect and Razorpay Route is
-    // not built, so nobody can book and pay in India today.
-    expect(inPage).toMatch(/Clients cannot book and pay/);
-    expect(inPage).toMatch(/Bookings and payments are not yet available/);
-    expect(inPage).toMatch(/Is Tistra live in India yet\?/);
+  it("prices the hero example in rupees, not Singapore dollars", () => {
+    // It rendered S$120 on the India page until the example moved into
+    // the market config.
+    expect(IN_COACH_MARKET.exampleSession.price).toBe("₹1,500");
+    expect(SG_COACH_MARKET.exampleSession.price).toBe("S$120");
+    expect(code(LANDING)).not.toMatch(/S\$120/);
+    expect(code(LANDING)).toMatch(/market\.exampleSession\.price/);
   });
 
-  it("frames the commission as conditional on launch, never as available now", () => {
-    expect(inPage).toMatch(/once bookings open in India/);
+  it("labels the Singapore storefront it shows", () => {
+    // India has no published coaches; a fabricated Indian one would be the
+    // invented social proof the rest of the page avoids.
+    expect(landing).toMatch(/This is Tistra Club running in Singapore today/);
   });
 
-  it("guarantees nothing", () => {
-    for (const m of inPage.matchAll(/guarantee/gi)) {
-      const ctx = inPage.slice(Math.max(0, m.index! - 40), m.index! + 10);
-      expect(ctx).toMatch(/\b(not|no|cannot|never|Am I)\b/i);
+  it("gets its own FAQ answers, not Singapore's", () => {
+    const faq = code("components/landing/coach/CoachFaq.tsx");
+    expect(faq).toMatch(/market\.live \? FAQ : IN_FAQ/);
+    expect(read("components/landing/coach/CoachFaq.tsx")).toMatch(/Is Tistra live in India yet\?/);
+  });
+});
+
+describe("the coach root picks the market from the edge", () => {
+  const root = code("app/(public)/page.tsx");
+
+  it("resolves IN to India and everything else to Singapore", () => {
+    expect(coachMarketForCountry("IN").id).toBe("in");
+    expect(coachMarketForCountry("in").id).toBe("in");
+    for (const c of ["SG", "US", "GB", "", null, undefined, "XX"]) {
+      expect(coachMarketForCountry(c).id).toBe("sg");
     }
   });
 
-  it("shows no Singapore coaches", () => {
-    // coachPreview is global; rendering it here would advertise Singapore
-    // coaches as India's marketplace.
-    expect(inPage).not.toMatch(/coachPreview|MarketplacePreview/);
+  it("branches the render on the country header, at the same URL", () => {
+    expect(root).toMatch(/coachMarketForCountry\(headerStore\.get\("cf-ipcountry"\)\)/);
+    expect(root).toMatch(/<CoachLanding market=\{coachMarket\} city=\{await visitorCity\(\)\} \/>/);
+    // No redirect: coach.tistra.club keeps working from anywhere.
+    expect(root).not.toMatch(/redirect\(["'`]\/india/);
+  });
+
+  it("keeps the Google tag on both variants", () => {
+    const gym = root.slice(root.indexOf("coachMarketForCountry"));
+    expect((gym.match(/<GoogleAdsTag \/>/g) ?? []).length).toBe(2);
+  });
+
+  it("gives India its own metadata and canonical", () => {
+    expect(root).toMatch(/Tistra Coach India \| Get more coaching clients/);
+    expect(root).toMatch(/canonical: "https:\/\/coach\.tistra\.club\/india"/);
+  });
+
+  it("still serves /india as its own indexable URL", () => {
+    const india = code("app/(public)/india/page.tsx");
+    expect(india).toMatch(/<CoachLanding market=\{IN_COACH_MARKET\}/);
+  });
+});
+
+describe("the two markets share no photography", () => {
+  /** The India set is real Indian coaching photography and is for India
+   * only; Singapore keeps its own. A leak in either direction puts the
+   * wrong country's gym on the page. */
+  it("India points only at /marketing/india", () => {
+    expect(IN_COACH_MARKET.images.hero).toMatch(/^\/marketing\/india\//);
+    expect(IN_COACH_MARKET.images.closing).toMatch(/^\/marketing\/india\//);
+    for (const c of IN_COACH_MARKET.featured) expect(c.image).toMatch(/^\/marketing\/india\//);
+  });
+
+  it("Singapore points nowhere near it", () => {
+    expect(SG_COACH_MARKET.images.hero).not.toMatch(/\/india\//);
+    expect(SG_COACH_MARKET.images.closing).not.toMatch(/\/india\//);
+    for (const c of SG_COACH_MARKET.featured) expect(c.image).not.toMatch(/\/india\//);
+  });
+
+  it("every referenced file exists", () => {
+    // A typo'd path renders an alt-text box on a cinematic landing page.
+    for (const m of [SG_COACH_MARKET, IN_COACH_MARKET]) {
+      for (const rel of [m.images.hero, m.images.closing, ...m.featured.map((c) => c.image)]) {
+        expect(fs.existsSync(path.join(SRC, "..", "public", rel))).toBe(true);
+      }
+    }
   });
 });
 
@@ -127,18 +210,28 @@ describe("city detection", () => {
   });
 
   it("prefers an explicit override to inference", () => {
-    // An override that loses to geolocation is not an override — and it is
-    // how the page is tested without a Worker.
     const src = code("lib/landing/visitor-city.ts");
-    const overrideIdx = src.indexOf("x-tistra-city");
-    const cfIdx = src.indexOf("getCloudflareContext");
-    expect(overrideIdx).toBeGreaterThan(-1);
-    expect(cfIdx).toBeGreaterThan(overrideIdx);
+    expect(src.indexOf("getCloudflareContext")).toBeGreaterThan(src.indexOf("x-tistra-city"));
+  });
+});
+
+describe("the storefront shown is pinned, not whichever published last", () => {
+  const preview = code("lib/landing/coach-preview.ts");
+
+  it("pins by id", () => {
+    expect(preview).toMatch(/SHOWCASE_COACH_ID = "a9b347bd-5bd3-4c56-99fc-c5ce6629063b"/);
+    expect(preview).toMatch(/coaches\.find\(\(c\) => c\.id === SHOWCASE_COACH_ID\)/);
   });
 
-  it("never lets a geolocation failure break the page", () => {
-    const src = code("lib/landing/visitor-city.ts");
-    expect(src).toMatch(/try \{/);
-    expect(src).toMatch(/catch \{/);
+  it("falls back rather than breaking if that profile is unpublished", () => {
+    expect(preview).toMatch(/\?\? coaches\[0\] \?\? null/);
+  });
+
+  it("costs no extra query — it reads the same cached list", () => {
+    expect(preview).toMatch(/const coaches = await coachPreview\(12\)/);
+  });
+
+  it("is used by the one landing, for both markets", () => {
+    expect(code(LANDING)).toMatch(/showcaseCoach\(\)/);
   });
 });

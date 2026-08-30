@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { IndiaCoachLanding } from "@/components/landing/coach/IndiaCoachLanding";
+import { CoachLanding } from "@/components/landing/coach/CoachLanding";
+import { IN_COACH_MARKET } from "@/lib/landing/coach-market";
 import { GoogleAdsTag } from "@/components/marketing/GoogleAdsTag";
 import { isCoachHost } from "@/lib/coach/routes";
 import { isLocalDevHost } from "@/lib/club/host";
@@ -12,10 +13,10 @@ import { visitorCity } from "@/lib/landing/visitor-city";
 // Dynamic because it reads the visitor's city from the edge. That is the
 // only reason; nothing else here varies per request.
 //
-// Deliberately NOT a variant of the Singapore landing. That page is the
-// live Google Ads destination and must not move, so India is its own route
-// and its own component (see IndiaCoachLanding). Nothing in this file is
-// reachable from the Singapore render path.
+// One component, two markets: everything that differs — copy, imagery,
+// discipline cards, the FAQ set, whether bookings are live — comes from the
+// market object, so the two cannot drift into separate designs again. This
+// route pins India; the coach root picks the market from the edge country.
 export const dynamic = "force-dynamic";
 
 export function generateMetadata(): Metadata {
@@ -48,7 +49,7 @@ export default async function IndiaCoachMarketingPage() {
   return (
     <>
       <GoogleAdsTag />
-      <IndiaCoachLanding city={await visitorCity()} />
+      <CoachLanding market={IN_COACH_MARKET} city={await visitorCity()} />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { COACH_MARKET, FREE_BOOKINGS, COMMISSION_PERCENT } from "@/lib/landing/coach-market";
+import { COACH_MARKET, FREE_BOOKINGS, COMMISSION_PERCENT, type CoachMarket } from "@/lib/landing/coach-market";
 import { SectionView } from "./SectionView";
 
 /** The objections a coach actually has before signing up.
@@ -47,27 +47,78 @@ const FAQ = [
   },
 ] as const;
 
-export function CoachFaq({ className = "" }: { className?: string }) {
+/** India's set. Different because the honest answers are different: we
+ * cannot take a booking there yet, so "what will it cost" and "is it live"
+ * have to say so rather than describing Singapore's live product. */
+const IN_FAQ = [
+  {
+    q: "Is Tistra live in India yet?",
+    a: "Not for bookings. We're signing up our first Indian coaches now and building the profile and discovery side around them. Payments in India are still being built, so nobody can book and pay through Tistra here yet.",
+  },
+  {
+    q: "So what am I signing up for?",
+    a: `A Founding Coach place: we build your profile with you, promote it at our cost as we open the market, and you keep 100% of your first ${FREE_BOOKINGS} bookings once booking goes live.`,
+  },
+  {
+    q: "What will it cost?",
+    a: `Nothing to join and nothing monthly. When bookings open, Tistra takes ${COMMISSION_PERCENT}% only when you get paid — and your first ${FREE_BOOKINGS} bookings are free of it.`,
+  },
+  {
+    q: "Am I guaranteed clients?",
+    a: "No. Tistra does not guarantee enquiries or bookings. We can commit to promoting Founding Coaches at our own cost; we cannot commit to how many people book.",
+  },
+  {
+    q: "Do I need to leave Instagram or my existing clients?",
+    a: "No. Keep every client and channel you have. Tistra is an extra way to be found, not a replacement, and there is no exclusivity.",
+  },
+  {
+    q: "Which cities are you opening in?",
+    a: "We're starting with coaches in Mumbai, Delhi NCR, Bengaluru, Pune, Hyderabad and Chennai. If you coach elsewhere in India, sign up anyway — where our coaches are is what decides where we open next.",
+  },
+  {
+    q: "Who can join as a coach?",
+    a: "Independent coaches and instructors — strength, yoga, movement, sport and mobility. We verify identity before any profile goes live.",
+  },
+] as const;
+
+export function CoachFaq({
+  className = "",
+  tone = "dark",
+  market = COACH_MARKET,
+}: {
+  className?: string;
+  /** Picks the answer set. A market where bookings are not live must not
+   * be handed Singapore's answers. */
+  market?: CoachMarket;
+  /** The coach homepage is dark; keep a light variant for any surface
+   * that is not. */
+  tone?: "light" | "dark";
+}) {
+  const c =
+    tone === "dark"
+      ? { heading: "#FFFFFF", body: "#A1A1A1", card: "#1C1C1C", border: "#4A4455" }
+      : { heading: "#1A1B22", body: "#4A4455", card: "#FFFFFF", border: "#CCC3D8" };
+  const items = market.live ? FAQ : IN_FAQ;
   return (
     <SectionView event="faq_view" className={className} id="faq">
       <h2
         className="max-w-2xl text-[1.75rem] font-semibold leading-9 tracking-[-0.02em] text-balance md:text-[2.25rem] md:leading-[2.75rem]"
-        style={{ color: "#1A1B22" }}
+        style={{ color: c.heading }}
       >
         Questions coaches ask us.
       </h2>
 
       <dl className="mt-8 flex flex-col gap-5">
-        {FAQ.map((item) => (
+        {items.map((item) => (
           <div
             key={item.q}
             className="rounded-2xl border p-5"
-            style={{ borderColor: "#CCC3D8", backgroundColor: "#FFFFFF" }}
+            style={{ borderColor: c.border, backgroundColor: c.card }}
           >
-            <dt className="text-[16px] font-semibold leading-6" style={{ color: "#1A1B22" }}>
+            <dt className="text-[16px] font-semibold leading-6" style={{ color: c.heading }}>
               {item.q}
             </dt>
-            <dd className="mt-2 text-[15px] leading-6" style={{ color: "#4A4455" }}>
+            <dd className="mt-2 text-[15px] leading-6" style={{ color: c.body }}>
               {item.a}
             </dd>
           </div>

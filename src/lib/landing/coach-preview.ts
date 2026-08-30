@@ -127,3 +127,27 @@ export async function coachPreview(limit: number): Promise<CoachPreview[]> {
     return cache?.coaches.slice(0, limit) ?? [];
   }
 }
+
+/** The coach whose profile is shown in "See what your clients see".
+ *
+ * Pinned rather than "whichever published most recently", so the section
+ * is stable: it is a product screenshot, and a screenshot that changes
+ * identity whenever someone new publishes is one nobody can review, brief
+ * a photographer against, or get permission for.
+ *
+ * By id rather than by name — a coach can rename their profile.
+ */
+export const SHOWCASE_COACH_ID = "a9b347bd-5bd3-4c56-99fc-c5ce6629063b";
+
+/** Resolves the pinned coach, falling back to the most recently published
+ * one if that profile is ever unpublished or paused.
+ *
+ * Reads the same cached list coachPreview builds, so pinning costs no
+ * extra query. Returns null only when there are no published coaches at
+ * all, in which case the section renders nothing rather than a placeholder
+ * pretending to be a real storefront.
+ */
+export async function showcaseCoach(): Promise<CoachPreview | null> {
+  const coaches = await coachPreview(12);
+  return coaches.find((c) => c.id === SHOWCASE_COACH_ID) ?? coaches[0] ?? null;
+}

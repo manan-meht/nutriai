@@ -105,10 +105,16 @@ describe("branding: legacy product names removed from customer-facing surfaces",
     const contents = src("components/landing/coach/CoachLanding.tsx");
     // Nutrition is one capability among several; if it ever climbs back to
     // the top of the page, this product has drifted again.
+    // The page no longer carries a "Marketplace" capability card — the
+    // whole page is the marketplace story since the dark redesign — so the
+    // check is now that nutrition is the LAST capability and sits below
+    // the client-acquisition content rather than above it.
     const nutritionAt = contents.indexOf("Nutrition");
-    const marketplaceAt = contents.indexOf("Marketplace");
-    expect(marketplaceAt).toBeGreaterThan(-1);
-    expect(nutritionAt).toBeGreaterThan(marketplaceAt);
+    const clientsAt = contents.indexOf("Get more clients");
+    expect(clientsAt).toBeGreaterThan(-1);
+    expect(nutritionAt).toBeGreaterThan(clientsAt);
+    const caps = contents.slice(contents.indexOf("const CAPABILITIES"));
+    expect(caps.indexOf("Nutrition")).toBeGreaterThan(caps.indexOf("Scheduling"));
   });
 
   it("WhatsApp bot identifies itself as Tistra Health, not NutriAI", () => {

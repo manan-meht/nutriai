@@ -10,7 +10,7 @@ const code = (p: string) =>
   read(p).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const LANDING = "components/landing/coach/CoachLanding.tsx";
-const CARD = "components/landing/coach/FoundingOfferCard.tsx";
+const SPOTS = "components/landing/coach/FoundingSpots.tsx";
 const FAQ = "components/landing/coach/CoachFaq.tsx";
 
 describe("founding spots are counted, not invented", () => {
@@ -30,7 +30,7 @@ describe("founding spots are counted, not invented", () => {
   it("has no countdown timer anywhere on the page", () => {
     // Scarcity here is a real limit on how many coaches we can personally
     // onboard. A fake deadline is the fastest way to lose a professional.
-    for (const f of [LANDING, CARD, "components/landing/coach/FoundingSpots.tsx"]) {
+    for (const f of [LANDING, SPOTS]) {
       const t = code(f);
       expect(t).not.toMatch(/setInterval|countdown|Date\.now\(\)|expires/i);
     }
@@ -45,12 +45,22 @@ describe("the page leads with clients, not with software", () => {
   const landing = code(LANDING);
 
   it("promises more clients in the h1", () => {
-    expect(landing).toMatch(/<h1[\s\S]{0,400}?Get more coaching clients\./);
+    // Approved Stitch headline: "Teach your skill. / Get more clients."
+    expect(landing).toMatch(/<h1[\s\S]{0,600}?Teach your skill\./);
+    expect(landing).toMatch(/<h1[\s\S]{0,600}?Get more clients\./);
   });
 
-  it("states the promotion commitment above the fold", () => {
-    const hero = landing.slice(0, landing.indexOf("2. We promote you"));
-    expect(hero).toMatch(/actively promote you to potential clients using Tistra/);
+  it("says who it is for before anything else", () => {
+    // The brief's five-second test: a coach must recognise themselves.
+    expect(landing).toMatch(/For personal trainers, sports &amp; skill coaches/);
+  });
+
+  it("states the promotion commitment in the first sections", () => {
+    // It sits in its own band under the hero now rather than inside it —
+    // the redesign leads with the headline and the photograph. Still well
+    // inside the first two viewport heights.
+    const top = landing.slice(0, landing.indexOf("See what clients see"));
+    expect(top).toMatch(/actively promote relevant coaches using Tistra/);
   });
 
   it("puts practice management below the marketplace story", () => {
@@ -65,14 +75,21 @@ describe("the page leads with clients, not with software", () => {
   });
 
   it("uses the market config rather than scattering the market name", () => {
-    // One object to edit when Bengaluru opens.
-    expect(landing).toMatch(/COACH_MARKET\.eyebrow/);
-    expect(landing).not.toMatch(/Singapore/);
+    // One object to edit when Bengaluru opens. The eyebrow is now
+    // audience-based rather than market-based ("For personal trainers,
+    // sports & skill coaches"), so the config is read for the skill
+    // examples and for the market name in image alt text instead.
+    // One component, two markets: nothing market-specific is hardcoded.
+    expect(landing).toMatch(/market\.skillExamples/);
+    expect(landing).toMatch(/\$\{market\.name\}/);
+    expect(landing).toMatch(/market\.images\.hero/);
+    expect(landing).toMatch(/market\.live/);
+    expect(landing).not.toMatch(/["'>]Singapore/);
   });
 });
 
 describe("nothing on the page guarantees an outcome", () => {
-  const surfaces = [LANDING, CARD, FAQ, "components/landing/coach/MarketplacePreview.tsx"];
+  const surfaces = [LANDING, FAQ, "components/landing/coach/ProfileShowcase.tsx"];
 
   it.each(surfaces)("%s promises no clients, bookings or income", (f) => {
     const t = code(f);
@@ -97,12 +114,13 @@ describe("nothing on the page guarantees an outcome", () => {
     expect(faq).toMatch(/Tistra does not guarantee enquiries or bookings/);
   });
 
-  it("does not overstate the Founding Coach badge", () => {
-    // Comments stripped: the component explains *why* it claims no ranking
-    // advantage, and that explanation must not trip the check.
-    const badge = code("components/landing/coach/FoundingBadge.tsx");
-    expect(badge).not.toMatch(/rank|priority|featured|boost/i);
-    expect(code(LANDING).replace(/\s+/g, " ")).toMatch(/doesn&rsquo;t change how you rank/);
+  it("claims no ranking advantage anywhere", () => {
+    // The badge section and its component were removed when Singapore and
+    // India merged onto one page — it competed with the 0% commission
+    // block for the same attention. Nothing may reintroduce a claim that
+    // being a Founding Coach changes placement.
+    expect(code(LANDING)).not.toMatch(/rank(s|ed|ing)? (higher|first|above)/i);
+    expect(code(LANDING)).not.toMatch(/featured (placement|listing)|priority (placement|listing)/i);
   });
 });
 
@@ -163,8 +181,7 @@ describe("the funnel is instrumented end to end", () => {
   });
 
   it("reports how scarce the offer looked when a CTA was pressed", () => {
-    expect(code(LANDING)).toMatch(/foundingSpotsRemaining/);
-    expect(code(CARD)).toMatch(/foundingSpotsRemaining: spots\.remaining/);
+    expect(code(LANDING)).toMatch(/foundingSpotsRemaining: spots\.remaining/);
   });
 
   it("uses the existing gtag layer rather than a second analytics provider", () => {
@@ -177,11 +194,12 @@ describe("the funnel is instrumented end to end", () => {
 });
 
 describe("the offer is one number", () => {
-  it("the card and the FAQ both read it from the engine", () => {
+  it("the page and the FAQ both read it from the engine", () => {
+    // Never restated as a literal: the copy and the money must not drift.
     expect(FOUNDING_FREE_BOOKINGS).toBe(10);
-    expect(code(CARD)).toMatch(/FREE_BOOKINGS/);
+    expect(code(LANDING)).toMatch(/FOUNDING_FREE_BOOKINGS/);
     expect(code(FAQ)).toMatch(/FREE_BOOKINGS/);
-    expect(code(CARD)).not.toMatch(/first 10 bookings/);
+    expect(code(LANDING)).not.toMatch(/first 10 bookings/);
   });
 });
 

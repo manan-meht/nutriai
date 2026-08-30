@@ -18,17 +18,20 @@ export function FoundingSpotsLine({
 }: {
   spots: Spots;
   /** "subtle" for the sticky bar and nav, where this sits beside a button
-   * and must not compete with it. */
-  tone?: "default" | "subtle";
+   * and must not compete with it. "dark" for the black coach homepage,
+   * where #630ED4 is unreadable and the light lavender accent is used
+   * instead. */
+  tone?: "default" | "subtle" | "dark";
   className?: string;
 }) {
   if (!spots.available) return null;
 
-  const strong = tone === "default";
+  const strong = tone !== "subtle";
+  const color = tone === "dark" ? "#D2BBFF" : strong ? "#630ED4" : "#4A4455";
   return (
     <p
       className={`${strong ? "text-[13px] font-semibold" : "text-[11px] font-medium"} ${className}`}
-      style={{ color: strong ? "#630ED4" : "#4A4455" }}
+      style={{ color }}
     >
       <span aria-hidden="true">●</span> Only {spots.remaining} Founding Coach{" "}
       {spots.remaining === 1 ? "spot" : "spots"} remaining
@@ -38,9 +41,15 @@ export function FoundingSpotsLine({
 
 /** The reason for the limit, said plainly. Sits under the count wherever
  * the count is given room to breathe. */
-export function FoundingSpotsReason({ className = "" }: { className?: string }) {
+export function FoundingSpotsReason({
+  className = "",
+  tone = "light",
+}: {
+  className?: string;
+  tone?: "light" | "dark";
+}) {
   return (
-    <p className={`text-[13px] leading-5 ${className}`} style={{ color: "#4A4455" }}>
+    <p className={`text-[13px] leading-5 ${className}`} style={{ color: tone === "dark" ? "#A1A1A1" : "#4A4455" }}>
       We&rsquo;re keeping the first group small because we&rsquo;re personally onboarding and
       promoting every Founding Coach.
     </p>

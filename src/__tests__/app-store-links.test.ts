@@ -101,6 +101,5 @@ describe("placement", () => {
   it("stays out of the coach product entirely", () => {
     // Tistra Coach is a different product with no mobile app.
     expect(code("components/landing/coach/CoachLanding.tsx")).not.toMatch(/AppStoreLinks/);
-    expect(code("components/landing/coach/IndiaCoachLanding.tsx")).not.toMatch(/AppStoreLinks/);
   });
 });
