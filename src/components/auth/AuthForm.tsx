@@ -5,6 +5,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { scopedEmail, type AuthSurface } from "@/lib/auth";
 import { track } from "@/lib/landing/track";
+import { requestCoachOnboardingHelp } from "@/app/actions/coach-onboarding-help";
 
 type Product = AuthSurface;
 type Mode = "signin" | "signup";
@@ -26,6 +27,12 @@ interface AuthFormProps {
    * "Help me set it up" and then signs up with Google is not flagged.
    */
   onboardingHelp?: boolean;
+  /** Which coach landing they came from — "sg" or "in". Only used to label
+   * the setup-help request. */
+  market?: string;
+  /** The landing page's source param, carried into the request so we can
+   * see which page produced it. */
+  source?: string;
 }
 
 // Same purple used across the marketing site (/, /family, /coach, /me) —
@@ -71,7 +78,7 @@ const THEME = {
   },
 } as const;
 
-export function AuthForm({ product, mode, next, onboardingHelp }: AuthFormProps) {
+export function AuthForm({ product, mode, next, onboardingHelp, market, source }: AuthFormProps) {
   const theme = THEME[product];
   const supabase = createClient();
 
@@ -124,6 +131,15 @@ export function AuthForm({ product, mode, next, onboardingHelp }: AuthFormProps)
         // it. That round trip is currently unmeasured; see the note in
         // lib/landing/track.ts.
         track("signup_completed", { product, method: "email", ...(onboardingHelp ? { onboardingHelp: 1 } : {}) });
+        // Raised here rather than on the landing-page click: a click has no
+        // address to reply to. Deliberately not awaited — a slow or failed
+        // notification must not hold up, or appear to break, a signup that
+        // has already succeeded. The request is also recorded in user
+        // metadata and shows on /admin/coaches, so a lost email is
+        // recoverable.
+        if (onboardingHelp) {
+          void requestCoachOnboardingHelp({ email: authEmail, market: market ?? "sg", source });
+        }
         setEmailSent(true);
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password });

@@ -115,7 +115,17 @@ export default async function SignupPage({
         {product === "gym" && params.source === "coach_landing" && (
           <FoundingCoachBanner needsHelp={params.help === "1"} />
         )}
-        <AuthForm product={product} mode="signup" next={next} onboardingHelp={params.help === "1"} />
+        <AuthForm
+          product={product}
+          mode="signup"
+          next={next}
+          onboardingHelp={params.help === "1"}
+          // coach_landing_in is the India page's source (see
+          // IndiaCoachLanding), so the setup-help request says which
+          // market it came from.
+          market={params.source === "coach_landing_in" ? "in" : "sg"}
+          source={params.source}
+        />
         <ProductFooter product={product} />
       </div>
     </div>
