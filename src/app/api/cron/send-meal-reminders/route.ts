@@ -26,6 +26,11 @@ import { readTodaysMealRecommendationClaim, computeFreshMealRecommendation } fro
 import { calculateMacroTargets } from "@nutriai/health-scoring";
 // Safe to import (unlike food-analyzer.ts): a pure predicate module with no
 // Gemini SDK dependency — see its own module doc.
+import {
+  notifyCaregiverOfFamilyMeal,
+  type FamilyMealContact,
+} from "@/lib/notifications/family-meal";
+import { pruneDeadPushTokens } from "@/lib/notifications/push";
 import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
@@ -512,10 +517,28 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
     const isAdults = !!conv.adults_contact_id;
     const entityId = isAdults ? conv.adults_contact_id : conv.client_id;
 
+    // Loads the caregiver alongside the timezone in one round trip. The
+    // caregiver_id matters twice below: it is the meal's trainer_id, and it
+    // is who the push notification goes to.
     let timezone: string | undefined;
+    let adultsContact: FamilyMealContact | null = null;
+    let trainerId: string | null = null;
     if (isAdults) {
-      const { data: contact } = await db.from("adults_contacts").select("timezone").eq("id", entityId).maybeSingle();
+      const { data: contact } = await db
+        .from("adults_contacts")
+        .select("id, full_name, caregiver_id, relationship, relationship_type, gender, timezone")
+        .eq("id", entityId)
+        .maybeSingle();
       timezone = contact?.timezone;
+      adultsContact = (contact as (FamilyMealContact & { timezone?: string }) | null) ?? null;
+      trainerId = adultsContact?.caregiver_id ?? null;
+    } else {
+      const { data: client } = await db
+        .from("gym_clients")
+        .select("trainer_id")
+        .eq("id", entityId)
+        .maybeSingle();
+      trainerId = client?.trainer_id ?? null;
     }
 
     const resolvedLabel = resolveStaleMealLabel(pending.meal_type, new Date(), timezone);
@@ -525,7 +548,11 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
       .insert({
         ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
         workspace_id: conv.workspace_id,
-        trainer_id: conv.trainer_id,
+        // whatsapp_conversations has NO trainer_id column, so the old
+        // `conv.trainer_id` here was always undefined and every meal this
+        // sweep committed landed with a null trainer_id. It comes from the
+        // contact/client, exactly as conversation-handler resolves it.
+        trainer_id: trainerId,
         meal_type: resolvedLabel,
         logged_at: new Date().toISOString(),
         foods: pending.foods,
@@ -561,6 +588,21 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
       }
     } catch (err) {
       console.error("[resolve-stale-clarifications] notification send failed:", conv.id, err instanceof Error ? err.message : err);
+    }
+
+    // The caregiver's push. Easy to miss that it belongs here: this sweep
+    // saves a meal and messages the person who ATE it, which reads like the
+    // notifying is done — but the family-plan caregiver watching from the
+    // app got nothing, so every meal whose clarification went unanswered
+    // was invisible to them while still appearing in the app. Same
+    // best-effort contract as the WhatsApp path: never throws.
+    if (isAdults && adultsContact) {
+      await notifyCaregiverOfFamilyMeal(db, {
+        workspaceId: conv.workspace_id,
+        mealType: resolvedLabel,
+        analysis: pending,
+        contact: adultsContact,
+      });
     }
 
     await db
@@ -794,12 +836,16 @@ export async function POST(request: NextRequest) {
   }
 
   const db = createServiceClient();
+  // pushTokens runs last, not in the Promise.all: it resolves receipts for
+  // messages sent at least 5 minutes ago, so letting this run's own sends
+  // land first costs nothing and occasionally resolves them a cycle sooner.
   const [reminders, staleClarifications, weeklyWins, trialReminders] = await Promise.all([
     runMealReminders(db),
     runResolveStaleClarifications(db),
     runWeeklyWinsShareCards(db),
     runTrialReminders(db),
   ]);
+  const pushTokens = await pruneDeadPushTokens();
 
-  return NextResponse.json({ reminders, staleClarifications, weeklyWins, trialReminders });
+  return NextResponse.json({ reminders, staleClarifications, weeklyWins, trialReminders, pushTokens });
 }

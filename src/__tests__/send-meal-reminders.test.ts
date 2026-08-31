@@ -6,6 +6,10 @@
 // and isn't what changed.
 
 jest.mock("@/lib/supabase/server", () => ({ createServiceClient: jest.fn() }));
+jest.mock("@/lib/notifications/push", () => ({
+  sendPushNotificationToProfile: jest.fn(async () => 1),
+  pruneDeadPushTokens: jest.fn(async () => ({ checked: 0, removed: 0 })),
+}));
 jest.mock("@/lib/whatsapp/client", () => ({
   sendTextMessage: jest.fn(),
   sendTemplateMessage: jest.fn(),
@@ -14,6 +18,7 @@ jest.mock("@/lib/whatsapp/client", () => ({
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendTextMessage } from "@/lib/whatsapp/client";
+import { sendPushNotificationToProfile } from "@/lib/notifications/push";
 import { NextRequest } from "next/server";
 
 const pendingMeal = {
@@ -34,17 +39,50 @@ const pendingMeal = {
   clarification_question: "White rice or brown rice?",
 };
 
-function fakeDb(staleConversations: any[]) {
+const defaultContactRow = {
+  id: "contact-1",
+  full_name: "Kamlesh Mehta",
+  caregiver_id: "caregiver-1",
+  relationship: "parent",
+  relationship_type: "family_caregiver",
+  gender: "female",
+  timezone: "Asia/Kolkata",
+};
+
+function fakeDb(
+  staleConversations: any[],
+  { contactRow = defaultContactRow, workspacePlan = "family" }: { contactRow?: any; workspacePlan?: string } = {}
+) {
   const mealLogs: any[] = [];
   const updatedConversations: any[] = [];
 
   const db = {
     from(table: string) {
-      if (table === "adults_contacts" || table === "gym_clients") {
+      if (table === "adults_contacts") {
         const chain: any = {
           eq: () => chain,
           is: () => Promise.resolve({ data: [] }),
-          maybeSingle: async () => ({ data: { timezone: "Asia/Kolkata" } }),
+          // The real row, not just a timezone: the caregiver comes from
+          // HERE (caregiver_id), which is both the meal's trainer_id and
+          // the push recipient. The previous fixture returned only a
+          // timezone, which is why nothing caught the sweep reading a
+          // nonexistent whatsapp_conversations.trainer_id instead.
+          maybeSingle: async () => ({ data: { ...contactRow } }),
+        };
+        return { select: () => chain };
+      }
+      if (table === "gym_clients") {
+        const chain: any = {
+          eq: () => chain,
+          is: () => Promise.resolve({ data: [] }),
+          maybeSingle: async () => ({ data: { trainer_id: "gym-trainer-1" } }),
+        };
+        return { select: () => chain };
+      }
+      if (table === "workspaces") {
+        const chain: any = {
+          eq: () => chain,
+          maybeSingle: async () => ({ data: { plan: workspacePlan } }),
         };
         return { select: () => chain };
       }
@@ -116,7 +154,9 @@ describe("POST /api/cron/send-meal-reminders — stale clarification resolution"
       adults_contact_id: "contact-1",
       client_id: null,
       workspace_id: "ws-1",
-      trainer_id: "trainer-1",
+      // Deliberately no trainer_id: whatsapp_conversations has no such
+      // column. The sweep used to read conv.trainer_id and silently write
+      // undefined.
       whatsapp_number: "919999999999",
       pending_meal: pendingMeal,
     };
@@ -138,6 +178,8 @@ describe("POST /api/cron/send-meal-reminders — stale clarification resolution"
     expect(mealLogs).toHaveLength(1);
     expect(mealLogs[0].adults_contact_id).toBe("contact-1");
     expect(mealLogs[0].ai_summary).toBe("rice and dal");
+    // Resolved from adults_contacts.caregiver_id, never from the conversation.
+    expect(mealLogs[0].trainer_id).toBe("caregiver-1");
     expect(sendTextMessage).toHaveBeenCalledWith("919999999999", expect.stringContaining("rice and dal"));
 
     expect(updatedConversations).toHaveLength(1);
@@ -161,5 +203,87 @@ describe("POST /api/cron/send-meal-reminders — stale clarification resolution"
     const body = await res.json();
     expect(body.staleClarifications).toEqual({ checked: 1, resolved: 0, skipped: 1 });
     expect(mealLogs).toHaveLength(0);
+  });
+
+  it("push-notifies the caregiver about a meal it saved on their behalf", async () => {
+    // The regression this file exists to prevent. The sweep saved the meal
+    // and WhatsApped the person who ate it, so it *looked* finished — but
+    // the caregiver watching from the app was never told, making every
+    // unanswered-clarification meal invisible to them.
+    const conv = {
+      id: "conv-1",
+      adults_contact_id: "contact-1",
+      client_id: null,
+      workspace_id: "ws-1",
+      whatsapp_number: "919999999999",
+      pending_meal: pendingMeal,
+    };
+    const { db } = fakeDb([conv]);
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
+
+    await mod.POST(
+      new NextRequest("https://x/api/cron/send-meal-reminders", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-secret" },
+      })
+    );
+
+    expect(sendPushNotificationToProfile).toHaveBeenCalledTimes(1);
+    const [profileId, payload] = (sendPushNotificationToProfile as jest.Mock).mock.calls[0];
+    expect(profileId).toBe("caregiver-1");
+    expect(payload.title).toBe("Your mother logged a lunch");
+    expect(payload.body).toContain("rice");
+    expect(payload.data).toMatchObject({ type: "meal_logged", adultsContactId: "contact-1" });
+  });
+
+  it("does not notify when the workspace is not on the family plan", async () => {
+    const conv = {
+      id: "conv-1",
+      adults_contact_id: "contact-1",
+      client_id: null,
+      workspace_id: "ws-1",
+      whatsapp_number: "919999999999",
+      pending_meal: pendingMeal,
+    };
+    const { db, mealLogs } = fakeDb([conv], { workspacePlan: "self" });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
+
+    await mod.POST(
+      new NextRequest("https://x/api/cron/send-meal-reminders", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-secret" },
+      })
+    );
+
+    // Still saved — only the push is gated.
+    expect(mealLogs).toHaveLength(1);
+    expect(sendPushNotificationToProfile).not.toHaveBeenCalled();
+  });
+
+  it("does not notify a 'self' contact about their own upload", async () => {
+    const conv = {
+      id: "conv-1",
+      adults_contact_id: "contact-1",
+      client_id: null,
+      workspace_id: "ws-1",
+      whatsapp_number: "919999999999",
+      pending_meal: pendingMeal,
+    };
+    const { db } = fakeDb([conv], {
+      contactRow: { ...defaultContactRow, relationship_type: "self" },
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const mod = await import("@/app/api/cron/send-meal-reminders/route");
+
+    await mod.POST(
+      new NextRequest("https://x/api/cron/send-meal-reminders", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-secret" },
+      })
+    );
+
+    expect(sendPushNotificationToProfile).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Redirect, Stack } from 'expo-router';
 
 import { useAuth } from '@/lib/auth-context';
-import { setupNotificationNavigation } from '@/lib/notifications';
+import { refreshPushTokenIfGranted, setupNotificationNavigation } from '@/lib/notifications';
 
 export default function AppLayout() {
   // Second auth check, redundant with the root layout's conditional
@@ -15,10 +15,20 @@ export default function AppLayout() {
   // /select-product.
   const { session } = useAuth();
 
-  // Push permission is not requested silently at this layout level — it
-  // goes through PushPermissionCard (adults/index.tsx) so the OS system
-  // dialog (which neither platform lets us relabel) is preceded by our own
-  // explanation of what the notification is actually for.
+  // Push permission is not REQUESTED silently at this layout level — that
+  // still goes through PushPermissionCard (adults/index.tsx) so the OS
+  // system dialog (which neither platform lets us relabel) is preceded by
+  // our own explanation of what the notification is actually for.
+  //
+  // Refreshing an ALREADY-granted token is a different thing, shows no
+  // dialog, and does belong here: the token changes on reinstall/data
+  // clear/FCM rotation, and refreshing it only on the family-list screen
+  // left caregivers who hadn't opened that screen with a dead token and no
+  // notifications at all. See refreshPushTokenIfGranted.
+  useEffect(() => {
+    if (!session) return;
+    refreshPushTokenIfGranted();
+  }, [session]);
 
   // Routes a tapped notification (cold-launch or app-already-running) to
   // the screen it's actually about — see setupNotificationNavigation's own

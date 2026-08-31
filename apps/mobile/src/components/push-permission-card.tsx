@@ -10,6 +10,36 @@ import { getPushPermissionStatus, registerForPushNotificationsAsync } from '@/li
 
 const DISMISSED_KEY = 'tistra_push_primer_dismissed';
 
+/** How long "Not now" suppresses the card for.
+ *
+ * It used to suppress it FOREVER, which turned one stray tap into a
+ * permanent loss of notifications: the card is the only thing that can
+ * request permission, so once dismissed there was no route back to a
+ * working push token short of reinstalling the app. Nothing in the UI
+ * indicated anything was wrong — meals kept appearing in the app, they just
+ * never arrived on the lock screen.
+ *
+ * A month is long enough that "not now" is respected rather than nagged
+ * past, and short enough that a caregiver who wants notifications isn't
+ * permanently locked out by one tap. */
+const DISMISSAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Reads the dismissal timestamp, returning true while it is still in
+ * effect. Values written before this was time-boxed are the literal '1';
+ * those are migrated to "dismissed now" rather than treated as expired, so
+ * upgrading the app never re-prompts someone immediately. */
+async function dismissalActive(): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(DISMISSED_KEY);
+  if (!raw) return false;
+  if (raw === '1') {
+    await SecureStore.setItemAsync(DISMISSED_KEY, String(Date.now()));
+    return true;
+  }
+  const at = Number(raw);
+  if (!Number.isFinite(at)) return false;
+  return Date.now() - at < DISMISSAL_TTL_MS;
+}
+
 interface PushPermissionCardProps {
   /** What this account will actually be notified about — e.g. "when a
    * loved one logs a meal" for family plan. Rendered as "Get notified
@@ -34,7 +64,7 @@ export function PushPermissionCard({ message }: PushPermissionCardProps) {
     (async () => {
       const [status, dismissed] = await Promise.all([
         getPushPermissionStatus(),
-        SecureStore.getItemAsync(DISMISSED_KEY),
+        dismissalActive(),
       ]);
       if (cancelled) return;
       if (status === 'undetermined' && !dismissed) {
@@ -54,7 +84,7 @@ export function PushPermissionCard({ message }: PushPermissionCardProps) {
 
   async function dismiss() {
     setVisible(false);
-    await SecureStore.setItemAsync(DISMISSED_KEY, '1');
+    await SecureStore.setItemAsync(DISMISSED_KEY, String(Date.now()));
   }
 
   async function enable() {

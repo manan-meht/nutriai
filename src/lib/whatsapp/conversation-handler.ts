@@ -51,8 +51,7 @@ import { updateDietaryProfileForSavedMeal, withMedicalHandoffIfNeeded } from "@/
 import { getInviteByToken, validateInviteForClaim, markInviteClaimed } from "@/lib/invites/service";
 import { buildWelcomeMessage, INVITE_ERROR_MESSAGES } from "@/lib/invites/messages";
 import { trackInviteEvent } from "@/lib/invites/analytics";
-import { sendPushNotificationToProfile } from "@/lib/notifications/push";
-import { resolveSignedMealPhotoUrl } from "@nutriai/nutrition-core";
+import { notifyCaregiverOfFamilyMeal as notifyCaregiverOfFamilyMealShared } from "@/lib/notifications/family-meal";
 import { after } from "next/server";
 import { buildCoachingSuggestion } from "@/lib/rag/coaching-suggestions";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
@@ -111,77 +110,15 @@ const IN_FLIGHT_CONVERSATION_STATES = new Set([
   "awaiting_skip_or_correction",
 ]);
 
-/** Signed-URL lifetime for a meal photo attached to a push notification.
- * Longer than the 1-hour dashboard default (resolveSignedMealPhotoUrl) on
- * purpose: a notification can sit unopened in the shade overnight, and the
- * OS fetches the image at *display* time, so a 1-hour link would routinely
- * expire into a missing thumbnail. 24 hours is still short enough that a
- * link leaked out of a notification payload stops working within a day. */
-const MEAL_PHOTO_PUSH_URL_TTL_SECONDS = 24 * 60 * 60;
-
-/** "a lunch" / "an omelette"-style article, so the notification title reads
- * naturally for both consonant- and vowel-initial meal labels. */
-function aOrAn(word: string): string {
-  return /^[aeiou]/i.test(word) ? `an ${word}` : `a ${word}`;
-}
-
-/** Rounds a min/max estimate into the compact "480–600" (or plain "520"
- * when the range collapses) form used throughout notification copy. */
-function formatEstimateRange(min: number | undefined, max: number | undefined): string | null {
-  const lo = Math.round(min ?? 0);
-  const hi = Math.round(max ?? 0);
-  if (!lo && !hi) return null;
-  return lo === hi ? `${lo}` : `${lo}–${hi}`;
-}
-
-/** Builds the notification body: what was eaten, then the two numbers a
- * caregiver actually acts on (calories and protein). Food names come from
- * the analysis's structured items rather than analysis.summary, which is
- * conversational WhatsApp prose ("Nice — that looks like…") and reads badly
- * truncated on a lock screen. Caps the list at three items so the body
- * stays inside the ~2 lines Android/iOS show collapsed.
- *
- * Exported for tests. */
-export function summariseMealForNotification(analysis: FoodAnalysisResult): string {
-  const names = (analysis.foods ?? []).map((f) => f.name).filter(Boolean);
-  const shown = names.slice(0, 3).join(", ");
-  const remainder = names.length - 3;
-  const foodPart = shown
-    ? remainder > 0
-      ? `${shown} +${remainder} more`
-      : shown
-    : analysis.summary;
-
-  const parts: string[] = [];
-  if (foodPart) parts.push(foodPart);
-
-  const calories = formatEstimateRange(analysis.total_calories_min, analysis.total_calories_max);
-  if (calories) parts.push(`~${calories} kcal`);
-  const protein = formatEstimateRange(analysis.total_protein_min, analysis.total_protein_max);
-  if (protein) parts.push(`${protein}g protein`);
-
-  return parts.join(" · ");
-}
-
-export function relationshipLabelForNotification(
-  relationship: string | null | undefined,
-  gender: string | null | undefined
-): string | null {
-  switch (relationship) {
-    case "son":
-    case "daughter":
-    case "friend":
-      return relationship;
-    case "parent":
-      return gender === "male" ? "father" : gender === "female" ? "mother" : "parent";
-    case "sibling":
-      return gender === "male" ? "brother" : gender === "female" ? "sister" : "sibling";
-    case "spouse":
-      return gender === "male" ? "husband" : gender === "female" ? "wife" : "spouse";
-    default:
-      return null;
-  }
-}
+/** Meal-notification copy helpers now live in
+ * src/lib/notifications/family-meal.ts, shared with the cron sweep that
+ * also commits meals (see that module's header). Re-exported here because
+ * they were part of this module's public surface first — existing tests
+ * and callers import them from this path. */
+export {
+  summariseMealForNotification,
+  relationshipLabelForNotification,
+} from "@/lib/notifications/family-meal";
 
 const MEAL_PHOTOS_BUCKET = "meal-photos";
 
@@ -1014,65 +951,24 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   }
 
   /**
-   * Push-notifies the caregiver (trainerId, which for adults contacts is
-   * caregiver_id — see the entity resolution above) when a meal is logged
-   * on a family-plan workspace. Deliberately scoped to workspaces.plan ===
-   * 'family': a 'self' workspace's caregiver *is* the person the meal
-   * belongs to (notifying them about their own upload is redundant), and
-   * gym/coach ('coach' plan / isAdults === false) isn't in scope for this
-   * notification yet — see sendPushNotificationToProfile's docs for how to
-   * extend this later. Also skips a "Myself" contact within an otherwise
-   * multi-member family plan (relationship_type "self", added via
-   * PersonForm's "Myself" chip) for the same reason — the caregiver would
-   * just be getting notified about their own upload again.
+   * Push-notifies the caregiver that this contact logged a meal.
    *
-   * Best-effort and fully swallowed: a push failure must never affect the
-   * WhatsApp save-confirmation flow that calls this.
+   * A thin wrapper over the shared implementation, which is also called by
+   * the stale-clarification sweep in /api/cron/send-meal-reminders — see
+   * src/lib/notifications/family-meal.ts for the gating rules and for why
+   * it has to live outside this module.
    */
   async function notifyCaregiverOfFamilyMeal(
     resolvedLabel: MealType,
     analysis?: FoodAnalysisResult
   ): Promise<void> {
-    try {
-      if (!isAdults) return;
-      if (adultsContact.relationship_type === "self") return;
-      const { data: workspace } = await db
-        .from("workspaces")
-        .select("plan")
-        .eq("id", workspaceId)
-        .maybeSingle();
-      if (workspace?.plan !== "family") return;
-
-      const who = relationshipLabelForNotification(adultsContact.relationship, adultsContact.gender);
-      // Title carries who + which meal (the old body's entire content), which
-      // frees the body to carry what they actually ate — the part a caregiver
-      // glancing at a lock screen wants without opening the app.
-      const title = who
-        ? `Your ${who} logged ${aOrAn(resolvedLabel)}`
-        : `${firstName} logged ${aOrAn(resolvedLabel)}`;
-      const body = analysis
-        ? summariseMealForNotification(analysis)
-        : who
-          ? `Your ${who} just logged a ${resolvedLabel}.`
-          : `${firstName} just logged a ${resolvedLabel}.`;
-
-      const imageUrl = analysis?.image_url
-        ? await resolveSignedMealPhotoUrl(db, analysis.image_url, MEAL_PHOTO_PUSH_URL_TTL_SECONDS)
-        : undefined;
-
-      await sendPushNotificationToProfile(trainerId, {
-        title,
-        body,
-        imageUrl,
-        // imageUrl is mirrored into data so the in-app notification list /
-        // tap handler can show the same thumbnail without re-signing, and
-        // so iOS (no service extension yet — see PushNotificationPayload)
-        // still has the photo available to the JS side.
-        data: { type: "meal_logged", adultsContactId: entityId, workspaceId, imageUrl },
-      });
-    } catch (err) {
-      console.error("[whatsapp] notifyCaregiverOfFamilyMeal failed:", err instanceof Error ? err.message : err);
-    }
+    if (!isAdults) return;
+    await notifyCaregiverOfFamilyMealShared(db, {
+      workspaceId,
+      mealType: resolvedLabel,
+      analysis,
+      contact: adultsContact,
+    });
   }
 
   /** Updates an already-saved meal_logs row in place (used when a

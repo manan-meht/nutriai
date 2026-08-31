@@ -103,9 +103,150 @@ export async function sendPushNotificationToProfile(
       return 0;
     }
 
-    return messages.length;
+    // A 200 here means Expo ACCEPTED the messages, not that any device got
+    // one. Two further things can still go wrong, and until this block
+    // existed both were invisible:
+    //
+    //   - a per-message ticket error (returned right here), and
+    //   - a delivery failure reported only in the receipt, fetched later
+    //     by pruneDeadPushTokens() below.
+    //
+    // The second is the one that actually bit: every token for a caregiver
+    // came back DeviceNotRegistered at the receipt stage while this
+    // function happily reported "sent to 9 devices" for weeks.
+    const body = (await res.json().catch(() => null)) as
+      | { data?: { id?: string; status?: string; details?: { error?: string } }[] }
+      | null;
+    const tickets = body?.data ?? [];
+
+    const dead: string[] = [];
+    const pending: { token: string; ticketId: string }[] = [];
+    tickets.forEach((ticket, i) => {
+      const token = tokens[i]?.expo_push_token;
+      if (!token) return;
+      if (ticket?.status === "error") {
+        if (ticket.details?.error === "DeviceNotRegistered") dead.push(token);
+        else console.error("[push] ticket error for a token:", ticket.details?.error ?? "unknown");
+        return;
+      }
+      if (ticket?.id) pending.push({ token, ticketId: ticket.id });
+    });
+
+    if (dead.length > 0) await deleteTokens(db, dead);
+
+    // Records which ticket each token is waiting on, so the receipt sweep
+    // can resolve it. Best-effort: failing to record one only means that
+    // token's receipt goes unchecked this round.
+    await Promise.all(
+      pending.map(({ token, ticketId }) =>
+        db
+          .from("push_tokens")
+          .update({ last_ticket_id: ticketId, last_sent_at: new Date().toISOString() })
+          .eq("profile_id", profileId)
+          .eq("expo_push_token", token)
+      )
+    );
+
+    const delivered = messages.length - dead.length;
+    if (delivered === 0) {
+      // Worth shouting about: the profile has registered devices but not
+      // one of them can receive anything, which is indistinguishable from
+      // "notifications are broken" to the person holding the phone.
+      console.error("[push] profile", profileId, "has no reachable devices —", dead.length, "token(s) removed");
+    }
+    return delivered;
   } catch (err) {
     console.error("[push] sendPushNotificationToProfile failed:", err instanceof Error ? err.message : err);
     return 0;
+  }
+}
+
+async function deleteTokens(db: SupabaseClient, tokens: string[]): Promise<void> {
+  const { error } = await db.from("push_tokens").delete().in("expo_push_token", tokens);
+  if (error) console.error("[push] failed to delete dead tokens:", error.message);
+  else console.warn("[push] removed", tokens.length, "unregistered device token(s)");
+}
+
+const EXPO_RECEIPTS_API = "https://exp.host/--/api/v2/push/getReceipts";
+
+/** Expo asks for a delay before receipts are looked up; it typically has an
+ * answer well inside this, and the sweep that calls this runs every ~15
+ * minutes anyway. */
+const RECEIPT_MIN_AGE_MS = 5 * 60 * 1000;
+
+/** Expo's documented cap for one getReceipts call. */
+const RECEIPT_BATCH_SIZE = 1000;
+
+/**
+ * Resolves outstanding push receipts and deletes any token the platform
+ * reports as unregistered (the app was uninstalled, its data cleared, or
+ * FCM rotated the registration — all of which mint a new token and orphan
+ * the old row, which nothing else ever cleans up).
+ *
+ * Safe to call on a schedule; returns what it did so the cron can report
+ * it. Never throws.
+ */
+export async function pruneDeadPushTokens(): Promise<{ checked: number; removed: number }> {
+  try {
+    const db = serviceClient();
+    const cutoff = new Date(Date.now() - RECEIPT_MIN_AGE_MS).toISOString();
+    const { data: rows, error } = await db
+      .from("push_tokens")
+      .select("expo_push_token, last_ticket_id")
+      .not("last_ticket_id", "is", null)
+      .lt("last_sent_at", cutoff)
+      .limit(RECEIPT_BATCH_SIZE);
+
+    if (error) {
+      console.error("[push] failed to load pending receipts:", error.message);
+      return { checked: 0, removed: 0 };
+    }
+    if (!rows || rows.length === 0) return { checked: 0, removed: 0 };
+
+    const ids = rows.map((r: { last_ticket_id: string }) => r.last_ticket_id);
+    const res = await fetch(EXPO_RECEIPTS_API, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) {
+      console.error("[push] getReceipts returned", res.status);
+      return { checked: rows.length, removed: 0 };
+    }
+
+    const body = (await res.json().catch(() => null)) as
+      | { data?: Record<string, { status?: string; details?: { error?: string } }> }
+      | null;
+    const receipts = body?.data ?? {};
+
+    const dead: string[] = [];
+    const resolved: string[] = [];
+    for (const row of rows as { expo_push_token: string; last_ticket_id: string }[]) {
+      const receipt = receipts[row.last_ticket_id];
+      // No receipt yet: leave the ticket in place and re-check next run.
+      if (!receipt) continue;
+      resolved.push(row.expo_push_token);
+      if (receipt.details?.error === "DeviceNotRegistered") dead.push(row.expo_push_token);
+      else if (receipt.status === "error") {
+        console.error("[push] delivery error:", receipt.details?.error ?? "unknown");
+      }
+    }
+
+    if (dead.length > 0) await deleteTokens(db, dead);
+
+    // Clears the ticket on everything that came back, so a resolved token
+    // isn't re-checked forever.
+    const keep = resolved.filter((t) => !dead.includes(t));
+    if (keep.length > 0) {
+      await db
+        .from("push_tokens")
+        .update({ last_ticket_id: null })
+        .in("expo_push_token", keep);
+    }
+
+    return { checked: rows.length, removed: dead.length };
+  } catch (err) {
+    console.error("[push] pruneDeadPushTokens failed:", err instanceof Error ? err.message : err);
+    return { checked: 0, removed: 0 };
   }
 }

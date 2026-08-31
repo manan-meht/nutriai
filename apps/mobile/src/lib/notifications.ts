@@ -48,6 +48,36 @@ export async function getPushPermissionStatus(): Promise<Notifications.Permissio
 }
 
 /**
+ * Re-registers this device's push token, but ONLY if notification
+ * permission has already been granted — so it never triggers the OS
+ * dialog and can safely run on every authenticated app launch.
+ *
+ * This exists because an Expo push token is not stable for the life of an
+ * install. Clearing the app's data, reinstalling, or an FCM re-registration
+ * all mint a NEW token and silently orphan the old one, which stays in
+ * push_tokens looking perfectly healthy. Until this ran app-wide, the only
+ * things that refreshed a token were adults/index.tsx (self plan only) and
+ * PushPermissionCard on that same screen — so a family-plan caregiver who
+ * hadn't opened the family list since their last reinstall had no live
+ * token at all, and every notification for them was delivered to nothing.
+ *
+ * Worse, PushPermissionCard's dismissal is permanent: once "Not now" is
+ * tapped the card never returns, so before this there was no path back to a
+ * working token short of reinstalling. Permission being granted is the only
+ * thing that should matter, and here it is the only thing that does.
+ */
+export async function refreshPushTokenIfGranted(): Promise<void> {
+  try {
+    if (!Device.isDevice) return;
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== "granted") return;
+    await registerForPushNotificationsAsync();
+  } catch (err) {
+    console.warn("[notifications] refreshPushTokenIfGranted failed:", err);
+  }
+}
+
+/**
  * Requests notification permission (no-op if already granted/denied) and,
  * if granted, registers this device's Expo push token with mobile-api.
  * Safe to call on every authenticated app launch — registerPushToken()
