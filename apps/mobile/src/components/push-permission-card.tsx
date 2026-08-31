@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 import { ThemedText } from './themed-text';
@@ -9,6 +9,11 @@ import { useTheme } from '@/hooks/use-theme';
 import { getPushPermissionStatus, registerForPushNotificationsAsync } from '@/lib/notifications';
 
 const DISMISSED_KEY = 'tistra_push_primer_dismissed';
+
+/** Separate key from DISMISSED_KEY on purpose: dismissing the pre-permission
+ * primer must not also silence the "notifications are off" notice, which is
+ * about a different (and worse) state and is the only route back from it. */
+const DENIED_DISMISSED_KEY = 'tistra_push_denied_notice_dismissed';
 
 /** How long "Not now" suppresses the card for.
  *
@@ -28,11 +33,11 @@ const DISMISSAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * effect. Values written before this was time-boxed are the literal '1';
  * those are migrated to "dismissed now" rather than treated as expired, so
  * upgrading the app never re-prompts someone immediately. */
-async function dismissalActive(): Promise<boolean> {
-  const raw = await SecureStore.getItemAsync(DISMISSED_KEY);
+async function dismissalActive(key: string = DISMISSED_KEY): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(key);
   if (!raw) return false;
   if (raw === '1') {
-    await SecureStore.setItemAsync(DISMISSED_KEY, String(Date.now()));
+    await SecureStore.setItemAsync(key, String(Date.now()));
     return true;
   }
   const at = Number(raw);
@@ -57,6 +62,7 @@ interface PushPermissionCardProps {
 export function PushPermissionCard({ message }: PushPermissionCardProps) {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
+  const [deniedVisible, setDeniedVisible] = useState(false);
   const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
@@ -69,6 +75,15 @@ export function PushPermissionCard({ message }: PushPermissionCardProps) {
       if (cancelled) return;
       if (status === 'undetermined' && !dismissed) {
         setVisible(true);
+      } else if (status === 'denied') {
+        // Previously this rendered nothing at all, which is how a caregiver
+        // ended up with notifications silently off and an empty screen
+        // where the explanation should be: the card is the only thing that
+        // ever mentions notifications, and it hid itself precisely when
+        // something was wrong. Android will not let an app re-prompt after
+        // a denial, so the only honest thing to offer is a route to
+        // Settings.
+        if (!(await dismissalActive(DENIED_DISMISSED_KEY))) setDeniedVisible(true);
       } else if (status === 'granted') {
         // Already decided — re-register (cheap upsert) to keep this
         // device's push token fresh across sessions, same as the token
@@ -95,6 +110,35 @@ export function PushPermissionCard({ message }: PushPermissionCardProps) {
       setRequesting(false);
       setVisible(false);
     }
+  }
+
+  if (deniedVisible) {
+    return (
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedText type="smallBold">Notifications are off</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.description}>
+          You won&apos;t be notified {message}. Turn notifications on for Tistra Health in
+          your phone&apos;s settings.
+        </ThemedText>
+        <View style={styles.row}>
+          <Pressable
+            onPress={async () => {
+              setDeniedVisible(false);
+              await SecureStore.setItemAsync(DENIED_DISMISSED_KEY, String(Date.now()));
+            }}
+            style={[styles.secondaryButton, { borderColor: theme.textSecondary }]}
+          >
+            <ThemedText type="small">Not now</ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => Linking.openSettings()}
+            style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+          >
+            <ThemedText type="small" style={styles.primaryButtonText}>Open settings</ThemedText>
+          </Pressable>
+        </View>
+      </ThemedView>
+    );
   }
 
   if (!visible) return null;
