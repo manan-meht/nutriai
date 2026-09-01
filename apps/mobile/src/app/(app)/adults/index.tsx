@@ -344,7 +344,9 @@ export default function AdultsContactListScreen() {
               </View>
             )}
 
-            {state.plan === 'family' && <PushPermissionCard message="when a loved one logs a meal" />}
+            {state.plan === 'family' && (
+              <PushPermissionCard message="when a loved one logs a meal" contacts={state.contacts} />
+            )}
 
             {(() => {
               // Same priority order as before (whitelisted > confirming

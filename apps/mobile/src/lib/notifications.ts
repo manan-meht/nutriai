@@ -30,21 +30,36 @@ try {
   console.warn("[notifications] setNotificationHandler unavailable (likely Expo Go):", err);
 }
 
-/** Reads the current permission status without ever prompting — lets a
- * caller decide whether to show its own explanation card first (only
- * meaningful pre-decision state is "undetermined"; once a user has
- * granted/denied, neither the OS nor we can re-prompt without them
- * visiting system Settings). Returns null if unavailable (Expo Go, or no
- * physical device). */
-export async function getPushPermissionStatus(): Promise<Notifications.PermissionStatus | null> {
+/** The permission facts a caller needs to decide what to offer.
+ *
+ * `status` alone is not enough on Android: a permission that has NEVER been
+ * requested reports as "denied" there, indistinguishable from a real user
+ * refusal by status alone. `canAskAgain` is what separates them — true means
+ * the OS will still show the prompt, false means only the system Settings
+ * page can change it. Getting this wrong is what left 13 family-plan
+ * caregivers with no push token: the card keyed off `undetermined`, which
+ * Android never reports, so it never rendered and never asked.
+ *
+ * Returns nulls when unavailable (Expo Go, or no physical device). */
+export interface PushPermissionState {
+  status: Notifications.PermissionStatus | null;
+  canAskAgain: boolean;
+}
+
+export async function getPushPermissionState(): Promise<PushPermissionState> {
   try {
-    if (!Device.isDevice) return null;
-    const { status } = await Notifications.getPermissionsAsync();
-    return status;
+    if (!Device.isDevice) return { status: null, canAskAgain: false };
+    const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+    return { status, canAskAgain };
   } catch (err) {
-    console.warn("[notifications] getPushPermissionStatus unavailable (likely Expo Go):", err);
-    return null;
+    console.warn("[notifications] getPushPermissionState unavailable (likely Expo Go):", err);
+    return { status: null, canAskAgain: false };
   }
+}
+
+/** Status only. Kept for callers that genuinely do not care why. */
+export async function getPushPermissionStatus(): Promise<Notifications.PermissionStatus | null> {
+  return (await getPushPermissionState()).status;
 }
 
 /**
