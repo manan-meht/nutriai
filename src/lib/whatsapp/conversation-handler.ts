@@ -388,6 +388,32 @@ const PHOTO_INHERIT_WINDOW_MS = 30 * 60 * 1000;
 // message, so a new message isn't locked out forever.
 const LOCK_STALE_MS = 60_000;
 
+/** The state a conversation should COME TO REST in, given what was found
+ * stored on it.
+ *
+ * "processing" is a transient lock, never a resting state — it means some
+ * earlier request is mid-flight, and a request that reclaims it has by
+ * definition decided that earlier attempt is dead (see LOCK_STALE_MS). But
+ * several paths persist whatever state they were handed:
+ *
+ *   - the greeting reply writes peekState back
+ *   - the nutrition-question and unreadable-photo paths "release the lock,
+ *     unchanged" via setConvState(state, ...)
+ *
+ * Handed "processing", every one of those wrote "processing" back as a
+ * RESTING state, so the conversation stayed stuck forever. Each new message
+ * reclaimed the stale lock, took one of those paths, and re-cemented it. A
+ * real user sat in this for three days: the bot answered her greetings and
+ * did nothing else, because every exit re-armed the same trap.
+ *
+ * The original state is genuinely unrecoverable at that point — the claim
+ * overwrote it with "processing" — so "idle" is the honest landing place:
+ * the previous attempt died, start clean. Any real resting or in-flight
+ * state is preserved untouched. */
+export function restingState(state: string): string {
+  return state === "processing" ? "idle" : state;
+}
+
 const GREETING_REPEAT_GAP_MS = 6 * 60 * 60 * 1000; // don't repeat the full greeting within 6h
 
 /** Handles a "JOIN FAMILY/SELF/COACHCLIENT <token>" message — the human-
@@ -678,7 +704,11 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return { acquired: false, state: existing.state, pendingMeal: existing.pending_meal ?? null };
     }
 
-    return { acquired: true, state: existing.state, pendingMeal: existing.pending_meal ?? null };
+    // restingState, not existing.state: reclaiming a stale lock means the
+    // previous request died mid-flight, so the caller must see a clean
+    // "idle" rather than the transient "processing" it would otherwise
+    // persist on every release-unchanged path.
+    return { acquired: true, state: restingState(existing.state), pendingMeal: existing.pending_meal ?? null };
   }
 
   function toPendingMeal(
@@ -1340,7 +1370,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         ? `Hello ${firstName}! 😊\n\nWhenever you eat something, just send me a photo or describe it — I'll keep track for you.`
         : `Hi ${firstName}! 👋\n\nJust send me a photo of your meal or describe what you ate, and I'll log it for you!`;
     await sendTextMessage(msg.from, greetMsg);
-    await setConvState(peekState, conv?.pending_meal ?? null, { last_greeted_at: new Date().toISOString() });
+    await setConvState(restingState(peekState), conv?.pending_meal ?? null, { last_greeted_at: new Date().toISOString() });
     return;
   }
 

@@ -136,9 +136,26 @@ function fakeDb(
 }
 
 describe("POST /api/cron/send-meal-reminders — stale clarification resolution", () => {
+  // The sweep re-derives a stale meal's label from the CURRENT clock (see
+  // resolveStaleMealLabel), so asserting on it is only meaningful with time
+  // pinned. Without this the "logged a lunch" assertion below passes in the
+  // morning and fails in the evening — it was written at midday and started
+  // failing the same week. 07:00 UTC is 12:30 in the fixture contact's
+  // Asia/Kolkata, i.e. unambiguously lunch.
+  //
+  // Timers themselves are left real: the route awaits promises, and faking
+  // setTimeout here would hang them.
   beforeEach(() => {
     process.env.CRON_SECRET = "test-secret";
     jest.clearAllMocks();
+    jest.useFakeTimers({
+      doNotFake: ["setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval", "clearImmediate", "nextTick", "queueMicrotask"],
+      now: new Date("2026-09-06T07:00:00.000Z"),
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("rejects requests without the correct bearer secret", async () => {
