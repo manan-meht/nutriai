@@ -51,7 +51,11 @@ const defaultContactRow = {
 
 function fakeDb(
   staleConversations: any[],
-  { contactRow = defaultContactRow, workspacePlan = "family" }: { contactRow?: any; workspacePlan?: string } = {}
+  {
+    contactRow = defaultContactRow,
+    workspacePlan = "family",
+    stuckConversations = [] as any[],
+  }: { contactRow?: any; workspacePlan?: string; stuckConversations?: any[] } = {}
 ) {
   const mealLogs: any[] = [];
   const updatedConversations: any[] = [];
@@ -88,17 +92,38 @@ function fakeDb(
       }
       if (table === "whatsapp_conversations") {
         return {
+          // eq()'s VALUE is honoured so the two sweeps can be told apart:
+          // the stale-clarification pass filters on "awaiting_clarification"
+          // and the stuck-lock pass on "processing". lt() filters for real,
+          // so a conversation inside the threshold is genuinely excluded
+          // rather than excluded by a mock that ignores cutoffs.
           select: () => ({
-            eq: () => ({
-              lt: async () => ({ data: staleConversations }),
+            eq: (_col: string, val: string) => ({
+              lt: async (ltCol: string, cutoff: string) => {
+                const pool = val === "processing" ? stuckConversations : staleConversations;
+                return {
+                  data: pool.filter((c: any) => !c[ltCol] || new Date(c[ltCol]) < new Date(cutoff)),
+                  error: null,
+                };
+              },
             }),
           }),
-          update: (patch: any) => ({
-            eq: async (_col: string, id: string) => {
-              updatedConversations.push({ id, patch });
-              return { data: null, error: null };
-            },
-          }),
+          // Awaitable after one .eq() (the stale pass) or two (the stuck-lock
+          // pass, which also guards on state).
+          update: (patch: any) => {
+            let id: string | null = null;
+            const chain: any = {
+              eq(col: string, val: string) {
+                if (col === "id") id = val;
+                return chain;
+              },
+              then(onOk: any, onErr: any) {
+                updatedConversations.push({ id, patch });
+                return Promise.resolve({ data: null, error: null }).then(onOk, onErr);
+              },
+            };
+            return chain;
+          },
         };
       }
       if (table === "meal_logs") {
@@ -302,5 +327,92 @@ describe("POST /api/cron/send-meal-reminders — stale clarification resolution"
     );
 
     expect(sendPushNotificationToProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/cron/send-meal-reminders — stuck conversation locks", () => {
+  const post = () =>
+    import("@/app/api/cron/send-meal-reminders/route").then((mod) =>
+      mod.POST(
+        new NextRequest("https://x/api/cron/send-meal-reminders", {
+          method: "POST",
+          headers: { Authorization: "Bearer test-secret" },
+        })
+      )
+    );
+
+  beforeEach(() => {
+    process.env.CRON_SECRET = "test-secret";
+    jest.clearAllMocks();
+    jest.useFakeTimers({
+      doNotFake: ["setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval", "clearImmediate", "nextTick", "queueMicrotask"],
+      now: new Date("2026-09-06T07:00:00.000Z"),
+    });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("releases a conversation stranded in the processing lock", async () => {
+    // The production incident: "processing" is the lock, not a resting
+    // state, and the meal branch only accepts idle/awaiting_correction — so
+    // a conversation left here silently ignores every photo sent to it.
+    const { db, updatedConversations } = fakeDb([], {
+      stuckConversations: [
+        { id: "conv-stuck", whatsapp_number: "917715007159", updated_at: "2026-09-06T06:00:00.000Z" },
+      ],
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+
+    const res = await post();
+    const body = await res.json();
+
+    expect(body.stuckLocks).toEqual({ released: 1 });
+    const release = updatedConversations.find((u) => u.id === "conv-stuck");
+    expect(release).toBeDefined();
+    expect(release.patch.state).toBe("idle");
+  });
+
+  it("leaves a lock alone while a request could still legitimately hold it", async () => {
+    // 60s before "now" — past the handler's own LOCK_STALE_MS but far
+    // inside this sweep's threshold. Releasing here could yank the lock out
+    // from under a request that is genuinely mid-analysis.
+    const { db, updatedConversations } = fakeDb([], {
+      stuckConversations: [
+        { id: "conv-inflight", whatsapp_number: "911111111111", updated_at: "2026-09-06T06:59:00.000Z" },
+      ],
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+
+    const res = await post();
+    const body = await res.json();
+
+    expect(body.stuckLocks).toEqual({ released: 0 });
+    expect(updatedConversations.find((u) => u.id === "conv-inflight")).toBeUndefined();
+  });
+
+  it("does not clear pending_meal, so a recent save can still be undone", async () => {
+    const { db, updatedConversations } = fakeDb([], {
+      stuckConversations: [
+        { id: "conv-stuck", whatsapp_number: "917715007159", updated_at: "2026-09-06T06:00:00.000Z" },
+      ],
+    });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+
+    await post();
+
+    const release = updatedConversations.find((u) => u.id === "conv-stuck");
+    expect(release.patch).not.toHaveProperty("pending_meal");
+  });
+
+  it("reports nothing released when no conversation is stuck", async () => {
+    const { db } = fakeDb([]);
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+
+    const res = await post();
+    const body = await res.json();
+
+    expect(body.stuckLocks).toEqual({ released: 0 });
   });
 });

@@ -481,6 +481,74 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
 // check, and are idempotent, so sharing one route/one ping is safe.
 const STALE_CLARIFICATION_MS = 10 * 60 * 1000;
 
+// A conversation must never come to REST in "processing" — that is the
+// per-phone-number lock (conversation-handler's claimConversationLock),
+// held only across an AI call.
+//
+// restingState() in the handler now prevents a reclaimed lock from being
+// persisted, which was the cause of the one production incident: a user's
+// conversation sat in "processing" and the meal branch — guarded by
+// `state === "idle" || state === "awaiting_correction"` — silently
+// declined to match her photos. She got nothing back for three days, and
+// it surfaced only because she told someone.
+//
+// This sweep is the backstop. It does not care HOW a conversation got
+// stranded: a crashed request between the claim and the release, a Worker
+// eviction mid-analysis, or some future path that persists the lock again
+// all look identical from here and all recover the same way. The failure
+// is completely silent by nature — no error, no reply, nothing in
+// meal_logs — so the only thing that catches it is looking.
+//
+// The threshold is deliberately far beyond the handler's own
+// LOCK_STALE_MS (60s): a request legitimately mid-flight must never be
+// swept out from under itself, and nothing is lost by waiting.
+const STUCK_LOCK_MS = 10 * 60 * 1000;
+
+async function runReleaseStuckLocks(db: ReturnType<typeof createServiceClient>) {
+  const cutoff = new Date(Date.now() - STUCK_LOCK_MS).toISOString();
+
+  const { data: stuck, error } = await db
+    .from("whatsapp_conversations")
+    .select("id, whatsapp_number, updated_at")
+    .eq("state", "processing")
+    .lt("updated_at", cutoff);
+
+  if (error) {
+    console.error("[release-stuck-locks] lookup failed:", error.message);
+    return { released: 0 };
+  }
+  if (!stuck || stuck.length === 0) return { released: 0 };
+
+  let released = 0;
+  for (const conv of stuck) {
+    // pending_meal is deliberately left alone. The idle path ignores it
+    // unless it is a save from the last hour (RECENT_SAVE_WINDOW_MS), in
+    // which case it is exactly what "undo" needs — so clearing it here
+    // would silently remove that option from someone whose meal did save
+    // before the request died.
+    const { error: updateError } = await db
+      .from("whatsapp_conversations")
+      .update({ state: "idle", updated_at: new Date().toISOString() })
+      .eq("id", conv.id)
+      .eq("state", "processing");
+
+    if (updateError) {
+      console.error("[release-stuck-locks] release failed:", conv.id, updateError.message);
+      continue;
+    }
+    // Loud on purpose. Every occurrence is a user who was getting silence,
+    // and the count alone in the cron response is easy to never look at.
+    console.warn(
+      "[release-stuck-locks] released a conversation stuck since",
+      conv.updated_at,
+      "— messages were being silently ignored until now"
+    );
+    released++;
+  }
+
+  return { released };
+}
+
 async function runResolveStaleClarifications(db: ReturnType<typeof createServiceClient>) {
   const cutoff = new Date(Date.now() - STALE_CLARIFICATION_MS).toISOString();
 
@@ -846,6 +914,9 @@ export async function POST(request: NextRequest) {
     runTrialReminders(db),
   ]);
   const pushTokens = await pruneDeadPushTokens();
+  // After the tasks above, so a lock one of them is holding is never a
+  // candidate — and before the response, so the count is reported.
+  const stuckLocks = await runReleaseStuckLocks(db);
 
-  return NextResponse.json({ reminders, staleClarifications, weeklyWins, trialReminders, pushTokens });
+  return NextResponse.json({ reminders, staleClarifications, weeklyWins, trialReminders, pushTokens, stuckLocks });
 }
