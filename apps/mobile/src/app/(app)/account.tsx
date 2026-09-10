@@ -57,7 +57,15 @@ export default function AccountScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: 'Account' }} />
+      {/* headerShown must be forced on: this screen lives in the (app)
+          stack, which is headerless (its other screens draw their own
+          chrome), while every adults/* screen gets a native header from
+          its own layout. Pushed from Family without this, the screen had
+          NO back affordance at all on iOS — Android's system back masked
+          it, and a dead-end account-deletion page is both a UX hole and
+          an App Review magnet. The native header supplies the back
+          chevron on both platforms. */}
+      <Stack.Screen options={{ title: 'Account', headerShown: true }} />
       <SafeAreaView edges={['bottom']} style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content}>
           <Pressable

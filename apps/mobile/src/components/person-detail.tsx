@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Alert, FlatList, Linking, Modal, Pressable, Share, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, FlatList, Linking, Modal, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -119,6 +119,16 @@ export function PersonDetail({
     }
   }
   const [sharingMeal, setSharingMeal] = useState<MealLog | null>(null);
+  // iOS handoff between the photo-viewer Modal and MealShareModal. They are
+  // SIBLING modals, and iOS refuses to present a second one while the first
+  // is still up (React Native swallows the refusal, so "Share this meal"
+  // simply did nothing on iOS — first bug found in the first simulator run).
+  // Android stacks dialogs fine and keeps the share modal layered over the
+  // photo, so it keeps the direct path. On iOS the meal is parked here, the
+  // photo modal is dismissed, and its onDismiss (an iOS-only callback that
+  // fires AFTER the dismissal animation completes — presenting any earlier
+  // hits the same refusal) opens the share modal.
+  const pendingShareMeal = useRef<MealLog | null>(null);
   const MEALS_PAGE_SIZE = 10;
   const [visibleMealCount, setVisibleMealCount] = useState(MEALS_PAGE_SIZE);
 
@@ -492,14 +502,32 @@ export function PersonDetail({
         )}
       />
 
-      <Modal visible={!!modalPhoto} transparent animationType="fade" onRequestClose={() => setModalPhoto(null)}>
+      <Modal
+        visible={!!modalPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalPhoto(null)}
+        // iOS-only (never fires on Android): completes the share handoff
+        // started in the "Share this meal" press above.
+        onDismiss={() => {
+          if (pendingShareMeal.current) {
+            setSharingMeal(pendingShareMeal.current);
+            pendingShareMeal.current = null;
+          }
+        }}
+      >
         <Pressable style={styles.modalBackdrop} onPress={() => setModalPhoto(null)}>
           {modalPhoto && <Image source={{ uri: modalPhoto.url }} style={styles.modalImage} contentFit="contain" />}
           {modalPhoto && (
             <Pressable
               onPress={(e) => {
                 e.stopPropagation();
-                setSharingMeal(modalPhoto.meal);
+                if (Platform.OS === 'ios') {
+                  pendingShareMeal.current = modalPhoto.meal;
+                  setModalPhoto(null);
+                } else {
+                  setSharingMeal(modalPhoto.meal);
+                }
               }}
               style={[styles.shareMealButton, { backgroundColor: theme.primary }]}
             >
