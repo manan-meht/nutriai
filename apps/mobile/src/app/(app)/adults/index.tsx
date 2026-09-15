@@ -282,18 +282,55 @@ export default function AdultsContactListScreen() {
     }
   }
 
+  // Shared by the list and the read-only "Subscription needed" screen: a
+  // lapsed account still has to be able to sign out and reach Account
+  // (deletion) — App Review 5.1.1(v) applies to every state the app can be
+  // in, and without this the paywall was the only way off that screen.
+  const footer = (
+    <>
+      <View style={styles.footerRow}>
+        <Pressable style={styles.footerButton} onPress={() => setShowFeedback(true)}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Send feedback
+          </ThemedText>
+        </Pressable>
+        {/* Account, and with it deletion. App Review has to be able to
+            FIND this — a deletion route that exists but is unreachable
+            from the app's main screen fails 5.1.1(v) as surely as none. */}
+        <Pressable style={styles.footerButton} onPress={() => router.push('/account')}>
+          <ThemedText type="small" themeColor="textSecondary">
+            Account
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          style={styles.footerButton}
+          onPress={() => {
+            clearLastDashboardChoice();
+            supabase.auth.signOut();
+          }}
+        >
+          <ThemedText type="small" themeColor="textSecondary">
+            Sign out
+          </ThemedText>
+        </Pressable>
+      </View>
+      <FeedbackModal visible={showFeedback} onClose={() => setShowFeedback(false)} />
+    </>
+  );
+
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
   if (state.status === 'subscription_required') {
     return (
-      <>
+      <ThemedView style={styles.container}>
         <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
         <EmptyState
           title="Subscription needed"
           message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
           action={{ label: 'Subscribe', onPress: () => router.push({ pathname: '/adults/paywall', params: { plan: state.plan } }) }}
         />
-      </>
+        {footer}
+      </ThemedView>
     );
   }
 
@@ -462,34 +499,7 @@ export default function AdultsContactListScreen() {
           </>
         }
       />
-      <View style={styles.footerRow}>
-        <Pressable style={styles.footerButton} onPress={() => setShowFeedback(true)}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Send feedback
-          </ThemedText>
-        </Pressable>
-        {/* Account, and with it deletion. App Review has to be able to
-            FIND this — a deletion route that exists but is unreachable
-            from the app's main screen fails 5.1.1(v) as surely as none. */}
-        <Pressable style={styles.footerButton} onPress={() => router.push('/account')}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Account
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          style={styles.footerButton}
-          onPress={() => {
-            clearLastDashboardChoice();
-            supabase.auth.signOut();
-          }}
-        >
-          <ThemedText type="small" themeColor="textSecondary">
-            Sign out
-          </ThemedText>
-        </Pressable>
-      </View>
-
-      <FeedbackModal visible={showFeedback} onClose={() => setShowFeedback(false)} />
+      {footer}
     </ThemedView>
   );
 }
