@@ -12,12 +12,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import { api, type AdultsContact } from '@/lib/api';
+import { api, ApiError, type AdultsContact } from '@/lib/api';
 import { inviteStatusFor } from '@/lib/invite-status';
 import { displayEmail } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
-import { hasActiveEntitlement } from '@/lib/purchases';
+import { hasActiveEntitlement, isBillingAvailable } from '@/lib/purchases';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { PushPermissionCard } from '@/components/push-permission-card';
 import { useTheme } from '@/hooks/use-theme';
@@ -69,6 +69,15 @@ function firstNameFromSession(email?: string | null): string {
   return email ? displayEmail(email).split('@')[0] : 'there';
 }
 
+/** The greeting used to be hardcoded "Good morning", which read oddly to
+ * anyone opening the app after lunch. Boundaries follow the usual English
+ * ones: morning to noon, afternoon to 18:00, evening after that. */
+function greetingForHour(hour: number): string {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function AdultsContactListScreen() {
   const { session } = useAuth();
   const theme = useTheme();
@@ -118,9 +127,18 @@ export default function AdultsContactListScreen() {
           });
         }
       })
-      .catch((err) =>
-        setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contacts.' })
-      );
+      .catch((err) => {
+        // Mirrors (app)/index.tsx: an expired session arrives as a 401, and
+        // the generic error state would strand the user here — "Try again"
+        // just re-fails. Signing out flips the root auth gate and sends
+        // them to login, which is the only thing that actually helps.
+        if (err instanceof ApiError && err.status === 401) {
+          clearLastDashboardChoice();
+          supabase.auth.signOut();
+          return;
+        }
+        setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contacts.' });
+      });
   }, [selfParam]);
 
   // useFocusEffect rather than a mount-only useEffect — this screen stays
@@ -202,6 +220,13 @@ export default function AdultsContactListScreen() {
   // purchase the same way adults/paywall.tsx's waitForEntitlementThenReturn
   // does, rather than trusting the client-side purchase result alone.
   async function handleBuyCapacity() {
+    // Same guard as adults/paywall.tsx: with no API key for this platform
+    // the SDK was never configured, and getOfferings() rejects with a
+    // developer-facing message rather than returning nothing.
+    if (!isBillingAvailable()) {
+      Alert.alert("Not available", "Extra capacity isn't available to purchase right now — please try again shortly.");
+      return;
+    }
     setBuyingCapacity(true);
     try {
       const offerings = await Purchases.getOfferings();
@@ -314,7 +339,7 @@ export default function AdultsContactListScreen() {
                   {state.plan === 'self' ? 'You' : 'Family'}
                 </ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Good morning, {firstName} 👋
+                  {greetingForHour(new Date().getHours())}, {firstName} 👋
                 </ThemedText>
               </View>
             )}

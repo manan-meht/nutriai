@@ -135,6 +135,10 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
   },
   button: {
+    // buttonText is white, so this needs a filled background or the label
+    // disappears against the themed ground. Matches the "Try again" button
+    // in screen-states.tsx, which is the other error screen users can land on.
+    backgroundColor: '#5715CE',
     borderRadius: Spacing.two,
     paddingVertical: Spacing.three,
     alignItems: 'center',

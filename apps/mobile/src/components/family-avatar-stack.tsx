@@ -25,7 +25,12 @@ export function FamilyAvatarStack({
       {people.slice(0, 4).map((p, i) => (
         <View key={p.id} style={[styles.avatarRing, { borderColor: theme.background }, i > 0 && styles.avatarOverlap]}>
           {p.photoUrl ? (
-            <Image source={{ uri: p.photoUrl }} style={styles.avatar} contentFit="cover" />
+            <Image
+              source={{ uri: p.photoUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              alt={p.fullName}
+            />
           ) : (
             <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
               <ThemedText type="small" style={styles.avatarText}>

@@ -7,7 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
-import { hasActiveEntitlement } from '@/lib/purchases';
+import { hasActiveEntitlement, isBillingAvailable } from '@/lib/purchases';
 import { FOUNDING_MEMBER_PLAN_COPY, additionalPersonMonthlyDisplay } from '@/lib/founding-member-copy';
 
 // The RevenueCat "entitlement identifier" (configured in the RevenueCat
@@ -84,11 +84,23 @@ function packagePriceLines(pkg: PurchasesPackage): { primary: string; secondary:
 export default function AdultsPaywallScreen() {
   const { plan } = useLocalSearchParams<{ plan?: string }>();
   const offeringId = plan === 'self' ? 'self' : 'family';
-  const [state, setState] = useState<State>({ status: 'loading' });
+  // Settled up front rather than in load(): without an API key for this
+  // platform, configurePurchases() never ran and the SDK has no instance,
+  // so getOfferings() would reject with "There is no singleton instance…"
+  // and put that developer string in front of a paying customer. Deciding
+  // it here also keeps load() free of the synchronous setState the comment
+  // below is careful to avoid.
+  const [state, setState] = useState<State>(() =>
+    isBillingAvailable() ? { status: 'loading' } : { status: 'ready', offering: null }
+  );
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
 
   const load = useCallback(() => {
+    // Nothing to fetch when the SDK was never configured — the initial
+    // state above already renders the unavailable case.
+    if (!isBillingAvailable()) return;
+
     // No synchronous setState({ status: 'loading' }) here — the initial
     // useState(loading) above covers first mount, and a retry from the
     // error state simply keeps showing that error until the refetch

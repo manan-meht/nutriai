@@ -218,7 +218,12 @@ export function FamilyHealthCard({
       <ThemedView type="backgroundElement" style={styles.card}>
         <View style={styles.header}>
           {contact.photoUrl ? (
-            <Image source={{ uri: contact.photoUrl }} style={styles.avatar} contentFit="cover" />
+            <Image
+              source={{ uri: contact.photoUrl }}
+              style={styles.avatar}
+              contentFit="cover"
+              alt={contact.fullName}
+            />
           ) : (
             <View style={[styles.avatar, { backgroundColor: theme.backgroundSelected }]}>
               <ThemedText type="default" style={styles.avatarText}>
@@ -278,7 +283,12 @@ export function FamilyHealthCard({
             </ThemedText>
             <View style={[styles.mealThumb, { backgroundColor: theme.backgroundSelected }]}>
               {contact.lastMealPhotoUrl ? (
-                <Image source={{ uri: contact.lastMealPhotoUrl }} style={styles.mealThumbImage} contentFit="cover" />
+                <Image
+                  source={{ uri: contact.lastMealPhotoUrl }}
+                  style={styles.mealThumbImage}
+                  contentFit="cover"
+                  alt="Most recent meal photo"
+                />
               ) : (
                 <ThemedText type="default">🍽️</ThemedText>
               )}

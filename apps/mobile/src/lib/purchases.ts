@@ -22,6 +22,18 @@ function apiKeyForPlatform(): string | null {
   return null;
 }
 
+/**
+ * Whether billing can work at all in this build. False when the platform's
+ * API key is absent, in which case `configurePurchases` returned early and
+ * the SDK has no instance — every Purchases.* call then rejects with a
+ * developer-facing "There is no singleton instance" message rather than
+ * returning an empty result. Screens check this first so they can say
+ * something true to the user instead of surfacing that string.
+ */
+export function isBillingAvailable(): boolean {
+  return apiKeyForPlatform() !== null;
+}
+
 /** Idempotent — safe to call from a useEffect keyed on the auth user id;
  * a no-op if already configured for this exact user. Never throws: a
  * missing API key (e.g. local dev without RevenueCat env vars set) just

@@ -22,7 +22,12 @@ describe("relationship is answered, not defaulted", () => {
     const form = code("../apps/mobile/src/components/person-form.tsx");
     expect(form).toMatch(/const missingRelationship =/);
     expect(form).toMatch(/mode === 'add' && !relationship/);
-    expect(form).toMatch(/disabled=\{loading \|\| !fullName\.trim\(\) \|\| missingRelationship\}/);
+    // Deliberately not anchored at the closing brace. What this guards is
+    // that missingRelationship blocks submit; the form has since grown
+    // further conditions after it (a real WhatsApp number, valid reminder
+    // times), and pinning the whole expression made adding any of those
+    // look like a regression in the thing it is actually protecting.
+    expect(form).toMatch(/disabled=\{loading \|\| !fullName\.trim\(\) \|\| missingRelationship/);
   });
 
   it("does not block editing a contact that predates the rule", () => {

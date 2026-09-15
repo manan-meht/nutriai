@@ -45,7 +45,18 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "microphonePermission": false
+        }
+      ],
       "expo-web-browser",
       "expo-notifications",
       "./plugins/withConsistentKotlinJvmTarget",

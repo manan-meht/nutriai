@@ -44,13 +44,16 @@ than the original SDK mismatch.
 
 `src/lib/oauth.ts` opens an in-app browser session (via `expo-web-browser`)
 that redirects back to the app through the custom URL scheme
-`tistrahealth://` (set in `app.json`). This needs provider-side
-configuration before it'll work — none of this can be done from code:
+`tistramobile://` (`expo.scheme` in `app.json`). The redirect URL is built
+by `Linking.createURL("auth/callback")`, so the exact value is
+**`tistramobile://auth/callback`** — note the path separator, not a hyphen.
+This needs provider-side configuration before it'll work — none of this can
+be done from code:
 
 1. **Supabase** — Authentication → URL Configuration → Redirect URLs: add
-   `tistrahealth://auth-callback`.
+   `tistramobile://auth/callback`.
 2. **Google Cloud Console** — the OAuth client Supabase's Google provider
-   uses needs `tistrahealth://auth-callback` (or your Supabase project's
+   uses needs `tistramobile://auth/callback` (or your Supabase project's
    own callback URL, depending on how the main app's Google provider is
    already configured — see Supabase's Auth → Providers → Google page for
    the exact authorized redirect URI it expects) added to its authorized

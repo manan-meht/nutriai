@@ -14,6 +14,17 @@ const ERROR_COLOR = '#D92D20';
 
 const DEFAULT_REMINDER_TIMES: [string, string, string] = ['08:00', '12:00', '19:00'];
 
+/** 24-hour HH:MM, which is the format the reminder scheduler reads. The
+ * fields are free text, so without this "9am" and "25:99" reached the
+ * database and quietly produced a schedule nobody asked for. */
+function isValidTimeOfDay(value: string): boolean {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return false;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
 /** Sign-up food-preference options with neutral (third-person-safe) labels
  * — FoodPreferencesEditor's "I am vegan" copy reads wrong when a caregiver
  * is adding someone else. Keys map 1:1 onto FoodPreferenceSelections and
@@ -172,6 +183,23 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   const missingRelationship =
     product === 'adults' && !isSelfPlan && mode === 'add' && !relationship;
 
+  /* The reminder times drive the actual WhatsApp reminder schedule, and the
+   * fields are free text — "9am" and "25:99" both used to submit happily and
+   * land in the database. Only validated while reminders are on, since the
+   * values aren't sent otherwise. */
+  const invalidReminderTimes =
+    remindersEnabled && reminderTimes.some((t) => !isValidTimeOfDay(t));
+
+  /* An empty number used to submit as just the country code ("+91"), which
+   * is not a number anyone can be messaged on — and whatsappNumber is not
+   * optional on the API. Only collected on add, which is the only time the
+   * field is rendered. Six digits is the shortest real national number; the
+   * intent is to catch blank and obvious typos, not to validate per-country
+   * numbering plans on the client. */
+  const whatsappDigits = whatsapp.replace(/\D/g, '');
+  const missingWhatsapp = mode === 'add' && whatsappDigits.length < 6;
+
+
   const isSelfRelationship = product === 'adults' && relationship === 'self';
   const aboutSectionTitle = isSelfRelationship
     ? 'About you'
@@ -212,7 +240,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       )}
 
       {mode === 'add' && (
-        <Field label="WhatsApp number" color={theme.textSecondary}>
+        <Field label="WhatsApp number" color={theme.textSecondary} required>
           <View style={styles.phoneRow}>
             <View style={[styles.countryCodeBox, { borderColor: theme.backgroundSelected, backgroundColor: theme.backgroundElement }]}>
               <Text style={{ color: theme.textSecondary, fontSize: 14 }}>+</Text>
@@ -233,6 +261,11 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               style={[styles.input, { flex: 1, color: theme.text, borderColor: theme.backgroundSelected }]}
             />
           </View>
+          {missingWhatsapp && whatsappDigits.length > 0 && (
+            <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
+              That looks too short — enter the full number without the country code.
+            </Text>
+          )}
         </Field>
       )}
 
@@ -342,12 +375,22 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
                       }}
                       placeholder="HH:MM"
                       placeholderTextColor={theme.placeholder}
-                      style={[styles.input, { color: theme.text, borderColor: theme.backgroundSelected }]}
+                      keyboardType="numbers-and-punctuation"
+                      style={[
+                        styles.input,
+                        { color: theme.text, borderColor: theme.backgroundSelected },
+                        !isValidTimeOfDay(reminderTimes[i]) && { borderColor: '#D92D20' },
+                      ]}
                     />
                   </Field>
                 </View>
               ))}
             </View>
+          )}
+          {invalidReminderTimes && (
+            <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
+              Use 24-hour times like 08:00 or 19:30.
+            </Text>
           )}
           <Text style={[styles.hint, { color: theme.textSecondary }]}>
             24-hour format (e.g. 08:00), in their local timezone. Defaults to 8am, 12pm, and 7pm.
@@ -445,9 +488,13 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable
-        style={[styles.submitButton, (loading || !fullName.trim() || missingRelationship) && styles.disabled]}
+        style={[
+          styles.submitButton,
+          (loading || !fullName.trim() || missingRelationship || missingWhatsapp || invalidReminderTimes) &&
+            styles.disabled,
+        ]}
         onPress={handleSubmit}
-        disabled={loading || !fullName.trim() || missingRelationship}
+        disabled={loading || !fullName.trim() || missingRelationship || missingWhatsapp || invalidReminderTimes}
       >
         {loading ? <ActivityIndicator color="#fff" /> : (
           <Text style={styles.submitButtonText}>{mode === 'add' ? 'Add' : 'Save'}</Text>
@@ -532,6 +579,9 @@ const styles = StyleSheet.create({
   },
   divider: { height: 1, marginVertical: 8 },
   error: { color: ERROR_COLOR, marginTop: 16, fontSize: 13 },
+  /** Explains why the submit button is disabled, so a greyed-out Add isn't
+   * a dead end the user has to guess their way out of. */
+  fieldHint: { marginTop: 6, fontSize: 12, lineHeight: 16 },
   submitButton: {
     backgroundColor: PRIMARY,
     borderRadius: 999,

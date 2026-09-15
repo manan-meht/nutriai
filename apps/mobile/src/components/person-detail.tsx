@@ -106,6 +106,10 @@ export function PersonDetail({
   const reactionsEnabled = !!onReactToMeal && person.relationshipType !== 'self';
 
   async function handleReact(mealId: string, emoji: '👍' | '🎉' | '❤️') {
+    // Capture what was showing so a failure puts it back. Deleting the key
+    // instead (the previous rollback) made a failed 👍→❤️ change look like
+    // the meal had never been reacted to at all, until the next refetch.
+    const previous = reactions[mealId];
     setReactions((prev) => ({ ...prev, [mealId]: emoji }));
     try {
       const result = await onReactToMeal!(mealId, emoji);
@@ -113,7 +117,8 @@ export function PersonDetail({
     } catch {
       setReactions((prev) => {
         const next = { ...prev };
-        delete next[mealId];
+        if (previous === undefined) delete next[mealId];
+        else next[mealId] = previous;
         return next;
       });
     }
@@ -291,7 +296,12 @@ export function PersonDetail({
               {'contactId' in foodBalanceQuery && (
                 <Pressable onPress={handleChangePhoto} disabled={uploadingPhoto} style={styles.avatarRow}>
                   {photoUrl ? (
-                    <Image source={{ uri: photoUrl }} style={styles.avatarLarge} contentFit="cover" />
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={styles.avatarLarge}
+                      contentFit="cover"
+                      alt={`${person.fullName}'s photo`}
+                    />
                   ) : (
                     <View style={[styles.avatarLarge, { backgroundColor: theme.backgroundSelected }]}>
                       <ThemedText type="default" style={styles.avatarLargeText}>
@@ -454,7 +464,12 @@ export function PersonDetail({
             </View>
             {item.imageUrl && (
               <Pressable onPress={() => setModalPhoto({ url: item.imageUrl!, label: item.mealType, meal: item })}>
-                <Image source={{ uri: item.imageUrl }} style={styles.mealPhoto} contentFit="cover" />
+                <Image
+                  source={{ uri: item.imageUrl }}
+                  style={styles.mealPhoto}
+                  contentFit="cover"
+                  alt={`Photo of ${item.mealType}`}
+                />
               </Pressable>
             )}
             {item.aiSummary && (
@@ -517,7 +532,14 @@ export function PersonDetail({
         }}
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setModalPhoto(null)}>
-          {modalPhoto && <Image source={{ uri: modalPhoto.url }} style={styles.modalImage} contentFit="contain" />}
+          {modalPhoto && (
+            <Image
+              source={{ uri: modalPhoto.url }}
+              style={styles.modalImage}
+              contentFit="contain"
+              alt={`Photo of ${modalPhoto.label}`}
+            />
+          )}
           {modalPhoto && (
             <Pressable
               onPress={(e) => {

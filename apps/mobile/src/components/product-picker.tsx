@@ -73,7 +73,10 @@ export function ProductPicker({
               onPress={() => setSelected(option.key)}
               style={[styles.card, { borderColor: active ? '#5715CE' : theme.backgroundSelected }]}>
               <ThemedView type="backgroundElement" style={styles.imageWrap}>
-                <Image style={styles.image} source={option.image} contentFit="contain" />
+                {/* Decorative: the card's title and subtitle already name
+                    the option, so an empty label keeps VoiceOver from
+                    announcing a redundant image. */}
+                <Image style={styles.image} source={option.image} contentFit="contain" alt="" />
               </ThemedView>
               <ThemedView style={styles.cardBody}>
                 <ThemedView style={styles.cardText}>
