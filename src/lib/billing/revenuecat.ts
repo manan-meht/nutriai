@@ -104,9 +104,23 @@ export function mapRevenueCatEventToStatus(event: RevenueCatEvent): EntitlementS
  * src/lib/billing/pricing.ts for why); only Coach is "gym". Returns null
  * for a product id this app doesn't recognize (e.g. a stale/removed
  * product), so the webhook can safely ignore it rather than guessing. */
+/** Reduces a store's product id to the plan it represents.
+ *
+ * The two stores model durations differently. Play has one product with
+ * several base plans and reports "self_premium:monthly". The App Store has
+ * no base plans — each duration is its own product with its own permanent
+ * id — so the iOS products are "self_premium_monthly" and
+ * "self_premium_annual". Both forms reduce to "self_premium" here, which
+ * is what the matchers below compare against. Without this, an iOS
+ * purchase reports a product id nothing recognises and the webhook ignores
+ * it: the customer is charged and never unlocked. */
+function basePlanProductId(productId: string): string {
+  return productId.split(":")[0].replace(/_(monthly|annual)$/, "");
+}
+
 export function moduleForRevenueCatProductId(productId: string | null | undefined): EntitlementModule | null {
   if (!productId) return null;
-  const baseProductId = productId.split(":")[0];
+  const baseProductId = basePlanProductId(productId);
   if (baseProductId === "self_premium" || baseProductId === "family_premium") return "adults";
   if (baseProductId === "coach_premium") return "gym";
   return null;
@@ -122,9 +136,15 @@ export function moduleForRevenueCatProductId(productId: string | null | undefine
  * product. */
 export function extraCapacityModuleForRevenueCatProductId(productId: string | null | undefined): EntitlementModule | null {
   if (!productId) return null;
-  const baseProductId = productId.split(":")[0];
-  if (baseProductId === "adults_additional_person") return "adults";
-  if (baseProductId === "coach_additional_person") return "gym";
+  const baseProductId = basePlanProductId(productId);
+  // "adults_extra_person" is the App Store spelling. Apple requires the
+  // add-on to sit in its own subscription group (a customer may hold only
+  // one subscription per group, so a seat sharing the plans' group would
+  // replace the plan instead of extending it), and product ids are
+  // permanent — so the one first created alongside the plans could not be
+  // reused and the iOS product had to be renamed. Play keeps the original.
+  if (baseProductId === "adults_additional_person" || baseProductId === "adults_extra_person") return "adults";
+  if (baseProductId === "coach_additional_person" || baseProductId === "coach_extra_person") return "gym";
   return null;
 }
 
