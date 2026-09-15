@@ -17,3 +17,10 @@ apps/mobile/*.aab
 
 # Supabase CLI scratch
 supabase/.temp/
+
+# Signing keys and secrets — never commit
+secrets/
+*.p8
+*.p12
+*.pem
+*.key
