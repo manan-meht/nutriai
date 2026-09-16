@@ -26,7 +26,18 @@ export async function signInWithProvider(provider: OAuthProvider): Promise<void>
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
-    options: { redirectTo, skipBrowserRedirect: true },
+    options: {
+      redirectTo,
+      skipBrowserRedirect: true,
+      // Without this Google silently signs in with whichever account the
+      // device's browser is already logged into, and never shows its account
+      // chooser. On an iPad logged into a second Google account that meant
+      // landing in that account's (lapsed) workspace with no hint that it
+      // wasn't the one just tapped on Android. select_account forces the
+      // chooser every time; Facebook has no equivalent and ignores unknown
+      // params, so it's scoped to Google.
+      ...(provider === "google" ? { queryParams: { prompt: "select_account" } } : {}),
+    },
   });
   if (error) throw error;
   if (!data.url) throw new Error("No OAuth URL returned by Supabase.");
