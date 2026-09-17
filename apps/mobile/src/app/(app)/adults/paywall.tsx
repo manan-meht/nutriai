@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Purchases, { type PurchasesOffering, type PurchasesPackage } from 'react-native-purchases';
 
+import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
 import { hasActiveEntitlement, isBillingAvailable } from '@/lib/purchases';
 import { FOUNDING_MEMBER_PLAN_COPY, additionalPersonMonthlyDisplay } from '@/lib/founding-member-copy';
+
+// App Review requires a paywall to link to the Terms of Use and Privacy
+// Policy (guideline 3.1.2); the listing was rejected for lacking the Terms
+// link, and the same rule applies inside the app. iOS is sold under Apple's
+// standard EULA — the link the App Store description also carries — and
+// Play under our own terms.
+const TERMS_URL =
+  Platform.OS === 'ios' ? 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/' : 'https://tistrahealth.com/terms';
+const PRIVACY_URL = 'https://tistrahealth.com/privacy';
+const STORE_NAME = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
 
 // The RevenueCat "entitlement identifier" (configured in the RevenueCat
 // dashboard, not a product/SKU id) that grants Self/Family (module
@@ -261,11 +272,31 @@ export default function AdultsPaywallScreen() {
         })}
       </ThemedView>
 
-      <Pressable style={styles.restoreButton} onPress={handleRestore} disabled={restoring}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {restoring ? 'Restoring…' : 'Restore purchases'}
+      <ThemedView style={styles.footer}>
+        <Pressable style={styles.restoreButton} onPress={handleRestore} disabled={restoring}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {restoring ? 'Restoring…' : 'Restore purchases'}
+          </ThemedText>
+        </Pressable>
+        <ThemedText type="small" themeColor="textSecondary" style={styles.legalNote}>
+          Renews automatically until cancelled in your {STORE_NAME} settings.
         </ThemedText>
-      </Pressable>
+        <ThemedView style={styles.legalLinks}>
+          <ExternalLink href={TERMS_URL}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.legalLink}>
+              Terms of Use
+            </ThemedText>
+          </ExternalLink>
+          <ThemedText type="small" themeColor="textSecondary">
+            {' · '}
+          </ThemedText>
+          <ExternalLink href={PRIVACY_URL}>
+            <ThemedText type="small" themeColor="textSecondary" style={styles.legalLink}>
+              Privacy Policy
+            </ThemedText>
+          </ExternalLink>
+        </ThemedView>
+      </ThemedView>
     </ThemedView>
   );
 }
@@ -291,5 +322,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
   },
   primaryButtonText: { color: '#ffffff', fontWeight: '600' },
-  restoreButton: { alignItems: 'center', padding: Spacing.three, marginTop: 'auto' },
+  footer: { marginTop: 'auto', alignItems: 'center', gap: Spacing.one, paddingBottom: Spacing.two },
+  restoreButton: { alignItems: 'center', padding: Spacing.two },
+  legalNote: { textAlign: 'center' },
+  legalLinks: { flexDirection: 'row', alignItems: 'center' },
+  legalLink: { textDecorationLine: 'underline' },
 });
