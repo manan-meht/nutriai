@@ -43,6 +43,16 @@ describe("recognising a meal type in the person's own words", () => {
     ["make it lunch", "lunch"],
     ["Actually it's dinner", "dinner"],
     ["snack", "snack"],
+    // A reply that opens with the meal name. A Singapore user replied
+    // "Lunch" (with the dish after it) to meals the clock had filed as
+    // breakfast, and was ignored: only the bare word or "this is lunch"
+    // matched.
+    ["Lunch, chicken rice", "lunch"],
+    ["dinner: fish and rice", "dinner"],
+    ["Lunch!", "lunch"],
+    ["Breakfast - kaya toast", "breakfast"],
+    ["supper", "dinner"],
+    ["Snacks, some nuts", "snack"],
   ])("reads %j as %s", (text, expected) => {
     expect(statedMealType(text)).toBe(expected);
   });
@@ -51,6 +61,9 @@ describe("recognising a meal type in the person's own words", () => {
     ["the rice was half a cup"],
     ["no this is fish not chicken"],
     ["I skipped breakfast today"],
+    // Opens with the word but goes on as a sentence — a mention, not a label.
+    ["lunch was late today"],
+    ["Dinner is usually rice"],
   ])("does not relabel on %j", (text) => {
     // A false positive relabels a meal nobody asked to relabel, which is
     // worse than missing one — so a passing mention must not match.

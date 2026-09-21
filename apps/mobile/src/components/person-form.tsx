@@ -8,7 +8,20 @@ import { NutritionGoalFields, EMPTY_NUTRITION_GOAL_FIELDS, type NutritionGoalFie
 import { NutritionTargetsCard } from './nutrition-targets-card';
 import { FoodPreferencesEditor } from './food-preferences-editor';
 
+import { COMMON_TIMEZONES, guessTimezoneFromCountryCode } from '@nutriai/nutrition-core/src/timezone';
+
 const RELATIONSHIPS = ['Son', 'Daughter', 'Spouse', 'Parent', 'Sibling', 'Friend', 'Other'];
+
+/** The phone's own zone — the right default for a "Myself" contact, who is by
+ * definition holding the phone. Falls back to the country-code guess if the
+ * runtime can't say. */
+function deviceTimezone(fallback: string): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || fallback;
+  } catch {
+    return fallback;
+  }
+}
 const PRIMARY = '#5715CE';
 const ERROR_COLOR = '#D92D20';
 
@@ -53,6 +66,7 @@ export interface PersonFormInitialValues {
   /** adults-only — gym_clients has no reminders columns. */
   remindersEnabled?: boolean;
   reminderTimes?: [string, string, string];
+  timezone?: string;
 }
 
 interface PersonFormProps {
@@ -106,6 +120,15 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
   const [heightCm, setHeightCm] = useState(initialValues?.heightCm ?? '');
   const [goalFields, setGoalFields] = useState<NutritionGoalFieldsValue>(initialValues?.goalFields ?? EMPTY_NUTRITION_GOAL_FIELDS);
   const [remindersEnabled, setRemindersEnabled] = useState(initialValues?.remindersEnabled ?? false);
+  // null = not chosen by hand: the zone then follows the relationship and
+  // country code, so changing either keeps the guess in step. Edit mode
+  // starts from the stored zone, which counts as chosen. Until this field
+  // existed the app sent nothing and every contact got the column default
+  // (Asia/Kolkata) — a Singapore user's lunches were logged as breakfast.
+  const [manualTimezone, setManualTimezone] = useState<string | null>(initialValues?.timezone ?? null);
+  const [timezonePickerOpen, setTimezonePickerOpen] = useState(false);
+  const guessedTimezone = guessTimezoneFromCountryCode(countryCode);
+  const timezone = manualTimezone ?? (relationship === 'self' ? deviceTimezone(guessedTimezone) : guessedTimezone);
   const [reminderTimes, setReminderTimes] = useState<[string, string, string]>(
     initialValues?.reminderTimes ?? DEFAULT_REMINDER_TIMES
   );
@@ -140,6 +163,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
         body.relationshipType = isSelf ? 'self' : undefined;
         body.remindersEnabled = remindersEnabled;
         body.reminderTimes = remindersEnabled ? reminderTimes : undefined;
+        body.timezone = timezone;
       }
 
       if (mode === 'add') {
@@ -266,6 +290,41 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               That looks too short — enter the full number without the country code.
             </Text>
           )}
+        </Field>
+      )}
+
+      {product === 'adults' && (
+        <Field label="Time zone" color={theme.textSecondary}>
+          <Pressable
+            onPress={() => setTimezonePickerOpen((v) => !v)}
+            style={[styles.input, styles.timezoneRow, { borderColor: theme.backgroundSelected }]}
+          >
+            <Text style={{ color: theme.text, fontSize: 15 }}>{timezone.replace(/_/g, ' ')}</Text>
+            <Text style={{ color: PRIMARY, fontSize: 13, fontWeight: '600' }}>{timezonePickerOpen ? 'Done' : 'Change'}</Text>
+          </Pressable>
+          {timezonePickerOpen && (
+            <View style={styles.timezoneList}>
+              {COMMON_TIMEZONES.map((tz) => (
+                <Chip
+                  key={tz}
+                  label={tz.replace(/_/g, ' ')}
+                  active={tz === timezone}
+                  onPress={() => {
+                    setManualTimezone(tz);
+                    setTimezonePickerOpen(false);
+                  }}
+                  theme={theme}
+                />
+              ))}
+            </View>
+          )}
+          <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>
+            {manualTimezone
+              ? 'Meal times and reminders follow this clock.'
+              : relationship === 'self'
+                ? 'Taken from this phone. Meal times and reminders follow this clock.'
+                : 'Guessed from the country code — change it if they live somewhere else. Meal times and reminders follow this clock.'}
+          </Text>
         </Field>
       )}
 
@@ -563,6 +622,8 @@ const styles = StyleSheet.create({
   checkboxMark: { color: '#fff', fontSize: 13, fontWeight: '700' },
   hint: { fontSize: 12, marginTop: -4, marginBottom: 4 },
   phoneRow: { flexDirection: 'row', gap: 8 },
+  timezoneRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  timezoneList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   countryCodeBox: {
     flexDirection: 'row',
     alignItems: 'center',

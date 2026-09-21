@@ -1,3 +1,4 @@
+import { regionContextForTimezone, regionPromptSection } from "./region-context";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { classifyMeal } from "@nutriai/dashboard-core";
 
@@ -180,7 +181,7 @@ export interface FoodAnalysisResult {
  * whatsapp_conversations.pending_meal — see PendingMeal in
  * conversation-handler.ts for the full shape used at runtime. */
 
-const SYSTEM_PROMPT = `You are Tistra Health, a WhatsApp-based nutrition assistant specialized in Indian food.
+const SYSTEM_PROMPT = `You are Tistra Health, a WhatsApp-based nutrition assistant specialized in everyday home-cooked and street food — Indian food in depth, and the local cuisine of the person's region (see REGION below) with equal care.
 
 Your job is to help users log meals accurately with LOW friction. Follow these rules:
 - Never claim more certainty than you have. If the photo or description is ambiguous, say so via a low/medium confidence rating rather than guessing confidently.
@@ -323,6 +324,9 @@ export async function analyzeFood(input: {
   imageBuffer?: Uint8Array;
   imageMimeType?: string;
   correctionContext?: string;
+  /** The contact's IANA timezone — picks the regional dish vocabulary the
+   * prompt is told to expect (see region-context.ts). */
+  timezone?: string;
 }): Promise<FoodAnalysisResult> {
   // Reverted from gemini-3.1-flash-lite back to gemini-2.5-flash: flash-lite
   // was ~5x faster and did well in a 14-photo image-analysis comparison,
@@ -341,7 +345,7 @@ export async function analyzeFood(input: {
     generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
-  let textPrompt = SYSTEM_PROMPT;
+  let textPrompt = `${SYSTEM_PROMPT}\n\n${regionPromptSection(input.timezone)}`;
   if (input.correctionContext) {
     textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}\nIf this correction resolves a previous food-identity ambiguity (e.g. the user named the item), set has_high_impact_ambiguity to false and food_identity_confidence to "high" for the resolved item.`;
   } else if (input.text) {
@@ -742,6 +746,15 @@ export function resolveMealLabel(
 export function statedMealType(text: string | null | undefined): MealType | null {
   if (!text) return null;
   const t = text.toLowerCase().trim();
+  // A reply that OPENS with the meal name — "Lunch, chicken rice", "dinner:
+  // fish and rice", "Lunch!" — is an answer, not a mention. The word must
+  // be followed by a separator or the end of the message, so "lunch was
+  // late today" still does not match.
+  const lead = t.match(/^(breakfast|lunch|dinner|supper|snacks?)(?:\s*[,:;!.\-–—]|\s*$)/);
+  if (lead) {
+    const word = lead[1];
+    return word === "supper" ? "dinner" : word.startsWith("snack") ? "snack" : (word as MealType);
+  }
   const names: Array<[MealType, RegExp]> = [
     ["breakfast", /breakfast/],
     ["lunch", /lunch/],
@@ -985,6 +998,7 @@ export function buildAutoSaveMessage(
     seed: string;
     dailyTotals?: { protein: number; calories: number; carbs: number; fat: number; targetProteinG?: number } | null;
     isClarificationResolution?: boolean;
+    timezone?: string;
   }
 ): string {
   const protein = avgProtein(analysis);
@@ -994,7 +1008,7 @@ export function buildAutoSaveMessage(
   const label = formatMealLabel(resolvedLabel).toLowerCase();
   const estimate = `Estimated: ${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
   const portionCheck = needsPortionConfirmation(analysis) ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}` : "";
-  const recommendation = buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null);
+  const recommendation = buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null, opts.timezone);
 
   // A meal that just had its ambiguity resolved by the user reads slightly
   // differently ("Thanks — I've logged...") than a fresh, unprompted
@@ -1006,9 +1020,13 @@ export function buildAutoSaveMessage(
     : (decision.confidenceLevel === "high"
         ? `Logged ${label} ✅\n\nI found:`
         : `Logged this estimate as ${label} ✅\n\nI'm estimating:`);
+  // Names the meal-type correction explicitly: people were replying
+  // "Lunch" to a mislabelled meal and not being understood, and nothing
+  // told them that was a thing they could do.
+  const otherMeal = label === "lunch" ? "dinner" : "lunch";
   const closing = decision.confidenceLevel === "high"
-    ? "Need to fix anything? Just reply with a correction, or say Undo to remove this log."
-    : "If anything is off, reply with a correction, or say Undo to remove this log.";
+    ? `Need to fix anything? Just reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`
+    : `If anything is off, reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`;
 
   let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}`;
   if (recommendation) msg += `\n\n${recommendation}`;
@@ -1034,9 +1052,11 @@ export function buildAutoSaveMessage(
 export function buildMealRecommendation(
   analysis: FoodAnalysisResult,
   resolvedLabel: MealType,
-  dailyTotals: { protein: number; targetProteinG?: number } | null
+  dailyTotals: { protein: number; targetProteinG?: number } | null,
+  timezone?: string
 ): string | null {
   if (resolvedLabel === "dinner") return null;
+  const proteins = regionContextForTimezone(timezone).proteinExamples;
 
   const classified = classifyMeal({
     id: "preview",
@@ -1057,7 +1077,7 @@ export function buildMealRecommendation(
   const targetProteinG = dailyTotals?.targetProteinG;
   if (!targetProteinG) {
     if (wellRounded) return "This meal was well-rounded — protein, veg, and carbs all covered.";
-    if (!mealHasProtein) return "This meal was light on protein — try to include a protein source (dal, eggs, paneer, chicken, fish) in your next meal.";
+    if (!mealHasProtein) return `This meal was light on protein — try to include a protein source (${proteins}) in your next meal.`;
     if (!mealHasVeg) return "Good protein here — add a vegetable, salad, or fruit to your next meal to round out the day.";
     return null;
   }
@@ -1074,7 +1094,7 @@ export function buildMealRecommendation(
   if (!mealHasProtein) {
     return onTrack
       ? `This meal was light on protein, but you've already hit ${totalProtein}g of your ${targetProteinG}g target today from earlier meals — no need to add more, feel free to focus on vegetables for your next meal instead.`
-      : `This meal was light on protein, and you're only at ${totalProtein}g of your ${targetProteinG}g target today — try to include a protein source (dal, eggs, paneer, chicken, fish) in your next meal.`;
+      : `This meal was light on protein, and you're only at ${totalProtein}g of your ${targetProteinG}g target today — try to include a protein source (${proteins}) in your next meal.`;
   }
 
   if (!mealHasVeg) {
@@ -1100,11 +1120,12 @@ export function buildHighImpactClarificationMessage(analysis: FoodAnalysisResult
  * named ambiguity (e.g. a blurry or very unclear photo) — asks for more
  * detail rather than guessing, but stays generic since there's no single
  * targeted question to ask. */
-export function buildLowConfidenceClarificationMessage(decision: SaveDecision): string {
+export function buildLowConfidenceClarificationMessage(decision: SaveDecision, timezone?: string): string {
   if (decision.clarificationQuestion) {
     return `${decision.clarificationQuestion}\n\nReply with more detail and I'll log it, or say Skip if you don't want to record this.`;
   }
-  return "I'm not fully sure what this is — could you describe it? (e.g. \"rice, dal, and sabzi\") Or say Skip if you don't want to record this.";
+  const example = regionContextForTimezone(timezone).mealExample;
+  return `I'm not fully sure what this is — could you describe it? (e.g. "${example}") Or say Skip if you don't want to record this.`;
 }
 
 /** Used when a correction arrives for an already-auto-saved meal — updates

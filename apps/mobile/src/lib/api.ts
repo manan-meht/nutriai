@@ -193,6 +193,9 @@ export interface AdultsContact extends FoodBalanceProfileFields {
   /** WhatsApp meal reminders (migration 0016) — adults-only. */
   remindersEnabled: boolean;
   reminderTimes: string[];
+  /** IANA zone the contact's clock runs on — decides breakfast/lunch/
+   * dinner for their meals and when reminders go out. */
+  timezone: string;
   /** Set once a contact has been removed (soft-deleted) — only present on
    * rows returned by getRemovedAdultsContacts, never on getAdultsContacts. */
   deletedAt?: string;

@@ -50,6 +50,7 @@ export default function EditAdultsContactScreen() {
     weightKg: contact.weightKg != null ? String(contact.weightKg) : '',
     heightCm: contact.heightCm != null ? String(contact.heightCm) : '',
     remindersEnabled: contact.remindersEnabled,
+    timezone: contact.timezone,
     reminderTimes: [
       contact.reminderTimes[0] ?? '08:00',
       contact.reminderTimes[1] ?? '12:00',

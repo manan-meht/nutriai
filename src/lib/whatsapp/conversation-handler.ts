@@ -586,6 +586,10 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // server's or a hardcoded default.
   const contactTimezone: string | undefined = isAdults ? entity.timezone : undefined;
 
+  // Every analysis carries the contact's timezone so the vision prompt is
+  // told which region's dishes to expect (see src/lib/ai/region-context.ts).
+  const analyzeForContact = (input: Parameters<typeof analyzeFood>[0]) => analyzeFood({ ...input, timezone: contactTimezone });
+
   // Mark invite accepted on first-ever message from this contact
   if (isAdults && adultsContact.invite_sent_at && !adultsContact.invite_accepted_at) {
     await db
@@ -1191,7 +1195,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       analysis.clarification_was_asked = true;
       const clarificationMsg = decision.hasHighImpactAmbiguity
         ? buildHighImpactClarificationMessage(analysis, decision)
-        : buildLowConfidenceClarificationMessage(decision);
+        : buildLowConfidenceClarificationMessage(decision, contactTimezone);
       await sendTextMessage(msg.from, clarificationMsg);
       await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
       return;
@@ -1221,6 +1225,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     }
     const dailyTotals = addMealToTotals(priorTotals, analysis);
     const autoSaveMsg = buildAutoSaveMessage(analysis, resolvedLabel, decision, {
+      timezone: contactTimezone,
       seed,
       dailyTotals: dailyTotals ? { ...dailyTotals, targetProteinG: targetProtein } : null,
       isClarificationResolution: opts.isClarificationResolution,
@@ -1262,7 +1267,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     if (previous) {
       const conflictBase = isConflictingDrinkCorrection(previous.meal_type, correctionText);
       if (conflictBase) {
-        const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous.foods) });
+        const analysis = await analyzeForContact({ text: correctionText, correctionContext: JSON.stringify(previous.foods) });
         analysis.image_url = inheritPhoto ? previous.image_url : undefined;
         await sendTextMessage(msg.from, buildContradictionCheckMessage(formatMealLabel(conflictBase).toLowerCase(), analysis.meal_type));
         await setConvState("awaiting_correction_confirmation", toPendingMeal(analysis, "awaiting_correction_confirmation"));
@@ -1270,7 +1275,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       }
     }
 
-    const analysis = await analyzeFood({ text: correctionText, correctionContext: JSON.stringify(previous?.foods) });
+    const analysis = await analyzeForContact({ text: correctionText, correctionContext: JSON.stringify(previous?.foods) });
     analysis.image_url = inheritPhoto ? previous?.image_url : undefined;
     // A text correction to a meal that DID originally have a photo should
     // always carry it forward — if it silently doesn't, the resulting
@@ -1535,7 +1540,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       // versa) — running them in parallel instead of sequentially shaves
       // the upload's full round-trip off the total reply latency.
       const [analysis, imageUrl] = await Promise.all([
-        analyzeFood({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text }),
+        analyzeForContact({ imageBuffer: mediaBuffer, imageMimeType: msg.mediaMimeType, text: msg.text }),
         uploadMealPhoto(db, entityId, mediaBuffer, msg.mediaMimeType),
       ]);
       analysis.image_url = imageUrl;
@@ -1663,7 +1668,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         const [analysisResult, imageUrl] = await Promise.all([
           (async () => {
             const start = Date.now();
-            const result = await analyzeFood({
+            const result = await analyzeForContact({
               imageBuffer: mediaBuffer,
               imageMimeType: msg.mediaMimeType,
               correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
@@ -1683,7 +1688,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         analysis = analysisResult;
         analysis.image_url = imageUrl;
       } else if (msg.type === "text" && msg.text) {
-        analysis = await analyzeFood({
+        analysis = await analyzeForContact({
           text: msg.text,
           correctionContext: isCorrecting ? JSON.stringify(pendingMeal?.foods) : undefined,
         });

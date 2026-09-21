@@ -4,6 +4,7 @@ import {
   getRemovedContacts as getRemovedContactsCore,
   getContactDetails as getContactDetailsCore,
   getOrCreateWorkspace,
+  guessTimezoneFromCountryCode,
 } from "@nutriai/nutrition-core";
 import { deriveActivityLevel, type DailyMovementLevel, type WeeklyModerateActivity, type StrengthExerciseFrequency } from "@nutriai/health-scoring";
 import { createServiceClient } from "./supabase";
@@ -105,7 +106,12 @@ export async function addContact(
           ? deriveActivityLevel({ dailyMovementLevel: input.dailyMovementLevel as DailyMovementLevel, weeklyModerateActivity: input.weeklyModerateActivity as WeeklyModerateActivity })
           : null,
       target_weight_kg: input.targetWeightKg ?? null,
-      ...(input.timezone ? { timezone: input.timezone } : {}),
+      // Never fall through to the column default (Asia/Kolkata): the clock in
+      // this timezone decides breakfast/lunch/dinner and when reminders go
+      // out, and a Singapore contact on Indian time had every lunch logged as
+      // breakfast. The phone's country code is the best guess available when
+      // the client sends nothing; the app lets the person correct it.
+      timezone: input.timezone || guessTimezoneFromCountryCode(input.whatsappNumber),
       ...(input.remindersEnabled !== undefined ? { reminders_enabled: input.remindersEnabled } : {}),
       ...(input.reminderTimes ? { reminder_times: input.reminderTimes } : {}),
     })
