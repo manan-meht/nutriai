@@ -1,14 +1,14 @@
 import fs from "fs";
 import path from "path";
 
-/** The Play Store listing is live; the App Store one is not.
+/** Both store listings are live as of the iOS release (2026-09-21).
  *
- * Google supplies a badge for linking to a live listing and requires the
- * official artwork, self-hosted. Apple supplies one too — but only for an
- * app people can actually download. Using Apple's badge for an unreleased
- * app would be against their guidelines and would tell a visitor something
- * untrue, so the iOS side is a plain pill with no Apple mark until there
- * is a real listing behind it.
+ * Both stores supply their badge for linking to a real listing and require
+ * the official artwork, self-hosted. Until iOS shipped, the App Store badge
+ * was dimmed and captioned "Coming soon" rather than linked — pointing
+ * Apple's mark at nothing would have been against their guidelines and a
+ * small lie to the visitor. These tests now pin the opposite: a real link,
+ * at the same visual weight as Play.
  */
 const SRC = path.join(__dirname, "..");
 const read = (p: string) => fs.readFileSync(path.join(SRC, p), "utf-8");
@@ -52,7 +52,7 @@ describe("the Google Play badge", () => {
   });
 });
 
-describe("the iOS side shows the badge but promises nothing", () => {
+describe("the App Store badge", () => {
   const src = code(COMPONENT);
 
   it("uses Apple's official badge artwork", () => {
@@ -60,22 +60,34 @@ describe("the iOS side shows the badge but promises nothing", () => {
     expect(src).toMatch(/alt="Download on the App Store"/);
   });
 
-  it("is not a link, because there is no listing behind it", () => {
-    // Apple supplies the badge for linking to a live listing. Pointing it
-    // at nothing would be against their guidelines and would tell a
-    // visitor something untrue.
-    expect(src).not.toMatch(/apps\.apple\.com/);
+  it("points at the real listing", () => {
+    // The numeric id is the listing. A wrong or missing one sends every
+    // iPhone visitor to a 404 with no error anywhere to notice it by.
+    expect(src).toMatch(/https:\/\/apps\.apple\.com\/app\/tistra-health\/id6811860460/);
+  });
+
+  it("is a link, wrapping the badge", () => {
     const badgeIdx = src.indexOf("app-store-badge.svg");
     const before = src.slice(Math.max(0, badgeIdx - 400), badgeIdx);
-    expect(before).not.toMatch(/<a\s/);
+    expect(before).toMatch(/<a\s/);
+    expect(before).toMatch(/href=\{APP_STORE_URL\}/);
   });
 
-  it("says plainly that it is not out yet", () => {
-    expect(src).toMatch(/Coming soon/);
+  it("no longer hedges now that the app is out", () => {
+    expect(src).not.toMatch(/Coming soon/);
+    // It was dimmed to read as not-yet-available; at equal footing it must
+    // not still be the faded one of the pair.
+    expect(src).not.toMatch(/opacity: 0\.68/);
   });
 
-  it("is visually subordinate to the live one", () => {
-    expect(src).toMatch(/opacity: 0\.68/);
+  it("has an accessible name, since the badge is an image", () => {
+    expect(src).toMatch(/aria-label="Download Tistra Health on the App Store"/);
+  });
+
+  it("opens in a new tab safely, like the Play one", () => {
+    const badgeIdx = src.indexOf("app-store-badge.svg");
+    const before = src.slice(Math.max(0, badgeIdx - 400), badgeIdx);
+    expect(before).toMatch(/rel="noopener noreferrer"/);
   });
 });
 

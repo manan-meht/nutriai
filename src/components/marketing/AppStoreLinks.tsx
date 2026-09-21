@@ -8,14 +8,16 @@ import Image from "next/image";
  * logo and read as low quality next to everything else on the page. SVG
  * fixes it at any density.
  *
- * The App Store badge is shown but NOT linked: Tistra Health is on Google
- * Play and is not on the App Store. Apple supplies the badge for linking
- * to a live listing, so pointing it at nothing would be both against their
- * guidelines and a small lie to the visitor. It is presented at reduced
- * emphasis with "Coming soon" beside it until there is a listing to point
- * at, at which point this becomes an <a> and the note goes.
+ * Both badges link to live listings as of the iOS release (2026-09-21) —
+ * until then the App Store one was dimmed and captioned "Coming soon",
+ * since Apple supplies the badge for linking to a real listing.
  */
 const PLAY_URL = "https://play.google.com/store/apps/details?id=com.tistrahealth.app";
+
+/** Apple's campaign parameters (ct) only attribute alongside a provider
+ * token from App Store Connect, which this app does not have set up — so
+ * unlike the Play link there is nothing useful to append here. */
+const APP_STORE_URL = "https://apps.apple.com/app/tistra-health/id6811860460";
 
 /** Rendered heights. The two badges have different intrinsic ratios —
  * 180:53.333 for Play, 119.66:40 for Apple — so matching them on height
@@ -62,29 +64,22 @@ export function AppStoreLinks({
           />
         </a>
 
-        {/* Not an <a>. There is no listing behind it yet.
-            The label sits UNDER the badge rather than beside it for two
-            reasons: it belongs to that badge and not to the pair, and
-            beside it the row overflowed 390px and wrapped, which put the
-            two stores on separate lines. */}
-        <span className="inline-flex flex-col items-center gap-1">
+        <a
+          href={APP_STORE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Download Tistra Health on the App Store"
+          className="inline-block rounded-lg transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
           <Image
             src="/store/app-store-badge.svg"
             alt="Download on the App Store"
             width={120}
             height={40}
-            // Dimmed enough to read as not-yet-available, not so far that
-            // it reads as a failed image.
-            style={{ height: BADGE_HEIGHT, width: "auto", opacity: 0.68 }}
+            style={{ height: BADGE_HEIGHT, width: "auto" }}
             priority={false}
           />
-          <span
-            className="text-[11px] font-medium leading-none"
-            style={{ color: dark ? "rgba(255,255,255,0.8)" : "#6B6478" }}
-          >
-            Coming soon
-          </span>
-        </span>
+        </a>
       </div>
     </div>
   );
