@@ -93,6 +93,17 @@
             "image": "./assets/images/dynamic-icon/bowl-full.png"
           }
         }
+      ],
+      "./plugins/withAndroidFreeOrientation",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "extraProguardRules": "# expo-notifications ships this rule in its own proguard-rules.pro but never\n# declares consumerProguardFiles, so R8 would not apply it. Its notification\n# content and trigger types are deserialised reflectively, and a stripped one\n# fails at delivery time rather than at build time.\n-keep class expo.modules.notifications.** { *; }\n\n# RevenueCat. A purchase is the one path where a silent R8 failure costs money\n# rather than a screen, so these are kept explicitly rather than trusted to the\n# AAR's own consumer rules.\n-keep class com.revenuecat.purchases.** { *; }\n-keep class com.android.billingclient.** { *; }\n"
+          }
+        }
       ]
     ],
     "experiments": {
