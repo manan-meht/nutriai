@@ -16,6 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link href="/admin" className="hover:text-white whitespace-nowrap">Review queue</Link>
             <Link href="/admin?tab=food-knowledge" className="hover:text-white whitespace-nowrap">Food knowledge</Link>
             <Link href="/admin?tab=model-quality" className="hover:text-white whitespace-nowrap">Model quality</Link>
+            <Link href="/admin?tab=photo-submitters" className="hover:text-white whitespace-nowrap">Photo submitters</Link>
             <Link href="/admin/coaches" className="hover:text-white whitespace-nowrap">Coaches</Link>
           </nav>
           <span className="sm:ml-auto text-xs text-white/60 capitalize">{session.role.replace("_", " ")}</span>

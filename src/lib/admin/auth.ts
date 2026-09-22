@@ -34,3 +34,15 @@ export async function getAdminSession(): Promise<AdminSession | null> {
 export function canWriteFoodKnowledgeBase(role: AdminRole): boolean {
   return (FOOD_KB_WRITE_ROLES as readonly string[]).includes(role);
 }
+
+/** Whether this role may see who a meal actually belongs to, by name.
+ *
+ * The review queue deliberately shows "User #NNNN" rather than a name (see
+ * anonymizedUserId in the admin actions): someone classifying meal photos
+ * has no need to know whose dinner it is, and these are people's eating
+ * habits. Operational views that exist to answer "who is actually using
+ * this" do need real names, so they are limited to the same roles already
+ * trusted with destructive actions rather than every reviewer. */
+export function canSeeSubmitterIdentity(role: AdminRole): boolean {
+  return (FOOD_KB_WRITE_ROLES as readonly string[]).includes(role);
+}

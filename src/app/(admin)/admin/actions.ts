@@ -1,11 +1,12 @@
 "use server";
 
 import { createServiceClient } from "@/lib/supabase/server";
-import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
+import { getAdminSession, canWriteFoodKnowledgeBase, canSeeSubmitterIdentity } from "@/lib/admin/auth";
 import { computeReviewPriority, type ReviewPriority } from "@/lib/admin/review-priority";
 import { computeModelQualityMetrics, type ReviewedMealForMetrics, type ModelQualityMetrics } from "@/lib/admin/model-quality";
 import { resolveSignedMealPhotoUrl, resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
 import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/admin/food-categories";
+import { summarisePhotoSubmitters } from "@/lib/admin/photo-submitters";
 
 // -----------------------------------------------------------------------
 // Anonymized user IDs — derived deterministically from the UUID so the
@@ -878,4 +879,132 @@ export async function getModelQualityMetrics(): Promise<ModelQualityMetrics | { 
   });
 
   return computeModelQualityMetrics(rows);
+}
+
+// -----------------------------------------------------------------------
+// Photo submitters — who has ever sent a meal photo, and how many.
+// -----------------------------------------------------------------------
+
+export interface PhotoSubmitterRow {
+  personId: string;
+  /** Real name for roles allowed to see it, "User #NNNN" otherwise — see
+   * canSeeSubmitterIdentity. */
+  displayName: string;
+  /** "adults" or "gym" — which product the person belongs to. */
+  product: "adults" | "gym";
+  /** True once the contact has been removed from their workspace. They stay
+   * listed: this is an all-time view, and their photos were still sent. */
+  isRemoved: boolean;
+  photoCount: number;
+  mealCount: number;
+  firstPhotoAt: string;
+  lastPhotoAt: string;
+  activeDays: number;
+}
+
+export interface PhotoSubmittersResult {
+  rows: PhotoSubmitterRow[];
+  totalPhotos: number;
+  totalSubmitters: number;
+  medianPhotos: number;
+  /** False when names are hidden, so the view can say why. */
+  showsNames: boolean;
+}
+
+/** PostgREST caps a response at 1000 rows and gives no indication that it
+ * truncated, so every page is read explicitly. Without this the table would
+ * quietly start under-counting the moment meal_logs passed 1000 rows. */
+const MEAL_PAGE_SIZE = 1000;
+
+/** Stops a runaway loop if the table grows far beyond what this view is for
+ * — at which point the aggregation belongs in SQL, not here. */
+const MAX_MEAL_PAGES = 50;
+
+export async function getPhotoSubmitters(): Promise<PhotoSubmittersResult | { error: string }> {
+  const session = await getAdminSession();
+  if (!session) return { error: "Not authorized" };
+
+  const db = createServiceClient();
+
+  const meals: Array<{
+    adults_contact_id: string | null;
+    client_id: string | null;
+    image_url: string | null;
+    logged_at: string;
+  }> = [];
+
+  for (let page = 0; page < MAX_MEAL_PAGES; page++) {
+    const from = page * MEAL_PAGE_SIZE;
+    const { data, error } = await db
+      .from("meal_logs")
+      .select("adults_contact_id, client_id, image_url, logged_at")
+      .order("logged_at", { ascending: true })
+      .range(from, from + MEAL_PAGE_SIZE - 1);
+
+    if (error) return { error: error.message };
+    meals.push(...((data ?? []) as typeof meals));
+    if (!data || data.length < MEAL_PAGE_SIZE) break;
+  }
+
+  // Names and timezones for everyone who appears. Removed contacts are
+  // included deliberately (see PhotoSubmitterRow.isRemoved).
+  const contactIds = [...new Set(meals.map((m) => m.adults_contact_id).filter(Boolean))] as string[];
+  const clientIds = [...new Set(meals.map((m) => m.client_id).filter(Boolean))] as string[];
+
+  const [contactsRes, clientsRes] = await Promise.all([
+    contactIds.length
+      ? db.from("adults_contacts").select("id, full_name, timezone, deleted_at").in("id", contactIds)
+      : Promise.resolve({ data: [], error: null }),
+    clientIds.length
+      ? db.from("gym_clients").select("id, full_name, deleted_at").in("id", clientIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (contactsRes.error) return { error: contactsRes.error.message };
+  if (clientsRes.error) return { error: clientsRes.error.message };
+
+  const people = new Map<string, { name: string; timezone: string | null; removed: boolean; product: "adults" | "gym" }>();
+  for (const c of (contactsRes.data ?? []) as any[]) {
+    people.set(c.id, { name: c.full_name, timezone: c.timezone, removed: Boolean(c.deleted_at), product: "adults" });
+  }
+  for (const c of (clientsRes.data ?? []) as any[]) {
+    // gym_clients has no timezone column — see the adults/gym split noted
+    // in the mobile API's entitlements.
+    people.set(c.id, { name: c.full_name, timezone: null, removed: Boolean(c.deleted_at), product: "gym" });
+  }
+
+  const totals = summarisePhotoSubmitters(
+    meals.map((m) => {
+      const personId = (m.adults_contact_id ?? m.client_id) as string;
+      return {
+        personId,
+        loggedAt: m.logged_at,
+        hasPhoto: Boolean(m.image_url),
+        timezone: people.get(personId)?.timezone,
+      };
+    })
+  );
+
+  const showsNames = canSeeSubmitterIdentity(session.role);
+
+  return {
+    rows: totals.submitters.map((s) => {
+      const person = people.get(s.personId);
+      return {
+        personId: s.personId,
+        displayName: showsNames ? person?.name || "Unknown" : anonymizedUserId(s.personId),
+        product: person?.product ?? "adults",
+        isRemoved: person?.removed ?? false,
+        photoCount: s.photoCount,
+        mealCount: s.mealCount,
+        firstPhotoAt: s.firstPhotoAt,
+        lastPhotoAt: s.lastPhotoAt,
+        activeDays: s.activeDays,
+      };
+    }),
+    totalPhotos: totals.totalPhotos,
+    totalSubmitters: totals.totalSubmitters,
+    medianPhotos: totals.medianPhotos,
+    showsNames,
+  };
 }

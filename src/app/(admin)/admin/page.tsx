@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getReviewQueue, getMealReviewDetail, listFoodKnowledge, getModelQualityMetrics, type QueueFilters } from "./actions";
+import { getReviewQueue, getMealReviewDetail, listFoodKnowledge, getModelQualityMetrics, getPhotoSubmitters, type QueueFilters } from "./actions";
 import { getAdminSession, canWriteFoodKnowledgeBase } from "@/lib/admin/auth";
 import { StatusBadge, priorityMood, reviewStatusMood } from "@/components/admin/StatusBadge";
 import { PhotoPlaceholder } from "@/components/admin/PhotoPlaceholder";
 import { ReviewForm } from "@/components/admin/ReviewForm";
 import { FoodKnowledgeTable } from "@/components/admin/FoodKnowledgeTable";
 import { ModelQualityView } from "@/components/admin/ModelQualityView";
+import { PhotoSubmittersView } from "@/components/admin/PhotoSubmittersView";
 import { queueQueryString } from "@/lib/admin/queue-query";
 
 // All four admin views (meal review queue, meal review detail, food
@@ -42,6 +43,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
 
   if (tab === "food-knowledge") return <FoodKnowledgeTab q={sp.q} />;
   if (tab === "model-quality") return <ModelQualityTab />;
+  if (tab === "photo-submitters") return <PhotoSubmittersTab />;
   if (sp.id) return <MealReviewDetailTab mealSubmissionId={sp.id} returnQuery={queueQueryString(sp)} />;
   return <MealReviewQueueTab sp={sp} />;
 }
@@ -290,6 +292,14 @@ async function ModelQualityTab() {
     );
   }
   return <ModelQualityView metrics={metrics} />;
+}
+
+async function PhotoSubmittersTab() {
+  const data = await getPhotoSubmitters();
+  if ("error" in data) {
+    return <p className="text-sm text-[var(--color-status-support-text)]">{data.error}</p>;
+  }
+  return <PhotoSubmittersView data={data} />;
 }
 
 function FilterSelect({ name, label, defaultValue, options }: { name: string; label: string; defaultValue: string; options: string[] }) {
