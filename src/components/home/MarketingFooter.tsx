@@ -53,6 +53,18 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
               Privacy Policy
             </Link>
             <span aria-hidden="true">·</span>
+            {/* Payment gateways require both of these reachable from the site,
+                not only by direct URL, before approving a subscription
+                merchant — and they are what a customer looks for first when
+                they want their money back or a person to talk to. */}
+            <Link href="/refunds" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Refunds &amp; Cancellation
+            </Link>
+            <span aria-hidden="true">·</span>
+            <Link href="/contact" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
+              Contact
+            </Link>
+            <span aria-hidden="true">·</span>
             <Link href="/delete-account" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
               Delete Account
             </Link>
