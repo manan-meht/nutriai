@@ -194,7 +194,7 @@ describe("the team's own accounts are excluded", () => {
     // stop reconciling with each other.
     expect(t).toMatch(/eq\("type", "adults"\)[\s\S]{0,80}eq\("is_test", false\)/);
     const excludes = t.match(/not\("workspace_id", "in", testIdList\(testIds\)\)/g) ?? [];
-    expect(excludes.length).toBe(4); // photos, active users, contacts, submitters
+    expect(excludes.length).toBe(5); // photos, active users, contacts, submitters, billing
   });
 
   it("skips the filter when nothing is flagged", () => {
@@ -202,7 +202,7 @@ describe("the team's own accounts are excluded", () => {
     // error rather than reading it as "exclude nothing" — the same trap the
     // club metrics hit with an empty coach list.
     const guards = t.match(/testIds\.length > 0/g) ?? [];
-    expect(guards.length).toBe(4);
+    expect(guards.length).toBe(5);
   });
 
   it("reads the flag once and threads it through", () => {

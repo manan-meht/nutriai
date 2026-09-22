@@ -25,21 +25,15 @@ export type ExclusionReason = "sandbox" | "comped";
 
 export interface EntitlementRowForBilling {
   workspaceId: string;
+  /** RevenueCat's app_user_id is this id, which is how the caller finds the
+   * webhook that says which environment the purchase came from. */
   ownerId: string | null;
-  ownerEmail: string | null;
-  workspaceName: string | null;
-  plan: string | null;
   status: string;
-  paymentProvider: string | null;
   /** Null means nobody ever went through a checkout for this row — a
    * legacy card-free trial, or access granted by hand. */
   providerSubscriptionId: string | null;
-  providerPriceId: string | null;
-  billingInterval: string | null;
-  billingMarket: string | null;
   trialEndAt: string | null;
   currentPeriodEnd: string | null;
-  cancelAtPeriodEnd: boolean;
   environment: BillingEnvironment;
 }
 

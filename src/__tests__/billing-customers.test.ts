@@ -15,18 +15,10 @@ const NOW = Date.parse("2026-09-22T00:00:00Z");
 const row = (over: Partial<EntitlementRowForBilling>): EntitlementRowForBilling => ({
   workspaceId: "ws",
   ownerId: "owner",
-  ownerEmail: "a@example.com",
-  workspaceName: "A Family",
-  plan: "family",
   status: "active",
-  paymentProvider: "apple",
   providerSubscriptionId: "sub_1",
-  providerPriceId: "family_premium_monthly",
-  billingInterval: "monthly",
-  billingMarket: "SG",
   trialEndAt: null,
   currentPeriodEnd: "2026-10-22T00:00:00Z",
-  cancelAtPeriodEnd: false,
   environment: "production",
   ...over,
 });
@@ -67,7 +59,7 @@ describe("who counts as paying", () => {
   it("excludes access granted by hand, with the reason", () => {
     // Active, but nobody ever paid: no subscription behind it.
     const s = summariseBillingCustomers(
-      [row({ providerSubscriptionId: null, paymentProvider: null, environment: "unknown" })],
+      [row({ providerSubscriptionId: null, environment: "unknown" })],
       NOW
     );
     expect(s.paying).toHaveLength(0);
@@ -77,9 +69,9 @@ describe("who counts as paying", () => {
   it("reproduces the real production data: three active rows, zero revenue", () => {
     const s = summariseBillingCustomers(
       [
-        row({ ownerEmail: "appreview@tistrahealth.com", environment: "sandbox" }),
-        row({ ownerEmail: "tester@gmail.com", environment: "sandbox" }),
-        row({ ownerEmail: "playreview@tistrahealth.com", providerSubscriptionId: null, paymentProvider: null }),
+        row({ environment: "sandbox" }),
+        row({ environment: "sandbox" }),
+        row({ providerSubscriptionId: null }),
       ],
       NOW
     );
@@ -107,7 +99,7 @@ describe("trials", () => {
     const s = summariseBillingCustomers(
       [
         row({ status: "trialing", trialEndAt: "2026-09-30T00:00:00Z", providerSubscriptionId: "sub_2" }),
-        row({ status: "trialing", trialEndAt: "2026-09-30T00:00:00Z", providerSubscriptionId: null, paymentProvider: null }),
+        row({ status: "trialing", trialEndAt: "2026-09-30T00:00:00Z", providerSubscriptionId: null }),
       ],
       NOW
     );

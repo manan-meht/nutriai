@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { percentChange } from "@/lib/admin/metrics-math";
+import { summariseBillingCustomers, environmentFromWebhookPayload } from "@/lib/admin/billing-customers";
 
 // Internal metrics feed for the tistra-corp admin dashboard (tistra.sg/admin).
 // Not user-facing — bearer-token auth only, same pattern as the cron route
@@ -207,6 +208,72 @@ async function topPhotoSubmitters(
   return top.map(([id, photos]) => ({ name: nameById.get(id) || "Unknown", photos }));
 }
 
+/** Paying customers, and trials with a payment method behind them.
+ *
+ * Three exclusions, not one, because each catches a different impostor and
+ * at the time of writing every "active" row in production was one of them:
+ *
+ *  - test workspaces, the same is_test filter every other figure uses;
+ *  - sandbox purchases, which are indistinguishable from real ones on the
+ *    entitlement row — same status, provider and subscription id. Apple's
+ *    own reviewer bought a subscription during App Review, and it landed
+ *    here looking exactly like revenue;
+ *  - comped access, a paid status with no purchase behind it, granted by
+ *    hand for store review.
+ *
+ * The environment is not stored on the entitlement, so it is read back from
+ * the webhook that created it — RevenueCat's event.environment or Stripe's
+ * livemode. A payload that says neither counts as unknown, which is
+ * excluded: defaulting an unknown to production is the direction that
+ * invents revenue. See the module comment's rule 2. */
+async function billingCounts(
+  db: ReturnType<typeof createServiceClient>,
+  testIds: string[]
+): Promise<{ payingCustomers: number; trialingWithCard: number; trialingWithoutCard: number }> {
+  let query = db
+    .from("entitlements")
+    .select("workspace_id, owner_id, status, provider_subscription_id, trial_end_at, current_period_end");
+  if (testIds.length > 0) query = query.not("workspace_id", "in", testIdList(testIds));
+
+  const { data: entitlements, error } = await query;
+  if (error) throw new Error(`entitlements: ${error.message}`);
+
+  const { data: events, error: eventsError } = await db
+    .from("payment_webhook_events")
+    .select("payload")
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (eventsError) throw new Error(`payment_webhook_events: ${eventsError.message}`);
+
+  // RevenueCat's app_user_id is the Supabase user id (see the webhook
+  // route), which is what links an event back to an entitlement's owner.
+  // Newest first, so the first entry seen per owner is the latest.
+  const environmentByOwner = new Map<string, ReturnType<typeof environmentFromWebhookPayload>>();
+  for (const event of (events ?? []) as Array<{ payload: unknown }>) {
+    const appUserId = (event.payload as { event?: { app_user_id?: string } } | null)?.event?.app_user_id;
+    if (typeof appUserId !== "string" || environmentByOwner.has(appUserId)) continue;
+    environmentByOwner.set(appUserId, environmentFromWebhookPayload(event.payload));
+  }
+
+  const summary = summariseBillingCustomers(
+    (entitlements ?? []).map((row: any) => ({
+      workspaceId: row.workspace_id,
+      ownerId: row.owner_id,
+      status: row.status,
+      providerSubscriptionId: row.provider_subscription_id,
+      trialEndAt: row.trial_end_at,
+      currentPeriodEnd: row.current_period_end,
+      environment: (row.owner_id && environmentByOwner.get(row.owner_id)) || "unknown",
+    }))
+  );
+
+  return {
+    payingCustomers: summary.paying.length,
+    trialingWithCard: summary.trialingWithCard.length,
+    trialingWithoutCard: summary.trialingWithoutCard.length,
+  };
+}
+
 async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
   // Fetched once and threaded through every query below. The team's own
   // accounts are excluded from ALL Health figures, matching how the club
@@ -227,7 +294,7 @@ async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
     photos7d, photos30d, photosTotal, photosPrev7d, photosPrev30d,
     active7d, active30d, activeEver, activePrev7d, activePrev30d,
     contacts7d, contacts30d, contactsTotal, contactsPrev7d, contactsPrev30d,
-    totalUsers, topSubmitters7d,
+    totalUsers, topSubmitters7d, billing,
   ] = await Promise.all([
     photoCount(db, testIds, { since: since7d }),
     photoCount(db, testIds, { since: since30d }),
@@ -246,6 +313,7 @@ async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
     contactCount(db, testIds, prev30d),
     healthUserCount(db),
     topPhotoSubmitters(db, testIds, since7d),
+    billingCounts(db, testIds),
   ]);
 
   return {
@@ -273,6 +341,12 @@ async function getHealthMetrics(db: ReturnType<typeof createServiceClient>) {
     contacts30dChangePct: percentChange(contacts30d, contactsPrev30d),
 
     topSubmitters7d,
+
+    // Revenue-bearing accounts. See billingCounts for what is excluded and
+    // why a plain row count would be wrong.
+    payingCustomers: billing.payingCustomers,
+    trialingWithCard: billing.trialingWithCard,
+    trialingWithoutCard: billing.trialingWithoutCard,
   };
 }
 

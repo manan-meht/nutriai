@@ -7,12 +7,6 @@ import { computeModelQualityMetrics, type ReviewedMealForMetrics, type ModelQual
 import { resolveSignedMealPhotoUrl, resolveSignedMealPhotoUrls } from "@nutriai/nutrition-core";
 import { FOOD_CATEGORIES, type FoodCategory } from "@/lib/admin/food-categories";
 import { summarisePhotoSubmitters } from "@/lib/admin/photo-submitters";
-import {
-  summariseBillingCustomers,
-  environmentFromWebhookPayload,
-  type BillingCustomersSummary,
-  type BillingEnvironment,
-} from "@/lib/admin/billing-customers";
 
 // -----------------------------------------------------------------------
 // Anonymized user IDs — derived deterministically from the UUID so the
@@ -1015,81 +1009,3 @@ export async function getPhotoSubmitters(): Promise<PhotoSubmittersResult | { er
   };
 }
 
-// -----------------------------------------------------------------------
-// Billing — who is paying, and who is in a trial that will start charging.
-// -----------------------------------------------------------------------
-
-/** Entitlement rows, joined to the environment of the webhook that created
- * them so a sandbox purchase is never counted as revenue — see
- * billing-customers.ts for why that matters. */
-export async function getBillingCustomers(): Promise<BillingCustomersSummary | { error: string }> {
-  const session = await getAdminSession();
-  if (!session) return { error: "Not authorized" };
-  // Owner emails are identifying, and billing is not a reviewer's concern.
-  if (!canSeeSubmitterIdentity(session.role)) return { error: "Not authorized" };
-
-  const db = createServiceClient();
-
-  const { data: entitlements, error } = await db
-    .from("entitlements")
-    .select(
-      "workspace_id, owner_id, status, payment_provider, provider_subscription_id, provider_price_id, billing_interval, billing_market, trial_end_at, current_period_end, cancel_at_period_end"
-    );
-  if (error) return { error: error.message };
-
-  const rows = entitlements ?? [];
-  const ownerIds = [...new Set(rows.map((r: any) => r.owner_id).filter(Boolean))] as string[];
-  const workspaceIds = [...new Set(rows.map((r: any) => r.workspace_id))] as string[];
-
-  const [profilesRes, workspacesRes, eventsRes] = await Promise.all([
-    ownerIds.length
-      ? db.from("profiles").select("id, email").in("id", ownerIds)
-      : Promise.resolve({ data: [], error: null }),
-    workspaceIds.length
-      ? db.from("workspaces").select("id, name, plan").in("id", workspaceIds)
-      : Promise.resolve({ data: [], error: null }),
-    // Newest first so the first event seen for an owner is the latest one.
-    db.from("payment_webhook_events").select("payload, created_at").order("created_at", { ascending: false }).limit(1000),
-  ]);
-
-  if (profilesRes.error) return { error: profilesRes.error.message };
-  if (workspacesRes.error) return { error: workspacesRes.error.message };
-  if (eventsRes.error) return { error: eventsRes.error.message };
-
-  const emailById = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p.email as string]));
-  const workspaceById = new Map((workspacesRes.data ?? []).map((w: any) => [w.id, w]));
-
-  // RevenueCat's app_user_id is the Supabase user id (see the webhook
-  // route), which is what lets an event be matched back to an owner.
-  // Stripe events carry no such id, so those rows fall back to "unknown"
-  // and the view says so rather than assuming production.
-  const environmentByOwner = new Map<string, BillingEnvironment>();
-  for (const event of (eventsRes.data ?? []) as any[]) {
-    const appUserId = event.payload?.event?.app_user_id;
-    if (typeof appUserId !== "string" || environmentByOwner.has(appUserId)) continue;
-    environmentByOwner.set(appUserId, environmentFromWebhookPayload(event.payload));
-  }
-
-  return summariseBillingCustomers(
-    rows.map((r: any) => {
-      const workspace = workspaceById.get(r.workspace_id);
-      return {
-        workspaceId: r.workspace_id,
-        ownerId: r.owner_id,
-        ownerEmail: r.owner_id ? emailById.get(r.owner_id) ?? null : null,
-        workspaceName: workspace?.name ?? null,
-        plan: workspace?.plan ?? null,
-        status: r.status,
-        paymentProvider: r.payment_provider,
-        providerSubscriptionId: r.provider_subscription_id,
-        providerPriceId: r.provider_price_id,
-        billingInterval: r.billing_interval,
-        billingMarket: r.billing_market,
-        trialEndAt: r.trial_end_at,
-        currentPeriodEnd: r.current_period_end,
-        cancelAtPeriodEnd: Boolean(r.cancel_at_period_end),
-        environment: (r.owner_id && environmentByOwner.get(r.owner_id)) || "unknown",
-      };
-    })
-  );
-}
