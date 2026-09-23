@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { clearLastDashboardChoice } from '@/lib/product-choice';
 import { hasActiveEntitlement, isBillingAvailable } from '@/lib/purchases';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
+import { maybeAskForReview } from '@/lib/review-prompt';
 import { PushPermissionCard } from '@/components/push-permission-card';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -184,6 +185,19 @@ export default function AdultsContactListScreen() {
   useEffect(() => {
     if (plan === 'self') registerForPushNotificationsAsync();
   }, [plan]);
+
+  // Ask for an App Store rating from someone whose family is actually using
+  // the app. This screen is the right place: the person is looking at meals
+  // their loved ones logged, which is the app working. It is deliberately
+  // NOT on the paywall, an error state, or straight after an action that
+  // could have failed. maybeAskForReview does its own gating and stays
+  // silent about everything — see its own doc for why the allowance matters.
+  const totalMealsLogged = state.status === 'ready'
+    ? state.contacts.reduce((sum, c) => sum + c.mealCount, 0)
+    : 0;
+  useEffect(() => {
+    if (totalMealsLogged > 0) maybeAskForReview(totalMealsLogged);
+  }, [totalMealsLogged]);
 
   async function onRefresh() {
     setRefreshing(true);

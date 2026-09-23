@@ -6,7 +6,8 @@ guess. Update this file when the listing changes in App Store Connect.
 
 ## App record
 
-- **App name**: Tistra Health
+- **App name**: `Tistra Health: Family Meals` (30 max; "Tistra Health" alone
+  wastes the 13 free indexed characters after it)
 - **Bundle ID**: `com.tistrahealth.app` (same as the Android package)
 - **Primary language**: English (U.S.)
 - **Primary category**: Health & Fitness · **Secondary**: Food & Drink
@@ -15,7 +16,7 @@ guess. Update this file when the listing changes in App Store Connect.
   else No
 - **Version release**: manual — approval does not publish; someone presses
   Release
-- **Subtitle** (30 max): `WhatsApp meal tracking`
+- **Subtitle** (30 max): `Photo meal log for your family`
 - **Support URL / Marketing URL**: https://tistrahealth.com (the home page
   carries the support mailto link)
 - **Privacy Policy URL**: https://tistrahealth.com/privacy
@@ -54,7 +55,23 @@ guess. Update this file when the listing changes in App Store Connect.
 
 ## Keywords (100 max)
 
-> nutrition,meal tracker,whatsapp,food diary,macro tracker,calories,protein,family health,parents,diet
+> caregiver,elderly,senior,parent,aging,whatsapp,nutrition,diet,protein,calorie,tracker,log
+
+Comma-separated with NO spaces — a space costs one of the 100 and buys
+nothing. Never repeat a word already in the app name or subtitle: Apple
+indexes those too, so "family", "meals", "photo" and "health" are covered
+already and repeating them is wasted budget.
+
+The field was previously spent on `meal tracker`, `food diary`,
+`macro tracker`, `calories` and `diet` — head terms owned by apps with
+hundreds of thousands of ratings (MyFitnessPal 2.3M, Lose It! 778k, Cal AI
+366k). Checked on 2026-09-23, two days after launch: the app ranked #1 for
+"tistra" and "tistra health", #95 for "whatsapp meal", and nowhere in the
+top 200 for any of those head terms. Being eligible for a query and
+placing in it are different things, and placement is mostly ratings and
+download velocity — which is why `caregiver`, `elderly`, `senior`,
+`parent` and `aging` replaced them. Those match what the product is
+actually for, and nothing else in the store is fighting hard for them.
 
 ## Screenshots
 
