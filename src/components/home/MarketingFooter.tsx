@@ -44,6 +44,15 @@ export function MarketingFooter({ variant }: { variant: MarketingFooterVariant }
 
         <div className="flex flex-col items-start md:items-end gap-1 text-xs text-gray-400">
           <span>©2026 Tistra Pte Ltd</span>
+          {/* Governing law, stated in full rather than only in clause 29 of
+              the Terms. The card schemes (Visa/Mastercard) require a
+              merchant to disclose which law governs a sale, and acquirers
+              check for it on the site — a reviewer should not have to read
+              to the bottom of a thirty-section page to find it. */}
+          <span className="md:text-right">
+            Tistra Pte. Ltd. is incorporated in Singapore. These Terms and Conditions are governed by the
+            laws of Singapore.
+          </span>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:justify-end">
             <Link href="/terms" className="text-gray-500 hover:text-gray-900 underline underline-offset-2">
               Terms &amp; Conditions
