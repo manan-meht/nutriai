@@ -104,6 +104,12 @@ Not collected: location, financial info, address book, browsing/search,
 usage data, diagnostics. There is no analytics, crash-reporting or ad SDK
 in the build — re-check this table if one is ever added.
 
+Google Analytics was added to the tistrahealth.com **website** in October
+2026. That does not change this table: Apple's questionnaire covers data
+the app collects, including through SDKs shipped inside it, and the app
+ships none. Only an analytics SDK added to the app itself would move
+"usage data" into the collected column.
+
 ## Subscriptions submitted with 1.0.0
 
 Group **Tistra Health Plans**: `self_premium_monthly`, `self_premium_annual`,

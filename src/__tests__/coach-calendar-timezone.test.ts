@@ -135,6 +135,16 @@ describe("the privacy policy discloses the Google Calendar data", () => {
   });
 
   it("bumps the last-updated date, which reviewers check for staleness", () => {
-    expect(policy()).toMatch(/PRIVACY_LAST_UPDATED = "August 24, 2026"/);
+    // Pinned to the intent, not to a literal date. The original assertion
+    // was the exact string "August 24, 2026", which made every later policy
+    // change fail a Calendar test that had nothing to do with it — the
+    // analytics disclosure of 2026-10-08 is what found this. What matters
+    // is that the date is real and no older than the disclosure it was
+    // raised for.
+    const stamp = policy().match(/PRIVACY_LAST_UPDATED = "([^"]+)"/)?.[1];
+    expect(stamp).toBeTruthy();
+    const parsed = Date.parse(stamp!);
+    expect(Number.isNaN(parsed)).toBe(false);
+    expect(parsed).toBeGreaterThanOrEqual(Date.parse("August 24, 2026"));
   });
 });

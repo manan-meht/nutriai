@@ -1,6 +1,6 @@
 // Bump this whenever PRIVACY_SECTIONS changes — Play/App Store reviewers
 // and users both rely on this to know the policy is current, not stale.
-export const PRIVACY_LAST_UPDATED = "August 24, 2026";
+export const PRIVACY_LAST_UPDATED = "October 8, 2026";
 
 export interface PrivacyBlock {
   type: "p" | "ul" | "p-link";
@@ -125,6 +125,14 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
       // here, not just handled correctly in code.
       p("When a coach publishes a profile on Tistra Coach after arriving from a Google ad, Tistra reports that as a conversion to Google Ads. Where advertising cookies have been accepted, that report includes the coach's email address, which is converted to an irreversible hash in the browser before it is sent — the address itself is never transmitted. Google uses the hash only to match the conversion to an existing Google account, so that advertising is measured accurately. Coaches in the EEA and UK who decline advertising cookies have no email address included, hashed or otherwise."),
       p("Meal photos, nutrition data and health information are never included in advertising measurement, and are never shared with Google Ads or any other advertising provider."),
+      // Analytics on the Health site is new as of October 2026 and has to
+      // be disclosed in its own right: it is a different purpose from the
+      // advertising measurement above, on a different Google property, and
+      // it is the only thing on tistrahealth.com that sets a cookie for a
+      // purpose other than keeping someone signed in.
+      p("Tistra Health's own website uses Google Analytics to count visits and see which pages people use, so the product can be improved. This measures website usage only — which pages were viewed, roughly where in the world the visitor was, and whether they arrived from a search or a link. It is a separate Google property from the advertising measurement described above, and the two are not combined."),
+      p("Meal photos, nutrition data, health information and the contents of your account are never sent to Google Analytics. Analytics cannot see anything inside your dashboard beyond which page was opened."),
+      p("Visitors in the EEA and UK are asked before any analytics or advertising cookie is set, and nothing is measured until they accept. Elsewhere, analytics runs by default and can be turned off at any time from the cookie preferences link in the site footer."),
     ],
   },
   {
