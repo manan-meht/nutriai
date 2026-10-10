@@ -13,6 +13,7 @@ import {
   FEEDBACK_TYPE_OPTIONS,
   type FeedbackType,
 } from '@/lib/api';
+import { describeRunningUpdate } from '@/lib/update-diagnostics';
 
 /** Mirrors the web app's FeedbackModal/FeedbackForm (see the main app's
  * src/components/feedback/), minus the email and honeypot fields: every
@@ -69,7 +70,12 @@ export function FeedbackModal({ visible, onClose }: { visible: boolean; onClose:
         Platform.OS === 'android'
           ? Constants.platform?.android?.versionCode
           : Constants.platform?.ios?.buildNumber;
-      const client = `${Platform.OS} ${version}${build ? ` (${build})` : ''}`;
+      // The update id is appended because with OTA updates live, the
+      // version/build pair above no longer identifies the JS someone is
+      // running — see update-diagnostics.ts. Truncated to the field's
+      // documented 200-character cap here rather than relying on the
+      // server to do it, so what is sent is what gets stored.
+      const client = `${Platform.OS} ${version}${build ? ` (${build})` : ''} ${describeRunningUpdate()}`.slice(0, 200);
 
       await api.submitFeedback(feedbackType as FeedbackType, trimmed, client);
       setSuccess(true);

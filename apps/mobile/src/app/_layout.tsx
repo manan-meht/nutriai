@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 // DarkTheme/DefaultTheme/ThemeProvider used to be re-exported from
@@ -14,6 +14,8 @@ import { useColorScheme } from 'react-native';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { configurePurchases, logOutPurchases } from '@/lib/purchases';
 import { checkForUpdate } from '@/lib/check-for-update';
+import { checkVersionGate } from '@/lib/version-gate';
+import { UnsupportedVersionScreen } from '@/components/unsupported-version';
 import { updateAppIconForWeeklyActivity } from '@/lib/dynamic-app-icon';
 
 // Hold the native splash (the Tistra bowl on purple) until the stored
@@ -29,6 +31,8 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [unsupported, setUnsupported] = useState(false);
+
   // Fires once per app open, regardless of auth state — someone stuck on
   // an old build should get nudged to update before they even sign in,
   // not only once they happen to reopen the Play Store listing (the
@@ -37,6 +41,36 @@ export default function RootLayout() {
   useEffect(() => {
     checkForUpdate();
   }, []);
+
+  // Separately from the Play nudge above: whether the server considers this
+  // build supported at all. Deliberately NOT awaited before rendering — the
+  // app has to start offline and must never wait on a network call to
+  // decide whether it is allowed to run. The consequence is that an
+  // unsupported build shows its normal first screen for a moment and then
+  // swaps to the notice, which is the right trade: a stalled launch would
+  // affect everyone, while this affects only builds that have been
+  // explicitly retired. Nothing here blocks on a newer version merely
+  // existing — see version-policy.ts.
+  useEffect(() => {
+    let cancelled = false;
+    checkVersionGate()
+      .then((gate) => {
+        if (!cancelled && gate.status === 'unsupported') setUnsupported(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (unsupported) {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <UnsupportedVersionScreen />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AuthProvider>
