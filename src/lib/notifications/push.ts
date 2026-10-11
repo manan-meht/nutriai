@@ -15,6 +15,14 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const EXPO_PUSH_API = "https://exp.host/--/api/v2/push/send";
 
+/** The Android notification channel every push is delivered on.
+ *
+ * Created by the app at registration time, not here — see
+ * registerForPushNotificationsAsync in apps/mobile/src/lib/notifications.ts.
+ * The app has created it since 68f09a2 (2026-07-16), so every build from
+ * then on honours this, including ones already installed. */
+const ANDROID_CHANNEL_ID = "default";
+
 export interface PushNotificationPayload {
   title: string;
   body: string;
@@ -78,6 +86,22 @@ export async function sendPushNotificationToProfile(
       title: payload.title,
       body: payload.body,
       data: payload.data ?? {},
+      // Android will not display a notification that does not land on a
+      // channel, and without this field it did not land on one: a push sent
+      // in exactly this shape, minus channelId, never appeared on a device
+      // whose ticket AND receipt both came back "ok". Adding only this —
+      // no priority, no sound — made it appear. Confirmed on a real phone
+      // on 2026-10-11 against build 1.0.1 (48).
+      //
+      // ANDROID_CHANNEL_ID must stay equal to the id the app passes to
+      // setNotificationChannelAsync (apps/mobile/src/lib/notifications.ts).
+      // Expo's own documentation is explicit that naming a channel which
+      // does not exist on the device means the notification is not shown,
+      // so a typo here is silent on both ends — hence the test that pins
+      // the two together.
+      //
+      // iOS ignores this field.
+      channelId: ANDROID_CHANNEL_ID,
       ...(payload.imageUrl
         ? {
             richContent: { image: payload.imageUrl },

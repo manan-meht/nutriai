@@ -35,6 +35,9 @@ jest.mock("@supabase/supabase-js", () => ({
   createClient: () => ({ from: mockFrom }),
 }));
 
+import fs from "fs";
+import path from "path";
+
 import { sendPushNotificationToProfile, pruneDeadPushTokens } from "@/lib/notifications/push";
 
 describe("sendPushNotificationToProfile", () => {
@@ -268,5 +271,40 @@ describe("pruneDeadPushTokens", () => {
     global.fetch = jest.fn().mockRejectedValue(new Error("network down")) as any;
 
     await expect(pruneDeadPushTokens()).resolves.toEqual({ checked: 0, removed: 0 });
+  });
+});
+
+// ─── Android channel ─────────────────────────────────────────────────────
+//
+// Found on a real device on 2026-10-11, against Android build 1.0.1 (48):
+// a push whose ticket AND delivery receipt both came back "ok" never
+// appeared on the phone. Adding channelId — and nothing else, no priority
+// and no sound — made the identical message appear.
+//
+// Android will not display a notification that does not land on a channel,
+// and Expo's documentation is explicit that naming a channel which does not
+// exist on the device means the notification is silently not shown. So both
+// halves of this are silent failures: omitting the field, and naming a
+// channel the app never created. The second is what this pins down, because
+// the two halves live in different packages and nothing else connects them.
+describe("every push lands on a channel the app actually created", () => {
+  const sender = fs.readFileSync(path.join(__dirname, "..", "lib", "notifications", "push.ts"), "utf-8");
+  const app = fs.readFileSync(
+    path.join(__dirname, "..", "..", "apps", "mobile", "src", "lib", "notifications.ts"),
+    "utf-8"
+  );
+
+  it("sends a channelId at all", () => {
+    expect(sender).toMatch(/channelId:\s*ANDROID_CHANNEL_ID/);
+  });
+
+  it("uses the same channel id the app registers", () => {
+    const sent = sender.match(/const ANDROID_CHANNEL_ID = "([^"]+)"/)?.[1];
+    const created = app.match(/setNotificationChannelAsync\(\s*"([^"]+)"/)?.[1];
+    expect(sent).toBeTruthy();
+    expect(created).toBeTruthy();
+    // A mismatch here means every Android notification is dropped, with a
+    // successful ticket and a successful receipt to say otherwise.
+    expect(sent).toBe(created);
   });
 });
