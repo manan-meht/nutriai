@@ -11,6 +11,10 @@ This app is on **Expo SDK 54** with `expo-updates@29`. Read
 
 OTA is **configured but not yet live for anyone.**
 
+> First OTA-enabled builds: iOS 1.0.1 (8) and Android 1.0.1 (version code
+> 48), both on the `production` channel. Neither has been submitted to a
+> store yet, so no user can receive an update until one is live.
+
 Every build in the stores today — iOS 1.0.0 (7), Android version code 46 —
 was built *before* `expo-updates` was added, so those binaries contain no
 updates client and have no channel. They can never receive an update, and
@@ -128,8 +132,8 @@ The practical consequences:
   build's version. If you have already bumped, you are publishing for a
   binary that does not exist yet.
 
-Verified for this project by resolving the runtime version under three
-conditions (see the commit that added this file):
+Verified for this project by resolving the runtime version under several
+conditions:
 
 - The generated `ios/` and `android/` directories are **not** fingerprint
   inputs, because they are gitignored and `@expo/fingerprint` skips ignored
@@ -139,8 +143,51 @@ conditions (see the commit that added this file):
 - `.gitignore` itself *is* an input (that is how the exclusion above is
   decided), as is `eas.json`. Editing either changes the runtime version.
 - The project's own inputs are `package.json`, `app.json`, `eas.json`,
-  `.gitignore`, `plugins/*.js`, and the icon and splash images — 185 sources
-  in total, the rest being native dependencies under `node_modules`.
+  `.gitignore`, `plugins/*.js`, and the icon and splash images. The rest are
+  native dependencies under `node_modules` — **including the patched
+  `expo-dynamic-app-icon`**, which is where this bit us (see below).
+
+### When the fingerprint doesn't match EAS
+
+EAS compares the runtime version it calculates against the one your machine
+calculated and **fails the build** on a mismatch, printing a diff of the
+differing fingerprint sources. That is a good failure: it is loud, it
+happens before anything ships, and the diff names the culprit. Updates are
+never silently published against a runtime version no binary advertises.
+
+It happened on the first OTA-enabled Android build, and the cause is worth
+knowing because it will recur. The diff was a single source:
+
+```
+changed: node_modules/expo-dynamic-app-icon/android  (expoAutolinkingAndroid)
+```
+
+`patch-package` had applied `patches/expo-dynamic-app-icon+1.2.0.patch`
+correctly on both sides. The local copy had simply **drifted** from the
+committed patch — a blank line's trailing whitespace and a missing final
+newline, plus stray `build/` and `.gradle/` output from a previous local
+Android build. All functionally inert, all hash-relevant.
+
+The recovery, which is also the diagnosis:
+
+```sh
+# from the repo root
+rm -rf node_modules/<package>
+npm pack <package>@<version> && tar xzf <package>-<version>.tgz   # or: npm ci
+mv package node_modules/<package>
+npx patch-package
+cd apps/mobile && npm run update:fingerprint
+```
+
+Then compare against the value in the failed build's log. `npm ci` at the
+root does the same thing less surgically and is the right move if more than
+one package has drifted.
+
+The general rule: **never edit `node_modules` directly.** Patch it through
+`patches/` and let `patch-package` apply it, or the build machine and your
+machine stop agreeing about what the native runtime is. Beware editors that
+trim whitespace on save — a formatter pointed at `node_modules` is enough to
+break a build this way.
 
 ## Environments
 
