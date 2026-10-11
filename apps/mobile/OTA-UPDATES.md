@@ -116,6 +116,18 @@ nowhere to land — it is never delivered, rather than delivered and crashing.
 The cost is that native changes require more frequent builds. That is the
 intended trade.
 
+**Bumping `version` ends the OTA lineage.** Measured on both platforms: a
+change from 1.0.0 to 1.0.1 moves the runtime version, so an update
+published afterwards can only reach binaries built from the new version.
+The practical consequences:
+
+- Bump `version` only when you intend a store release. Bumping it as
+  housekeeping silently orphans everyone on the previous build from future
+  updates.
+- To OTA-fix a shipped build, publish while `app.json` still carries that
+  build's version. If you have already bumped, you are publishing for a
+  binary that does not exist yet.
+
 Verified for this project by resolving the runtime version under three
 conditions (see the commit that added this file):
 
