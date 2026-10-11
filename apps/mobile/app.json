@@ -3,6 +3,14 @@
     "name": "Tistra Health",
     "slug": "tistra-mobile",
     "version": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/bbcef5e6-8fc6-433a-86b6-db5ab2c430c0",
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "ON_LOAD"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "tistramobile",
