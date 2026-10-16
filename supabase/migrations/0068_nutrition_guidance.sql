@@ -138,6 +138,27 @@ comment on table nutrition_guidance_screening is
   'Suitability screening answers and outcome. Deliberately a separate table from nutrition_guidance so a caregiver reading a contact cannot select these columns by accident. Service-role only.';
 
 -- ─── Versioned targets ─────────────────────────────────────────────────────
+-- schema.sql created a nutrition_targets table for the original gym-coach
+-- product (workspace_id / client_id, min-max ranges). Nothing has read or
+-- written it since, and it was confirmed empty in production on 2026-10-16.
+-- Drop it so the name can be reused, but only when it is still that legacy
+-- shape and still empty: on a database where this migration already ran,
+-- the table here is the new one and must not be touched.
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'nutrition_targets'
+      and column_name = 'workspace_id'
+  ) then
+    if exists (select 1 from nutrition_targets) then
+      raise exception 'legacy nutrition_targets has rows; refusing to drop it';
+    end if;
+    drop table nutrition_targets;
+  end if;
+end
+$$;
 
 create table nutrition_targets (
   id uuid primary key default gen_random_uuid(),
