@@ -138,6 +138,17 @@ export const PARENT_DASHBOARD_ACCESS_ENABLED = flag(process.env.NEXT_PUBLIC_PARE
  * report); flip on for internal/staging review before wider rollout. */
 export const FOOD_BALANCE_SCORE_ENABLED = flag(process.env.NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1, false);
 
+/** Nutrition Guidance mode — daily targets and next-meal suggestions,
+ * alongside the existing Tracking experience. Off by default everywhere.
+ *
+ * This flag is only half the gate. Offering a target to a real person also
+ * requires the target-setting policy row to be marked reviewed in
+ * nutrition_policy_versions, which a deploy cannot change — see
+ * src/lib/guidance/release.ts for why the clinical and engineering
+ * switches are deliberately separate. Turning this on in production
+ * without that review still will not activate Guidance for anyone. */
+export const GUIDANCE_ENABLED = flag(process.env.NEXT_PUBLIC_GUIDANCE_ENABLED, false);
+
 /** "Today's Focus" morning recommendation, appended to the existing
  * breakfast reminder (see src/app/api/cron/send-meal-reminders/route.ts
  * and src/lib/food-balance/todays-focus.ts). Off by default, same
