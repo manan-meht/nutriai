@@ -23,9 +23,10 @@ export async function processProviderWebhook(
   provider: PaymentProvider,
   providerName: PaymentProviderName,
   rawBody: string,
-  signatureHeader: string | null
+  signatureHeader: string | null,
+  eventIdHeader?: string | null
 ): Promise<WebhookOutcome> {
-  const verified = await provider.verifyWebhookSignature(rawBody, signatureHeader);
+  const verified = await provider.verifyWebhookSignature(rawBody, signatureHeader, eventIdHeader);
   if (!verified.valid || !verified.eventId || !verified.eventType) {
     return { result: "invalid_signature" };
   }

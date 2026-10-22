@@ -8,8 +8,10 @@ import { processProviderWebhook } from "@/lib/billing/webhook-handler";
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
   const signature = request.headers.get("x-razorpay-signature");
+  // Razorpay's event id is only in this header — the body has none.
+  const eventId = request.headers.get("x-razorpay-event-id");
 
-  const outcome = await processProviderWebhook(razorpayProvider, "razorpay", rawBody, signature).catch((err) => {
+  const outcome = await processProviderWebhook(razorpayProvider, "razorpay", rawBody, signature, eventId).catch((err) => {
     console.error("[razorpay webhook] processing error:", err instanceof Error ? err.message : err);
     return { result: "ignored" as const, reason: "internal error" };
   });
