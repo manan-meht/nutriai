@@ -23,8 +23,13 @@ export const razorpayProvider: PaymentProvider = {
         // fall through to create
       }
     }
+    // fail_existing: 0 returns the existing customer for this email instead
+    // of throwing "Customer already exists" — which is what happens when
+    // the same person checks out a second module, since existingCustomerId
+    // is looked up per workspace + module.
     const customer = await rzp.customers.create({
       email,
+      fail_existing: 0,
       notes: { tistra_owner_id: ownerId },
     } as any);
     return customer.id;
@@ -72,13 +77,11 @@ export const razorpayProvider: PaymentProvider = {
     }
   },
 
-  // Razorpay checkout is feature-flagged off (RAZORPAY_CHECKOUT_ENABLED)
-  // pending India merchant/recurring-payment approval — no real Razorpay
-  // subscriptions are created yet, and its API has no simple "list
-  // subscriptions by customer_id" the way Stripe does. Returning null here
-  // means the IN market simply doesn't get the "sync immediately on
-  // checkout return" behavior Stripe gets (see syncCheckoutCompletion) —
-  // revisit once Razorpay actually launches.
+  // Razorpay's API has no simple "list subscriptions by customer_id" the
+  // way Stripe does. Returning null here means the IN market doesn't get
+  // the "sync immediately on checkout return" behavior Stripe gets (see
+  // syncCheckoutCompletion) — the entitlement updates when the
+  // subscription.* webhook arrives instead.
   async findLatestSubscriptionForCustomer(): Promise<ProviderSubscriptionSnapshot | null> {
     return null;
   },
@@ -99,8 +102,7 @@ export const razorpayProvider: PaymentProvider = {
     // quantity-adjustable line items — its "addons" API is a one-time
     // invoice charge, not a recurring per-unit quantity that renews with
     // the subscription. Self-serve extra capacity isn't available on this
-    // provider yet (matches RAZORPAY_CHECKOUT_ENABLED being off entirely
-    // today) — callers should catch this and fall back to a
+    // provider yet — callers should catch this and fall back to a
     // contact-support message rather than surfacing it raw.
     throw new Error("Buying additional capacity isn't available for Razorpay subscriptions yet — please contact support.");
   },
@@ -118,8 +120,14 @@ export const razorpayProvider: PaymentProvider = {
    * (crypto.subtle) instead of Node's `crypto` module, which isn't available
    * under Cloudflare's Edge Runtime. HMAC-SHA256 over the raw body, compared
    * against the X-Razorpay-Signature header in constant time.
+   *
+   * The event id comes from the X-Razorpay-Event-Id header: a Razorpay
+   * webhook body has no top-level id (its keys are entity, account_id,
+   * event, contains, payload, created_at). Reading payload.id here, as this
+   * once did, left every event without an id, which processProviderWebhook
+   * treats as unverifiable — every signed webhook got a 400.
    */
-  async verifyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult> {
+  async verifyWebhookSignature(rawBody: string, signatureHeader: string | null, eventIdHeader?: string | null): Promise<WebhookVerifyResult> {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret || !signatureHeader) return { valid: false };
 
@@ -139,7 +147,7 @@ export const razorpayProvider: PaymentProvider = {
       const payload = JSON.parse(rawBody);
       return {
         valid: true,
-        eventId: payload.id ?? undefined,
+        eventId: eventIdHeader || fallbackEventId(payload),
         eventType: payload.event,
         payload,
       };
@@ -148,6 +156,17 @@ export const razorpayProvider: PaymentProvider = {
     }
   },
 };
+
+/** Razorpay documents X-Razorpay-Event-Id on every webhook, so this should
+ * never be needed. If it is, rejecting a correctly signed event would make
+ * Razorpay retry it until it disables the webhook, so derive a key from the
+ * signed body instead. created_at is fixed per event and kept across
+ * retries, so the key still de-duplicates. */
+function fallbackEventId(payload: any): string | undefined {
+  const entityId = payload?.payload?.subscription?.entity?.id ?? payload?.payload?.payment?.entity?.id;
+  if (!payload?.event || !entityId || !payload?.created_at) return undefined;
+  return `${payload.event}:${entityId}:${payload.created_at}`;
+}
 
 function timingSafeEqualHex(a: string, b: string): boolean {
   if (a.length !== b.length) return false;

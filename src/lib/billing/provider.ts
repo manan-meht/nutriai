@@ -120,6 +120,10 @@ export interface PaymentProvider {
    * scheme. Must be called before any event processing — never trust an
    * unverified payload. Async because signature verification uses the Web
    * Crypto API (crypto.subtle), which is promise-based and Edge-Runtime
-   * compatible, unlike Node's synchronous `crypto` module. */
-  verifyWebhookSignature(rawBody: string, signatureHeader: string | null): Promise<WebhookVerifyResult>;
+   * compatible, unlike Node's synchronous `crypto` module.
+   *
+   * eventIdHeader is for providers that send the event's id as a request
+   * header rather than in the signed body — Razorpay's x-razorpay-event-id.
+   * Stripe's id is in the body, so it ignores this. */
+  verifyWebhookSignature(rawBody: string, signatureHeader: string | null, eventIdHeader?: string | null): Promise<WebhookVerifyResult>;
 }

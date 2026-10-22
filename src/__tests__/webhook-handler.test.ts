@@ -213,3 +213,106 @@ describe("processProviderWebhook", () => {
     expect(applySnapshot).not.toHaveBeenCalled();
   });
 });
+
+describe("Razorpay webhooks", () => {
+  const SECRET = "test_razorpay_webhook_secret";
+
+  // Shaped like Razorpay's documented subscription.activated sample. Note
+  // there is no top-level id: the event id travels only in the
+  // X-Razorpay-Event-Id header.
+  const razorpayEvent = {
+    entity: "event",
+    account_id: "acc_TEST",
+    event: "subscription.activated",
+    contains: ["subscription"],
+    payload: {
+      subscription: {
+        entity: {
+          id: "sub_RZP1",
+          customer_id: "cust_RZP1",
+          status: "active",
+          notes: { tistra_workspace_id: "ws-family-1", tistra_owner_id: "owner-1", tistra_module: "adults" },
+        },
+      },
+    },
+    created_at: 1792600000,
+  };
+
+  async function sign(body: string, secret = SECRET): Promise<string> {
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+    return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  beforeEach(() => {
+    process.env.RAZORPAY_WEBHOOK_SECRET = SECRET;
+  });
+  afterEach(() => {
+    delete process.env.RAZORPAY_WEBHOOK_SECRET;
+    jest.resetModules();
+  });
+
+  it("accepts a correctly signed event and takes its id from the x-razorpay-event-id header", async () => {
+    const { razorpayProvider } = await import("@/lib/billing/providers/razorpay-provider");
+    const body = JSON.stringify(razorpayEvent);
+
+    const result = await razorpayProvider.verifyWebhookSignature(body, await sign(body), "evt_HDR1");
+
+    expect(result).toMatchObject({ valid: true, eventId: "evt_HDR1", eventType: "subscription.activated" });
+  });
+
+  it("rejects a body signed with a different secret", async () => {
+    const { razorpayProvider } = await import("@/lib/billing/providers/razorpay-provider");
+    const body = JSON.stringify(razorpayEvent);
+
+    const result = await razorpayProvider.verifyWebhookSignature(body, await sign(body, "some_other_secret"), "evt_HDR1");
+
+    expect(result.valid).toBe(false);
+  });
+
+  it("derives a stable id from the signed body if the event-id header is ever missing", async () => {
+    const { razorpayProvider } = await import("@/lib/billing/providers/razorpay-provider");
+    const body = JSON.stringify(razorpayEvent);
+
+    const result = await razorpayProvider.verifyWebhookSignature(body, await sign(body), null);
+
+    expect(result).toMatchObject({ valid: true, eventId: "subscription.activated:sub_RZP1:1792600000" });
+  });
+
+  it("processes a real-shaped event end to end and treats Razorpay's retry as a duplicate", async () => {
+    jest.resetModules();
+    const events = new Map();
+    const applySnapshot = jest.fn().mockResolvedValue(undefined);
+    jest.doMock("@/lib/supabase/server", () => ({ createServiceClient: () => makeFakeServiceClient(events) }));
+    jest.doMock("@/lib/entitlements/entitlements", () => ({
+      // First event for a new subscription: nothing is linked to it yet, so
+      // the workspace has to come from the subscription's notes.
+      findEntitlementByProviderSubscriptionId: jest.fn().mockResolvedValue(null),
+      findEntitlementByProviderCustomerId: jest.fn().mockResolvedValue(null),
+      applyProviderSubscriptionSnapshot: applySnapshot,
+    }));
+    const { processProviderWebhook } = await import("@/lib/billing/webhook-handler");
+    const { razorpayProvider } = await import("@/lib/billing/providers/razorpay-provider");
+    // Real signature check; only the call back to Razorpay's API is faked.
+    const provider: PaymentProvider = {
+      ...razorpayProvider,
+      retrieveSubscription: jest.fn().mockResolvedValue({ ...baseSnapshot, providerSubscriptionId: "sub_RZP1" }),
+    };
+    const body = JSON.stringify(razorpayEvent);
+    const signature = await sign(body);
+
+    const first = await processProviderWebhook(provider, "razorpay", body, signature, "evt_HDR1");
+    const retry = await processProviderWebhook(provider, "razorpay", body, signature, "evt_HDR1");
+
+    expect(first).toEqual({ result: "processed" });
+    expect(retry).toEqual({ result: "duplicate" });
+    expect(events.has("razorpay:evt_HDR1")).toBe(true);
+    expect(applySnapshot).toHaveBeenCalledTimes(1);
+    expect(applySnapshot).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: "ws-family-1",
+      module: "adults",
+      provider: "razorpay",
+      ownerId: "owner-1",
+    }));
+  });
+});
