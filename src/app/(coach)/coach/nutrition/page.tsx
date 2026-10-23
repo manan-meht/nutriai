@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getOrCreateWorkspace, getClients, getRemovedClients } from "@/app/(gym)/gym/dashboard/actions";
@@ -8,8 +7,7 @@ import { CoachShell } from "@/components/coach/CoachShell";
 import { GymDashboardClient } from "@/components/gym/GymDashboardClient";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
 import { isBillingWhitelisted } from "@/lib/billing/feature-flags";
-import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
-import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
+import { resolveRequestBillingMarket } from "@/lib/billing/request-market";
 import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
 import { syncCheckoutCompletion } from "@/app/actions/subscription-management";
 
@@ -70,11 +68,7 @@ export default async function CoachNutritionPage({
     getEntitlementSnapshot(workspace.id, "gym", user.email),
   ]);
 
-  const headerStore = await headers();
-  const { market } = resolveBillingMarket({
-    confirmedCountry: await getConfirmedBillingCountry(),
-    ipCountry: getIpCountry(headerStore),
-  });
+  const { market } = await resolveRequestBillingMarket();
   const monthly = getPrice(market, "gym", "monthly");
   const annual = getPrice(market, "gym", "annual");
 

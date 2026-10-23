@@ -1,5 +1,4 @@
 
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorkspaceSelfPlan } from "./actions";
@@ -7,8 +6,7 @@ import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient
 import { displayEmail } from "@/lib/auth";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
 import { isBillingWhitelisted, isBillingWhitelistLabelHidden } from "@/lib/billing/feature-flags";
-import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
-import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
+import { resolveRequestBillingMarket } from "@/lib/billing/request-market";
 import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing";
 import { SELF_TRACKING_ENABLED } from "@/lib/billing/feature-flags";
 import { choosePlanAndCheckout } from "@/app/actions/pricing";
@@ -48,11 +46,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
     getEntitlementSnapshot(workspace.id, "adults", user.email),
   ]);
 
-  const headerStore = await headers();
-  const { market } = resolveBillingMarket({
-    confirmedCountry: await getConfirmedBillingCountry(),
-    ipCountry: getIpCountry(headerStore),
-  });
+  const { market } = await resolveRequestBillingMarket();
   const monthly = getPrice(market, "adults", "monthly");
   const annual = getPrice(market, "adults", "annual");
   const selfMonthly = getSelfPrice(market, "monthly");

@@ -44,12 +44,22 @@ describe("public pricing page shows exactly what checkout charges", () => {
     expect(new Set(points.map((p) => p.currency))).toEqual(new Set([currency]));
   });
 
-  it("the page and checkout resolve the market the same way", () => {
-    expect(read("src/components/pricing/LocalPricingSection.tsx")).toMatch(/resolveRequestBillingMarket\(\)/);
-    const checkout = read("src/app/actions/checkout.ts");
-    expect(checkout).toMatch(/resolveRequestBillingMarket\(\)/);
-    // No second, hand-rolled resolution left in checkout to drift from it.
-    expect(checkout).not.toMatch(/resolveBillingMarket\(/);
+  it.each([
+    "src/components/pricing/LocalPricingSection.tsx",
+    "src/app/actions/checkout.ts",
+    "src/app/(adults)/adults/dashboard/page.tsx",
+    "src/app/(coach)/coach/nutrition/page.tsx",
+  ])("%s resolves the market through the one shared resolver", (file) => {
+    const contents = read(file);
+    expect(contents).toMatch(/resolveRequestBillingMarket\(\)/);
+    // No second, hand-rolled resolution left to drift from it.
+    expect(contents).not.toMatch(/resolveBillingMarket\(/);
+  });
+
+  it("offers no way to pick a country", () => {
+    expect(read("src/components/pricing/PricingSection.tsx")).not.toMatch(/CountrySelector|<select/);
+    expect(fs.existsSync(path.join(process.cwd(), "src/components/billing/CountrySelector.tsx"))).toBe(false);
+    expect(read("src/lib/billing/request-market.ts")).not.toMatch(/cookies\(|billing_country/);
   });
 
   it.each(["src/app/(public)/pricing/page.tsx", "src/app/billing/page.tsx"])("%s renders the localized section", (page) => {
@@ -104,5 +114,38 @@ describe("prices are only offered where checkout can take them", () => {
     process.env.NEXT_PUBLIC_RAZORPAY_ENABLED = value;
     const { isCheckoutEnabledForMarket } = await import("@/lib/billing/provider-registry");
     expect(isCheckoutEnabledForMarket("IN")).toBe(expected);
+  });
+});
+
+describe("the market comes from the visitor's IP alone", () => {
+  afterEach(() => jest.resetModules());
+
+  async function marketFor(requestHeaders: Record<string, string>) {
+    jest.resetModules();
+    jest.doMock("next/headers", () => ({
+      headers: async () => new Headers(requestHeaders),
+      // A leftover billing-country cookie from the old picker must not matter.
+      cookies: async () => ({ get: () => ({ value: "IN" }) }),
+    }));
+    const { resolveRequestBillingMarket } = await import("@/lib/billing/request-market");
+    return resolveRequestBillingMarket();
+  }
+
+  it.each([
+    ["IN", "IN"],
+    ["US", "US"],
+    ["SG", "SG"],
+    ["AU", "AU"],
+    ["GB", "INTL"],
+  ])("a visitor from %s gets the %s market", async (country, market) => {
+    expect(await marketFor({ "cf-ipcountry": country, cookie: "tistra_billing_country=IN" })).toMatchObject({ market, ipCountry: country });
+  });
+
+  it.each([
+    ["no country header", {}],
+    ["Cloudflare's unknown (XX)", { "cf-ipcountry": "XX" }],
+    ["Tor (T1)", { "cf-ipcountry": "T1" }],
+  ])("%s falls back to international pricing", async (_label, requestHeaders) => {
+    expect(await marketFor(requestHeaders)).toMatchObject({ market: "INTL", ipCountry: null });
   });
 });
