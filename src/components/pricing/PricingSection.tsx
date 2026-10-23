@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   foundingMemberPricing,
   foundingMemberCopy,
@@ -20,7 +19,6 @@ import {
 import { perMonth, bestAnnualSavingsPercent, type PublicPlanPrices } from "@/lib/pricing/plan-prices";
 import { trackPricingEvent } from "@/lib/pricing/analytics";
 import { choosePlanAndCheckout } from "@/app/actions/pricing";
-import { CountrySelector } from "@/components/billing/CountrySelector";
 import { BetaPricingNotice } from "./BetaPricingNotice";
 import { TrialPricingNotice } from "./TrialPricingNotice";
 import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
@@ -28,15 +26,15 @@ import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
 interface PricingSectionProps {
   /** Where this section is rendered — used only for analytics categorization. */
   sourcePage: string;
-  /** Resolved server-side by LocalPricingSection, exactly as checkout
-   * resolves it — so the prices below are the ones checkout charges. */
+  /** Resolved server-side by LocalPricingSection from the visitor's IP,
+   * exactly as checkout resolves it — so the prices below are the ones
+   * checkout charges. There is deliberately no country picker. */
   market: BillingMarket;
   prices: Record<FoundingMemberPlanId, PublicPlanPrices>;
   /** False when checkout is switched off for this market; prices are then
    * not shown at all, since checkout would refuse them. */
   checkoutAvailable: boolean;
-  detectedCountry: string | null;
-  confirmedCountry: string | null;
+  ipCountry: string | null;
 }
 
 const PLAN_ORDER: FoundingMemberPlanId[] = ["self", "family", "gym"];
@@ -45,8 +43,21 @@ function format(point: PricePoint): string {
   return formatPriceForDisplay(point.amountMinorUnits, point.currency);
 }
 
-export function PricingSection({ sourcePage, market, prices, checkoutAvailable, detectedCountry, confirmedCountry }: PricingSectionProps) {
-  const router = useRouter();
+/** "Prices for India", or international USD prices for anywhere outside
+ * the launch markets. Tells the visitor why they see this currency, since
+ * they can't change it. */
+function regionLine(market: BillingMarket, ipCountry: string | null): string {
+  if (market === "INTL") return "International prices, in US dollars";
+  let name: string = market;
+  try {
+    name = new Intl.DisplayNames(["en"], { type: "region" }).of(ipCountry ?? market) ?? market;
+  } catch {
+    // Older runtimes without Intl.DisplayNames keep the market code.
+  }
+  return `Prices for ${name}, based on your location`;
+}
+
+export function PricingSection({ sourcePage, market, prices, checkoutAvailable, ipCountry }: PricingSectionProps) {
   const [loggedInHref, setLoggedInHref] = useState<string | null>(null);
   const [startingPlan, setStartingPlan] = useState<FoundingMemberPlanId | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
@@ -72,10 +83,9 @@ export function PricingSection({ sourcePage, market, prices, checkoutAvailable, 
       sourcePage,
       pricingCurrency: currency,
       finalPricingRegion: market,
-      ipCountry: detectedCountry,
-      billingCountry: confirmedCountry,
+      ipCountry,
     });
-  }, [sourcePage, market, currency, detectedCountry, confirmedCountry]);
+  }, [sourcePage, market, currency, ipCountry]);
 
   async function handleChoosePlan(planId: FoundingMemberPlanId) {
     trackPricingEvent("founding_plan_selected", { plan: planId, sourcePage });
@@ -101,22 +111,9 @@ export function PricingSection({ sourcePage, market, prices, checkoutAvailable, 
 
       {BILLING_AVAILABLE ? <TrialPricingNotice /> : <BetaPricingNotice />}
 
-      <div className="flex justify-center">
-        <div className="w-full max-w-xs">
-          {/* Saving the choice sets the billing-country cookie checkout
-              reads; refreshing re-renders the server wrapper so the prices
-              switch to that market straight away. */}
-          <CountrySelector
-            detectedCountry={detectedCountry}
-            confirmedCountry={confirmedCountry}
-            onConfirmed={() => router.refresh()}
-          />
-        </div>
-      </div>
-
       {!checkoutAvailable ? (
         <p className="text-center text-sm text-gray-600 max-w-xl mx-auto">
-          Subscriptions aren&apos;t available in your country yet. If you&apos;re billed somewhere else, choose that country above.
+          Subscriptions aren&apos;t available in your country yet.
         </p>
       ) : (
         <>
@@ -145,6 +142,8 @@ export function PricingSection({ sourcePage, market, prices, checkoutAvailable, 
               </button>
             </div>
           </div>
+
+          <p className="text-center text-xs text-gray-500 -mt-6">{regionLine(market, ipCountry)}</p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6" role="list">
             {PLAN_ORDER.map((planId) => {
