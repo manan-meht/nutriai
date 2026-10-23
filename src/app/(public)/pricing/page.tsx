@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { MarketingHeader } from "@/components/home/MarketingHeader";
 import { MarketingFooter } from "@/components/home/MarketingFooter";
-import { PricingSection } from "@/components/pricing/PricingSection";
+import { LocalPricingSection } from "@/components/pricing/LocalPricingSection";
 import { BILLING_AVAILABLE } from "@/lib/billing/feature-flags";
 
 export function generateMetadata(): Metadata {
@@ -15,17 +15,17 @@ export function generateMetadata(): Metadata {
   };
 }
 
-// Deliberately static (no market/IP resolution, no edge runtime) — this
-// page must always show USD founding-member pricing only, never the
-// multi-market, multi-currency live checkout prices from
-// src/lib/billing/pricing.ts, which is what the dashboards use.
+// Shows the visitor's local prices — the same market resolution and price
+// table checkout uses (see LocalPricingSection), so what this page quotes
+// is what checkout charges. It used to be a static US$-only list, which
+// disagreed with checkout once billing went live in each market.
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <MarketingHeader variant="home" />
 
       <main className="max-w-5xl mx-auto px-6 py-16">
-        <PricingSection sourcePage="pricing_page" />
+        <LocalPricingSection sourcePage="pricing_page" />
       </main>
 
       <MarketingFooter variant="home" />
