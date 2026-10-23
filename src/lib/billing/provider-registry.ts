@@ -8,6 +8,13 @@ export function providerNameForMarket(market: BillingMarket): PaymentProviderNam
   return market === "IN" ? "razorpay" : "stripe";
 }
 
+/** Whether checkout can take payment for this market on this deployment —
+ * the same flags getProviderForMarket enforces below, so a page can avoid
+ * offering a price that checkout would refuse. */
+export function isCheckoutEnabledForMarket(market: BillingMarket): boolean {
+  return providerNameForMarket(market) === "razorpay" ? RAZORPAY_CHECKOUT_ENABLED : STRIPE_CHECKOUT_ENABLED;
+}
+
 // Dynamic imports (not static top-of-file ones) — this registry is reachable
 // from every dashboard/billing page/route just to resolve a provider name or
 // market, and a static import of both providers pulls the (large) stripe

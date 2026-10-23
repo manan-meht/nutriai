@@ -3,8 +3,8 @@
 import { headers } from "next/headers";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getEntitlementSnapshot, getExistingProviderCustomerId, recordCheckoutIntent, trialLengthMs, type EntitlementModule } from "@/lib/entitlements/entitlements";
-import { resolveBillingMarket, getIpCountry, requestOrigin } from "@/lib/billing/market";
-import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
+import { requestOrigin } from "@/lib/billing/market";
+import { resolveRequestBillingMarket } from "@/lib/billing/request-market";
 import { getPrice, getSelfPrice, getAdditionalPersonPrice, type BillingInterval, type BillingMarket, type AdditionalCapacityPlan } from "@/lib/billing/pricing";
 import { getProviderForMarket, providerNameForMarket, getProviderByName, isStoreManagedProvider } from "@/lib/billing/provider-registry";
 import type { PaymentProviderName } from "@/lib/billing/provider";
@@ -55,9 +55,7 @@ export async function createCheckoutSession(
   const pricingTier = isSelfPlan ? ("self" as const) : module;
 
   const headerStore = await headers();
-  const ipCountry = getIpCountry(headerStore);
-  const confirmedCountry = await getConfirmedBillingCountry();
-  const market = forceMarket ?? resolveBillingMarket({ confirmedCountry, ipCountry }).market;
+  const market = forceMarket ?? (await resolveRequestBillingMarket()).market;
 
   const price = isSelfPlan ? getSelfPrice(market, interval) : getPrice(market, module, interval);
   const providerName = providerNameForMarket(market);
@@ -285,10 +283,7 @@ async function getWorkspaceForModule(module: EntitlementModule, userId: string) 
  * the subscription page before rendering the "Subscribe" button, so a
  * tampered client can't coerce a different price into the confirmation UI. */
 export async function getServerValidatedPrice(module: EntitlementModule, interval: BillingInterval) {
-  const headerStore = await headers();
-  const ipCountry = getIpCountry(headerStore);
-  const confirmedCountry = await getConfirmedBillingCountry();
-  const { market } = resolveBillingMarket({ confirmedCountry, ipCountry });
+  const { market } = await resolveRequestBillingMarket();
   const price = getPrice(market, module, interval);
   return { market, price };
 }
