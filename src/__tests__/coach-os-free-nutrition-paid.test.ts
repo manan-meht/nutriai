@@ -105,3 +105,32 @@ describe("the two client lists are labelled, not silently merged", () => {
     }
   });
 });
+
+// A whitelisted coach never pays, so "free for 14 days, then …/month" and a
+// trial countdown are both untrue for them. They get the same "Test
+// account" pill the family dashboard shows, under the same display rule:
+// whitelisted and not on the hide-label (demo) list.
+describe("a whitelisted coach sees Test account, not pricing", () => {
+  const nutrition = read("nutrition/page.tsx");
+  const dashboard = fs.readFileSync(path.join(__dirname, "..", "components", "gym", "GymDashboardClient.tsx"), "utf-8");
+
+  it("the page applies the family dashboard's display rule", () => {
+    expect(nutrition).toMatch(
+      /showTestAccountLabel=\{isBillingWhitelisted\(user\.email\) && !isBillingWhitelistLabelHidden\(user\.email\)\}/
+    );
+    // The exemption itself still uses the plain whitelist.
+    expect(nutrition).toMatch(/getEntitlementSnapshot\(workspace\.id, "gym", user\.email\)/);
+  });
+
+  it("the pill replaces the pricing line", () => {
+    const pill = dashboard.indexOf(") : showTestAccountLabel ? (");
+    const freeTrialCopy = dashboard.indexOf("clients are free for your first 14 days");
+    expect(pill).toBeGreaterThan(-1);
+    expect(dashboard.slice(pill, freeTrialCopy)).toMatch(/Test account/);
+    expect(pill).toBeLessThan(freeTrialCopy);
+  });
+
+  it("hides the trial countdown too", () => {
+    expect(dashboard).toMatch(/\{!showTestAccountLabel && !entitlement\.isReadOnly && entitlement\.status === "trialing"/);
+  });
+});

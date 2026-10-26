@@ -40,9 +40,16 @@ interface GymDashboardClientProps {
    * never pay — hides the "Manage or cancel" link on the trial banner so
    * their messaging/UI stays exactly as it was before this was added. */
   isBillingWhitelisted?: boolean;
+  /** Whitelisted AND not on the hide-label list — the same display rule as
+   * the family dashboard's "Test account" pill (see
+   * isBillingWhitelistLabelHidden). Replaces the trial countdown and the
+   * "free for 14 days, then …" pricing line, neither of which applies to an
+   * account that never pays. A hide-label (demo) account keeps the normal
+   * copy on purpose, so it doesn't look like a test account. */
+  showTestAccountLabel?: boolean;
 }
 
-export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: GymDashboardClientProps) {
+export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients, removedClients, extraCapacity, entitlement, pricing, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted, showTestAccountLabel }: GymDashboardClientProps) {
   // Opens the add-client modal automatically right after a successful
   // checkout — only when there's still nobody added yet. A lazy
   // initializer rather than an effect, since this only ever needs to run
@@ -213,7 +220,7 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
               </div>
             )}
 
-            {!entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
+            {!showTestAccountLabel && !entitlement.isReadOnly && entitlement.status === "trialing" && entitlement.trialDaysRemaining !== null && (
               <div className="mb-8 rounded-xl bg-purple-50 border border-purple-100 px-4 py-3 text-sm text-purple-800 flex flex-wrap items-center justify-between gap-2">
                 <span>Free trial — {entitlement.trialDaysRemaining} day{entitlement.trialDaysRemaining === 1 ? "" : "s"} remaining.</span>
                 {!isBillingWhitelisted && (
@@ -257,6 +264,13 @@ export function GymDashboardClient({ coachName, coachEmail, workspaceId, clients
                 >
                   {buyingCapacity ? "Adding capacity…" : `Need more than ${clientLimit} clients? Add capacity →`}
                 </button>
+              </div>
+            ) : showTestAccountLabel ? (
+              <div className="mb-8">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-100 rounded-full pl-2.5 pr-3 py-1.5">
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-purple-600 text-white text-[10px]" aria-hidden="true">✓</span>
+                  Test account
+                </span>
               </div>
             ) : requiresCardBeforeTrial ? (
               <div className="mb-8 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-gray-600">
