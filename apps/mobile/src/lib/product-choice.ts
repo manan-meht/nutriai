@@ -4,8 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 // last opened, so a cold start goes straight back there (see
 // lib/dashboard-route.ts) — lib/product-intent.ts's pendingProduct only
 // survives the single login->dashboard transition, not app restarts.
-// Written by the dashboard switch (hooks/use-dashboard-switch.ts) and when a
-// fresh self/family pick opens Health for such an account.
+// Written only by the dashboard switch (hooks/use-dashboard-switch.ts).
 //
 // Only ever relevant to a coach who also uses Health: the coach view is
 // shown only to an account that already owns a gym workspace.

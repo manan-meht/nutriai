@@ -28,18 +28,16 @@ export function chooseDashboard(input: {
 }): DashboardRoute {
   const { ownsAdults, ownsGym, lastChoice, pendingProduct } = input;
 
+  // Every sign-in passes through the self/family picker — it is the only
+  // way to reach the login screen — so for an account that already owns a
+  // workspace a pending pick carries no signal, and it is ignored. (For a
+  // coach-only account, honoring it would create an empty adults workspace
+  // on every sign-in.) Only a brand-new account below uses it.
   if (ownsAdults && ownsGym) {
-    // A fresh self/family pick is a Health choice, so it opens Health. The
-    // remembered choice covers every cold start after that; with neither,
-    // Health is this app's home and the coach view is one tap away.
-    if (pendingProduct) return { kind: 'dashboard', dashboard: 'adults' };
+    // Health is this app's home; the coach view is one tap away and is
+    // remembered once chosen.
     return { kind: 'dashboard', dashboard: lastChoice ?? 'adults' };
   }
-
-  // Coach-only. Every sign-in passes through the self/family picker, so a
-  // pending pick here says nothing about wanting a Health workspace —
-  // honoring it would create an empty adults workspace on every coach
-  // sign-in.
   if (ownsGym) return { kind: 'dashboard', dashboard: 'gym' };
   if (ownsAdults) return { kind: 'dashboard', dashboard: 'adults' };
 

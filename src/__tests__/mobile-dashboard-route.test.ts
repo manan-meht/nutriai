@@ -42,11 +42,14 @@ describe("mobile dashboard routing", () => {
       expect(chooseDashboard(both)).toEqual({ kind: "dashboard", dashboard: "adults" });
     });
 
-    it("opens Health right after a self/family pick", () => {
+    it("keeps the remembered dashboard through the sign-in's self/family pick", () => {
+      // The picker is mandatory before login, so for an account that already
+      // owns workspaces the pick carries no signal.
       expect(chooseDashboard({ ...both, lastChoice: "gym", pendingProduct: "family" })).toEqual({
         kind: "dashboard",
-        dashboard: "adults",
+        dashboard: "gym",
       });
+      expect(chooseDashboard({ ...both, pendingProduct: "self" })).toEqual({ kind: "dashboard", dashboard: "adults" });
     });
   });
 

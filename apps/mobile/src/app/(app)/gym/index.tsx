@@ -35,7 +35,6 @@ type State =
       clients: GymClient[];
       removedClients: GymClient[];
       extraCapacity: number;
-      entitlementStatus: string;
     }
   // isReadOnly comes from mobile-api's getEntitlementSnapshot, so the
   // server decides; this screen only stops offering writes it would refuse.
@@ -81,7 +80,6 @@ export default function GymClientListScreen() {
             clients,
             removedClients,
             extraCapacity: workspace.extraCapacity,
-            entitlementStatus: entitlement.status,
           });
         }
       })
@@ -205,13 +203,13 @@ export default function GymClientListScreen() {
 
   const firstName = session?.user.user_metadata?.full_name?.split(' ')[0] ?? firstNameFromSession(session?.user.email);
   const clientLimit = GYM_CLIENT_LIMIT + Math.max(0, state.extraCapacity);
-  const atLimit = state.clients.length >= clientLimit;
-  // The first client starts the Coach trial, and on the web that can mean
-  // adding a card first (requiresCardBeforeFirstTrial). mobile-api's add
-  // does neither, so a workspace that has never had a client sends its
-  // first one through Coach OS, where the plan actually starts.
-  const needsWebSetup = state.entitlementStatus === 'not_started';
-  const canAdd = !atLimit && !needsWebSetup;
+  // No entitlement-status gate here on purpose. A checkout intent leaves
+  // the entitlement row at not_started, and startTrialIfNeeded never
+  // replaces an existing row — so a billing-whitelisted coach can sit at
+  // not_started for good, and a "finish setup on the web first" rule would
+  // lock exactly that coach out. Whether a coach may add a client is the
+  // server's call (the DB trigger enforces the limit).
+  const canAdd = state.clients.length < clientLimit;
 
   return (
     <ThemedView style={styles.container}>
@@ -240,20 +238,12 @@ export default function GymClientListScreen() {
           ) : null
         }
         ListEmptyComponent={
-          needsWebSetup ? (
-            <EmptyState
-              image={require('@/assets/images/onboarding/coach.png')}
-              title="Add your first client in Coach OS"
-              message="Your first nutrition client is added from Coach OS on the web. After that, you can add clients and follow their meals here too."
-            />
-          ) : (
-            <EmptyState
-              image={require('@/assets/images/onboarding/coach.png')}
-              title="Onboard your first client"
-              message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
-              action={canAdd ? { label: 'Add client', onPress: () => router.push('/gym/add') } : undefined}
-            />
-          )
+          <EmptyState
+            image={require('@/assets/images/onboarding/coach.png')}
+            title="Onboard your first client"
+            message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
+            action={canAdd ? { label: 'Add client', onPress: () => router.push('/gym/add') } : undefined}
+          />
         }
         renderItem={({ item }) => (
           <PersonCard
@@ -279,11 +269,7 @@ export default function GymClientListScreen() {
             {state.clients.length > 0 && !canAdd && (
               <View style={styles.limitReachedCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
-                  {atLimit
-                    ? `You've reached the limit of ${clientLimit} client${clientLimit === 1 ? '' : 's'} for this account.`
-                    : // not_started with clients: only an older build's add
-                      // (which never started the trial) leaves this state.
-                      'New clients are added from Coach OS on the web for now.'}
+                  You&apos;ve reached the limit of {clientLimit} client{clientLimit === 1 ? '' : 's'} for this account.
                 </ThemedText>
               </View>
             )}

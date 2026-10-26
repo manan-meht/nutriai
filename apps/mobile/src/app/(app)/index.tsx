@@ -10,7 +10,7 @@ import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
 import { chooseDashboard } from '@/lib/dashboard-route';
 import { consumePendingProductSelection, type PendingProduct } from '@/lib/product-intent';
-import { clearLastDashboardChoice, getLastDashboardChoice, saveLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
+import { clearLastDashboardChoice, getLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
@@ -93,10 +93,6 @@ export default function ProductRouterScreen() {
   // workspace (created in Coach OS on the web) — sign-up here offers only
   // self and family. See lib/dashboard-route.ts for the whole decision.
   if (route.kind === 'dashboard') {
-    // Only an account that owns both has a choice worth remembering, and a
-    // fresh self/family pick is one: it opened Health, so the next cold
-    // start should too.
-    if (adults && gym && state.pendingProduct) saveLastDashboardChoice(route.dashboard);
     return <Redirect href={route.dashboard === 'gym' ? '/gym' : '/adults'} />;
   }
 
