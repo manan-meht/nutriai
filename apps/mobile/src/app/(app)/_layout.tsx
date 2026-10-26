@@ -45,6 +45,9 @@ export default function AppLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="adults" />
+      {/* The coach view — reached only by an account that already owns a
+          gym workspace (see lib/dashboard-route.ts). */}
+      <Stack.Screen name="gym" />
     </Stack>
   );
 }

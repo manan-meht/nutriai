@@ -8,14 +8,15 @@ import { ThemedView } from '@/components/themed-view';
 import { ProductPicker } from '@/components/product-picker';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
+import { chooseDashboard } from '@/lib/dashboard-route';
 import { consumePendingProductSelection, type PendingProduct } from '@/lib/product-intent';
-import { clearLastDashboardChoice } from '@/lib/product-choice';
+import { clearLastDashboardChoice, getLastDashboardChoice, saveLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse; pendingProduct: PendingProduct | null };
+  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -30,9 +31,9 @@ export default function ProductRouterScreen() {
     // an account seeded with both — or, just as importantly, a brand-new
     // account seeded with NEITHER yet — would otherwise ignore that choice
     // and ask again below.
-    Promise.all([api.getMyProducts(), consumePendingProductSelection()])
-      .then(([products, pendingProduct]) => {
-        if (!cancelled) setState({ status: 'ready', products, pendingProduct });
+    Promise.all([api.getMyProducts(), getLastDashboardChoice(), consumePendingProductSelection()])
+      .then(([products, lastChoice, pendingProduct]) => {
+        if (!cancelled) setState({ status: 'ready', products, lastChoice, pendingProduct });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -80,15 +81,24 @@ export default function ProductRouterScreen() {
     );
   }
 
-  const { adults } = state.products;
-  const { pendingProduct } = state;
+  const { adults, gym } = state.products;
+  const route = chooseDashboard({
+    ownsAdults: Boolean(adults),
+    ownsGym: Boolean(gym),
+    lastChoice: state.lastChoice,
+    pendingProduct: state.pendingProduct,
+  });
 
-  // One product, one destination. This screen used to arbitrate between an
-  // adults and a gym dashboard — which product to open, which choice to
-  // remember, which to re-ask about. Coaching is its own product now, on
-  // its own domain and getting its own app, so all of that arbitration is
-  // gone: a Tistra Health account has an adults workspace or it has none.
-  if (adults) return <Redirect href="/adults" />;
+  // An account reaches the coach view only by already owning a gym
+  // workspace (created in Coach OS on the web) — sign-up here offers only
+  // self and family. See lib/dashboard-route.ts for the whole decision.
+  if (route.kind === 'dashboard') {
+    // Only an account that owns both has a choice worth remembering, and a
+    // fresh self/family pick is one: it opened Health, so the next cold
+    // start should too.
+    if (adults && gym && state.pendingProduct) saveLastDashboardChoice(route.dashboard);
+    return <Redirect href={route.dashboard === 'gym' ? '/gym' : '/adults'} />;
+  }
 
   // No workspace yet — almost always a brand-new signup. GET
   // /adults/workspace get-or-creates as a side effect of being called, so
@@ -100,10 +110,8 @@ export default function ProductRouterScreen() {
   // than omitted — adults/index.tsx reads it via useLocalSearchParams, and
   // an omitted param can inherit a stale self=1 from an earlier navigation
   // to the same route, silently flipping a Family signup to the Self plan.
-  if (pendingProduct) {
-    return (
-      <Redirect href={{ pathname: '/adults', params: { self: pendingProduct === 'self' ? '1' : '0' } }} />
-    );
+  if (route.kind === 'new-adults') {
+    return <Redirect href={{ pathname: '/adults', params: { self: route.self ? '1' : '0' } }} />;
   }
 
   return (

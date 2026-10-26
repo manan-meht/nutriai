@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
 import { getOrCreateWorkspace, getClients, getRemovedClients, getClientDetails, addClient, updateClient, removeClient } from "@/lib/gym";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
+import { getOrCreateCoachClientInvite } from "@/lib/invites";
 
 export const runtime = "edge";
 
@@ -10,6 +11,7 @@ export const runtime = "edge";
 //   GET /gym/clients
 //   GET /gym/clients/removed
 //   GET /gym/clients/:clientId
+//   GET /gym/clients/:clientId/invite           (get-or-create)
 //   POST /gym/clients
 //   PATCH /gym/clients/:clientId
 //   DELETE /gym/clients/:clientId
@@ -83,6 +85,34 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const details = await getClientDetails(path[1], auth.supabase);
     if (!details) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(details);
+  }
+
+  // Mirrors the main web app's getOrCreateCoachClientInvite — the adults
+  // route's /contacts/:id/invite for a coaching client. Without it a coach
+  // adding someone from the phone had no way to send the WhatsApp invite
+  // the client needs to start logging meals.
+  if (path.length === 3 && path[0] === "clients" && path[2] === "invite") {
+    const { data: clientRow } = await auth.supabase
+      .from("gym_clients")
+      .select("id, workspace_id, full_name")
+      .eq("id", path[1])
+      .eq("trainer_id", auth.user.id)
+      .maybeSingle();
+    if (!clientRow) return NextResponse.json({ error: "Client not found" }, { status: 404 });
+
+    try {
+      const db = createServiceClient();
+      const invite = await getOrCreateCoachClientInvite(
+        db,
+        clientRow.workspace_id,
+        clientRow.id,
+        auth.user.id,
+        clientRow.full_name?.split(" ")[0]
+      );
+      return NextResponse.json(invite);
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to create invite" }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ error: "Not found" }, { status: 404 });
