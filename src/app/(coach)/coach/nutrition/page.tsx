@@ -7,7 +7,7 @@ import { getCoachProfile } from "@/lib/club/coach-queries";
 import { CoachShell } from "@/components/coach/CoachShell";
 import { GymDashboardClient } from "@/components/gym/GymDashboardClient";
 import { getEntitlementSnapshot, requiresCardBeforeFirstTrial } from "@/lib/entitlements/entitlements";
-import { isBillingWhitelisted } from "@/lib/billing/feature-flags";
+import { isBillingWhitelisted, isBillingWhitelistLabelHidden } from "@/lib/billing/feature-flags";
 import { getIpCountry, resolveBillingMarket } from "@/lib/billing/market";
 import { getConfirmedBillingCountry } from "@/lib/billing/country-cookie";
 import { getPrice, formatMinorUnits } from "@/lib/billing/pricing";
@@ -114,6 +114,9 @@ export default async function CoachNutritionPage({
         })}
         autoOpenAddModal={justCheckedOut && entitlement.status === "trialing"}
         isBillingWhitelisted={isBillingWhitelisted(user.email)}
+        // Display-only, like the family dashboard's pill — billing exemption
+        // itself never depends on the hide-label list.
+        showTestAccountLabel={isBillingWhitelisted(user.email) && !isBillingWhitelistLabelHidden(user.email)}
       />
     </CoachShell>
   );
