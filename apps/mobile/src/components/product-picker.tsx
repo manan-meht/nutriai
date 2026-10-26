@@ -11,8 +11,10 @@ import { useTheme } from '@/hooks/use-theme';
  * Tistra Health is a two-product app: track yourself, or care for family.
  *
  * Coaching used to be a third option here. It is its own product now, on
- * its own domain and getting its own app, so nothing coach-related remains
- * in this one — not the picker, not the routing, not the types.
+ * its own domain with its own sign-up, so it is not offered here and these
+ * types stay self/family. The app's coach view is for an account that
+ * already owns a Coach workspace (see lib/dashboard-route.ts); nothing
+ * here leads to one.
  */
 export type ProductKey = 'self' | 'family';
 const OPTIONS: Array<{

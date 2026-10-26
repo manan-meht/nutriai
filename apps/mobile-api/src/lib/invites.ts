@@ -5,10 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // module here (rather than importing across app boundaries, which isn't
 // possible: this is a separate Cloudflare Pages project with its own
 // dependency/bundle-size budget, see this app's README) rather than a
-// shared package, since only the "get-or-create a family invite" path is
-// needed on mobile for now (see apps/mobile/src/app/(app)/adults/add.tsx).
-// Keep this in sync with the main app's version if the invite schema or
-// message copy changes.
+// shared package, since only the "get-or-create an invite for an existing
+// family member or coaching client" path is needed on mobile (see
+// apps/mobile/src/app/(app)/adults/add.tsx and gym/add.tsx). Keep this in
+// sync with the main app's version if the invite schema or message copy
+// changes.
 
 export type InviteType = "family" | "self" | "coach_client";
 export type InviteStatus = "pending" | "claimed" | "expired" | "revoked";
@@ -174,10 +175,35 @@ export async function getOrCreateFamilyInvite(
   createdByUserId: string,
   recipientName?: string
 ): Promise<InviteSummary> {
-  const existing = await findLatestInvite(db, workspaceId, "family", contactId);
+  return getOrCreateTargetedInvite(db, workspaceId, "family", contactId, createdByUserId, recipientName);
+}
+
+/** The coaching-client equivalent — mirrors the main web app's
+ * getOrCreateCoachClientInvite (src/app/(gym)/gym/dashboard/actions.ts).
+ * Same reuse rule, and the bot claims it the same way ("JOIN COACHCLIENT
+ * <token>", see handleInviteClaim). */
+export async function getOrCreateCoachClientInvite(
+  db: SupabaseClient,
+  workspaceId: string,
+  clientId: string,
+  createdByUserId: string,
+  recipientName?: string
+): Promise<InviteSummary> {
+  return getOrCreateTargetedInvite(db, workspaceId, "coach_client", clientId, createdByUserId, recipientName);
+}
+
+async function getOrCreateTargetedInvite(
+  db: SupabaseClient,
+  workspaceId: string,
+  inviteType: Exclude<InviteType, "self">,
+  targetProfileId: string,
+  createdByUserId: string,
+  recipientName?: string
+): Promise<InviteSummary> {
+  const existing = await findLatestInvite(db, workspaceId, inviteType, targetProfileId);
   const invite =
     existing && (existing.status === "pending" || existing.status === "claimed")
       ? existing
-      : await createInvite(db, workspaceId, "family", createdByUserId, contactId);
+      : await createInvite(db, workspaceId, inviteType, createdByUserId, targetProfileId);
   return toInviteSummary(invite, recipientName);
 }

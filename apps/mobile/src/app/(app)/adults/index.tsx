@@ -22,6 +22,7 @@ import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { maybeAskForReview } from '@/lib/review-prompt';
 import { PushPermissionCard } from '@/components/push-permission-card';
 import { useTheme } from '@/hooks/use-theme';
+import { useDashboardSwitch } from '@/hooks/use-dashboard-switch';
 
 // The RevenueCat entitlement + offering identifiers for the "buy 1 more
 // slot" add-on (adults_additional_person, see this repo's RevenueCat setup
@@ -82,6 +83,9 @@ function greetingForHour(hour: number): string {
 export default function AdultsContactListScreen() {
   const { session } = useAuth();
   const theme = useTheme();
+  // Only ever non-null for a coach who also uses Health — see
+  // useDashboardSwitch. Every other account sees no change here.
+  const dashboardSwitch = useDashboardSwitch('adults');
   // Only ever set (to "1") the one time (app)/index.tsx's product picker
   // routes here right after someone picks "Self" for a brand-new signup —
   // see getAdultsWorkspace's own doc comment for why this needs to reach
@@ -332,12 +336,22 @@ export default function AdultsContactListScreen() {
     </>
   );
 
+  // Shown on the read-only screen too: a lapsed Family plan must not strand
+  // a coach away from their clients.
+  const headerRight = dashboardSwitch
+    ? () => (
+        <Pressable onPress={dashboardSwitch.switchTo} hitSlop={8}>
+          <ThemedText type="link">Coach view</ThemedText>
+        </Pressable>
+      )
+    : undefined;
+
   if (state.status === 'loading') return <LoadingState />;
   if (state.status === 'error') return <ErrorState message={state.message} onRetry={() => load(true)} />;
   if (state.status === 'subscription_required') {
     return (
       <ThemedView style={styles.container}>
-        <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
+        <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family', headerRight }} />
         <EmptyState
           title="Subscription needed"
           message="Your trial has ended — subscribe to keep tracking meals and progress for your family."
@@ -376,7 +390,7 @@ export default function AdultsContactListScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family' }} />
+      <Stack.Screen options={{ title: state.plan === 'self' ? 'You' : 'Family', headerRight }} />
       <FlatList
         data={state.contacts}
         keyExtractor={(c) => c.id}

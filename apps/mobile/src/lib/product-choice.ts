@@ -1,18 +1,13 @@
 import * as SecureStore from 'expo-secure-store';
 
-// Vestigial as of Aug 2026: nothing writes a choice any more, because the
-// app has a single product. clearLastDashboardChoice() is kept and still
-// called on sign-out so a value stored by an older build is purged from the
-// device rather than lingering in SecureStore forever.
+// Persists which dashboard (adults/gym) an account with BOTH workspaces
+// last opened, so a cold start goes straight back there (see
+// lib/dashboard-route.ts) — lib/product-intent.ts's pendingProduct only
+// survives the single login->dashboard transition, not app restarts.
+// Written only by the dashboard switch (hooks/use-dashboard-switch.ts).
 //
-// Originally: persisted which dashboard (adults/gym) an account with BOTH workspaces
-// last chose, so reopening the app goes straight there instead of showing
-// "Which dashboard?" (see (app)/index.tsx) every single cold start —
-// lib/product-intent.ts's in-memory pendingProduct only survives the
-// single login->dashboard transition, not app restarts, which is exactly
-// why the picker kept reappearing. Explicitly changing dashboards (the
-// "switch anytime by signing out" copy) re-triggers select-product.tsx on
-// next login anyway, which overwrites this.
+// Only ever relevant to a coach who also uses Health: the coach view is
+// shown only to an account that already owns a gym workspace.
 const LAST_DASHBOARD_KEY = 'tistra_last_dashboard_choice';
 
 export type DashboardChoice = 'adults' | 'gym';

@@ -47,6 +47,7 @@ same as the main app.
 - `GET /gym/workspace` — workspace, entitlement/trial status, coach profile
 - `GET /gym/clients` — list of clients
 - `GET /gym/clients/:clientId` — a client's detail + meals + workouts + biomarkers
+- `GET /gym/clients/:clientId/invite` — get-or-create the client's WhatsApp invite
 
 All require a valid bearer token; return 401 without one, 404 for an
 unknown/not-yours id.

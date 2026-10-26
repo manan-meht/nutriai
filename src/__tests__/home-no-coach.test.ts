@@ -115,42 +115,67 @@ describe("mobile app auth screens offer no coach path", () => {
   });
 });
 
-// The Tistra Health mobile app carries no coaching product at all as of
-// Aug 2026 — coaching is getting its own app. The screens, the routing
-// arbitration between two dashboards, the API surface and the types are
-// all gone, not merely hidden behind a picker that no longer offers them.
-describe("mobile app carries no coaching product", () => {
-  it("has no gym screens", () => {
-    expect(fs.existsSync(path.join(MOBILE, "app", "(app)", "gym"))).toBe(false);
+// The mobile app had no coaching product at all from Aug 2026 (#29) until
+// Oct 2026, when a coach view came back for one narrow case: an account
+// that ALREADY owns a gym workspace — a Coach-plan coach whose clients log
+// meals on WhatsApp — managing those clients from the phone. What #29
+// guarded is still guarded below, in the narrower form that is now true:
+// Tistra Health never OFFERS coaching (the sign-in and sign-up checks above
+// are untouched), and nothing in the app creates a gym workspace or routes
+// an account to the coach view without one.
+describe("mobile app shows a coach view only to existing coach accounts", () => {
+  it("registers the gym screens and route", () => {
+    for (const f of ["index.tsx", "[clientId].tsx", "add.tsx", "invite.tsx", "edit/[clientId].tsx", "_layout.tsx"]) {
+      expect([f, fs.existsSync(path.join(MOBILE, "app", "(app)", "gym", f))]).toEqual([f, true]);
+    }
+    expect(code(readMobile("app/(app)/_layout.tsx"))).toMatch(/name="gym"/);
   });
 
-  it("registers no gym route in the authenticated stack", () => {
-    expect(code(readMobile("app/(app)/_layout.tsx"))).not.toMatch(/name="gym"/);
-  });
-
-  it("routes straight to adults instead of arbitrating between dashboards", () => {
+  it("decides the dashboard from workspace ownership, not from a product pick", () => {
     const router = code(readMobile("app/(app)/index.tsx"));
-    expect(router).not.toMatch(/href="\/gym"/);
-    expect(router).not.toMatch(/saveLastDashboardChoice/);
-    expect(router).toMatch(/if \(adults\) return <Redirect href="\/adults" \/>;/);
+    expect(router).toMatch(/chooseDashboard\(/);
+    expect(router).toMatch(/ownsGym: Boolean\(gym\)/);
+    // The ownership check must be the side-effect-free one: /gym/workspace
+    // get-or-creates, so calling it here would hand every Health account
+    // an empty gym workspace.
+    expect(router).toMatch(/api\.getMyProducts\(\)/);
+    expect(router).not.toMatch(/getGymWorkspace|getGymClients/);
   });
 
-  it("exposes no gym endpoints on the API client", () => {
-    const api = code(readMobile("lib/api.ts"));
-    for (const method of ["getGymWorkspace", "getGymClients", "createGymClient", "updateGymClient", "removeGymClient", "getGymClientDetails", "getRemovedGymClients"]) {
-      expect([method, api.includes(method)]).toEqual([method, false]);
+  it("calls the get-or-create gym endpoints only from gym screens, or behind products.gym", () => {
+    const callers = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) return callers(p);
+        return /\.tsx?$/.test(e.name) && /api\.(getGymWorkspace|getGymClients|getRemovedGymClients)\(/.test(fs.readFileSync(p, "utf-8"))
+          ? [path.relative(MOBILE, p)]
+          : [];
+      });
+    for (const file of callers(MOBILE)) {
+      const insideGym = file.startsWith(path.join("app", "(app)", "gym") + path.sep);
+      const gatedOnOwnership = file === path.join("lib", "dynamic-app-icon.ts") && /if \(products\.gym\)/.test(readMobile(file));
+      expect([file, insideGym || gatedOnOwnership]).toEqual([file, true]);
     }
   });
 
-  it("narrows the product types to the two adult products", () => {
+  it("keeps the product types and picker at the two adult products", () => {
     expect(code(readMobile("components/product-picker.tsx"))).toMatch(/ProductKey = 'self' \| 'family';/);
     expect(code(readMobile("lib/product-intent.ts"))).toMatch(/PendingProduct = 'self' \| 'family';/);
   });
 
-  it("counts only adults meals toward the dynamic app icon", () => {
-    // The icon summed a coaching workspace's client meals too; leaving that
-    // in would call an endpoint the app no longer ships a screen for.
-    expect(code(readMobile("lib/dynamic-app-icon.ts"))).not.toMatch(/getGymClients|products\.gym/);
+  it("sells no Coach plan in the app", () => {
+    // Coach billing is on the web (Stripe/Razorpay); the stores carry no
+    // Coach products, so the coach view must not reach RevenueCat.
+    expect(fs.existsSync(path.join(MOBILE, "app", "(app)", "gym", "paywall.tsx"))).toBe(false);
+    const list = code(readMobile("app/(app)/gym/index.tsx"));
+    expect(list).not.toMatch(/react-native-purchases|Purchases\./);
+  });
+
+  it("offers the switch between dashboards on both sides", () => {
+    expect(code(readMobile("app/(app)/adults/index.tsx"))).toMatch(/useDashboardSwitch\('adults'\)/);
+    expect(code(readMobile("app/(app)/gym/index.tsx"))).toMatch(/useDashboardSwitch\('gym'\)/);
+    // And the switch itself only appears when the account owns both.
+    expect(code(readMobile("hooks/use-dashboard-switch.ts"))).toMatch(/products\.adults && products\.gym/);
   });
 });
 
