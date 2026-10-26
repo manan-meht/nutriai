@@ -103,9 +103,12 @@ export type ConfirmResult =
 
 export type DeactivateResult = { ok: true; mode: "tracking" } | ActivationFailure;
 
-const UNAVAILABLE_MESSAGE = "Nutrition Guidance isn't available yet. You can keep logging meals as usual.";
+export const UNAVAILABLE_MESSAGE = "Nutrition Guidance isn't available yet. You can keep logging meals as usual.";
 
-async function loadContactFacts(
+/** Exported so the Guidance screen (view.ts) decides what to show from the
+ * same facts these entry points authorize against, rather than a second
+ * reading of relationship_type that could drift from this one. */
+export async function loadContactFacts(
   db: SupabaseClient,
   contactId: string
 ): Promise<(GuidanceContactFacts & { timezone: string }) | null> {
