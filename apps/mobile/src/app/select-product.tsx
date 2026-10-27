@@ -5,8 +5,10 @@ import { Pressable, StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ProductPicker } from '@/components/product-picker';
+import { CoachSignInCard } from '@/components/coach-sign-in-card';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
-import { setPendingProductSelection } from '@/lib/product-intent';
+import { clearPendingProductSelection, setPendingProductSelection } from '@/lib/product-intent';
+import { clearLastDashboardChoice, saveLastDashboardChoice } from '@/lib/product-choice';
 
 // First screen a logged-out user sees — no marketing pages in the mobile
 // app, just a direct choice before login, since which scoped email to
@@ -25,9 +27,23 @@ export default function SelectProductScreen() {
           subhead="Choose the option that best fits you. You can change this later."
           onContinue={async (selected) => {
             await setPendingProductSelection(selected);
+            // Undo a "Coach? Sign in here" tap they backed out of.
+            await clearLastDashboardChoice();
             router.push({ pathname: '/login', params: { product: selected } });
           }}
-        />
+        >
+          {/* Sign-in to an existing Coach account, outside the self/family
+              choice. No pending pick is recorded (so no workspace can be
+              created for it), and the coach view is remembered so it opens
+              after sign-in — see lib/dashboard-route.ts. */}
+          <CoachSignInCard
+            onPress={async () => {
+              await clearPendingProductSelection();
+              await saveLastDashboardChoice('gym');
+              router.push({ pathname: '/login', params: { product: 'coach' } });
+            }}
+          />
+        </ProductPicker>
         {/* Not a 4th ProductPicker card — this is a completely different
             auth flow (OTP session, not Supabase Auth), so it's kept as a
             separate, lower-emphasis link rather than a fourth illustrated

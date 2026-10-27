@@ -16,7 +16,10 @@ import { supabase } from '@/lib/supabase';
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null };
+  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null }
+  // "Use Tistra Health instead" from the no-coach-account screen: the
+  // ordinary self/family picker.
+  | { status: 'picker' };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -81,6 +84,8 @@ export default function ProductRouterScreen() {
     );
   }
 
+  if (state.status === 'picker') return <HealthPicker />;
+
   const { adults, gym } = state.products;
   const route = chooseDashboard({
     ownsAdults: Boolean(adults),
@@ -110,6 +115,50 @@ export default function ProductRouterScreen() {
     return <Redirect href={{ pathname: '/adults', params: { self: route.self ? '1' : '0' } }} />;
   }
 
+  // Signed in through "Coach? Sign in here" with an account that owns no
+  // workspace at all. Creating one here would be wrong both ways: a coach
+  // account is set up on the web, and a Health workspace is not what they
+  // came for — so explain, and let them choose.
+  if (route.kind === 'no-coach-account') {
+    return (
+      <ThemedView style={styles.centered}>
+        <SafeAreaView style={styles.safeArea}>
+          <ThemedText type="subtitle" style={styles.errorText}>
+            No Coach account found
+          </ThemedText>
+          <ThemedText type="default" themeColor="textSecondary" style={styles.errorText}>
+            This sign-in doesn&apos;t have a Coach workspace. Coach accounts are set up in Coach OS on the web — sign in
+            here with the same Google, Apple or email account you use there.
+          </ThemedText>
+          <Pressable
+            style={styles.button}
+            onPress={() => {
+              clearLastDashboardChoice();
+              supabase.auth.signOut();
+            }}
+          >
+            <ThemedText style={styles.buttonText}>Sign out</ThemedText>
+          </Pressable>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              clearLastDashboardChoice();
+              setState({ status: 'picker' });
+            }}
+          >
+            <ThemedText type="default" themeColor="textSecondary">
+              Use Tistra Health instead
+            </ThemedText>
+          </Pressable>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
+  return <HealthPicker />;
+}
+
+function HealthPicker() {
   return (
     <ProductPicker
       headline="How will you use Tistra Health?"
@@ -151,5 +200,9 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontWeight: '600',
+  },
+  secondaryButton: {
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
   },
 });

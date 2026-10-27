@@ -4,10 +4,11 @@ import * as SecureStore from 'expo-secure-store';
 // last opened, so a cold start goes straight back there (see
 // lib/dashboard-route.ts) — lib/product-intent.ts's pendingProduct only
 // survives the single login->dashboard transition, not app restarts.
-// Written only by the dashboard switch (hooks/use-dashboard-switch.ts).
-//
-// Only ever relevant to a coach who also uses Health: the coach view is
-// shown only to an account that already owns a gym workspace.
+// Written by the dashboard switch (hooks/use-dashboard-switch.ts) and by the
+// "Coach? Sign in here" entry (select-product.tsx, login.tsx), which
+// records 'gym' before sign-in so the coach view opens afterwards. It only
+// ever chooses between workspaces the account already owns — see
+// lib/dashboard-route.ts.
 const LAST_DASHBOARD_KEY = 'tistra_last_dashboard_choice';
 
 export type DashboardChoice = 'adults' | 'gym';

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -49,10 +49,14 @@ export function ProductPicker({
   headline,
   subhead,
   onContinue,
+  children,
 }: {
   headline: string;
   subhead: string;
   onContinue: (selected: ProductKey) => void;
+  /** Rendered below the options, inside the scroll — select-product.tsx's
+   * "Coach? Sign in here" link card. Not an option: never selectable. */
+  children?: ReactNode;
 }) {
   const theme = useTheme();
   const [selected, setSelected] = useState<ProductKey | null>(null);
@@ -97,6 +101,7 @@ export function ProductPicker({
             </Pressable>
           );
         })}
+        {children}
       </ScrollView>
 
       <Pressable
