@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
-import { getOrCreateWorkspace, getClients, getRemovedClients, getClientDetails, addClient, updateClient, removeClient } from "@/lib/gym";
+import { getOrCreateWorkspace, getClients, getRemovedClients, getClientDetails, addClient, addClientBlockedReason, updateClient, removeClient } from "@/lib/gym";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { getOrCreateCoachClientInvite } from "@/lib/invites";
 
@@ -57,11 +57,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       .maybeSingle();
 
     const workspace = await getOrCreateWorkspace(auth.user.id, profile?.full_name ?? undefined);
-    const entitlement = await getEntitlementSnapshot(workspace.id, "gym", auth.user.email);
+    const entitlement = await getEntitlementSnapshot(workspace, "gym", auth.user.email);
 
     return NextResponse.json({
       workspace,
       entitlement,
+      // The same refusal POST /gym/clients would give, so the app can say
+      // so up front instead of after the coach fills in the whole form.
+      addClientBlockedReason: addClientBlockedReason(entitlement),
       coachEmail: auth.user.email ?? null,
       coachName: profile?.full_name ?? null,
     });
@@ -144,7 +147,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
   const workspace = await getOrCreateWorkspace(auth.user.id);
-  const result = await addClient(workspace.id, auth.user.id, body, auth.supabase);
+  const result = await addClient(workspace, { id: auth.user.id, email: auth.user.email }, body, auth.supabase);
   if (result.error) return NextResponse.json(result, { status: 400 });
 
   return NextResponse.json(result);
