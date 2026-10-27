@@ -14,6 +14,7 @@ export type Row = Record<string, unknown>;
 
 export interface GuidanceRows {
   adults_contacts: Row[];
+  gym_clients: Row[];
   nutrition_policy_versions: Row[];
   nutrition_guidance: Row[];
   nutrition_guidance_screening: Row[];
@@ -30,16 +31,29 @@ export type FailingWrites = string[];
 type DbError = { message: string; code: string };
 type Result = { data: unknown; error: DbError | null };
 
-/** The checks in 0068 a write could actually break, for the rows of one
- * table after the write. Returns the error Postgres would raise. */
+/** The tables 0069 lets point at either kind of tracked person. */
+const SUBJECT_TABLES: Table[] = ["nutrition_guidance", "nutrition_guidance_screening", "nutrition_targets"];
+
+/** One tracked person, whichever column names them. */
+const subjectOf = (r: Row) => (r.adults_contact_id != null ? `a:${r.adults_contact_id}` : `g:${r.gym_client_id}`);
+
+/** The checks in 0068 and 0069 a write could actually break, for the rows of
+ * one table after the write. Returns the error Postgres would raise. */
 function violation(table: Table, after: Row[]): DbError | null {
+  if (SUBJECT_TABLES.includes(table)) {
+    for (const r of after) {
+      if ((r.adults_contact_id == null) === (r.gym_client_id == null)) {
+        return { code: "23514", message: `new row violates check constraint "${table}_one_subject"` };
+      }
+    }
+  }
   if (table === "nutrition_targets") {
     for (const r of after) {
       if (r.effective_to != null && !(String(r.effective_to) > String(r.effective_from))) {
         return { code: "23514", message: 'new row violates check constraint "nutrition_targets_effective_range"' };
       }
     }
-    const open = after.filter((r) => r.effective_to == null).map((r) => r.adults_contact_id);
+    const open = after.filter((r) => r.effective_to == null).map(subjectOf);
     if (new Set(open).size !== open.length) {
       return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_targets_one_current_idx"' };
     }
@@ -94,8 +108,11 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
       select: () => query(table),
       insert: (row: Row) =>
         Promise.resolve(commit(table, "insert", [...rows[table], { id: `${table}-${rows[table].length + 1}`, ...row }])),
-      upsert: (row: Row) => {
-        const idx = rows[table].findIndex((r) => r.adults_contact_id === row.adults_contact_id);
+      upsert: (row: Row, opts?: { onConflict?: string }) => {
+        // ON CONFLICT on the column named, as PostgREST does. A row whose
+        // conflict column is null never matches, as with a real unique key.
+        const key = opts?.onConflict ?? "adults_contact_id";
+        const idx = row[key] == null ? -1 : rows[table].findIndex((r) => r[key] === row[key]);
         const next = [...rows[table]];
         if (idx >= 0) next[idx] = { ...next[idx], ...row };
         else next.push({ ...row });

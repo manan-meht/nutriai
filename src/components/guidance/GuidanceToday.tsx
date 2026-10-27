@@ -65,7 +65,7 @@ export function GuidanceToday({ today }: { today: TodayProgress | null }) {
     return (
       <section className="bg-white border border-gray-100 rounded-2xl p-5">
         <h2 className="text-base font-semibold text-gray-900">Today</h2>
-        <p className="text-sm text-gray-500 mt-1">There&apos;s no target for today yet. It starts on the day you turned Guidance on.</p>
+        <p className="text-sm text-gray-500 mt-1">There&apos;s no target for today yet. It starts on the day Guidance was turned on.</p>
       </section>
     );
   }

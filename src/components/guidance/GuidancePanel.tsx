@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 // Type-only: activation.ts and view.ts are server modules, and nothing of
 // theirs but these shapes may reach the browser bundle.
 import type { ActivationFailure, ConfirmResult, DeactivateResult, ProposalResult } from "@/lib/guidance/activation";
-import type { GuidanceView } from "@/lib/guidance/view";
+import type { GuidancePerson, GuidanceView } from "@/lib/guidance/view";
 
 import { GuidanceSetupForm, initialSetupForm, setupFormToAnswers, type SetupFormState } from "./GuidanceSetupForm";
 import { GuidanceToday } from "./GuidanceToday";
@@ -108,7 +108,7 @@ function ReturnToTracking({
   );
 }
 
-function TargetsReview({ proposal }: { proposal: Proposal }) {
+function TargetsReview({ proposal, person }: { proposal: Proposal; person: GuidancePerson }) {
   const t = proposal.targets;
   const items = [
     { label: "Calories", value: `${t.caloriesKcal.toLocaleString("en-US")} kcal` },
@@ -121,7 +121,9 @@ function TargetsReview({ proposal }: { proposal: Proposal }) {
   return (
     <section className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Your proposed daily targets</h2>
+        <h2 className="text-base font-semibold text-gray-900">
+          {person.isSelf ? "Your proposed daily targets" : `Proposed daily targets for ${person.name}`}
+        </h2>
         <p className="text-sm text-gray-500 mt-1">Nothing is switched on until you confirm.</p>
       </div>
       {/* Calories on a row of its own: in a five-across grid "2,381 kcal"
@@ -213,15 +215,23 @@ function SetupFlow({
   }
 
   const banner = view.isPreviewOnly && <PreviewBanner policyVersion={view.policyVersion} />;
+  const { person } = view;
+  const changeAnswers = person.isSelf ? "Change my answers" : "Change the answers";
 
   if (step === "declined" && declined) {
     return (
       <div className="space-y-4">
-        <Notice title={declined.outcome === "needs_more_detail" ? "A few more details needed" : "We won't set targets for you"}>
+        <Notice
+          title={
+            declined.outcome === "needs_more_detail"
+              ? "A few more details needed"
+              : `We won't set targets for ${person.isSelf ? "you" : person.name}`
+          }
+        >
           <p>{declined.message}</p>
         </Notice>
         <button type="button" onClick={() => setStep("answers")} className={secondaryButton}>
-          Change my answers
+          {changeAnswers}
         </button>
         <Link href={backHref} className="block text-center text-sm text-gray-500 underline">
           Keep tracking as usual
@@ -234,12 +244,12 @@ function SetupFlow({
     return (
       <div className="space-y-4">
         {proposal.isPreviewOnly && <PreviewBanner policyVersion={proposal.policyVersion} />}
-        <TargetsReview proposal={proposal} />
+        <TargetsReview proposal={proposal} person={person} />
         <button type="button" onClick={confirmTargets} disabled={pending} className={primaryButton}>
           {pending ? "Turning on…" : "Turn on Guidance"}
         </button>
         <button type="button" onClick={() => setStep("answers")} disabled={pending} className={secondaryButton}>
-          Change my answers
+          {changeAnswers}
         </button>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       </div>
@@ -250,16 +260,31 @@ function SetupFlow({
     <form onSubmit={submitAnswers} className="space-y-4">
       {banner}
       <Notice>
-        <p>
-          {view.hasEverActivated
-            ? "Guidance is off. Answer a few questions to turn it back on."
-            : "Guidance adds daily calorie, protein, carb, fat and fiber targets to your tracking, calculated from a few questions."}{" "}
-          You&apos;ll see the targets before anything is switched on.
-        </p>
+        {person.isSelf ? (
+          <p>
+            {view.hasEverActivated
+              ? "Guidance is off. Answer a few questions to turn it back on."
+              : "Guidance adds daily calorie, protein, carb, fat and fiber targets to your tracking, calculated from a few questions."}{" "}
+            You&apos;ll see the targets before anything is switched on.
+          </p>
+        ) : (
+          <>
+            <p>
+              {view.hasEverActivated
+                ? `Guidance is off for ${person.name}. Answer a few questions to turn it back on.`
+                : `Guidance adds daily calorie, protein, carb, fat and fiber targets to ${person.name}'s tracking, calculated from a few questions.`}{" "}
+              You&apos;ll see the targets before anything is switched on.
+            </p>
+            <p>
+              You&apos;re setting this up on {person.name}&apos;s behalf, and it&apos;s recorded that way. If they use
+              Tistra themselves, they can switch it off.
+            </p>
+          </>
+        )}
       </Notice>
-      <GuidanceSetupForm value={form} onChange={setForm} />
+      <GuidanceSetupForm person={person} value={form} onChange={setForm} />
       <button type="submit" disabled={pending} className={primaryButton}>
-        {pending ? "Calculating…" : "See my targets"}
+        {pending ? "Calculating…" : person.isSelf ? "See my targets" : "See the targets"}
       </button>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </form>
@@ -271,18 +296,44 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
     case "setup":
       return <SetupFlow view={view} backHref={backHref} onPropose={onPropose} onConfirm={onConfirm} />;
 
-    case "active":
+    case "active": {
+      const { person } = view;
+      // Someone else turned it on for the person now looking at it. They
+      // should not have to work that out from the numbers.
+      const setUpBy = person.isSelf
+        ? view.activatedVia === "coach"
+          ? "your coach"
+          : view.activatedVia === "caregiver"
+            ? "the person who tracks your meals"
+            : null
+        : null;
       return (
         <div className="space-y-4">
           {view.isPreviewOnly && <PreviewBanner policyVersion={view.policyVersion} />}
+          {setUpBy && (
+            <Notice title="Set up for you">
+              <p>
+                Nutrition Guidance was turned on for you by {setUpBy}. You can switch it off below at any time.
+              </p>
+            </Notice>
+          )}
           <GuidanceToday today={view.today} />
-          <ReturnToTracking
-            description="Return to Tracking turns off your daily targets. Your meals, history and preferences stay as they are, and you can turn Guidance back on any time."
-            confirmText="Return to Tracking? Your targets will be hidden. Meals and history are kept."
-            onReturnToTracking={onReturnToTracking}
-          />
+          {person.isSelf ? (
+            <ReturnToTracking
+              description="Return to Tracking turns off your daily targets. Your meals, history and preferences stay as they are, and you can turn Guidance back on any time."
+              confirmText="Return to Tracking? Your targets will be hidden. Meals and history are kept."
+              onReturnToTracking={onReturnToTracking}
+            />
+          ) : (
+            <ReturnToTracking
+              description={`Return to Tracking turns off ${person.name}'s daily targets. Their meals, history and preferences stay as they are, and Guidance can be turned back on any time.`}
+              confirmText={`Return ${person.name} to Tracking? Their targets will be hidden. Meals and history are kept.`}
+              onReturnToTracking={onReturnToTracking}
+            />
+          )}
         </div>
       );
+    }
 
     case "paused":
       return (
@@ -305,27 +356,6 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
         </Notice>
       );
 
-    case "caregiver":
-      return (
-        <div className="space-y-4">
-          {view.mode === "guidance" ? (
-            <Notice title="Guidance is on">
-              <p>They turned on Nutrition Guidance themselves. Their targets and health answers are private to them.</p>
-            </Notice>
-          ) : (
-            <Notice title="Only they can turn this on">
-              <p>{view.message}</p>
-            </Notice>
-          )}
-          {view.canReturnToTracking && (
-            <ReturnToTracking
-              description="If you're worried about the guidance they're getting, you can switch them back to Tracking. Their meals and history are kept, and they can turn Guidance back on themselves."
-              confirmText="Switch them back to Tracking? Their targets will be hidden. Meals and history are kept."
-              onReturnToTracking={onReturnToTracking}
-            />
-          )}
-        </div>
-      );
   }
 }
 

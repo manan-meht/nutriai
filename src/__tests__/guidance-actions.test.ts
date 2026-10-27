@@ -53,6 +53,8 @@ const ASHA = "profile-asha";
 const STRANGER = "profile-stranger";
 const ASHA_SELF = "contact-asha-self";
 const MOTHER = "contact-mother";
+const COACH = "profile-coach";
+const RAVI = "client-ravi";
 
 type Rows = GuidanceRows;
 const makeDb = (rows: Rows) => makeGuidanceDb(rows);
@@ -63,9 +65,13 @@ function freshRows(over: Partial<Rows> = {}): Rows {
       // Asha tracking herself: account holder and tracked person are the same human.
       { id: ASHA_SELF, caregiver_id: ASHA, relationship_type: "self", timezone: "Asia/Kolkata", age: 38, height_cm: 178, weight_kg: 88, metabolic_equation_sex: "male", activity_level: "moderately_active", primary_nutrition_goal: "reduce_weight", nutrition_goals: null },
       // Her mother, on the same account. Asha pays and sees every meal.
-      { id: MOTHER, caregiver_id: ASHA, relationship_type: "family_caregiver", timezone: "Asia/Kolkata", age: 74, height_cm: 152, weight_kg: 63, metabolic_equation_sex: "female", activity_level: "mostly_sitting", primary_nutrition_goal: "healthy_aging", nutrition_goals: null },
+      { id: MOTHER, caregiver_id: ASHA, relationship_type: "family_caregiver", full_name: "Kamala", timezone: "Asia/Kolkata", age: 74, height_cm: 152, weight_kg: 63, metabolic_equation_sex: "female", activity_level: "mostly_sitting", primary_nutrition_goal: "healthy_aging", nutrition_goals: null },
     ],
     // The real state at the time of writing: unreviewed.
+    // A coach's client. Coaching is gym_clients, not adults_contacts.
+    gym_clients: [
+      { id: RAVI, trainer_id: COACH, relationship_type: "coach_client", full_name: "Ravi", timezone: "Asia/Kolkata", age: 30, height_cm: 175, weight_kg: 80, metabolic_equation_sex: "male", activity_level: "moderately_active", primary_nutrition_goal: "gain_muscle", nutrition_goals: null },
+    ],
     nutrition_policy_versions: [{ version: "v1-mifflin-2026-10", status: "unreviewed" }],
     nutrition_guidance: [],
     nutrition_guidance_screening: [],
@@ -187,17 +193,43 @@ describe("the setup flow, from a self account", () => {
   });
 });
 
-describe("a caregiver cannot switch Guidance on for someone else", () => {
-  it("refuses the account holder who owns and pays for her mother's contact", async () => {
+describe("an account holder acting for someone they track", () => {
+  it("lets the account holder turn it on for her mother, recorded as the caregiver's decision", async () => {
     mockUser = { id: ASHA };
-    for (const action of [proposeGuidanceAction, confirmGuidanceAction]) {
-      const result = await action("account", MOTHER, formAnswers);
-      expect(result).toMatchObject({ ok: false, kind: "forbidden", reason: "not_the_tracked_person" });
-      if (result.ok || result.kind !== "forbidden") continue;
-      expect(result.message).toMatch(/Only the person being tracked/);
-    }
-    // Refused before screening, so not even the mother's answers — typed
-    // in by the daughter — are on record.
+    const proposal = await proposeGuidanceAction("account", MOTHER, formAnswers);
+    expect(proposal).toMatchObject({ ok: true, isPreviewOnly: true });
+    const result = await confirmGuidanceAction("account", MOTHER, formAnswers);
+    expect(result).toMatchObject({ ok: true, activatedVia: "caregiver" });
+    expect(rows.nutrition_guidance[0]).toMatchObject({
+      adults_contact_id: MOTHER,
+      activated_via: "caregiver",
+      activated_by_profile_id: ASHA,
+    });
+    expect(rows.nutrition_targets[0]).toMatchObject({ approved_via: "caregiver" });
+  });
+
+  it("lets a coach turn it on for their client, recorded as the coach's decision", async () => {
+    mockUser = { id: COACH };
+    const result = await confirmGuidanceAction("coach", RAVI, formAnswers);
+    expect(result).toMatchObject({ ok: true, activatedVia: "coach" });
+    expect(rows.nutrition_guidance[0]).toMatchObject({ gym_client_id: RAVI, activated_via: "coach" });
+    expect(rows.nutrition_targets[0]).toMatchObject({ gym_client_id: RAVI, approved_via: "coach" });
+    expect(await returnToTrackingAction("coach", RAVI)).toEqual({ ok: true, mode: "tracking" });
+  });
+
+  it("never lets a surface reach the other product's table", async () => {
+    // The surface picks the table. A family id on the coach surface, or a
+    // client id on the family one, finds nobody.
+    mockUser = { id: COACH };
+    expect(await confirmGuidanceAction("account", RAVI, formAnswers)).toEqual({ ok: false, kind: "not_found" });
+    mockUser = { id: ASHA };
+    expect(await confirmGuidanceAction("coach", MOTHER, formAnswers)).toEqual({ ok: false, kind: "not_found" });
+    nothingWritten(rows);
+  });
+
+  it("refuses a coach who does not train this client", async () => {
+    mockUser = { id: ASHA };
+    expect(await proposeGuidanceAction("coach", RAVI, formAnswers)).toMatchObject({ ok: false, reason: "not_your_contact" });
     nothingWritten(rows);
   });
 
@@ -366,25 +398,38 @@ describe("what each viewer's Guidance screen shows", () => {
     });
   });
 
-  it("gives the caregiver the refusal, and nothing about her mother's body", async () => {
+  it("gives the caregiver the setup flow for her mother, worded for her mother", async () => {
     const view = await loadGuidanceView(mockDb, { contactId: MOTHER, actor: ashaAccount });
-    expect(view).toEqual({
-      kind: "caregiver",
-      message: expect.stringMatching(/Only the person being tracked/),
-      mode: "tracking",
-      canReturnToTracking: false,
+    expect(view).toMatchObject({
+      kind: "setup",
+      person: { isSelf: false, name: "Kamala" },
+      prefill: { ageYears: 74, heightCm: 152, weightKg: 63 },
+    });
+    if (view.kind !== "setup") return;
+    expect(view.prefill).not.toHaveProperty("isPregnantOrBreastfeeding");
+  });
+
+  it("gives a coach the setup flow for their client, from the client's own profile", async () => {
+    const view = await loadGuidanceView(mockDb, { contactId: RAVI, contactType: "gym", actor: { kind: "caregiver", profileId: COACH } });
+    expect(view).toMatchObject({
+      kind: "setup",
+      person: { isSelf: false, name: "Ravi" },
+      prefill: { ageYears: 30, heightCm: 175, weightKg: 80, goals: ["gain_muscle"] },
     });
   });
 
-  it("lets the caregiver stop Guidance her mother turned on, still without targets", async () => {
-    mockSession = { contactId: MOTHER, contactType: "adults" };
-    await confirmGuidanceAction("my_progress", MOTHER, { ...formAnswers, conditionsOrMedications: "thyroid" });
+  it("shows the caregiver the targets she set, and tells her mother who set them", async () => {
+    mockUser = { id: ASHA };
+    await confirmGuidanceAction("account", MOTHER, { ...formAnswers, conditionsOrMedications: "thyroid" });
 
-    const view = await loadGuidanceView(mockDb, { contactId: MOTHER, actor: ashaAccount });
-    expect(view).toMatchObject({ kind: "caregiver", mode: "guidance", canReturnToTracking: true });
-    expect(view).not.toHaveProperty("today");
-    expect(view).not.toHaveProperty("prefill");
-    expect(JSON.stringify(view)).not.toMatch(/thyroid|kcal|2381/);
+    const forAsha = await loadGuidanceView(mockDb, { contactId: MOTHER, actor: ashaAccount });
+    expect(forAsha).toMatchObject({ kind: "active", person: { isSelf: false, name: "Kamala" }, activatedVia: "caregiver" });
+
+    const forKamala = await loadGuidanceView(mockDb, { contactId: MOTHER, actor: { kind: "end_user_session", contactId: MOTHER } });
+    expect(forKamala).toMatchObject({ kind: "active", person: { isSelf: true }, activatedVia: "caregiver" });
+
+    // Neither view carries what was typed into the screening questions.
+    expect(JSON.stringify([forAsha, forKamala])).not.toMatch(/thyroid/);
   });
 
   it("shows a stranger, or a session for someone else, nothing at all", async () => {
@@ -405,6 +450,24 @@ describe("what each viewer's Guidance screen shows", () => {
   it("does not offer setup in production while the policy is unreviewed", async () => {
     const view = await inProduction(() => loadGuidanceView(mockDb, { contactId: ASHA_SELF, actor: ashaAccount }));
     expect(view.kind).toBe("unavailable");
+  });
+
+  it("totals a coach client's meals from meal_logs.client_id", async () => {
+    const now = new Date("2026-10-26T06:00:00Z");
+    rows.nutrition_guidance.push({ id: "g-ravi", gym_client_id: RAVI, mode: "guidance", activated_at: "2026-10-20T04:00:00Z", activated_via: "coach" });
+    rows.nutrition_targets.push({ id: "t-ravi", gym_client_id: RAVI, effective_from: "2026-10-20", effective_to: null, policy_version: "v1-mifflin-2026-10", calories_kcal: 2800, protein_g: 160, carbs_g: 340, fat_g: 80, fiber_g: 35, explanation: "x" });
+    rows.meal_logs.push(
+      { id: "m1", client_id: RAVI, logged_at: "2026-10-26T03:00:00Z", total_calories_min: 700, total_calories_max: 900, total_protein_min: 40, total_protein_max: 50, total_carbs_min: 80, total_carbs_max: 100, total_fat_min: 20, total_fat_max: 30, total_fiber_min: 8, total_fiber_max: 10 },
+      // A family contact's meal with the same id shape must not count.
+      { id: "m2", adults_contact_id: RAVI, logged_at: "2026-10-26T03:00:00Z", total_calories_min: 5000, total_calories_max: 5000 }
+    );
+
+    const view = await loadGuidanceView(mockDb, { contactId: RAVI, contactType: "gym", actor: { kind: "caregiver", profileId: COACH }, now });
+    expect(view.kind).toBe("active");
+    if (view.kind !== "active" || !view.today) throw new Error("expected today's progress");
+    expect(view.today.totals.mealCount).toBe(1);
+    expect(view.today.totals.calories).toMatchObject({ target: 2800, consumed: 800 });
+    expect(await loadGuidanceEntry(mockDb, RAVI, "gym")).toEqual({ visible: true, mode: "guidance" });
   });
 
   describe("once Guidance is on", () => {

@@ -27,42 +27,57 @@ import {
   type GuidanceSetupAnswers,
 } from "@/lib/guidance/activation";
 
-// The rule under test: the daughter who added her mother, pays for the
-// plan and sees every meal may not set her mother a calorie target.
-// Everything else here protects that rule or the release gate in front of
-// it.
+// The rule under test, since 2026-10-27: the tracked person may turn
+// Guidance on, and so may the account holder who tracks them (a family
+// caregiver or a coach), and the stored channel always says which one
+// decided. Everything else here protects that rule or the release gate in
+// front of it.
 
 const MOTHER = "contact-mother";
 const DAUGHTER_PROFILE = "profile-daughter";
 const STRANGER_PROFILE = "profile-stranger";
+const COACH_PROFILE = "profile-coach";
+const OTHER_COACH_PROFILE = "profile-other-coach";
+const CLIENT = "client-ravi";
 
 const motherFacts: GuidanceContactFacts = {
   contactId: MOTHER,
+  contactType: "adults",
   caregiverId: DAUGHTER_PROFILE,
   relationshipType: "family_caregiver",
 };
 
 const selfFacts: GuidanceContactFacts = {
   contactId: "contact-self",
+  contactType: "adults",
   caregiverId: DAUGHTER_PROFILE,
   relationshipType: "self",
+};
+
+const clientFacts: GuidanceContactFacts = {
+  contactId: CLIENT,
+  contactType: "gym",
+  caregiverId: COACH_PROFILE,
+  relationshipType: "coach_client",
 };
 
 const daughter: GuidanceActor = { kind: "caregiver", profileId: DAUGHTER_PROFILE };
 const stranger: GuidanceActor = { kind: "caregiver", profileId: STRANGER_PROFILE };
 const motherHerself: GuidanceActor = { kind: "end_user_session", contactId: MOTHER };
 const motherOnWhatsapp: GuidanceActor = { kind: "whatsapp", contactId: MOTHER };
+const coach: GuidanceActor = { kind: "caregiver", profileId: COACH_PROFILE };
+const otherCoach: GuidanceActor = { kind: "caregiver", profileId: OTHER_COACH_PROFILE };
 
 describe("who may turn Guidance on", () => {
-  it("refuses the caregiver who owns the contact and pays for the plan", () => {
-    const result = authorizeGuidanceActivation(daughter, motherFacts);
-    expect(result.allowed).toBe(false);
-    if (result.allowed) return;
-    expect(result.reason).toBe("not_the_tracked_person");
-    // The copy has to tell her what to do instead, or she will reasonably
-    // conclude the feature is broken.
-    expect(result.message).toMatch(/Only the person being tracked/);
-    expect(result.message).toMatch(/their own progress page|WhatsApp/);
+  it("lets the caregiver who owns the contact turn it on for her, as the caregiver", () => {
+    // Most tracked people never open the app, so the account holder may act
+    // for them. The channel records that she did, never that her mother did.
+    expect(authorizeGuidanceActivation(daughter, motherFacts)).toEqual({ allowed: true, activatedVia: "caregiver" });
+  });
+
+  it("lets a coach turn it on for their own client, as the coach, and no other coach", () => {
+    expect(authorizeGuidanceActivation(coach, clientFacts)).toEqual({ allowed: true, activatedVia: "coach" });
+    expect(authorizeGuidanceActivation(otherCoach, clientFacts)).toMatchObject({ allowed: false, reason: "not_your_contact" });
   });
 
   it("allows the tracked person from her own session", () => {
@@ -113,13 +128,13 @@ describe("who may turn Guidance on", () => {
 });
 
 describe("who may turn it off, and who may read the screening answers", () => {
-  it("lets the owning caregiver switch it off although she could not switch it on", () => {
-    // Deliberate asymmetry: stopping automated nutrition advice strictly
-    // reduces what the system does, and a caregiver who becomes worried
-    // should not have to get her mother to log in first. The mother can
-    // turn it straight back on, so this is not a way to control her.
+  it("lets the tracked person switch it off, whoever turned it on", () => {
+    // The one permission that must never narrow for her: a caregiver can
+    // start it for her, and she can always stop it.
+    expect(authorizeGuidanceDeactivation(motherHerself, motherFacts).allowed).toBe(true);
+    expect(authorizeGuidanceDeactivation(motherOnWhatsapp, motherFacts).allowed).toBe(true);
     expect(authorizeGuidanceDeactivation(daughter, motherFacts).allowed).toBe(true);
-    expect(authorizeGuidanceActivation(daughter, motherFacts).allowed).toBe(false);
+    expect(authorizeGuidanceDeactivation(coach, clientFacts).allowed).toBe(true);
   });
 
   it("still refuses a stranger", () => {
@@ -212,6 +227,7 @@ function freshRows(over: Partial<Rows> = {}): Rows {
     adults_contacts: [
       { id: MOTHER, caregiver_id: DAUGHTER_PROFILE, relationship_type: "family_caregiver", timezone: "Asia/Kolkata", age: 74, height_cm: 152, weight_kg: 63, metabolic_equation_sex: "female", activity_level: "mostly_sitting", primary_nutrition_goal: "healthy_aging", nutrition_goals: null },
     ],
+    gym_clients: [],
     nutrition_policy_versions: [{ version: "v1-mifflin-2026-10", status: "reviewed" }],
     nutrition_guidance: [],
     nutrition_guidance_screening: [],
@@ -274,14 +290,20 @@ describe("activation end to end", () => {
     expect(rows.nutrition_targets[0].explanation).toContain("Mifflin-St Jeor");
   });
 
-  it("refuses the caregiver at the service boundary, not only in the UI", async () => {
+  it("records a caregiver's activation as hers, never as her mother's", async () => {
+    const rows = freshRows();
+    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: daughter, answers });
+    expect(result).toMatchObject({ ok: true, activatedVia: "caregiver" });
+    expect(rows.nutrition_guidance[0]).toMatchObject({ activated_via: "caregiver", activated_by_profile_id: DAUGHTER_PROFILE });
+    expect(rows.nutrition_targets[0]).toMatchObject({ approved_via: "caregiver" });
+  });
+
+  it("refuses a stranger at the service boundary, not only in the UI", async () => {
     // The authorization function being right is worth nothing if a route
     // forgets to call it.
     const rows = freshRows();
-    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: daughter, answers });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.kind).toBe("forbidden");
+    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: stranger, answers });
+    expect(result).toMatchObject({ ok: false, kind: "forbidden", reason: "not_your_contact" });
     // And nothing was written on the way to refusing.
     expect(rows.nutrition_guidance).toHaveLength(0);
     expect(rows.nutrition_targets).toHaveLength(0);
@@ -577,5 +599,91 @@ describe("a write the database refuses is reported, not swallowed", () => {
     const line = JSON.stringify(logged.mock.calls[0]);
     expect(line).toContain("writing the target");
     expect(line).not.toMatch(/metformin|Pregnant|EatingDisorder/i);
+  });
+});
+
+describe("coach clients", () => {
+  // 0069 lets the Guidance tables point at a gym_clients row. The same
+  // service code runs for both, keyed by contactType.
+  const ravi = {
+    id: CLIENT,
+    trainer_id: COACH_PROFILE,
+    relationship_type: "coach_client",
+    timezone: "Asia/Kolkata",
+    full_name: "Ravi",
+    age: 30,
+    height_cm: 175,
+    weight_kg: 80,
+    metabolic_equation_sex: "male",
+    activity_level: "moderately_active",
+    primary_nutrition_goal: "gain_muscle",
+    nutrition_goals: null,
+  };
+  const withRavi = () => freshRows({ gym_clients: [ravi] });
+  const raviAnswers = { ...answers, ageYears: 30, heightCm: 175, weightKg: 80, goals: ["gain_muscle" as const] };
+
+  it("activates for the coach's own client, keyed by gym_client_id and recorded as the coach's", async () => {
+    const rows = withRavi();
+    const result = await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers });
+    expect(result).toMatchObject({ ok: true, activatedVia: "coach" });
+
+    for (const table of ["nutrition_guidance", "nutrition_guidance_screening", "nutrition_targets"] as const) {
+      expect(rows[table]).toHaveLength(1);
+      expect(rows[table][0]).toMatchObject({ gym_client_id: CLIENT });
+      expect(rows[table][0].adults_contact_id ?? null).toBeNull();
+    }
+    expect(rows.nutrition_guidance[0]).toMatchObject({ activated_via: "coach", activated_by_profile_id: COACH_PROFILE });
+    expect(rows.nutrition_targets[0]).toMatchObject({ approved_via: "coach" });
+  });
+
+  it("refuses another coach, and writes nothing", async () => {
+    const rows = withRavi();
+    const result = await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: otherCoach, answers: raviAnswers });
+    expect(result).toMatchObject({ ok: false, kind: "forbidden", reason: "not_your_contact" });
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_guidance_screening).toHaveLength(0);
+  });
+
+  it("never matches a client's id against the family table", async () => {
+    // contactType defaults to "adults": a gym id there finds nobody.
+    const rows = withRavi();
+    expect(await confirmActivation(makeDb(rows), { contactId: CLIENT, actor: coach, answers: raviAnswers })).toEqual({
+      ok: false,
+      kind: "not_found",
+    });
+    expect(rows.nutrition_guidance).toHaveLength(0);
+  });
+
+  it("prefills from the client's own profile", async () => {
+    expect(await buildSetupPrefill(makeDb(withRavi()), CLIENT, "gym")).toMatchObject({
+      ageYears: 30,
+      heightCm: 175,
+      weightKg: 80,
+      metabolicEquationSex: "male",
+      goals: ["gain_muscle"],
+    });
+  });
+
+  it("keeps a family contact's and a client's Guidance apart", async () => {
+    const rows = withRavi();
+    const day = new Date("2026-10-10T06:00:00Z");
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day });
+    await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers, now: day });
+    await returnToTracking(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, now: day });
+
+    expect(rows.nutrition_targets).toHaveLength(2);
+    expect(await getGuidanceState(makeDb(rows), MOTHER)).toMatchObject({ mode: "guidance" });
+    expect(await getGuidanceState(makeDb(rows), CLIENT, "gym")).toMatchObject({ mode: "tracking", hasEverActivated: true });
+
+    // Same-day re-activation works for a client as it does for a contact.
+    const again = await confirmActivation(makeDb(rows), {
+      contactId: CLIENT,
+      contactType: "gym",
+      actor: coach,
+      answers: { ...raviAnswers, weightKg: 78 },
+      now: day,
+    });
+    expect(again.ok).toBe(true);
+    expect(rows.nutrition_targets.filter((t) => t.gym_client_id === CLIENT)).toHaveLength(1);
   });
 });

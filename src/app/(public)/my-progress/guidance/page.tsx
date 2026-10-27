@@ -8,16 +8,17 @@ import { resolveGuidanceActor } from "@/lib/guidance/request-actor";
 import { loadGuidanceView } from "@/lib/guidance/view";
 import { createServiceClient } from "@/lib/supabase/server";
 
-// Guidance for the tracked person on their own /my-progress session — the
-// channel a family member uses, since only they can turn it on.
+// Guidance for the tracked person on their own /my-progress session. Their
+// caregiver can also set it up for them; either way, this is where they can
+// see it and switch it off themselves.
 export default async function MyProgressGuidancePage() {
-  const actor = await resolveGuidanceActor("my_progress");
+  const request = await resolveGuidanceActor("my_progress");
   // No session, no consent yet, or a gym client's session: the dashboard
   // already knows how to handle each of those, so send them there.
-  if (!actor || actor.kind !== "end_user_session") redirect("/my-progress/dashboard");
+  if (!request || request.actor.kind !== "end_user_session") redirect("/my-progress/dashboard");
 
-  const { contactId } = actor;
-  const view = await loadGuidanceView(createServiceClient(), { contactId, actor });
+  const { contactId } = request.actor;
+  const view = await loadGuidanceView(createServiceClient(), { contactId, ...request });
   if (view.kind === "not_found") notFound();
   if (view.kind === "feature_off") redirect("/my-progress/dashboard");
 

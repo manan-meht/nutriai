@@ -7,8 +7,8 @@ import type { GuidanceMode } from "@/lib/guidance/activation";
 // but the mode, so it is safe on any page that may show the contact at all.
 //
 // `personName` is set when the viewer is not the tracked person (a
-// caregiver looking at a family member), and changes the copy from an
-// invitation to an explanation of whose decision it is.
+// caregiver or coach looking at someone they track), and words the card for
+// setting it up on their behalf.
 
 interface GuidanceEntryCardProps {
   href: string;
@@ -23,12 +23,12 @@ export function GuidanceEntryCard({ href, mode, personName, dm }: GuidanceEntryC
   const title = on ? "Nutrition Guidance is on" : "Nutrition Guidance";
   const body = personName
     ? on
-      ? `${personName} turned on daily targets.`
-      : `Daily targets that ${personName} can choose to turn on.`
+      ? `See ${personName}'s targets for today and what they've eaten so far.`
+      : `Set up daily calorie and protein targets for ${personName} from a few questions.`
     : on
       ? "See today's targets and what you've eaten so far."
       : "Get daily calorie and protein targets from a few questions.";
-  const cta = personName ? "Details" : on ? "View" : "Set up";
+  const cta = on ? "View" : "Set up";
 
   return (
     <Link

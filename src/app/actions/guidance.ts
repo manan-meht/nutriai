@@ -35,9 +35,9 @@ export async function proposeGuidanceAction(
   contactId: string,
   answers: unknown
 ): Promise<ProposalResult> {
-  const actor = await resolveGuidanceActor(surface);
-  if (!actor || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return proposeActivation(createServiceClient(), { contactId, actor, answers: parseSetupAnswers(answers) });
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  return proposeActivation(createServiceClient(), { contactId, ...request, answers: parseSetupAnswers(answers) });
 }
 
 /** Switches Guidance on. Takes the answers again, never the proposal: the
@@ -48,13 +48,13 @@ export async function confirmGuidanceAction(
   contactId: string,
   answers: unknown
 ): Promise<ConfirmResult> {
-  const actor = await resolveGuidanceActor(surface);
-  if (!actor || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return confirmActivation(createServiceClient(), { contactId, actor, answers: parseSetupAnswers(answers) });
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  return confirmActivation(createServiceClient(), { contactId, ...request, answers: parseSetupAnswers(answers) });
 }
 
 export async function returnToTrackingAction(surface: GuidanceSurface, contactId: string): Promise<DeactivateResult> {
-  const actor = await resolveGuidanceActor(surface);
-  if (!actor || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return returnToTracking(createServiceClient(), { contactId, actor });
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  return returnToTracking(createServiceClient(), { contactId, ...request });
 }

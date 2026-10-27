@@ -3,7 +3,7 @@
 import type { NutritionGoal } from "@nutriai/health-scoring";
 
 import { ACTIVITY_LEVEL_OPTIONS, NUTRITION_GOAL_OPTIONS } from "@/lib/food-balance/goal-options";
-import type { SetupPrefill } from "@/lib/guidance/view";
+import type { GuidancePerson, SetupPrefill } from "@/lib/guidance/view";
 
 // The questions behind a target. Measurements and goals start from what
 // the profile already holds, shown for the person to confirm. The three
@@ -11,6 +11,9 @@ import type { SetupPrefill } from "@/lib/guidance/view";
 // a "No" the person merely failed to notice is not an answer, and the
 // browser's own `required` stops the form going anywhere until each is
 // chosen. The server checks again regardless (screening fails closed).
+//
+// The same form serves the tracked person and the caregiver or coach
+// setting it up for them, so every question is worded for whichever it is.
 
 type YesNo = "" | "yes" | "no";
 
@@ -29,6 +32,36 @@ export interface SetupFormState {
   allergies: string;
   avoidedFoods: string;
   cuisines: string;
+}
+
+/** The form's wording for whoever the targets are for. */
+export function personWords(person: GuidancePerson) {
+  if (person.isSelf) {
+    return {
+      about: "About you",
+      aboutHint: "Check these are current. Your targets are calculated from them.",
+      active: "How active are you?",
+      healthHint:
+        "These decide whether Tistra should suggest targets at all. Your answers stay private: nobody else on your account can see them.",
+      pregnant: "Are you pregnant or breastfeeding?",
+      eatingDisorder: "Have you ever had an eating disorder, or been treated for disordered eating?",
+      conditions: "Any medical conditions or medications that affect what you eat?",
+      avoided: "Foods you avoid",
+      cuisines: "Cuisines you enjoy",
+    };
+  }
+  const name = person.name;
+  return {
+    about: `About ${name}`,
+    aboutHint: `Check these are current for ${name}. The targets are calculated from them.`,
+    active: `How active is ${name}?`,
+    healthHint: `These decide whether Tistra should suggest targets at all. Answer for ${name} as best you can, and ask them if you're not sure.`,
+    pregnant: `Is ${name} pregnant or breastfeeding?`,
+    eatingDisorder: `Has ${name} ever had an eating disorder, or been treated for disordered eating?`,
+    conditions: `Any medical conditions or medications that affect what ${name} eats?`,
+    avoided: `Foods ${name} avoids`,
+    cuisines: `Cuisines ${name} enjoys`,
+  };
 }
 
 export function initialSetupForm(prefill: SetupPrefill): SetupFormState {
@@ -142,12 +175,15 @@ function YesNoQuestion({
 }
 
 export function GuidanceSetupForm({
+  person,
   value,
   onChange,
 }: {
+  person: GuidancePerson;
   value: SetupFormState;
   onChange: (value: SetupFormState) => void;
 }) {
+  const words = personWords(person);
   const set = <K extends keyof SetupFormState>(key: K, v: SetupFormState[K]) => onChange({ ...value, [key]: v });
 
   function toggleGoal(goal: NutritionGoal) {
@@ -156,7 +192,7 @@ export function GuidanceSetupForm({
 
   return (
     <div className="space-y-4">
-      <Section title="About you" description="Check these are current. Your targets are calculated from them.">
+      <Section title={words.about} description={words.aboutHint}>
         <div className="grid grid-cols-3 gap-3">
           <div>
             <label htmlFor="guidance-age" className={label}>Age</label>
@@ -197,7 +233,7 @@ export function GuidanceSetupForm({
         </fieldset>
 
         <div>
-          <label htmlFor="guidance-activity" className={label}>How active are you?</label>
+          <label htmlFor="guidance-activity" className={label}>{words.active}</label>
           <select id="guidance-activity" className={input} value={value.activityLevel} onChange={(e) => set("activityLevel", e.target.value)}>
             <option value="">Choose one</option>
             {ACTIVITY_LEVEL_OPTIONS.map((o) => (
@@ -223,16 +259,13 @@ export function GuidanceSetupForm({
         </fieldset>
       </Section>
 
-      <Section
-        title="A few health questions"
-        description="These decide whether Tistra should suggest targets at all. Your answers stay private: nobody else on your account can see them."
-      >
-        <YesNoQuestion name="guidance-pregnant" question="Are you pregnant or breastfeeding?"
+      <Section title="A few health questions" description={words.healthHint}>
+        <YesNoQuestion name="guidance-pregnant" question={words.pregnant}
           value={value.isPregnantOrBreastfeeding} onChange={(v) => set("isPregnantOrBreastfeeding", v)} />
-        <YesNoQuestion name="guidance-eating-disorder" question="Have you ever had an eating disorder, or been treated for disordered eating?"
+        <YesNoQuestion name="guidance-eating-disorder" question={words.eatingDisorder}
           value={value.hasEatingDisorderHistory} onChange={(v) => set("hasEatingDisorderHistory", v)} />
         <div>
-          <label htmlFor="guidance-conditions" className={label}>Any medical conditions or medications that affect what you eat?</label>
+          <label htmlFor="guidance-conditions" className={label}>{words.conditions}</label>
           <textarea id="guidance-conditions" className={input} rows={2} maxLength={1000} placeholder="Optional, in your own words"
             value={value.conditionsOrMedications} onChange={(e) => set("conditionsOrMedications", e.target.value)} />
         </div>
@@ -261,12 +294,12 @@ export function GuidanceSetupForm({
             value={value.allergies} onChange={(e) => set("allergies", e.target.value)} />
         </div>
         <div>
-          <label htmlFor="guidance-avoided" className={label}>Foods you avoid</label>
+          <label htmlFor="guidance-avoided" className={label}>{words.avoided}</label>
           <input id="guidance-avoided" className={input} placeholder="e.g. beef, mushrooms"
             value={value.avoidedFoods} onChange={(e) => set("avoidedFoods", e.target.value)} />
         </div>
         <div>
-          <label htmlFor="guidance-cuisines" className={label}>Cuisines you enjoy</label>
+          <label htmlFor="guidance-cuisines" className={label}>{words.cuisines}</label>
           <input id="guidance-cuisines" className={input} placeholder="e.g. South Indian, Thai"
             value={value.cuisines} onChange={(e) => set("cuisines", e.target.value)} />
           <p className={hint}>Separate items with commas.</p>

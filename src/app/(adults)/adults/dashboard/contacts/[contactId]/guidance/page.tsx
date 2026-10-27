@@ -6,17 +6,15 @@ import { resolveGuidanceActor } from "@/lib/guidance/request-actor";
 import { loadGuidanceView } from "@/lib/guidance/view";
 import { createServiceClient } from "@/lib/supabase/server";
 
-// Guidance for a contact on the account holder's dashboard. For their own
-// 'self' contact this is the setup flow and their targets; for a family
-// member it is the refusal, plus Return to Tracking if that person turned
-// Guidance on — see lib/guidance/view.ts for which is which.
+// Guidance for a contact on the family account holder's dashboard: their
+// own 'self' contact, or a family member they track and set it up for.
 export default async function ContactGuidancePage({ params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
-  const actor = await resolveGuidanceActor("account");
-  if (!actor) redirect("/adults/login");
+  const request = await resolveGuidanceActor("account");
+  if (!request) redirect("/adults/login");
 
   const contactHref = `/adults/dashboard/contacts/${contactId}`;
-  const view = await loadGuidanceView(createServiceClient(), { contactId, actor });
+  const view = await loadGuidanceView(createServiceClient(), { contactId, ...request });
   if (view.kind === "not_found") notFound();
   if (view.kind === "feature_off") redirect(contactHref);
 

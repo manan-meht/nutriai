@@ -9,6 +9,7 @@ import {
   type AuthorizationResult,
   type GuidanceActor,
   type GuidanceContactFacts,
+  type GuidanceContactType,
 } from "./authorization";
 import { localDate } from "./daily-totals";
 import { NUTRITION_POLICY_VERSION, proposeTargets, type PolicyResult, type ProposedTargets } from "./policy";
@@ -33,6 +34,13 @@ import { loadReleaseState, type ReleaseBlocker, type ReleaseState } from "./rele
 //
 // Every entry point re-checks permission and the release gate. None of
 // them trusts that a previous call did.
+//
+// A tracked person is an adults_contacts row (the family product) or, since
+// 0069, a gym_clients row (coaching). `contactType` says which, and
+// defaults to "adults". The Guidance tables point at them through
+// adults_contact_id or gym_client_id. Every query below names its subject
+// through guidanceSubjectColumn, so one type's id can never be matched
+// against the other's column.
 
 export interface GuidanceSetupAnswers {
   // Measurements and goals — these produce the targets.
@@ -43,8 +51,9 @@ export interface GuidanceSetupAnswers {
   activityLevel: ActivityLevel | null;
   goals: NutritionGoal[];
 
-  // Suitability screening. Stored apart from everything else; never
-  // returned to a caregiver — see authorization.canReadScreeningAnswers.
+  // Suitability screening. Stored apart from everything else; never read
+  // back by a caregiver or coach, even one who answered on the person's
+  // behalf — see authorization.canReadScreeningAnswers.
   isPregnantOrBreastfeeding: boolean | null;
   hasEatingDisorderHistory: boolean | null;
   conditionsOrMedications: string | null;
@@ -114,24 +123,53 @@ export const WRITE_FAILED_MESSAGE = "We couldn't save that just now. Please try 
  * else carrying a message. */
 type WriteError = { message: string } | null;
 
+/** The column a Guidance table uses to point at a tracked person of this
+ * type. */
+export function guidanceSubjectColumn(contactType: GuidanceContactType): "adults_contact_id" | "gym_client_id" {
+  return contactType === "gym" ? "gym_client_id" : "adults_contact_id";
+}
+
+export type ContactFacts = GuidanceContactFacts & { timezone: string; fullName: string | null };
+
 /** Exported so the Guidance screen (view.ts) decides what to show from the
  * same facts these entry points authorize against, rather than a second
- * reading of relationship_type that could drift from this one. */
+ * reading of ownership that could drift from this one. */
 export async function loadContactFacts(
   db: SupabaseClient,
-  contactId: string
-): Promise<(GuidanceContactFacts & { timezone: string }) | null> {
+  contactId: string,
+  contactType: GuidanceContactType = "adults"
+): Promise<ContactFacts | null> {
+  if (contactType === "gym") {
+    const { data } = await db
+      .from("gym_clients")
+      .select("id, trainer_id, timezone, full_name")
+      .eq("id", contactId)
+      .maybeSingle();
+    if (!data) return null;
+    return {
+      contactId: data.id,
+      contactType: "gym",
+      caregiverId: data.trainer_id ?? null,
+      // gym_clients.relationship_type only ever holds 'coach_client'.
+      relationshipType: "coach_client",
+      timezone: data.timezone ?? "Asia/Kolkata",
+      fullName: data.full_name ?? null,
+    };
+  }
+
   const { data } = await db
     .from("adults_contacts")
-    .select("id, caregiver_id, relationship_type, timezone")
+    .select("id, caregiver_id, relationship_type, timezone, full_name")
     .eq("id", contactId)
     .maybeSingle();
   if (!data) return null;
   return {
     contactId: data.id,
+    contactType: "adults",
     caregiverId: data.caregiver_id ?? null,
     relationshipType: data.relationship_type === "self" ? "self" : "family_caregiver",
     timezone: data.timezone ?? "Asia/Kolkata",
+    fullName: data.full_name ?? null,
   };
 }
 
@@ -158,9 +196,10 @@ function writeFailed(step: string, error: NonNullable<WriteError>): ActivationFa
  * stops the flow rather than going unnoticed. */
 async function recordScreening(
   db: SupabaseClient,
-  contactId: string,
+  facts: GuidanceContactFacts,
   answers: GuidanceSetupAnswers
 ): Promise<WriteError> {
+  const column = guidanceSubjectColumn(facts.contactType);
   const screening = screenForGuidance({
     ageYears: answers.ageYears,
     heightCm: answers.heightCm,
@@ -173,7 +212,7 @@ async function recordScreening(
 
   const { error } = await db.from("nutrition_guidance_screening").upsert(
     {
-      adults_contact_id: contactId,
+      [column]: facts.contactId,
       answers: {
         ageYears: answers.ageYears,
         heightCm: answers.heightCm,
@@ -188,7 +227,7 @@ async function recordScreening(
       screened_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
-    { onConflict: "adults_contact_id" }
+    { onConflict: column }
   );
 
   return error;
@@ -214,14 +253,15 @@ type TargetRow = Record<string, unknown>;
  */
 async function writeCurrentTarget(
   db: SupabaseClient,
-  contactId: string,
+  facts: GuidanceContactFacts,
   effectiveFrom: string,
   row: TargetRow
 ): Promise<WriteError> {
+  const column = guidanceSubjectColumn(facts.contactType);
   const { data: current, error: readError } = await db
     .from("nutrition_targets")
     .select("id, effective_from")
-    .eq("adults_contact_id", contactId)
+    .eq(column, facts.contactId)
     .is("effective_to", null)
     .maybeSingle();
   if (readError) return readError;
@@ -241,7 +281,7 @@ async function writeCurrentTarget(
 
   const { error: insertError } = await db
     .from("nutrition_targets")
-    .insert({ adults_contact_id: contactId, effective_from: effectiveFrom, ...row });
+    .insert({ [column]: facts.contactId, effective_from: effectiveFrom, ...row });
   if (insertError && current) {
     // Reopen the row just closed, so a failed insert leaves the previous
     // target current rather than none at all. Best effort: the caller
@@ -267,11 +307,15 @@ function runPolicy(answers: GuidanceSetupAnswers): PolicyResult {
 
 /** Current mode for a contact. Safe for any viewer with access to the
  * person's data: it carries no screening answers and no targets. */
-export async function getGuidanceState(db: SupabaseClient, contactId: string): Promise<GuidanceState> {
+export async function getGuidanceState(
+  db: SupabaseClient,
+  contactId: string,
+  contactType: GuidanceContactType = "adults"
+): Promise<GuidanceState> {
   const { data } = await db
     .from("nutrition_guidance")
     .select("mode, activated_at, activated_via, activated_policy_version, deactivated_at")
-    .eq("adults_contact_id", contactId)
+    .eq(guidanceSubjectColumn(contactType), contactId)
     .maybeSingle();
 
   if (!data) {
@@ -304,10 +348,12 @@ export async function getGuidanceState(db: SupabaseClient, contactId: string): P
  */
 export async function buildSetupPrefill(
   db: SupabaseClient,
-  contactId: string
+  contactId: string,
+  contactType: GuidanceContactType = "adults"
 ): Promise<Partial<GuidanceSetupAnswers> | null> {
+  // Both tables carry the same profile columns (0027, 0035, 0041).
   const { data } = await db
-    .from("adults_contacts")
+    .from(contactType === "gym" ? "gym_clients" : "adults_contacts")
     .select(
       "age, date_of_birth, height_cm, weight_kg, metabolic_equation_sex, activity_level, derived_activity_level, primary_nutrition_goal, nutrition_goals, timezone"
     )
@@ -345,9 +391,9 @@ export async function buildSetupPrefill(
  */
 export async function proposeActivation(
   db: SupabaseClient,
-  params: { contactId: string; actor: GuidanceActor; answers: GuidanceSetupAnswers }
+  params: { contactId: string; contactType?: GuidanceContactType; actor: GuidanceActor; answers: GuidanceSetupAnswers }
 ): Promise<ProposalResult> {
-  const facts = await loadContactFacts(db, params.contactId);
+  const facts = await loadContactFacts(db, params.contactId, params.contactType);
   if (!facts) return { ok: false, kind: "not_found" };
 
   const auth = authorizeGuidanceActivation(params.actor, facts);
@@ -356,7 +402,7 @@ export async function proposeActivation(
   const release = await loadReleaseState(db);
   if (!release.canActivate) return unavailable(release);
 
-  const screeningError = await recordScreening(db, params.contactId, params.answers);
+  const screeningError = await recordScreening(db, facts, params.answers);
   if (screeningError) return writeFailed("recording screening", screeningError);
 
   const policy = runPolicy(params.answers);
@@ -379,9 +425,15 @@ export async function proposeActivation(
  */
 export async function confirmActivation(
   db: SupabaseClient,
-  params: { contactId: string; actor: GuidanceActor; answers: GuidanceSetupAnswers; now?: Date }
+  params: {
+    contactId: string;
+    contactType?: GuidanceContactType;
+    actor: GuidanceActor;
+    answers: GuidanceSetupAnswers;
+    now?: Date;
+  }
 ): Promise<ConfirmResult> {
-  const facts = await loadContactFacts(db, params.contactId);
+  const facts = await loadContactFacts(db, params.contactId, params.contactType);
   if (!facts) return { ok: false, kind: "not_found" };
 
   const auth = authorizeGuidanceActivation(params.actor, facts);
@@ -390,7 +442,7 @@ export async function confirmActivation(
   const release = await loadReleaseState(db);
   if (!release.canActivate) return unavailable(release);
 
-  const screeningError = await recordScreening(db, params.contactId, params.answers);
+  const screeningError = await recordScreening(db, facts, params.answers);
   if (screeningError) return writeFailed("recording screening", screeningError);
 
   const policy = runPolicy(params.answers);
@@ -410,7 +462,7 @@ export async function confirmActivation(
   // order could leave mode 'guidance' over the previous target, showing
   // numbers they did not just approve. A retry is safe either way:
   // writeCurrentTarget replaces a target that starts today.
-  const targetError = await writeCurrentTarget(db, params.contactId, effectiveFrom, {
+  const targetError = await writeCurrentTarget(db, facts, effectiveFrom, {
     policy_version: policy.policyVersion,
     calories_kcal: policy.targets.caloriesKcal,
     protein_g: policy.targets.proteinG,
@@ -424,9 +476,10 @@ export async function confirmActivation(
   });
   if (targetError) return writeFailed("writing the target", targetError);
 
+  const subject = guidanceSubjectColumn(facts.contactType);
   const { error: modeError } = await db.from("nutrition_guidance").upsert(
     {
-      adults_contact_id: params.contactId,
+      [subject]: facts.contactId,
       mode: "guidance",
       activated_at: nowIso,
       deactivated_at: null,
@@ -441,7 +494,7 @@ export async function confirmActivation(
       avoided_foods: params.answers.avoidedFoods,
       updated_at: nowIso,
     },
-    { onConflict: "adults_contact_id" }
+    { onConflict: subject }
   );
   if (modeError) return writeFailed("switching the mode on", modeError);
 
@@ -460,9 +513,9 @@ export async function confirmActivation(
  */
 export async function returnToTracking(
   db: SupabaseClient,
-  params: { contactId: string; actor: GuidanceActor; now?: Date }
+  params: { contactId: string; contactType?: GuidanceContactType; actor: GuidanceActor; now?: Date }
 ): Promise<DeactivateResult> {
-  const facts = await loadContactFacts(db, params.contactId);
+  const facts = await loadContactFacts(db, params.contactId, params.contactType);
   if (!facts) return { ok: false, kind: "not_found" };
 
   const auth = authorizeGuidanceDeactivation(params.actor, facts);
@@ -472,7 +525,7 @@ export async function returnToTracking(
   const { error } = await db
     .from("nutrition_guidance")
     .update({ mode: "tracking", deactivated_at: nowIso, updated_at: nowIso })
-    .eq("adults_contact_id", params.contactId);
+    .eq(guidanceSubjectColumn(facts.contactType), facts.contactId);
   // Of the three, this is the failure that most needs saying: someone who
   // asked automated advice to stop must not be told it has when it has not.
   if (error) return writeFailed("returning to tracking", error);

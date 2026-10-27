@@ -5,13 +5,19 @@ import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
 import {
   buildSetupPrefill,
   getGuidanceState,
+  guidanceSubjectColumn,
   loadContactFacts,
   UNAVAILABLE_MESSAGE,
   type GuidanceMode,
   type GuidanceSetupAnswers,
   type GuidanceState,
 } from "./activation";
-import { authorizeGuidanceActivation, authorizeGuidanceDeactivation, type GuidanceActor } from "./authorization";
+import {
+  authorizeGuidanceActivation,
+  type ActivatedVia,
+  type GuidanceActor,
+  type GuidanceContactType,
+} from "./authorization";
 import { computeDailyTotals, localDate, targetForDate, type ConfirmedMealRow, type DailyTotals } from "./daily-totals";
 import { loadReleaseState, type ReleaseState } from "./release";
 
@@ -23,13 +29,12 @@ import { loadReleaseState, type ReleaseState } from "./release";
 // a screening answer on the server and testable without a browser. The
 // component only ever receives the branch it is allowed to see.
 //
-// Two rules from authorization.ts shape the branches:
-//   - An owning caregiver of someone else gets the refusal copy and, if
-//     Guidance is on, the Return to Tracking control — never targets,
-//     never a prefill, never screening answers.
-//   - The tracked person gets the setup flow or their targets. Screening
-//     answers are not prefilled even for them, even when a previous
-//     screening row exists: they are asked again, now.
+// Anyone authorization.ts lets turn Guidance on gets the same flow: the
+// tracked person, or the family caregiver or coach who tracks them. What
+// differs is whose targets they are, which `person` carries so the screen
+// can ask "Is Asha pregnant?" rather than "Are you?". Screening answers
+// are never prefilled, for anyone, even when a previous screening row
+// exists: they are asked again, now.
 
 /** What the setup form may start from. Spelled out rather than passed
  * through, so a screening answer cannot reach the browser even if
@@ -57,16 +62,35 @@ export interface TodayProgress {
   target: { effectiveFrom: string; policyVersion: string; explanation: string };
 }
 
+/** Whose targets these are, as seen by the viewer: their own, or someone
+ * they track and are acting for. */
+export type GuidancePerson = { isSelf: true } | { isSelf: false; name: string };
+
 export type GuidanceView =
   | { kind: "not_found" }
   /** The engineering flag is off here. The route should not exist. */
   | { kind: "feature_off" }
-  /** The owning caregiver of someone else. */
-  | { kind: "caregiver"; message: string; mode: GuidanceMode; canReturnToTracking: boolean }
   /** Tracking, and activation is not offered in this environment. */
   | { kind: "unavailable"; message: string }
-  | { kind: "setup"; prefill: SetupPrefill; isPreviewOnly: boolean; policyVersion: string; hasEverActivated: boolean }
-  | { kind: "active"; isPreviewOnly: boolean; policyVersion: string; activatedAt: string | null; today: TodayProgress | null }
+  | {
+      kind: "setup";
+      person: GuidancePerson;
+      prefill: SetupPrefill;
+      isPreviewOnly: boolean;
+      policyVersion: string;
+      hasEverActivated: boolean;
+    }
+  | {
+      kind: "active";
+      person: GuidancePerson;
+      /** Who turned it on, so the tracked person is told when it was set up
+       * for them by a caregiver or coach. */
+      activatedVia: ActivatedVia | null;
+      isPreviewOnly: boolean;
+      policyVersion: string;
+      activatedAt: string | null;
+      today: TodayProgress | null;
+    }
   /** Guidance is on, but the release gate no longer allows it here — say
    * a policy retired, or a row written from a preview environment against
    * a database that production also reads. Targets stay hidden; stopping
@@ -74,7 +98,7 @@ export type GuidanceView =
   | { kind: "paused"; message: string };
 
 const PAUSED_MESSAGE =
-  "Nutrition Guidance isn't available right now, so your targets are hidden. Your meals are still logged as usual.";
+  "Nutrition Guidance isn't available right now, so the targets are hidden. Meals are still logged as usual.";
 
 /** Whether to show the way in at all. Hidden when the flag is off, and when
  * activation is not offered — unless Guidance is already on, because the
@@ -88,12 +112,16 @@ export function isGuidanceEntryVisible(release: ReleaseState, state: GuidanceSta
  * contact. Carries nothing but the mode. */
 export async function loadGuidanceEntry(
   db: SupabaseClient,
-  contactId: string
+  contactId: string,
+  contactType: GuidanceContactType = "adults"
 ): Promise<{ visible: boolean; mode: GuidanceMode }> {
   // Every contact page and /my-progress load calls this, and the flag is
   // off in production: answer without two queries whose result is known.
   if (!GUIDANCE_ENABLED) return { visible: false, mode: "tracking" };
-  const [release, state] = await Promise.all([loadReleaseState(db), getGuidanceState(db, contactId)]);
+  const [release, state] = await Promise.all([
+    loadReleaseState(db),
+    getGuidanceState(db, contactId, contactType),
+  ]);
   return { visible: isGuidanceEntryVisible(release, state), mode: state.mode };
 }
 
@@ -127,8 +155,12 @@ function toConfirmedMeal(m: Record<string, unknown>): ConfirmedMealRow {
  * target covers today. */
 export async function loadTodayProgress(
   db: SupabaseClient,
-  params: { contactId: string; timezone: string; now?: Date }
+  params: { contactId: string; contactType?: GuidanceContactType; timezone: string; now?: Date }
 ): Promise<TodayProgress | null> {
+  const contactType = params.contactType ?? "adults";
+  // meal_logs predates Guidance and names a coach client client_id, not
+  // gym_client_id as the Guidance tables do.
+  const mealColumn = contactType === "gym" ? "client_id" : "adults_contact_id";
   const now = params.now ?? new Date();
   const date = localDate(now.toISOString(), params.timezone);
   // 48 hours back covers "today" in any timezone; computeDailyTotals then
@@ -139,8 +171,8 @@ export async function loadTodayProgress(
     db
       .from("nutrition_targets")
       .select("effective_from, effective_to, policy_version, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, explanation")
-      .eq("adults_contact_id", params.contactId),
-    db.from("meal_logs").select(MEAL_COLUMNS).eq("adults_contact_id", params.contactId).gte("logged_at", since),
+      .eq(guidanceSubjectColumn(contactType), params.contactId),
+    db.from("meal_logs").select(MEAL_COLUMNS).eq(mealColumn, params.contactId).gte("logged_at", since),
   ]);
 
   const targets = ((targetsRes.data ?? []) as Record<string, unknown>[]).map((t) => ({
@@ -166,9 +198,13 @@ export async function loadTodayProgress(
   };
 }
 
-async function loadPrefill(db: SupabaseClient, contactId: string): Promise<SetupPrefill> {
+async function loadPrefill(
+  db: SupabaseClient,
+  contactId: string,
+  contactType: GuidanceContactType
+): Promise<SetupPrefill> {
   const [measured, saved] = await Promise.all([
-    buildSetupPrefill(db, contactId),
+    buildSetupPrefill(db, contactId, contactType),
     // Preferences from an earlier activation. Returning to Tracking keeps
     // them so that switching back on does not re-ask everything — and
     // confirmActivation overwrites them with whatever the form sends, so a
@@ -176,7 +212,7 @@ async function loadPrefill(db: SupabaseClient, contactId: string): Promise<Setup
     db
       .from("nutrition_guidance")
       .select("meals_per_day, cooking_access, cuisines, allergies, avoided_foods")
-      .eq("adults_contact_id", contactId)
+      .eq(guidanceSubjectColumn(contactType), contactId)
       .maybeSingle(),
   ]);
 
@@ -200,38 +236,39 @@ async function loadPrefill(db: SupabaseClient, contactId: string): Promise<Setup
 
 export async function loadGuidanceView(
   db: SupabaseClient,
-  params: { contactId: string; actor: GuidanceActor; now?: Date }
+  params: { contactId: string; contactType?: GuidanceContactType; actor: GuidanceActor; now?: Date }
 ): Promise<GuidanceView> {
-  const facts = await loadContactFacts(db, params.contactId);
+  const contactType = params.contactType ?? "adults";
+  const facts = await loadContactFacts(db, params.contactId, contactType);
   if (!facts) return { kind: "not_found" };
 
   // The same question confirmActivation asks. A stranger, or a session for
   // someone else, learns nothing — not even that the contact exists.
   const activation = authorizeGuidanceActivation(params.actor, facts);
-  if (!activation.allowed && activation.reason !== "not_the_tracked_person") return { kind: "not_found" };
+  if (!activation.allowed) return { kind: "not_found" };
 
   const release = await loadReleaseState(db);
   if (release.blockers.includes("feature_disabled")) return { kind: "feature_off" };
 
-  const state = await getGuidanceState(db, params.contactId);
-
-  if (!activation.allowed) {
-    return {
-      kind: "caregiver",
-      message: activation.message,
-      mode: state.mode,
-      canReturnToTracking: state.mode === "guidance" && authorizeGuidanceDeactivation(params.actor, facts).allowed,
-    };
-  }
+  const state = await getGuidanceState(db, params.contactId, contactType);
+  const onBehalf = activation.activatedVia === "caregiver" || activation.activatedVia === "coach";
+  const person: GuidancePerson = onBehalf ? { isSelf: false, name: facts.fullName ?? "this person" } : { isSelf: true };
 
   if (state.mode === "guidance") {
     if (!release.canActivate) return { kind: "paused", message: PAUSED_MESSAGE };
     return {
       kind: "active",
+      person,
+      activatedVia: state.activatedVia,
       isPreviewOnly: release.isPreviewOnly,
       policyVersion: release.policyVersion,
       activatedAt: state.activatedAt,
-      today: await loadTodayProgress(db, { contactId: params.contactId, timezone: facts.timezone, now: params.now }),
+      today: await loadTodayProgress(db, {
+        contactId: params.contactId,
+        contactType,
+        timezone: facts.timezone,
+        now: params.now,
+      }),
     };
   }
 
@@ -239,7 +276,8 @@ export async function loadGuidanceView(
 
   return {
     kind: "setup",
-    prefill: await loadPrefill(db, params.contactId),
+    person,
+    prefill: await loadPrefill(db, params.contactId, contactType),
     isPreviewOnly: release.isPreviewOnly,
     policyVersion: release.policyVersion,
     hasEverActivated: state.hasEverActivated,
