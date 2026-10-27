@@ -77,21 +77,52 @@ describe("Tistra Health surfaces do not advertise coaching", () => {
   });
 });
 
-// The mobile app is a Tistra Health surface too, and its sign-in screen had
-// its own coach path — a /login?product=coach deep link presented "Sign in
-// to your coaching account" and scoped the email to the gym product, long
-// after the product picker stopped offering it. Read from disk rather than
-// imported: jest's @/ alias points at the web app's src, and these are
-// React Native screens.
+// The mobile app is a Tistra Health surface too. Its sign-in screen had a
+// coach path (a /login?product=coach deep link that scoped the email to the
+// gym product), removed in Aug 2026 when the app had no coach view to sign
+// into. It came back in Oct 2026 with the coach view, as SIGN-IN ONLY: a
+// "Coach? Sign in here" link card on the first screen, outside the
+// self/family picker. Sign-up still offers no coach path. Read from disk
+// rather than imported: jest's @/ alias points at the web app's src, and
+// these are React Native screens.
 const MOBILE = path.join(__dirname, "..", "..", "apps", "mobile", "src");
 const readMobile = (p: string) => fs.readFileSync(path.join(MOBILE, p), "utf-8");
 
-describe("mobile app auth screens offer no coach path", () => {
-  it.each(["app/login.tsx", "app/signup.tsx"])("%s has no coach product", (file) => {
-    const body = code(readMobile(file));
+describe("mobile app auth screens: coach sign-in only, no coach sign-up", () => {
+  it("sign-up has no coach product", () => {
+    const body = code(readMobile("app/signup.tsx"));
     expect(body).not.toMatch(/coach/i);
-    // The gym scope was how a coach sign-in reached a different account.
     expect(body).not.toMatch(/'gym'/);
+  });
+
+  it("sign-in offers coach, scoped to the same account coach.tistra.club uses", () => {
+    const body = code(readMobile("app/login.tsx"));
+    expect(body).toMatch(/coach: \{ scopeAs: 'gym', subtitle: 'Sign in to your coaching account' \}/);
+  });
+
+  it("a coach sign-in records no self/family pick, so it can't create a workspace", () => {
+    const body = code(readMobile("app/login.tsx"));
+    const coachBranch = body.slice(body.indexOf("if (product === 'coach') {"), body.indexOf("} else {", body.indexOf("if (product === 'coach') {")));
+    expect(coachBranch).toMatch(/clearPendingProductSelection\(\)/);
+    expect(coachBranch).not.toMatch(/setPendingProductSelection/);
+    // Every sign-in method goes through that one function.
+    expect((body.match(/await rememberEntry\(product as Product\)/g) ?? []).length).toBe(3);
+  });
+
+  it("the coach sign-in offers no sign-up link", () => {
+    const body = code(readMobile("app/login.tsx"));
+    const coachFooter = body.slice(body.indexOf("{product === 'coach' ? ("), body.indexOf(") : (", body.indexOf("{product === 'coach' ? (")));
+    expect(coachFooter).not.toMatch(/\/signup/);
+  });
+
+  it("the first screen links to coach sign-in outside the picker, with the old coach artwork", () => {
+    const screen = code(readMobile("app/select-product.tsx"));
+    expect(screen).toMatch(/<CoachSignInCard/);
+    expect(screen).toMatch(/params: \{ product: 'coach' \}/);
+    expect(screen).toMatch(/clearPendingProductSelection\(\)/);
+    const card = code(readMobile("components/coach-sign-in-card.tsx"));
+    expect(card).toMatch(/onboarding\/coach\.png/);
+    expect(card).toMatch(/Coach\? Sign in here/);
   });
 
   it.each(["app/login.tsx", "app/signup.tsx"])("%s still offers both adult products", (file) => {
@@ -108,8 +139,8 @@ describe("mobile app auth screens offer no coach path", () => {
   });
 
   it("an unknown product param falls through to the picker", () => {
-    // This is what makes a stale ?product=coach deep link safe rather than
-    // a crash or a silent wrong-account sign-in.
+    // This is what makes a stale or made-up ?product= deep link safe rather
+    // than a crash or a silent wrong-account sign-in.
     expect(readMobile("app/login.tsx")).toMatch(/!\(product in PRODUCT_CONFIG\)/);
     expect(readMobile("app/login.tsx")).toMatch(/Redirect href="\/select-product"/);
   });

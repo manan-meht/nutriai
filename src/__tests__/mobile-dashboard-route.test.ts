@@ -63,8 +63,13 @@ describe("mobile dashboard routing", () => {
       expect(chooseDashboard(base)).toEqual({ kind: "picker" });
     });
 
-    it("ignores a remembered coach view", () => {
-      expect(chooseDashboard({ ...base, lastChoice: "gym" })).toEqual({ kind: "picker" });
+    it("tells a coach sign-in with no account so, instead of the self/family picker", () => {
+      // lastChoice "gym" with no workspace comes from "Coach? Sign in here".
+      expect(chooseDashboard({ ...base, lastChoice: "gym" })).toEqual({ kind: "no-coach-account" });
+    });
+
+    it("still honors a fresh self/family pick over that", () => {
+      expect(chooseDashboard({ ...base, lastChoice: "gym", pendingProduct: "family" })).toEqual({ kind: "new-adults", self: false });
     });
   });
 });
