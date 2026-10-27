@@ -47,79 +47,15 @@ import { evaluateReleaseState } from "@/lib/guidance/release";
 import { isGuidanceEntryVisible, loadGuidanceEntry, loadGuidanceView } from "@/lib/guidance/view";
 import type { GuidanceState } from "@/lib/guidance/activation";
 
+import { makeGuidanceDb, type GuidanceRows } from "./helpers/guidance-db";
+
 const ASHA = "profile-asha";
 const STRANGER = "profile-stranger";
 const ASHA_SELF = "contact-asha-self";
 const MOTHER = "contact-mother";
 
-interface Rows {
-  adults_contacts: Record<string, unknown>[];
-  nutrition_policy_versions: Record<string, unknown>[];
-  nutrition_guidance: Record<string, unknown>[];
-  nutrition_guidance_screening: Record<string, unknown>[];
-  nutrition_targets: Record<string, unknown>[];
-  meal_logs: Record<string, unknown>[];
-}
-
-/** The same in-memory stand-in as guidance-activation.test.ts, plus the
- * `gte` the totals query needs. */
-function makeDb(rows: Rows) {
-  function query(table: keyof Rows) {
-    let working = rows[table];
-    const chain = {
-      select: () => chain,
-      eq: (col: string, val: unknown) => {
-        working = working.filter((r) => r[col] === val);
-        return chain;
-      },
-      is: (col: string, val: unknown) => {
-        working = working.filter((r) => (r[col] ?? null) === val);
-        return chain;
-      },
-      gte: (col: string, val: string) => {
-        working = working.filter((r) => String(r[col]) >= val);
-        return chain;
-      },
-      maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),
-      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data: working, error: null }),
-    };
-    return chain;
-  }
-
-  return {
-    from: (table: keyof Rows) => ({
-      select: () => query(table),
-      insert: (row: Record<string, unknown>) => {
-        rows[table].push({ id: `${table}-${rows[table].length + 1}`, ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      upsert: (row: Record<string, unknown>) => {
-        const idx = rows[table].findIndex((r) => r.adults_contact_id === row.adults_contact_id);
-        if (idx >= 0) rows[table][idx] = { ...rows[table][idx], ...row };
-        else rows[table].push({ ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      update: (patch: Record<string, unknown>) => {
-        let working = rows[table];
-        const chain = {
-          eq: (col: string, val: unknown) => {
-            working = working.filter((r) => r[col] === val);
-            return chain;
-          },
-          is: (col: string, val: unknown) => {
-            working = working.filter((r) => (r[col] ?? null) === val);
-            return chain;
-          },
-          then: (resolve: (v: { data: unknown; error: null }) => void) => {
-            working.forEach((r) => Object.assign(r, patch));
-            return resolve({ data: working, error: null });
-          },
-        };
-        return chain;
-      },
-    }),
-  } as unknown as SupabaseClient;
-}
+type Rows = GuidanceRows;
+const makeDb = (rows: Rows) => makeGuidanceDb(rows);
 
 function freshRows(over: Partial<Rows> = {}): Rows {
   return {

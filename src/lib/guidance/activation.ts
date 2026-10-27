@@ -81,7 +81,10 @@ export type ActivationFailure =
   /** Screening or policy declined. `policy` carries the reasons and the
    * copy to show, including whether the remedy is a question or a
    * referral. */
-  | { ok: false; kind: "declined"; policy: Exclude<PolicyResult, { outcome: "targets" }> };
+  | { ok: false; kind: "declined"; policy: Exclude<PolicyResult, { outcome: "targets" }> }
+  /** A database write failed. Reported, never swallowed: `ok` after a
+   * failed write tells someone their targets changed when they did not. */
+  | { ok: false; kind: "write_failed"; message: string };
 
 export type ProposalResult =
   | {
@@ -104,6 +107,12 @@ export type ConfirmResult =
 export type DeactivateResult = { ok: true; mode: "tracking" } | ActivationFailure;
 
 export const UNAVAILABLE_MESSAGE = "Nutrition Guidance isn't available yet. You can keep logging meals as usual.";
+
+export const WRITE_FAILED_MESSAGE = "We couldn't save that just now. Please try again in a moment.";
+
+/** The write errors these functions check. Postgrest's error, or anything
+ * else carrying a message. */
+type WriteError = { message: string } | null;
 
 /** Exported so the Guidance screen (view.ts) decides what to show from the
  * same facts these entry points authorize against, rather than a second
@@ -134,16 +143,24 @@ function unavailable(release: ReleaseState): ActivationFailure {
   return { ok: false, kind: "unavailable", blockers: release.blockers, message: UNAVAILABLE_MESSAGE };
 }
 
+function writeFailed(step: string, error: NonNullable<WriteError>): ActivationFailure {
+  // The step and the database's own message only. Never the answers: they
+  // include pregnancy and eating-disorder history.
+  console.error(`[guidance] ${step} failed:`, error.message);
+  return { ok: false, kind: "write_failed", message: WRITE_FAILED_MESSAGE };
+}
+
 /** Records what was answered and what was decided, every time it is
  * decided — including when the answer is "supported", and including when
  * the person then abandons the review step. The row is the audit trail for
  * a decision about somebody's body, so it is not conditional on them going
- * on to accept the result. */
+ * on to accept the result — and for the same reason, a failure to record it
+ * stops the flow rather than going unnoticed. */
 async function recordScreening(
   db: SupabaseClient,
   contactId: string,
   answers: GuidanceSetupAnswers
-): Promise<ReturnType<typeof screenForGuidance>> {
+): Promise<WriteError> {
   const screening = screenForGuidance({
     ageYears: answers.ageYears,
     heightCm: answers.heightCm,
@@ -154,7 +171,7 @@ async function recordScreening(
     conditionsOrMedications: answers.conditionsOrMedications,
   });
 
-  await db.from("nutrition_guidance_screening").upsert(
+  const { error } = await db.from("nutrition_guidance_screening").upsert(
     {
       adults_contact_id: contactId,
       answers: {
@@ -174,7 +191,64 @@ async function recordScreening(
     { onConflict: "adults_contact_id" }
   );
 
-  return screening;
+  return error;
+}
+
+/** Everything in a nutrition_targets row except who it belongs to and when
+ * it starts. */
+type TargetRow = Record<string, unknown>;
+
+/**
+ * Makes `row` the person's current target from `effectiveFrom` on.
+ *
+ * The usual move is to close the open row at effectiveFrom and insert the
+ * new one. The schema allows exactly one open row per person, so the insert
+ * cannot come first. The schema also requires effective_to > effective_from,
+ * so a row that itself starts on effectiveFrom cannot be closed there: that
+ * would give it an empty range, and the database refuses. That row is
+ * replaced in place instead. It happens when someone returns to Tracking and
+ * switches back on the same day, or retries a confirm whose mode write
+ * failed. A target superseded on its first day governed no day at all, so
+ * no historical view loses anything. A row dated after effectiveFrom (the
+ * timezone moved west) is treated the same way.
+ */
+async function writeCurrentTarget(
+  db: SupabaseClient,
+  contactId: string,
+  effectiveFrom: string,
+  row: TargetRow
+): Promise<WriteError> {
+  const { data: current, error: readError } = await db
+    .from("nutrition_targets")
+    .select("id, effective_from")
+    .eq("adults_contact_id", contactId)
+    .is("effective_to", null)
+    .maybeSingle();
+  if (readError) return readError;
+
+  if (current && current.effective_from >= effectiveFrom) {
+    const { error } = await db
+      .from("nutrition_targets")
+      .update({ ...row, effective_from: effectiveFrom })
+      .eq("id", current.id);
+    return error;
+  }
+
+  if (current) {
+    const { error } = await db.from("nutrition_targets").update({ effective_to: effectiveFrom }).eq("id", current.id);
+    if (error) return error;
+  }
+
+  const { error: insertError } = await db
+    .from("nutrition_targets")
+    .insert({ adults_contact_id: contactId, effective_from: effectiveFrom, ...row });
+  if (insertError && current) {
+    // Reopen the row just closed, so a failed insert leaves the previous
+    // target current rather than none at all. Best effort: the caller
+    // reports the failure either way.
+    await db.from("nutrition_targets").update({ effective_to: null }).eq("id", current.id);
+  }
+  return insertError;
 }
 
 function runPolicy(answers: GuidanceSetupAnswers): PolicyResult {
@@ -282,7 +356,8 @@ export async function proposeActivation(
   const release = await loadReleaseState(db);
   if (!release.canActivate) return unavailable(release);
 
-  await recordScreening(db, params.contactId, params.answers);
+  const screeningError = await recordScreening(db, params.contactId, params.answers);
+  if (screeningError) return writeFailed("recording screening", screeningError);
 
   const policy = runPolicy(params.answers);
   if (policy.outcome !== "targets") return { ok: false, kind: "declined", policy };
@@ -315,7 +390,8 @@ export async function confirmActivation(
   const release = await loadReleaseState(db);
   if (!release.canActivate) return unavailable(release);
 
-  await recordScreening(db, params.contactId, params.answers);
+  const screeningError = await recordScreening(db, params.contactId, params.answers);
+  if (screeningError) return writeFailed("recording screening", screeningError);
 
   const policy = runPolicy(params.answers);
   if (policy.outcome !== "targets") return { ok: false, kind: "declined", policy };
@@ -327,7 +403,28 @@ export async function confirmActivation(
   const effectiveFrom = localDate(now.toISOString(), timezone);
   const nowIso = now.toISOString();
 
-  await db.from("nutrition_guidance").upsert(
+  // Three writes, not a transaction, so their order decides what a failure
+  // part-way leaves behind. The target goes first. If the mode write then
+  // fails, the person has a current target and mode 'tracking', which is
+  // exactly the state Return to Tracking leaves, and harmless. The other
+  // order could leave mode 'guidance' over the previous target, showing
+  // numbers they did not just approve. A retry is safe either way:
+  // writeCurrentTarget replaces a target that starts today.
+  const targetError = await writeCurrentTarget(db, params.contactId, effectiveFrom, {
+    policy_version: policy.policyVersion,
+    calories_kcal: policy.targets.caloriesKcal,
+    protein_g: policy.targets.proteinG,
+    carbs_g: policy.targets.carbsG,
+    fat_g: policy.targets.fatG,
+    fiber_g: policy.targets.fiberG,
+    inputs: policy.inputs,
+    explanation: policy.explanation,
+    approved_at: nowIso,
+    approved_via: auth.activatedVia,
+  });
+  if (targetError) return writeFailed("writing the target", targetError);
+
+  const { error: modeError } = await db.from("nutrition_guidance").upsert(
     {
       adults_contact_id: params.contactId,
       mode: "guidance",
@@ -346,30 +443,7 @@ export async function confirmActivation(
     },
     { onConflict: "adults_contact_id" }
   );
-
-  // Close any open target before inserting the new one. The schema allows
-  // exactly one row per person with effective_to null, so skipping this
-  // does not produce two current targets — it produces a failed insert.
-  await db
-    .from("nutrition_targets")
-    .update({ effective_to: effectiveFrom })
-    .eq("adults_contact_id", params.contactId)
-    .is("effective_to", null);
-
-  await db.from("nutrition_targets").insert({
-    adults_contact_id: params.contactId,
-    policy_version: policy.policyVersion,
-    effective_from: effectiveFrom,
-    calories_kcal: policy.targets.caloriesKcal,
-    protein_g: policy.targets.proteinG,
-    carbs_g: policy.targets.carbsG,
-    fat_g: policy.targets.fatG,
-    fiber_g: policy.targets.fiberG,
-    inputs: policy.inputs,
-    explanation: policy.explanation,
-    approved_at: nowIso,
-    approved_via: auth.activatedVia,
-  });
+  if (modeError) return writeFailed("switching the mode on", modeError);
 
   return { ok: true, mode: "guidance", targets: policy.targets, effectiveFrom, activatedVia: auth.activatedVia };
 }
@@ -395,10 +469,13 @@ export async function returnToTracking(
   if (!auth.allowed) return forbidden(auth);
 
   const nowIso = (params.now ?? new Date()).toISOString();
-  await db
+  const { error } = await db
     .from("nutrition_guidance")
     .update({ mode: "tracking", deactivated_at: nowIso, updated_at: nowIso })
     .eq("adults_contact_id", params.contactId);
+  // Of the three, this is the failure that most needs saying: someone who
+  // asked automated advice to stop must not be told it has when it has not.
+  if (error) return writeFailed("returning to tracking", error);
 
   return { ok: true, mode: "tracking" };
 }

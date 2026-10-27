@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { makeGuidanceDb, type FailingWrites, type GuidanceRows } from "./helpers/guidance-db";
 
 // The flag is off by default in every environment, which is the whole
 // point of it — so the service tests below would otherwise all stop at
@@ -23,6 +23,7 @@ import {
   getGuidanceState,
   proposeActivation,
   returnToTracking,
+  WRITE_FAILED_MESSAGE,
   type GuidanceSetupAnswers,
 } from "@/lib/guidance/activation";
 
@@ -184,69 +185,8 @@ describe("the release gate", () => {
 
 // ─── The service, against an in-memory stand-in for the tables ───────────
 
-interface Rows {
-  adults_contacts: Record<string, unknown>[];
-  nutrition_policy_versions: Record<string, unknown>[];
-  nutrition_guidance: Record<string, unknown>[];
-  nutrition_guidance_screening: Record<string, unknown>[];
-  nutrition_targets: Record<string, unknown>[];
-}
-
-function makeDb(rows: Rows) {
-  function query(table: keyof Rows) {
-    let working = rows[table];
-    const chain = {
-      select: () => chain,
-      eq: (col: string, val: unknown) => {
-        working = working.filter((r) => r[col] === val);
-        return chain;
-      },
-      is: (col: string, val: unknown) => {
-        working = working.filter((r) => (r[col] ?? null) === val);
-        return chain;
-      },
-      maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),
-      then: (resolve: (v: { data: unknown; error: null }) => void) =>
-        resolve({ data: working, error: null }),
-    };
-    return chain;
-  }
-
-  return {
-    from: (table: keyof Rows) => ({
-      select: () => query(table),
-      insert: (row: Record<string, unknown>) => {
-        rows[table].push({ id: `${table}-${rows[table].length + 1}`, ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      upsert: (row: Record<string, unknown>) => {
-        const key = "adults_contact_id";
-        const idx = rows[table].findIndex((r) => r[key] === row[key]);
-        if (idx >= 0) rows[table][idx] = { ...rows[table][idx], ...row };
-        else rows[table].push({ ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      update: (patch: Record<string, unknown>) => {
-        let working = rows[table];
-        const chain = {
-          eq: (col: string, val: unknown) => {
-            working = working.filter((r) => r[col] === val);
-            return chain;
-          },
-          is: (col: string, val: unknown) => {
-            working = working.filter((r) => (r[col] ?? null) === val);
-            return chain;
-          },
-          then: (resolve: (v: { data: unknown; error: null }) => void) => {
-            working.forEach((r) => Object.assign(r, patch));
-            return resolve({ data: working, error: null });
-          },
-        };
-        return chain;
-      },
-    }),
-  } as unknown as SupabaseClient;
-}
+type Rows = GuidanceRows;
+const makeDb = (rows: Rows, failing?: FailingWrites) => makeGuidanceDb(rows, failing);
 
 const answers: GuidanceSetupAnswers = {
   ageYears: 38,
@@ -276,6 +216,7 @@ function freshRows(over: Partial<Rows> = {}): Rows {
     nutrition_guidance: [],
     nutrition_guidance_screening: [],
     nutrition_targets: [],
+    meal_logs: [],
     ...over,
   };
 }
@@ -487,5 +428,154 @@ describe("the setup flow asks only for what is missing", () => {
     expect(prefill).not.toHaveProperty("isPregnantOrBreastfeeding");
     expect(prefill).not.toHaveProperty("hasEatingDisorderHistory");
     expect(prefill).not.toHaveProperty("conditionsOrMedications");
+  });
+});
+
+describe("a write the database refuses is reported, not swallowed", () => {
+  // Every write here used to ignore its { error }, so confirmActivation
+  // could answer ok with nothing saved. The fake now enforces 0068's
+  // constraints and can fail any write on demand.
+  const day1 = new Date("2026-10-10T06:00:00Z");
+  const day2 = new Date("2026-11-01T06:00:00Z");
+  let logged: jest.SpyInstance;
+
+  beforeEach(() => {
+    logged = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => logged.mockRestore());
+
+  const writeFailed = { ok: false, kind: "write_failed", message: WRITE_FAILED_MESSAGE };
+
+  it("switches back on the same day it was switched off", async () => {
+    // The path anyone trying the feature takes first. Closing today's
+    // target at today would give it an empty range, which the schema
+    // refuses; the insert then hit the one-current-target index. Both
+    // failures were ignored and the confirm said ok over yesterday's numbers.
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    await returnToTracking(makeDb(rows), { contactId: MOTHER, actor: motherHerself, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day1,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.targets.caloriesKcal).not.toBe(2381);
+    // A target superseded on its first day governed no day, so it is
+    // replaced rather than kept as an empty range.
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({
+      effective_from: "2026-10-10",
+      calories_kcal: result.targets.caloriesKcal,
+    });
+    expect(rows.nutrition_targets[0].effective_to ?? null).toBeNull();
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+  });
+
+  it("leaves the mode alone when the target cannot be written", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    await returnToTracking(makeDb(rows), { contactId: MOTHER, actor: motherHerself, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows, ["nutrition_targets.insert"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day2,
+    });
+
+    expect(result).toEqual(writeFailed);
+    // Still in Tracking: the mode is written last, so it never switched on
+    // over numbers that were not saved.
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "tracking" });
+    // And the target closed on the way to the failed insert is open again.
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({ calories_kcal: 2381, effective_to: null });
+  });
+
+  it("does not insert a second current target when the old one cannot be closed", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows, ["nutrition_targets.update"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day2,
+    });
+
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({ calories_kcal: 2381 });
+  });
+
+  it("reports a failed mode write, and a retry completes it", async () => {
+    const rows = freshRows();
+    const failing = ["nutrition_guidance.upsert"];
+    const first = await confirmActivation(makeDb(rows, failing), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    expect(first).toEqual(writeFailed);
+    // The target landed and the mode did not: a current target in
+    // Tracking, the same harmless state Return to Tracking leaves.
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_targets).toHaveLength(1);
+
+    failing.length = 0;
+    const retry = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    expect(retry.ok).toBe(true);
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+    expect(rows.nutrition_targets).toHaveLength(1);
+  });
+
+  it("reports a preference the table rejects instead of answering ok", async () => {
+    // meals_per_day is checked between 1 and 8. The web form's parser
+    // clamps it, but not every caller goes through that parser.
+    const rows = freshRows();
+    const result = await confirmActivation(makeDb(rows), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, mealsPerDay: 12 },
+      now: day1,
+    });
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_guidance).toHaveLength(0);
+  });
+
+  it("will not show or set targets when the screening decision cannot be recorded", async () => {
+    // The screening row is the audit trail for a decision about her body.
+    // A target nobody can later account for is worse than a retry.
+    const rows = freshRows();
+    const db = makeDb(rows, ["nutrition_guidance_screening.upsert"]);
+    expect(await proposeActivation(db, { contactId: MOTHER, actor: motherHerself, answers })).toEqual(writeFailed);
+    expect(await confirmActivation(db, { contactId: MOTHER, actor: motherHerself, answers })).toEqual(writeFailed);
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_targets).toHaveLength(0);
+  });
+
+  it("does not say Guidance stopped when it did not", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    const result = await returnToTracking(makeDb(rows, ["nutrition_guidance.update"]), {
+      contactId: MOTHER,
+      actor: daughter,
+    });
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+  });
+
+  it("logs which step failed, and none of her answers", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows, ["nutrition_targets.insert"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, conditionsOrMedications: "metformin", isPregnantOrBreastfeeding: false },
+    });
+    expect(logged).toHaveBeenCalledTimes(1);
+    const line = JSON.stringify(logged.mock.calls[0]);
+    expect(line).toContain("writing the target");
+    expect(line).not.toMatch(/metformin|Pregnant|EatingDisorder/i);
   });
 });

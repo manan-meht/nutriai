@@ -41,7 +41,7 @@ const secondaryButton =
   "w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition";
 
 function failureMessage(result: ActivationFailure): string {
-  if (result.kind === "forbidden" || result.kind === "unavailable") return result.message;
+  if (result.kind === "forbidden" || result.kind === "unavailable" || result.kind === "write_failed") return result.message;
   if (result.kind === "declined") return result.policy.message;
   return GENERIC_ERROR;
 }
