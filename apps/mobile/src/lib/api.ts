@@ -269,6 +269,10 @@ export interface GymWorkspaceResponse {
     isReadOnly: boolean;
     isBillingWhitelisted: boolean;
   };
+  /** Why POST /gym/clients would refuse right now, in the server's words,
+   * or null. Billing only (the client limit is separate). Absent from a
+   * mobile-api deployed before it existed, which reads as "not blocked". */
+  addClientBlockedReason?: string | null;
 }
 
 export interface GymClient extends FoodBalanceProfileFields {
