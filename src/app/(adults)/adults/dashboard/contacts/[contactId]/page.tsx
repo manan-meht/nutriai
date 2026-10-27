@@ -1,10 +1,12 @@
 
 import { redirect, notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getContactDetails, getFoodPreferences, generateAccessCodeAction, regenerateAccessCodeAction, revokeAccessCodeAction } from "../../actions";
 import { ContactDashboard } from "@/components/adults/dashboard/ContactDashboard";
 import { FoodPreferencesEditor } from "@/components/adults/FoodPreferencesEditor";
 import { AccessCodeCard } from "@/components/shared/dashboard/AccessCodeCard";
+import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
+import { loadGuidanceEntry } from "@/lib/guidance/view";
 
 export default async function ContactPage({ params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
@@ -14,7 +16,13 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
 
   const details = await getContactDetails(contactId);
   if (!details) notFound();
-  const dietaryProfile = await getFoodPreferences(contactId);
+  // getContactDetails returning a contact is the ownership check, so the
+  // entry (which carries only the mode) is safe to load for it.
+  const [dietaryProfile, guidanceEntry] = await Promise.all([
+    getFoodPreferences(contactId),
+    loadGuidanceEntry(createServiceClient(), contactId),
+  ]);
+  const isSelf = details.contact.relationshipType === "self";
 
   return (
     <>
@@ -27,6 +35,14 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
           where this section ends up shorter). */}
       <div className="bg-[var(--color-dashboard-page-bg)]">
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
+        {guidanceEntry.visible && (
+          <GuidanceEntryCard
+            href={`/adults/dashboard/contacts/${contactId}/guidance`}
+            mode={guidanceEntry.mode}
+            personName={isSelf ? undefined : details.contact.fullName}
+            dm
+          />
+        )}
         {/* Once the user has interacted with (saved) a food preference at
             least once, this moves into the Edit Contact modal instead —
             it no longer needs prominent dashboard placement once it's set
@@ -37,7 +53,7 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
         {/* Never shown for a "self" contact — there's no separate person to
             share a view-only link with; the caregiver's own login already
             is that view. */}
-        {details.contact.relationshipType !== "self" && (
+        {!isSelf && (
           <AccessCodeCard
             personName={details.contact.fullName}
             onGenerate={generateAccessCodeAction.bind(null, contactId)}

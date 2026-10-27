@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { makeGuidanceDb, type FailingWrites, type GuidanceRows } from "./helpers/guidance-db";
 
 // The flag is off by default in every environment, which is the whole
 // point of it — so the service tests below would otherwise all stop at
@@ -23,45 +23,61 @@ import {
   getGuidanceState,
   proposeActivation,
   returnToTracking,
+  WRITE_FAILED_MESSAGE,
   type GuidanceSetupAnswers,
 } from "@/lib/guidance/activation";
 
-// The rule under test: the daughter who added her mother, pays for the
-// plan and sees every meal may not set her mother a calorie target.
-// Everything else here protects that rule or the release gate in front of
-// it.
+// The rule under test, since 2026-10-27: the tracked person may turn
+// Guidance on, and so may the account holder who tracks them (a family
+// caregiver or a coach), and the stored channel always says which one
+// decided. Everything else here protects that rule or the release gate in
+// front of it.
 
 const MOTHER = "contact-mother";
 const DAUGHTER_PROFILE = "profile-daughter";
 const STRANGER_PROFILE = "profile-stranger";
+const COACH_PROFILE = "profile-coach";
+const OTHER_COACH_PROFILE = "profile-other-coach";
+const CLIENT = "client-ravi";
 
 const motherFacts: GuidanceContactFacts = {
   contactId: MOTHER,
+  contactType: "adults",
   caregiverId: DAUGHTER_PROFILE,
   relationshipType: "family_caregiver",
 };
 
 const selfFacts: GuidanceContactFacts = {
   contactId: "contact-self",
+  contactType: "adults",
   caregiverId: DAUGHTER_PROFILE,
   relationshipType: "self",
+};
+
+const clientFacts: GuidanceContactFacts = {
+  contactId: CLIENT,
+  contactType: "gym",
+  caregiverId: COACH_PROFILE,
+  relationshipType: "coach_client",
 };
 
 const daughter: GuidanceActor = { kind: "caregiver", profileId: DAUGHTER_PROFILE };
 const stranger: GuidanceActor = { kind: "caregiver", profileId: STRANGER_PROFILE };
 const motherHerself: GuidanceActor = { kind: "end_user_session", contactId: MOTHER };
 const motherOnWhatsapp: GuidanceActor = { kind: "whatsapp", contactId: MOTHER };
+const coach: GuidanceActor = { kind: "caregiver", profileId: COACH_PROFILE };
+const otherCoach: GuidanceActor = { kind: "caregiver", profileId: OTHER_COACH_PROFILE };
 
 describe("who may turn Guidance on", () => {
-  it("refuses the caregiver who owns the contact and pays for the plan", () => {
-    const result = authorizeGuidanceActivation(daughter, motherFacts);
-    expect(result.allowed).toBe(false);
-    if (result.allowed) return;
-    expect(result.reason).toBe("not_the_tracked_person");
-    // The copy has to tell her what to do instead, or she will reasonably
-    // conclude the feature is broken.
-    expect(result.message).toMatch(/Only the person being tracked/);
-    expect(result.message).toMatch(/their own progress page|WhatsApp/);
+  it("lets the caregiver who owns the contact turn it on for her, as the caregiver", () => {
+    // Most tracked people never open the app, so the account holder may act
+    // for them. The channel records that she did, never that her mother did.
+    expect(authorizeGuidanceActivation(daughter, motherFacts)).toEqual({ allowed: true, activatedVia: "caregiver" });
+  });
+
+  it("lets a coach turn it on for their own client, as the coach, and no other coach", () => {
+    expect(authorizeGuidanceActivation(coach, clientFacts)).toEqual({ allowed: true, activatedVia: "coach" });
+    expect(authorizeGuidanceActivation(otherCoach, clientFacts)).toMatchObject({ allowed: false, reason: "not_your_contact" });
   });
 
   it("allows the tracked person from her own session", () => {
@@ -112,13 +128,13 @@ describe("who may turn Guidance on", () => {
 });
 
 describe("who may turn it off, and who may read the screening answers", () => {
-  it("lets the owning caregiver switch it off although she could not switch it on", () => {
-    // Deliberate asymmetry: stopping automated nutrition advice strictly
-    // reduces what the system does, and a caregiver who becomes worried
-    // should not have to get her mother to log in first. The mother can
-    // turn it straight back on, so this is not a way to control her.
+  it("lets the tracked person switch it off, whoever turned it on", () => {
+    // The one permission that must never narrow for her: a caregiver can
+    // start it for her, and she can always stop it.
+    expect(authorizeGuidanceDeactivation(motherHerself, motherFacts).allowed).toBe(true);
+    expect(authorizeGuidanceDeactivation(motherOnWhatsapp, motherFacts).allowed).toBe(true);
     expect(authorizeGuidanceDeactivation(daughter, motherFacts).allowed).toBe(true);
-    expect(authorizeGuidanceActivation(daughter, motherFacts).allowed).toBe(false);
+    expect(authorizeGuidanceDeactivation(coach, clientFacts).allowed).toBe(true);
   });
 
   it("still refuses a stranger", () => {
@@ -184,69 +200,8 @@ describe("the release gate", () => {
 
 // ─── The service, against an in-memory stand-in for the tables ───────────
 
-interface Rows {
-  adults_contacts: Record<string, unknown>[];
-  nutrition_policy_versions: Record<string, unknown>[];
-  nutrition_guidance: Record<string, unknown>[];
-  nutrition_guidance_screening: Record<string, unknown>[];
-  nutrition_targets: Record<string, unknown>[];
-}
-
-function makeDb(rows: Rows) {
-  function query(table: keyof Rows) {
-    let working = rows[table];
-    const chain = {
-      select: () => chain,
-      eq: (col: string, val: unknown) => {
-        working = working.filter((r) => r[col] === val);
-        return chain;
-      },
-      is: (col: string, val: unknown) => {
-        working = working.filter((r) => (r[col] ?? null) === val);
-        return chain;
-      },
-      maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),
-      then: (resolve: (v: { data: unknown; error: null }) => void) =>
-        resolve({ data: working, error: null }),
-    };
-    return chain;
-  }
-
-  return {
-    from: (table: keyof Rows) => ({
-      select: () => query(table),
-      insert: (row: Record<string, unknown>) => {
-        rows[table].push({ id: `${table}-${rows[table].length + 1}`, ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      upsert: (row: Record<string, unknown>) => {
-        const key = "adults_contact_id";
-        const idx = rows[table].findIndex((r) => r[key] === row[key]);
-        if (idx >= 0) rows[table][idx] = { ...rows[table][idx], ...row };
-        else rows[table].push({ ...row });
-        return Promise.resolve({ data: null, error: null });
-      },
-      update: (patch: Record<string, unknown>) => {
-        let working = rows[table];
-        const chain = {
-          eq: (col: string, val: unknown) => {
-            working = working.filter((r) => r[col] === val);
-            return chain;
-          },
-          is: (col: string, val: unknown) => {
-            working = working.filter((r) => (r[col] ?? null) === val);
-            return chain;
-          },
-          then: (resolve: (v: { data: unknown; error: null }) => void) => {
-            working.forEach((r) => Object.assign(r, patch));
-            return resolve({ data: working, error: null });
-          },
-        };
-        return chain;
-      },
-    }),
-  } as unknown as SupabaseClient;
-}
+type Rows = GuidanceRows;
+const makeDb = (rows: Rows, failing?: FailingWrites) => makeGuidanceDb(rows, failing);
 
 const answers: GuidanceSetupAnswers = {
   ageYears: 38,
@@ -272,10 +227,12 @@ function freshRows(over: Partial<Rows> = {}): Rows {
     adults_contacts: [
       { id: MOTHER, caregiver_id: DAUGHTER_PROFILE, relationship_type: "family_caregiver", timezone: "Asia/Kolkata", age: 74, height_cm: 152, weight_kg: 63, metabolic_equation_sex: "female", activity_level: "mostly_sitting", primary_nutrition_goal: "healthy_aging", nutrition_goals: null },
     ],
+    gym_clients: [],
     nutrition_policy_versions: [{ version: "v1-mifflin-2026-10", status: "reviewed" }],
     nutrition_guidance: [],
     nutrition_guidance_screening: [],
     nutrition_targets: [],
+    meal_logs: [],
     ...over,
   };
 }
@@ -333,14 +290,20 @@ describe("activation end to end", () => {
     expect(rows.nutrition_targets[0].explanation).toContain("Mifflin-St Jeor");
   });
 
-  it("refuses the caregiver at the service boundary, not only in the UI", async () => {
+  it("records a caregiver's activation as hers, never as her mother's", async () => {
+    const rows = freshRows();
+    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: daughter, answers });
+    expect(result).toMatchObject({ ok: true, activatedVia: "caregiver" });
+    expect(rows.nutrition_guidance[0]).toMatchObject({ activated_via: "caregiver", activated_by_profile_id: DAUGHTER_PROFILE });
+    expect(rows.nutrition_targets[0]).toMatchObject({ approved_via: "caregiver" });
+  });
+
+  it("refuses a stranger at the service boundary, not only in the UI", async () => {
     // The authorization function being right is worth nothing if a route
     // forgets to call it.
     const rows = freshRows();
-    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: daughter, answers });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.kind).toBe("forbidden");
+    const result = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: stranger, answers });
+    expect(result).toMatchObject({ ok: false, kind: "forbidden", reason: "not_your_contact" });
     // And nothing was written on the way to refusing.
     expect(rows.nutrition_guidance).toHaveLength(0);
     expect(rows.nutrition_targets).toHaveLength(0);
@@ -487,5 +450,240 @@ describe("the setup flow asks only for what is missing", () => {
     expect(prefill).not.toHaveProperty("isPregnantOrBreastfeeding");
     expect(prefill).not.toHaveProperty("hasEatingDisorderHistory");
     expect(prefill).not.toHaveProperty("conditionsOrMedications");
+  });
+});
+
+describe("a write the database refuses is reported, not swallowed", () => {
+  // Every write here used to ignore its { error }, so confirmActivation
+  // could answer ok with nothing saved. The fake now enforces 0068's
+  // constraints and can fail any write on demand.
+  const day1 = new Date("2026-10-10T06:00:00Z");
+  const day2 = new Date("2026-11-01T06:00:00Z");
+  let logged: jest.SpyInstance;
+
+  beforeEach(() => {
+    logged = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => logged.mockRestore());
+
+  const writeFailed = { ok: false, kind: "write_failed", message: WRITE_FAILED_MESSAGE };
+
+  it("switches back on the same day it was switched off", async () => {
+    // The path anyone trying the feature takes first. Closing today's
+    // target at today would give it an empty range, which the schema
+    // refuses; the insert then hit the one-current-target index. Both
+    // failures were ignored and the confirm said ok over yesterday's numbers.
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    await returnToTracking(makeDb(rows), { contactId: MOTHER, actor: motherHerself, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day1,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.targets.caloriesKcal).not.toBe(2381);
+    // A target superseded on its first day governed no day, so it is
+    // replaced rather than kept as an empty range.
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({
+      effective_from: "2026-10-10",
+      calories_kcal: result.targets.caloriesKcal,
+    });
+    expect(rows.nutrition_targets[0].effective_to ?? null).toBeNull();
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+  });
+
+  it("leaves the mode alone when the target cannot be written", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    await returnToTracking(makeDb(rows), { contactId: MOTHER, actor: motherHerself, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows, ["nutrition_targets.insert"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day2,
+    });
+
+    expect(result).toEqual(writeFailed);
+    // Still in Tracking: the mode is written last, so it never switched on
+    // over numbers that were not saved.
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "tracking" });
+    // And the target closed on the way to the failed insert is open again.
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({ calories_kcal: 2381, effective_to: null });
+  });
+
+  it("does not insert a second current target when the old one cannot be closed", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+
+    const result = await confirmActivation(makeDb(rows, ["nutrition_targets.update"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, weightKg: 84 },
+      now: day2,
+    });
+
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_targets).toHaveLength(1);
+    expect(rows.nutrition_targets[0]).toMatchObject({ calories_kcal: 2381 });
+  });
+
+  it("reports a failed mode write, and a retry completes it", async () => {
+    const rows = freshRows();
+    const failing = ["nutrition_guidance.upsert"];
+    const first = await confirmActivation(makeDb(rows, failing), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    expect(first).toEqual(writeFailed);
+    // The target landed and the mode did not: a current target in
+    // Tracking, the same harmless state Return to Tracking leaves.
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_targets).toHaveLength(1);
+
+    failing.length = 0;
+    const retry = await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    expect(retry.ok).toBe(true);
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+    expect(rows.nutrition_targets).toHaveLength(1);
+  });
+
+  it("reports a preference the table rejects instead of answering ok", async () => {
+    // meals_per_day is checked between 1 and 8. The web form's parser
+    // clamps it, but not every caller goes through that parser.
+    const rows = freshRows();
+    const result = await confirmActivation(makeDb(rows), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, mealsPerDay: 12 },
+      now: day1,
+    });
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_guidance).toHaveLength(0);
+  });
+
+  it("will not show or set targets when the screening decision cannot be recorded", async () => {
+    // The screening row is the audit trail for a decision about her body.
+    // A target nobody can later account for is worse than a retry.
+    const rows = freshRows();
+    const db = makeDb(rows, ["nutrition_guidance_screening.upsert"]);
+    expect(await proposeActivation(db, { contactId: MOTHER, actor: motherHerself, answers })).toEqual(writeFailed);
+    expect(await confirmActivation(db, { contactId: MOTHER, actor: motherHerself, answers })).toEqual(writeFailed);
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_targets).toHaveLength(0);
+  });
+
+  it("does not say Guidance stopped when it did not", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day1 });
+    const result = await returnToTracking(makeDb(rows, ["nutrition_guidance.update"]), {
+      contactId: MOTHER,
+      actor: daughter,
+    });
+    expect(result).toEqual(writeFailed);
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+  });
+
+  it("logs which step failed, and none of her answers", async () => {
+    const rows = freshRows();
+    await confirmActivation(makeDb(rows, ["nutrition_targets.insert"]), {
+      contactId: MOTHER,
+      actor: motherHerself,
+      answers: { ...answers, conditionsOrMedications: "metformin", isPregnantOrBreastfeeding: false },
+    });
+    expect(logged).toHaveBeenCalledTimes(1);
+    const line = JSON.stringify(logged.mock.calls[0]);
+    expect(line).toContain("writing the target");
+    expect(line).not.toMatch(/metformin|Pregnant|EatingDisorder/i);
+  });
+});
+
+describe("coach clients", () => {
+  // 0069 lets the Guidance tables point at a gym_clients row. The same
+  // service code runs for both, keyed by contactType.
+  const ravi = {
+    id: CLIENT,
+    trainer_id: COACH_PROFILE,
+    relationship_type: "coach_client",
+    timezone: "Asia/Kolkata",
+    full_name: "Ravi",
+    age: 30,
+    height_cm: 175,
+    weight_kg: 80,
+    metabolic_equation_sex: "male",
+    activity_level: "moderately_active",
+    primary_nutrition_goal: "gain_muscle",
+    nutrition_goals: null,
+  };
+  const withRavi = () => freshRows({ gym_clients: [ravi] });
+  const raviAnswers = { ...answers, ageYears: 30, heightCm: 175, weightKg: 80, goals: ["gain_muscle" as const] };
+
+  it("activates for the coach's own client, keyed by gym_client_id and recorded as the coach's", async () => {
+    const rows = withRavi();
+    const result = await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers });
+    expect(result).toMatchObject({ ok: true, activatedVia: "coach" });
+
+    for (const table of ["nutrition_guidance", "nutrition_guidance_screening", "nutrition_targets"] as const) {
+      expect(rows[table]).toHaveLength(1);
+      expect(rows[table][0]).toMatchObject({ gym_client_id: CLIENT });
+      expect(rows[table][0].adults_contact_id ?? null).toBeNull();
+    }
+    expect(rows.nutrition_guidance[0]).toMatchObject({ activated_via: "coach", activated_by_profile_id: COACH_PROFILE });
+    expect(rows.nutrition_targets[0]).toMatchObject({ approved_via: "coach" });
+  });
+
+  it("refuses another coach, and writes nothing", async () => {
+    const rows = withRavi();
+    const result = await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: otherCoach, answers: raviAnswers });
+    expect(result).toMatchObject({ ok: false, kind: "forbidden", reason: "not_your_contact" });
+    expect(rows.nutrition_guidance).toHaveLength(0);
+    expect(rows.nutrition_guidance_screening).toHaveLength(0);
+  });
+
+  it("never matches a client's id against the family table", async () => {
+    // contactType defaults to "adults": a gym id there finds nobody.
+    const rows = withRavi();
+    expect(await confirmActivation(makeDb(rows), { contactId: CLIENT, actor: coach, answers: raviAnswers })).toEqual({
+      ok: false,
+      kind: "not_found",
+    });
+    expect(rows.nutrition_guidance).toHaveLength(0);
+  });
+
+  it("prefills from the client's own profile", async () => {
+    expect(await buildSetupPrefill(makeDb(withRavi()), CLIENT, "gym")).toMatchObject({
+      ageYears: 30,
+      heightCm: 175,
+      weightKg: 80,
+      metabolicEquationSex: "male",
+      goals: ["gain_muscle"],
+    });
+  });
+
+  it("keeps a family contact's and a client's Guidance apart", async () => {
+    const rows = withRavi();
+    const day = new Date("2026-10-10T06:00:00Z");
+    await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day });
+    await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers, now: day });
+    await returnToTracking(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, now: day });
+
+    expect(rows.nutrition_targets).toHaveLength(2);
+    expect(await getGuidanceState(makeDb(rows), MOTHER)).toMatchObject({ mode: "guidance" });
+    expect(await getGuidanceState(makeDb(rows), CLIENT, "gym")).toMatchObject({ mode: "tracking", hasEverActivated: true });
+
+    // Same-day re-activation works for a client as it does for a contact.
+    const again = await confirmActivation(makeDb(rows), {
+      contactId: CLIENT,
+      contactType: "gym",
+      actor: coach,
+      answers: { ...raviAnswers, weightKg: 78 },
+      now: day,
+    });
+    expect(again.ok).toBe(true);
+    expect(rows.nutrition_targets.filter((t) => t.gym_client_id === CLIENT)).toHaveLength(1);
   });
 });

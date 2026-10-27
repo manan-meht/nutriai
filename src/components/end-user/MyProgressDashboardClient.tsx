@@ -15,6 +15,8 @@ import {
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-dashboard-presets";
+import type { GuidanceMode } from "@/lib/guidance/activation";
+import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
 
 // Participant's own view of their tracked profile — the dashboard content
 // itself (insights, key metrics, macro summary, activity heatmap, recent
@@ -22,7 +24,14 @@ import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-das
 // views; this component wraps it with the account-management features
 // unique to the tracked person themselves (pause sharing, request removal,
 // trusted devices, sign out) that neither caregiver/coach role has.
-export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDashboard }) {
+export function MyProgressDashboardClient({
+  dashboard,
+  guidanceMode,
+}: {
+  dashboard: EndUserDashboard;
+  /** Set only when the Guidance entry should show (see isGuidanceEntryVisible). */
+  guidanceMode?: GuidanceMode;
+}) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
   const [removalRequested, setRemovalRequested] = useState(false);
@@ -83,6 +92,8 @@ export function MyProgressDashboardClient({ dashboard }: { dashboard: EndUserDas
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
+        {guidanceMode && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
+
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>
           {dashboard.accessList.length === 0 ? (
