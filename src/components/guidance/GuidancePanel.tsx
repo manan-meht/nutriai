@@ -35,10 +35,14 @@ interface GuidancePanelProps {
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
 
+// Midnight teal: the --gm-* tokens are defined on .guidance-theme in
+// globals.css, which <main> below carries.
 const primaryButton =
-  "w-full rounded-xl bg-[var(--color-dashboard-primary)] hover:bg-[var(--color-dashboard-primary-hover)] text-white font-semibold py-3 text-sm disabled:opacity-50 transition";
+  "w-full rounded-xl bg-[var(--gm-accent)] hover:bg-[var(--gm-accent-hover)] text-[var(--gm-on-accent)] font-semibold py-3 text-sm disabled:opacity-50 transition";
 const secondaryButton =
-  "w-full rounded-xl border border-gray-200 bg-white py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition";
+  "w-full rounded-xl border border-[var(--gm-border-strong)] bg-transparent py-3 text-sm font-medium text-[var(--gm-text-secondary)] hover:bg-white/5 hover:text-[var(--gm-text)] disabled:opacity-50 transition";
+const card = "bg-[var(--gm-card)] border border-[var(--gm-border)] rounded-2xl p-5";
+const errorText = "text-sm text-[var(--gm-error-text)]";
 
 function failureMessage(result: ActivationFailure): string {
   if (result.kind === "forbidden" || result.kind === "unavailable" || result.kind === "write_failed") return result.message;
@@ -51,9 +55,9 @@ function failureMessage(result: ActivationFailure): string {
  * this is how the screen says so. */
 function PreviewBanner({ policyVersion }: { policyVersion: string }) {
   return (
-    <div role="note" className="rounded-2xl border border-[var(--color-status-steady-dot)] bg-[var(--color-status-steady-bg)] p-4">
-      <p className="text-sm font-semibold text-[var(--color-status-steady-text)]">Preview: unreviewed targets</p>
-      <p className="text-sm text-[var(--color-status-steady-text)] mt-1">
+    <div role="note" className="rounded-2xl border border-[var(--gm-over-border)] bg-[var(--gm-over-soft)] p-4">
+      <p className="text-sm font-semibold text-[var(--gm-over-text)]">Preview: unreviewed targets</p>
+      <p className="text-sm text-[var(--gm-over-text)] opacity-80 mt-1">
         These targets come from policy {policyVersion}, which has not been clinically reviewed yet. They are shown only
         because this is not the production app. Don&apos;t rely on them.
       </p>
@@ -63,9 +67,9 @@ function PreviewBanner({ policyVersion }: { policyVersion: string }) {
 
 function Notice({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
-    <section className="bg-white border border-gray-100 rounded-2xl p-5">
-      {title && <h2 className="text-base font-semibold text-gray-900 mb-1">{title}</h2>}
-      <div className="text-sm text-gray-600 space-y-2">{children}</div>
+    <section className={card}>
+      {title && <h2 className="text-base font-semibold text-[var(--gm-text)] mb-1">{title}</h2>}
+      <div className="text-sm text-[var(--gm-text-secondary)] space-y-2">{children}</div>
     </section>
   );
 }
@@ -98,12 +102,12 @@ function ReturnToTracking({
   }
 
   return (
-    <section className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3">
-      <p className="text-sm text-gray-600">{description}</p>
+    <section className={`${card} space-y-3`}>
+      <p className="text-sm text-[var(--gm-text-secondary)]">{description}</p>
       <button type="button" onClick={handleClick} disabled={pending} className={secondaryButton}>
         {pending ? "Switching…" : "Return to Tracking"}
       </button>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className={errorText}>{error}</p>}
     </section>
   );
 }
@@ -119,12 +123,12 @@ function TargetsReview({ proposal, person }: { proposal: Proposal; person: Guida
   ];
 
   return (
-    <section className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
+    <section className={`${card} space-y-4`}>
       <div>
-        <h2 className="text-base font-semibold text-gray-900">
+        <h2 className="text-base font-semibold text-[var(--gm-text)]">
           {person.isSelf ? "Your proposed daily targets" : `Proposed daily targets for ${person.name}`}
         </h2>
-        <p className="text-sm text-gray-500 mt-1">Nothing is switched on until you confirm.</p>
+        <p className="text-sm text-[var(--gm-text-muted)] mt-1">Nothing is switched on until you confirm.</p>
       </div>
       {/* Calories on a row of its own: in a five-across grid "2,381 kcal"
           wraps inside the tile at the panel's max width. */}
@@ -132,26 +136,36 @@ function TargetsReview({ proposal, person }: { proposal: Proposal; person: Guida
         {items.map((item, i) => (
           <div
             key={item.label}
-            className={`rounded-xl bg-[var(--color-dashboard-primary-light)] px-3 py-3 ${i === 0 ? "col-span-2 sm:col-span-4" : ""}`}
+            className={`rounded-xl px-3 py-3 ${
+              i === 0
+                ? "col-span-2 sm:col-span-4 bg-[var(--gm-accent-soft)] border border-[var(--gm-accent-border)]"
+                : "bg-[var(--gm-raised)] border border-[var(--gm-border)]"
+            }`}
           >
-            <dt className="text-xs text-gray-600">{item.label}</dt>
-            <dd className="text-base font-semibold text-gray-900 tabular-nums">{item.value}</dd>
+            <dt className="text-xs text-[var(--gm-text-secondary)]">{item.label}</dt>
+            <dd
+              className={`font-semibold tabular-nums ${
+                i === 0 ? "text-xl text-[var(--gm-accent-text)]" : "text-base text-[var(--gm-text)]"
+              }`}
+            >
+              {item.value}
+            </dd>
           </div>
         ))}
       </dl>
       {proposal.notes.length > 0 && (
         <ul className="space-y-1">
           {proposal.notes.map((note) => (
-            <li key={note} className="text-sm text-[var(--color-status-steady-text)] bg-[var(--color-status-steady-bg)] rounded-lg px-3 py-2">
+            <li key={note} className="text-sm text-[var(--gm-over-text)] bg-[var(--gm-over-soft)] border border-[var(--gm-over-border)] rounded-lg px-3 py-2">
               {note}
             </li>
           ))}
         </ul>
       )}
-      <details className="text-sm text-gray-600">
-        <summary className="cursor-pointer text-gray-900 font-medium">How these were calculated</summary>
+      <details className="text-sm text-[var(--gm-text-secondary)]">
+        <summary className="cursor-pointer text-[var(--gm-text)] font-medium">How these were calculated</summary>
         <p className="mt-2 whitespace-pre-line">{proposal.explanation}</p>
-        <p className="mt-2 text-xs text-gray-500">Policy {proposal.policyVersion}</p>
+        <p className="mt-2 text-xs text-[var(--gm-text-muted)]">Policy {proposal.policyVersion}</p>
       </details>
     </section>
   );
@@ -233,7 +247,7 @@ function SetupFlow({
         <button type="button" onClick={() => setStep("answers")} className={secondaryButton}>
           {changeAnswers}
         </button>
-        <Link href={backHref} className="block text-center text-sm text-gray-500 underline">
+        <Link href={backHref} className="block text-center text-sm text-[var(--gm-text-muted)] underline hover:text-[var(--gm-text-secondary)]">
           Keep tracking as usual
         </Link>
       </div>
@@ -251,7 +265,7 @@ function SetupFlow({
         <button type="button" onClick={() => setStep("answers")} disabled={pending} className={secondaryButton}>
           {changeAnswers}
         </button>
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className={errorText}>{error}</p>}
       </div>
     );
   }
@@ -286,7 +300,7 @@ function SetupFlow({
       <button type="submit" disabled={pending} className={primaryButton}>
         {pending ? "Calculating…" : person.isSelf ? "See my targets" : "See the targets"}
       </button>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className={errorText}>{error}</p>}
     </form>
   );
 }
@@ -361,12 +375,22 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
 
 export function GuidancePanel(props: GuidancePanelProps) {
   return (
-    <main className="min-h-screen bg-[var(--color-dashboard-surface)] text-gray-900">
+    <main className="guidance-theme min-h-screen bg-[var(--gm-page)] text-[var(--gm-text)]">
       <div className="max-w-xl mx-auto px-4 py-6 space-y-4">
-        <Link href={props.backHref} className="inline-block text-sm text-gray-500 hover:text-gray-700">
+        <Link
+          href={props.backHref}
+          className="inline-block text-sm text-[var(--gm-text-muted)] hover:text-[var(--gm-text-secondary)]"
+        >
           ← Back
         </Link>
-        <h1 className="text-xl font-semibold text-gray-900">Nutrition Guidance</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold text-[var(--gm-text)]">Nutrition Guidance</h1>
+          {props.view.kind === "active" && (
+            <span className="rounded-full border border-[var(--gm-accent-border)] bg-[var(--gm-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--gm-accent-text)]">
+              Guidance on
+            </span>
+          )}
+        </div>
         <Body {...props} />
       </div>
     </main>

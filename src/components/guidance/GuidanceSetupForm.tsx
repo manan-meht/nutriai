@@ -117,16 +117,23 @@ export function setupFormToAnswers(form: SetupFormState): Record<string, unknown
 }
 
 const input =
-  "w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 placeholder:text-gray-300 outline-none focus:border-[var(--color-dashboard-primary)] focus:ring-2 focus:ring-[var(--color-dashboard-primary-light)] transition";
-const label = "block text-sm font-medium text-gray-900 mb-1.5";
-const hint = "text-xs text-gray-500 mt-1";
+  "w-full rounded-xl border border-[var(--gm-border-strong)] bg-[var(--gm-raised)] px-4 py-3 text-sm text-[var(--gm-text)] placeholder:text-[var(--gm-text-muted)] outline-none focus:border-[var(--gm-accent)] focus:ring-2 focus:ring-[var(--gm-accent-soft)] transition";
+const label = "block text-sm font-medium text-[var(--gm-text)] mb-1.5";
+const hint = "text-xs text-[var(--gm-text-muted)] mt-1";
+// A tappable answer card: teal when chosen, a quiet outline otherwise.
+const choice = (selected: boolean) =>
+  `flex-1 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm cursor-pointer transition ${
+    selected
+      ? "border-[var(--gm-accent)] bg-[var(--gm-accent-soft)] text-[var(--gm-text)]"
+      : "border-[var(--gm-border-strong)] text-[var(--gm-text-secondary)] hover:bg-white/5"
+  }`;
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
+    <section className="bg-[var(--gm-card)] border border-[var(--gm-border)] rounded-2xl p-5 space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-        {description && <p className="text-sm text-gray-500 mt-1">{description}</p>}
+        <h2 className="text-base font-semibold text-[var(--gm-text)]">{title}</h2>
+        {description && <p className="text-sm text-[var(--gm-text-secondary)] mt-1">{description}</p>}
       </div>
       {children}
     </section>
@@ -151,11 +158,7 @@ function YesNoQuestion({
         {(["yes", "no"] as const).map((option) => (
           <label
             key={option}
-            className={`flex-1 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm cursor-pointer transition ${
-              value === option
-                ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)] text-gray-900"
-                : "border-gray-200 text-gray-700 hover:bg-gray-50"
-            }`}
+            className={choice(value === option)}
           >
             <input
               type="radio"
@@ -164,7 +167,7 @@ function YesNoQuestion({
               checked={value === option}
               onChange={() => onChange(option)}
               required
-              className="accent-[var(--color-dashboard-primary)]"
+              className="accent-[var(--gm-accent)]"
             />
             {option === "yes" ? "Yes" : "No"}
           </label>
@@ -217,14 +220,10 @@ export function GuidanceSetupForm({
             {(["female", "male"] as const).map((option) => (
               <label
                 key={option}
-                className={`flex-1 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm cursor-pointer transition ${
-                  value.metabolicEquationSex === option
-                    ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)] text-gray-900"
-                    : "border-gray-200 text-gray-700 hover:bg-gray-50"
-                }`}
+                className={choice(value.metabolicEquationSex === option)}
               >
                 <input type="radio" name="guidance-sex" value={option} checked={value.metabolicEquationSex === option}
-                  onChange={() => set("metabolicEquationSex", option)} required className="accent-[var(--color-dashboard-primary)]" />
+                  onChange={() => set("metabolicEquationSex", option)} required className="accent-[var(--gm-accent)]" />
                 {option === "female" ? "Female" : "Male"}
               </label>
             ))}
@@ -246,12 +245,12 @@ export function GuidanceSetupForm({
           <legend className={label}>Goals</legend>
           <div className="space-y-2">
             {NUTRITION_GOAL_OPTIONS.map((o) => (
-              <label key={o.value} className="flex items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 cursor-pointer hover:bg-gray-50">
+              <label key={o.value} className="flex items-start gap-3 rounded-xl border border-[var(--gm-border-strong)] px-4 py-3 cursor-pointer hover:bg-white/5 has-[:checked]:border-[var(--gm-accent)] has-[:checked]:bg-[var(--gm-accent-soft)]">
                 <input type="checkbox" checked={value.goals.includes(o.value)} onChange={() => toggleGoal(o.value)}
-                  className="mt-0.5 accent-[var(--color-dashboard-primary)]" />
+                  className="mt-0.5 accent-[var(--gm-accent)]" />
                 <span>
-                  <span className="block text-sm text-gray-900">{o.label}</span>
-                  <span className="block text-xs text-gray-500">{o.description}</span>
+                  <span className="block text-sm text-[var(--gm-text)]">{o.label}</span>
+                  <span className="block text-xs text-[var(--gm-text-muted)]">{o.description}</span>
                 </span>
               </label>
             ))}

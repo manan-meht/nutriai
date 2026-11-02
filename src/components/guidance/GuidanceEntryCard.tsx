@@ -9,6 +9,10 @@ import type { GuidanceMode } from "@/lib/guidance/activation";
 // `personName` is set when the viewer is not the tracked person (a
 // caregiver or coach looking at someone they track), and words the card for
 // setting it up on their behalf.
+//
+// The card lives on the ordinary dashboards, not inside .guidance-theme, so
+// it keeps their light/dark styling. Once Guidance is on it carries one
+// touch of the mode's teal: dark teal on light pages, bright on dark.
 
 interface GuidanceEntryCardProps {
   href: string;
@@ -20,7 +24,7 @@ interface GuidanceEntryCardProps {
 
 export function GuidanceEntryCard({ href, mode, personName, dm }: GuidanceEntryCardProps) {
   const on = mode === "guidance";
-  const title = on ? "Nutrition Guidance is on" : "Nutrition Guidance";
+  const title = "Nutrition Guidance";
   const body = personName
     ? on
       ? `See ${personName}'s targets for today and what they've eaten so far.`
@@ -29,6 +33,7 @@ export function GuidanceEntryCard({ href, mode, personName, dm }: GuidanceEntryC
       ? "See today's targets and what you've eaten so far."
       : "Get daily calorie and protein targets from a few questions.";
   const cta = on ? "View" : "Set up";
+  const teal = `text-teal-700 ${dm ? "dark:text-teal-300" : ""}`;
 
   return (
     <Link
@@ -38,10 +43,21 @@ export function GuidanceEntryCard({ href, mode, personName, dm }: GuidanceEntryC
       }`}
     >
       <span>
-        <span className={`block text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>{title}</span>
+        <span className="flex items-center gap-2">
+          <span className={`text-sm font-semibold text-gray-900 ${dm ? "dark:text-white" : ""}`}>{title}</span>
+          {on && (
+            <span
+              className={`rounded-full border border-teal-600/30 bg-teal-500/10 px-2 py-0.5 text-xs font-medium ${teal} ${
+                dm ? "dark:border-teal-400/30 dark:bg-teal-400/10" : ""
+              }`}
+            >
+              Guidance on
+            </span>
+          )}
+        </span>
         <span className={`block text-sm text-gray-500 mt-0.5 ${dm ? "dark:text-gray-400" : ""}`}>{body}</span>
       </span>
-      <span className="shrink-0 text-sm font-medium text-[var(--color-dashboard-primary)]">{cta} →</span>
+      <span className={`shrink-0 text-sm font-medium ${on ? teal : `text-[var(--color-dashboard-primary)] ${dm ? "dark:text-violet-300" : ""}`}`}>{cta} →</span>
     </Link>
   );
 }
