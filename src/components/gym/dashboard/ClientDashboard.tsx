@@ -8,19 +8,33 @@ import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachC
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { adaptClientDetails } from "@/lib/dashboard/profile-dashboard-types";
 import { COACH_THEME, COACH_COPY } from "@/lib/dashboard/profile-dashboard-presets";
+import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 /** Coach's view of one tracked client — a thin, role-specific wrapper
  * around the shared ProfileDashboard (see that file for the actual section
  * rendering, which used to be duplicated near-verbatim here and in
  * ContactDashboard.tsx). Only the theme/copy/invite-wiring/edit-modal and
  * the gym-only biomarkers section are product-specific. */
-export function ClientDashboard({ client, meals, workouts, biomarkers }: ClientDetails) {
+export function ClientDashboard({
+  client,
+  meals,
+  workouts,
+  biomarkers,
+  guidance,
+  guidanceHref,
+}: ClientDetails & {
+  /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
+  guidance?: GuidanceDashboard | null;
+  guidanceHref?: string;
+}) {
   const router = useRouter();
 
   return (
     <ProfileDashboard
       role="coach"
       data={adaptClientDetails({ client, meals, workouts, biomarkers })}
+      guidance={guidance}
+      guidanceHref={guidanceHref}
       backHref="/gym/dashboard"
       theme={COACH_THEME}
       copy={COACH_COPY}

@@ -18,7 +18,15 @@ import {
   type GuidanceActor,
   type GuidanceContactType,
 } from "./authorization";
-import { computeDailyTotals, localDate, targetForDate, type ConfirmedMealRow, type DailyTotals } from "./daily-totals";
+import {
+  computeDailyTotals,
+  localDate,
+  targetForDate,
+  type ConfirmedMealRow,
+  type DailyTarget,
+  type DailyTotals,
+} from "./daily-totals";
+import { guidanceHistory, mealImpacts, type GuidanceDay, type MealImpact } from "./meal-impact";
 import { loadReleaseState, type ReleaseState } from "./release";
 
 // What the Guidance screen shows, decided on the server.
@@ -128,14 +136,29 @@ export async function loadGuidanceEntry(
 // One literal, not a concatenation: supabase-js parses the select string at
 // the type level, and a concatenated `string` defeats it.
 const MEAL_COLUMNS =
-  "id, logged_at, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max, total_fiber_min, total_fiber_max";
+  "id, logged_at, meal_type, foods, total_calories_min, total_calories_max, total_protein_min, total_protein_max, total_carbs_min, total_carbs_max, total_fat_min, total_fat_max, total_fiber_min, total_fiber_max";
+
+/** A confirmed meal plus what was in it, for screens that show the person
+ * exactly what they ate. */
+export interface GuidanceMealRow extends ConfirmedMealRow {
+  mealType: string | null;
+  foods: Array<{ name: string; quantity: string | null }>;
+}
 
 /** A meal_logs row as daily-totals wants it. Missing values stay null:
  * coercing them to zero is the under-reporting bug daily-totals.ts exists
  * to avoid, and AdultsMealLog's `?? 0` mapping is the wrong one to reuse. */
-function toConfirmedMeal(m: Record<string, unknown>): ConfirmedMealRow {
+function toConfirmedMeal(m: Record<string, unknown>): GuidanceMealRow {
   const n = (v: unknown) => (typeof v === "number" ? v : null);
+  const foods = Array.isArray(m.foods) ? (m.foods as Array<Record<string, unknown>>) : [];
   return {
+    mealType: typeof m.meal_type === "string" ? m.meal_type : null,
+    foods: foods
+      .filter((f) => typeof f?.name === "string" && f.name)
+      .map((f) => {
+        const quantity = f.visible_quantity || f.quantity;
+        return { name: String(f.name), quantity: typeof quantity === "string" && quantity ? quantity : null };
+      }),
     id: String(m.id),
     loggedAt: String(m.logged_at),
     totalCaloriesMin: n(m.total_calories_min),
@@ -151,31 +174,20 @@ function toConfirmedMeal(m: Record<string, unknown>): ConfirmedMealRow {
   };
 }
 
-/** Today's totals against the target that applies today, or null when no
- * target covers today. */
-export async function loadTodayProgress(
-  db: SupabaseClient,
-  params: { contactId: string; contactType?: GuidanceContactType; timezone: string; now?: Date }
-): Promise<TodayProgress | null> {
-  const contactType = params.contactType ?? "adults";
-  // meal_logs predates Guidance and names a coach client client_id, not
-  // gym_client_id as the Guidance tables do.
-  const mealColumn = contactType === "gym" ? "client_id" : "adults_contact_id";
-  const now = params.now ?? new Date();
-  const date = localDate(now.toISOString(), params.timezone);
-  // 48 hours back covers "today" in any timezone; computeDailyTotals then
-  // keeps only the meals that fall on `date` locally.
-  const since = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+/** A nutrition_targets row as the Guidance code uses it. */
+export interface TargetRow extends DailyTarget {
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  policyVersion: string;
+  explanation: string;
+}
 
-  const [targetsRes, mealsRes] = await Promise.all([
-    db
-      .from("nutrition_targets")
-      .select("effective_from, effective_to, policy_version, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, explanation")
-      .eq(guidanceSubjectColumn(contactType), params.contactId),
-    db.from("meal_logs").select(MEAL_COLUMNS).eq(mealColumn, params.contactId).gte("logged_at", since),
-  ]);
-
-  const targets = ((targetsRes.data ?? []) as Record<string, unknown>[]).map((t) => ({
+export async function loadTargetRows(db: SupabaseClient, contactId: string, contactType: GuidanceContactType): Promise<TargetRow[]> {
+  const { data } = await db
+    .from("nutrition_targets")
+    .select("effective_from, effective_to, policy_version, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, explanation")
+    .eq(guidanceSubjectColumn(contactType), contactId);
+  return ((data ?? []) as Record<string, unknown>[]).map((t) => ({
     effectiveFrom: String(t.effective_from),
     effectiveTo: (t.effective_to as string | null) ?? null,
     policyVersion: String(t.policy_version),
@@ -186,15 +198,118 @@ export async function loadTodayProgress(
     fatG: Number(t.fat_g),
     fiberG: Number(t.fiber_g),
   }));
+}
+
+export async function loadMealRows(
+  db: SupabaseClient,
+  contactId: string,
+  contactType: GuidanceContactType,
+  sinceIso: string
+): Promise<GuidanceMealRow[]> {
+  // meal_logs predates Guidance and names a coach client client_id, not
+  // gym_client_id as the Guidance tables do.
+  const mealColumn = contactType === "gym" ? "client_id" : "adults_contact_id";
+  const { data } = await db.from("meal_logs").select(MEAL_COLUMNS).eq(mealColumn, contactId).gte("logged_at", sinceIso);
+  return ((data ?? []) as Record<string, unknown>[]).map(toConfirmedMeal);
+}
+
+/** Today's totals against the target that applies today, or null when no
+ * target covers today. */
+export async function loadTodayProgress(
+  db: SupabaseClient,
+  params: { contactId: string; contactType?: GuidanceContactType; timezone: string; now?: Date }
+): Promise<TodayProgress | null> {
+  const contactType = params.contactType ?? "adults";
+  const now = params.now ?? new Date();
+  const date = localDate(now.toISOString(), params.timezone);
+  // 48 hours back covers "today" in any timezone; computeDailyTotals then
+  // keeps only the meals that fall on `date` locally.
+  const since = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+
+  const [targets, meals] = await Promise.all([
+    loadTargetRows(db, params.contactId, contactType),
+    loadMealRows(db, params.contactId, contactType, since),
+  ]);
+
   const target = targetForDate(targets, date);
   if (!target) return null;
-
-  const meals = ((mealsRes.data ?? []) as Record<string, unknown>[]).map(toConfirmedMeal);
 
   return {
     date,
     totals: computeDailyTotals({ date, timezone: params.timezone, meals, target }),
     target: { effectiveFrom: target.effectiveFrom, policyVersion: target.policyVersion, explanation: target.explanation },
+  };
+}
+
+/** What a dashboard shows once Guidance is on: today meal by meal, and
+ * every day since it started against that day's target. */
+export interface GuidanceDashboard {
+  isPreviewOnly: boolean;
+  /** The tracked person's timezone, for meal times. */
+  timezone: string;
+  /** Today, YYYY-MM-DD, in the tracked person's timezone. */
+  date: string;
+  today: {
+    target: DailyTarget;
+    totals: DailyTotals;
+    meals: Array<MealImpact<GuidanceMealRow>>;
+  } | null;
+  /** Newest first. The dashboard narrows it with its own date range. */
+  history: GuidanceDay[];
+}
+
+/** History reaches back at most this far, the same window the family
+ * dashboard already loads meals for. */
+const HISTORY_DAYS = 400;
+
+/**
+ * The Guidance part of a dashboard, or null when the dashboard should stay
+ * as it is: the flag is off, the release gate is closed, or the person is in
+ * Tracking. The same three conditions the Guidance screen uses before it
+ * shows a target, so a dashboard never shows numbers that screen would
+ * hide.
+ *
+ * For a page that has already checked the viewer may see this contact.
+ */
+export async function loadGuidanceDashboard(
+  db: SupabaseClient,
+  params: { contactId: string; contactType?: GuidanceContactType; now?: Date }
+): Promise<GuidanceDashboard | null> {
+  if (!GUIDANCE_ENABLED) return null;
+  const contactType = params.contactType ?? "adults";
+  const [release, state, facts] = await Promise.all([
+    loadReleaseState(db),
+    getGuidanceState(db, params.contactId, contactType),
+    loadContactFacts(db, params.contactId, contactType),
+  ]);
+  if (!release.canActivate || state.mode !== "guidance" || !facts) return null;
+
+  const now = params.now ?? new Date();
+  const date = localDate(now.toISOString(), facts.timezone);
+  const targets = await loadTargetRows(db, params.contactId, contactType);
+  if (targets.length === 0) return null;
+
+  const earliestAllowed = new Date(now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const firstTarget = targets.reduce((min, t) => (t.effectiveFrom < min ? t.effectiveFrom : min), targets[0].effectiveFrom);
+  const from = firstTarget > earliestAllowed ? firstTarget : earliestAllowed;
+  // A day's meals can start up to 14 hours before UTC midnight; a day of
+  // slack keeps the first day whole in any timezone.
+  const since = new Date(Date.parse(`${from}T00:00:00Z`) - 24 * 60 * 60 * 1000).toISOString();
+  const meals = await loadMealRows(db, params.contactId, contactType, since);
+
+  const todayTarget = targetForDate(targets, date);
+  return {
+    isPreviewOnly: release.isPreviewOnly,
+    timezone: facts.timezone,
+    date,
+    today: todayTarget
+      ? {
+          target: todayTarget,
+          totals: computeDailyTotals({ date, timezone: facts.timezone, meals, target: todayTarget }),
+          meals: mealImpacts({ date, timezone: facts.timezone, meals, target: todayTarget }),
+        }
+      : null,
+    history: guidanceHistory({ from, to: date, timezone: facts.timezone, meals, targets }),
   };
 }
 

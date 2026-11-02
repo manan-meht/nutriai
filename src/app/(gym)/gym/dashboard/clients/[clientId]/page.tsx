@@ -5,7 +5,7 @@ import { getClientDetails, generateClientAccessCodeAction, regenerateClientAcces
 import { ClientDashboard } from "@/components/gym/dashboard/ClientDashboard";
 import { AccessCodeCard } from "@/components/shared/dashboard/AccessCodeCard";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
-import { loadGuidanceEntry } from "@/lib/guidance/view";
+import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
 
 export default async function ClientPage({ params }: { params: Promise<{ clientId: string }> }) {
   const { clientId } = await params;
@@ -17,11 +17,14 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
   if (!details) notFound();
   // getClientDetails returning a client is the ownership check (trainer_id),
   // so the entry, which carries only the mode, is safe to load for it.
-  const guidanceEntry = await loadGuidanceEntry(createServiceClient(), clientId, "gym");
+  const [guidanceEntry, guidance] = await Promise.all([
+    loadGuidanceEntry(createServiceClient(), clientId, "gym"),
+    loadGuidanceDashboard(createServiceClient(), { contactId: clientId, contactType: "gym" }),
+  ]);
 
   return (
     <>
-      <ClientDashboard {...details} />
+      <ClientDashboard {...details} guidance={guidance} guidanceHref={`/gym/dashboard/clients/${clientId}/guidance`} />
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
         {guidanceEntry.visible && (
           <GuidanceEntryCard

@@ -16,6 +16,7 @@ import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-dashboard-presets";
 import type { GuidanceMode } from "@/lib/guidance/activation";
+import type { GuidanceDashboard } from "@/lib/guidance/view";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
 
 // Participant's own view of their tracked profile — the dashboard content
@@ -27,10 +28,13 @@ import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
 export function MyProgressDashboardClient({
   dashboard,
   guidanceMode,
+  guidance,
 }: {
   dashboard: EndUserDashboard;
   /** Set only when the Guidance entry should show (see isGuidanceEntryVisible). */
   guidanceMode?: GuidanceMode;
+  /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
+  guidance?: GuidanceDashboard | null;
 }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
@@ -81,6 +85,8 @@ export function MyProgressDashboardClient({
 
       <ProfileDashboard
         role="participant"
+        guidance={guidance}
+        guidanceHref="/my-progress/guidance"
         // No self-service profile-edit UI exists yet for the end-user OTP
         // session (unlike EditContactModal/EditClientModal for
         // caregivers/coaches) — override canManageGoal off until that's

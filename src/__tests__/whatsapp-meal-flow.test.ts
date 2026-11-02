@@ -195,10 +195,17 @@ function highImpactAmbiguityDecision(question: string) {
 
 /** Wires up the common mocks every test needs, and returns the imported
  * modules so each test can further configure per-test return values. */
-async function setup(contactOverrides: Record<string, unknown> = {}) {
+async function setup(contactOverrides: Record<string, unknown> = {}, opts: { guidance?: unknown } = {}) {
   jest.resetModules();
   const fakeDb = makeFakeSupabase({ ...contact, ...contactOverrides });
   jest.doMock("@supabase/supabase-js", () => ({ createClient: () => fakeDb }));
+  // Nutrition Guidance's loader is the only part stubbed: null (the
+  // default) is what production returns today, so every other test here
+  // still exercises the Tracking replies. The formatters stay real.
+  jest.doMock("@/lib/guidance/whatsapp", () => ({
+    ...jest.requireActual("@/lib/guidance/whatsapp"),
+    loadWhatsAppGuidance: jest.fn().mockResolvedValue(opts.guidance ?? null),
+  }));
 
   const foodAnalyzer = await import("@/lib/ai/food-analyzer");
   (foodAnalyzer.resolveMealLabel as jest.Mock).mockImplementation((t: string) => t);
@@ -453,5 +460,73 @@ describe("handleIncomingMessage — confidence-based auto-save flow", () => {
     expect(fakeDb._mealLogs.length).toBe(1); // unchanged — the question didn't touch the saved meal
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("500-600 kcal"));
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("was this just a question"));
+  });
+});
+
+describe("handleIncomingMessage — Nutrition Guidance mode", () => {
+  afterEach(() => jest.resetModules());
+
+  // Today in the guidance's own timezone, so the meal saved "now" counts.
+  const timezone = "Asia/Kolkata";
+  const today = () =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const guidance = () => ({
+    date: today(),
+    timezone,
+    target: { caloriesKcal: 1890, proteinG: 95, carbsG: 230, fatG: 63, fiberG: 30 },
+    // A breakfast already logged today.
+    mealsToday: [
+      {
+        id: "breakfast-1",
+        loggedAt: new Date().toISOString(),
+        totalCaloriesMin: 550, totalCaloriesMax: 650,
+        totalProteinMin: 28, totalProteinMax: 32,
+        totalCarbsMin: 80, totalCarbsMax: 90,
+        totalFatMin: 18, totalFatMax: 22,
+        totalFiberMin: 6, totalFiberMax: 8,
+      },
+    ],
+  });
+
+  it("reports the meal in full and the day against the target, with the new meal counted once", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage } = await setup({}, { guidance: guidance() });
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+
+    expect(fakeDb._mealLogs.length).toBe(1);
+    const opts = (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mock.calls[0][3];
+    // No "Today so far" totals and no next-meal tip: the guidance lines
+    // replace both.
+    expect(opts.dailyTotals).toBeUndefined();
+    // 400-500 kcal and 25-30 g protein; this analysis reports no fiber.
+    expect(opts.guidance.thisMeal).toBe("This meal: 450 kcal · 28 g protein · 0 g carbs · 0 g fat · fiber unknown");
+    // Breakfast 600 + lunch 450, against 1,890.
+    expect(opts.guidance.today).toContain("Calories 1,050 / 1,890 kcal · 840 kcal left");
+    expect(opts.guidance.today).toContain("Protein 58 / 95 g · 37 g left");
+    // Lunch had no fiber estimate, so the fiber total is only a floor.
+    expect(opts.guidance.today).toContain("Fiber at least 7 / 30 g · 23 g left");
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("Logged lunch ✅"));
+  });
+
+  it("answers 'today' with the day against the target", async () => {
+    const { sendTextMessage, handleIncomingMessage } = await setup({}, { guidance: guidance() });
+
+    await handleIncomingMessage({ from: "911234567890", type: "text" as const, text: "today" });
+
+    expect(sendTextMessage).toHaveBeenCalledWith(
+      "911234567890",
+      expect.stringContaining("1 meal logged today.\n\nToday vs your target:\nCalories 600 / 1,890 kcal · 1,290 kcal left")
+    );
+  });
+
+  it("keeps the Tracking reply when Guidance isn't in effect", async () => {
+    const { foodAnalyzer, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValue(realFoodAnalysis());
+
+    await handleIncomingMessage(photoMsg, photoBuffer);
+
+    const opts = (foodAnalyzer.buildAutoSaveMessage as jest.Mock).mock.calls[0][3];
+    expect(opts.guidance).toBeUndefined();
   });
 });

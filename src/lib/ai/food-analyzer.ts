@@ -999,6 +999,11 @@ export function buildAutoSaveMessage(
     dailyTotals?: { protein: number; calories: number; carbs: number; fat: number; targetProteinG?: number } | null;
     isClarificationResolution?: boolean;
     timezone?: string;
+    /** Nutrition Guidance is on (see src/lib/guidance/whatsapp.ts): the
+     * estimate becomes this meal's full nutrition, "Today so far" becomes
+     * the day against the target, and the next-meal recommendation is
+     * dropped. Guidance reports; it doesn't coach. */
+    guidance?: { thisMeal: string; today: string };
   }
 ): string {
   const protein = avgProtein(analysis);
@@ -1008,7 +1013,9 @@ export function buildAutoSaveMessage(
   const label = formatMealLabel(resolvedLabel).toLowerCase();
   const estimate = `Estimated: ${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
   const portionCheck = needsPortionConfirmation(analysis) ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}` : "";
-  const recommendation = buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null, opts.timezone);
+  const recommendation = opts.guidance
+    ? null
+    : buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null, opts.timezone);
 
   // A meal that just had its ambiguity resolved by the user reads slightly
   // differently ("Thanks — I've logged...") than a fresh, unprompted
@@ -1028,11 +1035,12 @@ export function buildAutoSaveMessage(
     ? `Need to fix anything? Just reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`
     : `If anything is off, reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`;
 
-  let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}`;
+  let msg = `${lead}\n${foodLines(analysis)}\n\n${opts.guidance ? opts.guidance.thisMeal : estimate}${portionCheck}`;
   if (recommendation) msg += `\n\n${recommendation}`;
+  if (opts.guidance) msg += `\n\n${opts.guidance.today}`;
   msg += `\n\n${closing}`;
 
-  if (opts.dailyTotals) {
+  if (opts.dailyTotals && !opts.guidance) {
     const { protein: totalProtein, calories: totalCalories, carbs: totalCarbs, fat: totalFat, targetProteinG } = opts.dailyTotals;
     const proteinPart = targetProteinG ? `${totalProtein}g / ${targetProteinG}g protein` : `${totalProtein}g protein`;
     msg += `\n\nToday so far: ${proteinPart} · ${totalCarbs}g carbs · ${totalFat}g fat · ${totalCalories.toLocaleString("en-IN")} kcal.`;
@@ -1131,8 +1139,16 @@ export function buildLowConfidenceClarificationMessage(decision: SaveDecision, t
 /** Used when a correction arrives for an already-auto-saved meal — updates
  * happen silently in place (no "Reply Yes" needed, since the user already
  * gave a definitive correction), so this just reports the new numbers. */
-export function buildCorrectionUpdateMessage(resolvedLabel: MealType, analysis: FoodAnalysisResult): string {
+export function buildCorrectionUpdateMessage(
+  resolvedLabel: MealType,
+  analysis: FoodAnalysisResult,
+  /** Nutrition Guidance is on: report the corrected meal in full and where
+   * the day now stands, as buildAutoSaveMessage does. */
+  guidance?: { thisMeal: string; today: string }
+): string {
+  const lead = `Thanks for the correction — I've updated ${formatMealLabel(resolvedLabel).toLowerCase()}.`;
+  if (guidance) return `${lead}\n\n${guidance.thisMeal}\n\n${guidance.today}`;
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
-  return `Thanks for the correction — I've updated ${formatMealLabel(resolvedLabel).toLowerCase()}.\n\nNew estimate: ${protein}g protein · ${cal} kcal.`;
+  return `${lead}\n\nNew estimate: ${protein}g protein · ${cal} kcal.`;
 }

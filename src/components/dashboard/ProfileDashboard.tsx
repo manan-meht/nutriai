@@ -28,6 +28,8 @@ import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
+import type { GuidanceDashboard } from "@/lib/guidance/view";
+import { GuidanceDashboardSection } from "@/components/guidance/GuidanceDashboardSection";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -105,6 +107,13 @@ export interface ProfileDashboardProps {
    * when provided, each meal card shows 👍/🎉/❤️ buttons; the first tap on
    * a meal sends the contact a WhatsApp line via reactToMeal. */
   onReactToMeal?: (mealId: string, emoji: "👍" | "🎉" | "❤️") => Promise<{ error?: string; emoji?: string }>;
+  /** Set when Nutrition Guidance is in effect for this person (see
+   * loadGuidanceDashboard). The dashboard then leads with today's meals
+   * against the target and the history against it, and drops the gentle
+   * per-meal coaching lines: Guidance reports numbers instead. */
+  guidance?: GuidanceDashboard | null;
+  /** The Guidance screen, for Return to Tracking and the full view. */
+  guidanceHref?: string;
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -120,6 +129,8 @@ export function ProfileDashboard({
   renderEditModal,
   extraSections,
   onReactToMeal,
+  guidance,
+  guidanceHref,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -339,6 +350,9 @@ export function ProfileDashboard({
           </div>
         </div>
 
+        {/* Guidance mode leads, right under the date range it follows. */}
+        {guidance && <GuidanceDashboardSection guidance={guidance} dateRange={dateRange} manageHref={guidanceHref} />}
+
         {/* Section 2 — Food Balance Score / insights. */}
         {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
           <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
@@ -443,7 +457,7 @@ export function ProfileDashboard({
                           written after save by the WhatsApp path, so older
                           meals simply don't have one. Not truncated: unlike
                           the summary above, the advice is the content. */}
-                      {meal.coachingSuggestion && (
+                      {meal.coachingSuggestion && !guidance && (
                         <p className={`text-xs text-emerald-700 mt-1 ${dm ? "dark:text-emerald-400" : ""}`}>
                           🌱 {meal.coachingSuggestion}
                         </p>

@@ -57,6 +57,15 @@ import { buildCoachingSuggestion } from "@/lib/rag/coaching-suggestions";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
+import {
+  formatTargetLines,
+  formatThisMeal,
+  loadWhatsAppGuidance,
+  mealRowFrom,
+  totalsToday,
+  totalsWith,
+  type WhatsAppGuidance,
+} from "@/lib/guidance/whatsapp";
 
 const MY_PROGRESS_CTA = "\n\n📊 Want to see your own progress? Reply *My Progress* anytime.";
 
@@ -585,6 +594,25 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // resolveMealLabel) reflects the contact's actual clock, not the
   // server's or a hardcoded default.
   const contactTimezone: string | undefined = isAdults ? entity.timezone : undefined;
+
+  // Nutrition Guidance, loaded at most once per message and only by the
+  // paths that report against a target. Null means Tracking, which in
+  // production is everyone until the target policy is reviewed. Never
+  // throws: a failure here degrades to the Tracking reply, never to a lost
+  // meal.
+  let guidanceLoad: Promise<WhatsAppGuidance | null> | undefined;
+  const getGuidance = () =>
+    (guidanceLoad ??= loadWhatsAppGuidance(db, { contactId: entityId, contactType: isAdults ? "adults" : "gym" }).catch(
+      (err) => {
+        console.error("[whatsapp] guidance load failed:", err instanceof Error ? err.message : err);
+        return null;
+      }
+    ));
+  /** This meal in full, and the day against the target with it counted. */
+  const guidanceLines = (guidance: WhatsAppGuidance, analysis: FoodAnalysisResult, mealId: string) => {
+    const row = mealRowFrom(analysis, mealId, new Date().toISOString());
+    return { thisMeal: formatThisMeal(row), today: formatTargetLines(totalsWith(guidance, row)) };
+  };
 
   // Every analysis carries the contact's timezone so the vision prompt is
   // told which region's dishes to expect (see src/lib/ai/region-context.ts).
@@ -1210,17 +1238,46 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     // answer for a meal that — unusually — was already saved) happens in
     // place: never a second meal_logs row for the same meal.
     if (existing?.status === "saved" && existing.savedMealId) {
+      // Loaded before the update, so today's rows still hold the old
+      // version of this meal and totalsWith swaps it out. A meal from an
+      // earlier day isn't in them, and gets the Tracking reply instead of
+      // being counted against today.
+      const guidance = await getGuidance();
+      const correctsToday = guidance?.mealsToday.some((m) => m.id === existing.savedMealId) ?? false;
       await updateSavedMeal(existing.savedMealId, analysis, resolvedLabel);
-      await sendTextMessage(msg.from, buildCorrectionUpdateMessage(resolvedLabel, analysis));
+      await sendTextMessage(
+        msg.from,
+        buildCorrectionUpdateMessage(
+          resolvedLabel,
+          analysis,
+          guidance && correctsToday ? guidanceLines(guidance, analysis, existing.savedMealId) : undefined
+        )
+      );
       await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId: existing.savedMealId });
       return;
     }
 
-    const priorTotals = await getDailyTotals();
+    // Guidance is loaded before the insert, like priorTotals: a read
+    // straight after it may not see the new meal, so it's added in memory.
+    const guidance = await getGuidance();
+    const priorTotals = guidance ? null : await getDailyTotals();
     const savedMealId = await saveMeal(analysis, resolvedLabel);
     if (!savedMealId) {
       await sendTextMessage(msg.from, MEAL_SAVE_FAILED_MESSAGE);
       await setConvState("awaiting_confirmation", toPendingMeal(analysis, "pending_confirmation"));
+      return;
+    }
+    if (guidance) {
+      // Guidance reports and doesn't coach: no next-meal tip and no
+      // celebration line, just the meal and where the day stands.
+      const guidanceMsg = buildAutoSaveMessage(analysis, resolvedLabel, decision, {
+        timezone: contactTimezone,
+        seed,
+        isClarificationResolution: opts.isClarificationResolution,
+        guidance: guidanceLines(guidance, analysis, savedMealId),
+      });
+      await sendTextMessage(msg.from, guidanceMsg + (END_USER_DASHBOARD_ENABLED ? MY_PROGRESS_CTA : ""));
+      await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId });
       return;
     }
     const dailyTotals = addMealToTotals(priorTotals, analysis);
@@ -1352,6 +1409,16 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // "show today" — a plain daily summary, doesn't touch conversation state
   // or the AI, safe to answer immediately.
   if (msg.type === "text" && msg.text && isShowToday(msg.text)) {
+    const guidance = await getGuidance();
+    if (guidance) {
+      const today = totalsToday(guidance);
+      const head =
+        today.mealCount === 0
+          ? "No meals logged yet today."
+          : `${today.mealCount} ${today.mealCount === 1 ? "meal" : "meals"} logged today.`;
+      await sendTextMessage(msg.from, `${head}\n\n${formatTargetLines(today)}`);
+      return;
+    }
     const totals = await getDailyTotals();
     if (!totals || (totals.protein === 0 && totals.calories === 0)) {
       await sendTextMessage(msg.from, "No meals logged yet today.");

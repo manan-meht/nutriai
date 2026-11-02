@@ -6,7 +6,7 @@ import { ContactDashboard } from "@/components/adults/dashboard/ContactDashboard
 import { FoodPreferencesEditor } from "@/components/adults/FoodPreferencesEditor";
 import { AccessCodeCard } from "@/components/shared/dashboard/AccessCodeCard";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
-import { loadGuidanceEntry } from "@/lib/guidance/view";
+import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
 
 export default async function ContactPage({ params }: { params: Promise<{ contactId: string }> }) {
   const { contactId } = await params;
@@ -18,15 +18,20 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
   if (!details) notFound();
   // getContactDetails returning a contact is the ownership check, so the
   // entry (which carries only the mode) is safe to load for it.
-  const [dietaryProfile, guidanceEntry] = await Promise.all([
+  const [dietaryProfile, guidanceEntry, guidance] = await Promise.all([
     getFoodPreferences(contactId),
     loadGuidanceEntry(createServiceClient(), contactId),
+    loadGuidanceDashboard(createServiceClient(), { contactId }),
   ]);
   const isSelf = details.contact.relationshipType === "self";
 
   return (
     <>
-      <ContactDashboard {...details} />
+      <ContactDashboard
+        {...details}
+        guidance={guidance}
+        guidanceHref={`/adults/dashboard/contacts/${contactId}/guidance`}
+      />
       {/* Full-width dark background — a max-w-3xl div alone only colors its
           own constrained column, leaving the page's default white body
           visible at the edges on anything wider than that (and, since this

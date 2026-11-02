@@ -15,9 +15,26 @@ jest.mock("@/lib/whatsapp/client", () => ({
   sendTemplateMessage: jest.fn(),
   normalizePhone: jest.fn((n: string) => n),
 }));
+// Nutrition Guidance: the flag on and the gate open, so the reminder path
+// asks the (stubbed) loader. It returns null unless a test sets
+// mockGuidance, which keeps every other test here on ordinary reminders.
+jest.mock("@/lib/billing/feature-flags", () =>
+  Object.defineProperty({ ...jest.requireActual("@/lib/billing/feature-flags") }, "GUIDANCE_ENABLED", {
+    value: true,
+    enumerable: true,
+  })
+);
+jest.mock("@/lib/guidance/release", () => ({
+  loadReleaseState: jest.fn(async () => ({ canActivate: true, isPreviewOnly: true, blockers: [], policyVersion: "v1", policyStatus: "unreviewed" })),
+}));
+let mockGuidance: unknown = null;
+jest.mock("@/lib/guidance/whatsapp", () => ({
+  ...jest.requireActual("@/lib/guidance/whatsapp"),
+  loadWhatsAppGuidance: jest.fn(async () => mockGuidance),
+}));
 
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendTextMessage } from "@/lib/whatsapp/client";
+import { sendTemplateMessage, sendTextMessage } from "@/lib/whatsapp/client";
 import { sendPushNotificationToProfile } from "@/lib/notifications/push";
 import { NextRequest } from "next/server";
 
@@ -55,7 +72,8 @@ function fakeDb(
     contactRow = defaultContactRow,
     workspacePlan = "family",
     stuckConversations = [] as any[],
-  }: { contactRow?: any; workspacePlan?: string; stuckConversations?: any[] } = {}
+    reminderContacts = [] as any[],
+  }: { contactRow?: any; workspacePlan?: string; stuckConversations?: any[]; reminderContacts?: any[] } = {}
 ) {
   const mealLogs: any[] = [];
   const updatedConversations: any[] = [];
@@ -63,9 +81,15 @@ function fakeDb(
   const db = {
     from(table: string) {
       if (table === "adults_contacts") {
+        // Only the reminders query (filtered on reminders_enabled) sees the
+        // reminder contacts; the weekly-wins sweep stays empty.
+        let remindersQuery = false;
         const chain: any = {
-          eq: () => chain,
-          is: () => Promise.resolve({ data: [] }),
+          eq: (col: string) => {
+            if (col === "reminders_enabled") remindersQuery = true;
+            return chain;
+          },
+          is: () => Promise.resolve({ data: remindersQuery ? reminderContacts : [] }),
           // The real row, not just a timezone: the caregiver comes from
           // HERE (caregiver_id), which is both the meal's trainer_id and
           // the push recipient. The previous fixture returned only a
@@ -138,6 +162,12 @@ function fakeDb(
             }),
           }),
         };
+      }
+      if (table === "profiles") {
+        return { select: () => ({ in: async () => ({ data: [] }) }) };
+      }
+      if (table === "meal_reminder_sends") {
+        return { insert: async () => ({ error: null }) };
       }
       if (table === "entitlements") {
         // No trialing/card-backed entitlements in this test's fixture data
@@ -414,5 +444,77 @@ describe("POST /api/cron/send-meal-reminders — stuck conversation locks", () =
     const body = await res.json();
 
     expect(body.stuckLocks).toEqual({ released: 0 });
+  });
+});
+
+describe("POST /api/cron/send-meal-reminders — reminders in Nutrition Guidance mode", () => {
+  // 02:30 UTC is 08:00 in Kolkata: the breakfast reminder is due.
+  beforeEach(() => {
+    process.env.CRON_SECRET = "test-secret";
+    delete process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
+    jest.clearAllMocks();
+    jest.useFakeTimers({
+      doNotFake: ["setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval", "clearImmediate", "nextTick", "queueMicrotask"],
+      now: new Date("2026-09-09T02:30:00.000Z"),
+    });
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    mockGuidance = null;
+    delete process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
+  });
+
+  const reminderContact = {
+    id: "contact-1",
+    workspace_id: "ws-1",
+    caregiver_id: "caregiver-1",
+    full_name: "Kamlesh Mehta",
+    whatsapp_number: "919800000000",
+    timezone: "Asia/Kolkata",
+    reminders_enabled: true,
+    reminder_times: ["08:00"],
+    todays_focus_enabled: true,
+  };
+  const guidance = {
+    date: "2026-09-09",
+    timezone: "Asia/Kolkata",
+    target: { caloriesKcal: 1890, proteinG: 95, carbsG: 230, fatG: 63, fiberG: 30 },
+    mealsToday: [],
+  };
+
+  async function run() {
+    const { db } = fakeDb([], { reminderContacts: [reminderContact] });
+    (createServiceClient as jest.Mock).mockReturnValue(db);
+    const { POST } = await import("@/app/api/cron/send-meal-reminders/route");
+    await POST(new NextRequest("http://localhost/api/cron/send-meal-reminders", {
+      method: "POST",
+      headers: { authorization: "Bearer test-secret" },
+    }));
+  }
+
+  it("says what's left for today instead of coaching", async () => {
+    mockGuidance = guidance;
+    await run();
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    const text = (sendTextMessage as jest.Mock).mock.calls[0][1] as string;
+    expect(text).toContain("it's breakfast time.");
+    expect(text).toContain("Left for today: 1,890 kcal · 95 g protein · 230 g carbs · 63 g fat · 30 g fiber");
+  });
+
+  it("puts the balance in the template's second slot, on one line", async () => {
+    process.env.WHATSAPP_REMINDER_TEMPLATE_NAME = "tistra_meal_reminder";
+    mockGuidance = guidance;
+    await run();
+    expect(sendTemplateMessage).toHaveBeenCalledTimes(1);
+    const params = (sendTemplateMessage as jest.Mock).mock.calls[0][3] as string[];
+    expect(params[1]).toMatch(/^Left for today: 1,890 kcal/);
+    // Meta rejects template parameters that contain line breaks.
+    expect(params[1]).not.toMatch(/\n/);
+  });
+
+  it("sends the ordinary reminder when Guidance isn't in effect", async () => {
+    await run();
+    expect(sendTextMessage).toHaveBeenCalledTimes(1);
+    expect((sendTextMessage as jest.Mock).mock.calls[0][1]).not.toContain("Left for today");
   });
 });
