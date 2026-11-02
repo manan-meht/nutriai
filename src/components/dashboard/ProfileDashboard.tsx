@@ -353,8 +353,9 @@ export function ProfileDashboard({
         {/* Guidance mode leads, right under the date range it follows. */}
         {guidance && <GuidanceDashboardSection guidance={guidance} dateRange={dateRange} manageHref={guidanceHref} />}
 
-        {/* Section 2 — Food Balance Score / insights. */}
-        {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
+        {/* Section 2 — Food Balance Score / insights. Not in Guidance mode,
+            which reports against a target instead of scoring. */}
+        {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && !guidance && (
           <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
         )}
 

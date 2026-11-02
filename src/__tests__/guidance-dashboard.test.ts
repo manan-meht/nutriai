@@ -15,7 +15,7 @@ jest.mock("@/lib/billing/feature-flags", () =>
 import { buildAutoSaveMessage, buildCorrectionUpdateMessage, type FoodAnalysisResult } from "@/lib/ai/food-analyzer";
 import type { ConfirmedMealRow } from "@/lib/guidance/daily-totals";
 import { guidanceHistory, mealImpacts, mealValues } from "@/lib/guidance/meal-impact";
-import { loadGuidanceDashboard } from "@/lib/guidance/view";
+import { loadGuidanceContactIds, loadGuidanceDashboard } from "@/lib/guidance/view";
 import {
   formatBalanceLine,
   formatTargetLines,
@@ -200,6 +200,20 @@ describe("the dashboard in Guidance mode", () => {
     const tracking = rows();
     tracking.nutrition_guidance[0].mode = "tracking";
     expect(await loadGuidanceDashboard(makeGuidanceDb(tracking), { contactId: KAMLESH, now })).toBeNull();
+  });
+});
+
+describe("the family overview in Guidance mode", () => {
+  it("knows which people are in Guidance, so their cards drop the Food Balance Score", async () => {
+    const r = rows();
+    r.adults_contacts.push({ id: "contact-other", caregiver_id: "profile-manan", relationship_type: "self", timezone: TZ });
+    expect(await loadGuidanceContactIds(makeGuidanceDb(r), [KAMLESH, "contact-other"])).toEqual([KAMLESH]);
+  });
+
+  it("is empty while the gate is closed", async () => {
+    expect(await inProduction(() => loadGuidanceContactIds(makeGuidanceDb(rows()), [KAMLESH]))).toEqual([]);
+    mockFlags.guidance = false;
+    expect(await loadGuidanceContactIds(makeGuidanceDb(rows()), [KAMLESH])).toEqual([]);
   });
 });
 

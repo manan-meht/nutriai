@@ -97,6 +97,10 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
         working = working.filter((r) => String(r[col]) >= val);
         return chain;
       },
+      in: (col: string, vals: unknown[]) => {
+        working = working.filter((r) => vals.includes(r[col]));
+        return chain;
+      },
       maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),
       then: (resolve: (v: Result) => void) => resolve({ data: working, error: null }),
     };

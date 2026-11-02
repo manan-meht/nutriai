@@ -241,6 +241,24 @@ export async function loadTodayProgress(
   };
 }
 
+/** Which of these family contacts are in Guidance, for an overview that
+ * lists several people at once. Same gate as everything else: the flag,
+ * the release gate, then the mode, so in production (policy unreviewed)
+ * this is always empty and costs no query past the flag. */
+export async function loadGuidanceContactIds(db: SupabaseClient, contactIds: string[]): Promise<string[]> {
+  if (!GUIDANCE_ENABLED || contactIds.length === 0) return [];
+  const release = await loadReleaseState(db);
+  if (!release.canActivate) return [];
+  const { data } = await db
+    .from("nutrition_guidance")
+    .select("adults_contact_id")
+    .eq("mode", "guidance")
+    .in("adults_contact_id", contactIds);
+  return ((data ?? []) as Array<{ adults_contact_id: string | null }>)
+    .map((r) => r.adults_contact_id)
+    .filter((id): id is string => id != null);
+}
+
 /** What a dashboard shows once Guidance is on: today meal by meal, and
  * every day since it started against that day's target. */
 export interface GuidanceDashboard {

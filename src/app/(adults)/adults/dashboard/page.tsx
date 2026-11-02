@@ -1,6 +1,6 @@
 
 import { headers } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, markWorkspaceSelfPlan } from "./actions";
 import { AdultsDashboardClient } from "@/components/adults/AdultsDashboardClient";
@@ -13,6 +13,7 @@ import { getPrice, getSelfPrice, formatMinorUnits } from "@/lib/billing/pricing"
 import { SELF_TRACKING_ENABLED } from "@/lib/billing/feature-flags";
 import { choosePlanAndCheckout } from "@/app/actions/pricing";
 import { syncCheckoutCompletion } from "@/app/actions/subscription-management";
+import { loadGuidanceContactIds } from "@/lib/guidance/view";
 
 interface AdultsDashboardPageProps {
   searchParams?: Promise<Record<string, string>>;
@@ -59,6 +60,9 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   const selfAnnual = getSelfPrice(market, "annual");
 
   const hasSelfContact = contacts.some((c) => c.relationshipType === "self");
+  // People in Nutrition Guidance get a Guidance marker on their card in
+  // place of the Food Balance Score.
+  const guidanceContactIds = await loadGuidanceContactIds(createServiceClient(), contacts.map((c) => c.id));
 
   // Persist self-tracking intent as soon as it's known, rather than only
   // relying on the one-time ?self=1 redirect param — see markWorkspaceSelfPlan.
@@ -96,6 +100,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
       workspaceId={workspace.id}
       contacts={contacts}
       removedContacts={removedContacts}
+      guidanceContactIds={guidanceContactIds}
       extraCapacity={workspace.extraCapacity}
       entitlement={entitlement}
       promptSelfSetup={promptSelfSetup}
