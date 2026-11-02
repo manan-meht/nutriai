@@ -2,9 +2,11 @@
 
 import { createServiceClient } from "@/lib/supabase/server";
 import {
+  adjustTargets,
   confirmActivation,
   proposeActivation,
   returnToTracking,
+  type AdjustResult,
   type ConfirmResult,
   type DeactivateResult,
   type ProposalResult,
@@ -57,4 +59,31 @@ export async function returnToTrackingAction(surface: GuidanceSurface, contactId
   const request = await resolveGuidanceActor(surface);
   if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
   return returnToTracking(createServiceClient(), { contactId, ...request });
+}
+
+/** A coach sets the client's targets by hand. The numbers arrive from the
+ * browser untyped; anything that isn't a number becomes NaN here and fails
+ * adjustTargets' bounds check with a message naming the field. */
+export async function adjustTargetsAction(
+  surface: GuidanceSurface,
+  contactId: string,
+  targets: unknown,
+  note: unknown
+): Promise<AdjustResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (targets && typeof targets === "object" ? targets : {}) as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+  return adjustTargets(createServiceClient(), {
+    contactId,
+    ...request,
+    targets: {
+      caloriesKcal: num(raw.caloriesKcal),
+      proteinG: num(raw.proteinG),
+      carbsG: num(raw.carbsG),
+      fatG: num(raw.fatG),
+      fiberG: num(raw.fiberG),
+    },
+    note: typeof note === "string" ? note : null,
+  });
 }

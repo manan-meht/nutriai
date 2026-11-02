@@ -38,6 +38,7 @@ jest.mock("@/lib/end-user/dashboard-service", () => ({
 }));
 
 import {
+  adjustTargetsAction,
   confirmGuidanceAction,
   proposeGuidanceAction,
   returnToTrackingAction,
@@ -214,7 +215,41 @@ describe("an account holder acting for someone they track", () => {
     expect(result).toMatchObject({ ok: true, activatedVia: "coach" });
     expect(rows.nutrition_guidance[0]).toMatchObject({ gym_client_id: RAVI, activated_via: "coach" });
     expect(rows.nutrition_targets[0]).toMatchObject({ gym_client_id: RAVI, approved_via: "coach" });
-    expect(await returnToTrackingAction("coach", RAVI)).toEqual({ ok: true, mode: "tracking" });
+    // Coach clients only have Guidance.
+    expect(await returnToTrackingAction("coach", RAVI)).toMatchObject({ ok: false, reason: "always_guided" });
+  });
+
+  it("lets the coach tune the targets, and shows the editor only to the coach", async () => {
+    mockUser = { id: COACH };
+    const setupView = await loadGuidanceView(mockDb, { contactId: RAVI, contactType: "gym", actor: { kind: "caregiver", profileId: COACH } });
+    expect(setupView).toMatchObject({ kind: "setup", canAdjustTargets: true });
+
+    await confirmGuidanceAction("coach", RAVI, formAnswers);
+    // A string from the browser is not a number; the field is named.
+    expect(await adjustTargetsAction("coach", RAVI, { caloriesKcal: "2600", proteinG: 170, carbsG: 300, fatG: 75, fiberG: 35 }, null)).toMatchObject({
+      ok: false,
+      kind: "invalid",
+      field: "caloriesKcal",
+    });
+    expect(await adjustTargetsAction("coach", RAVI, { caloriesKcal: 2600, proteinG: 170, carbsG: 300, fatG: 75, fiberG: 35 }, "Bulk")).toMatchObject({
+      ok: true,
+    });
+
+    const view = await loadGuidanceView(mockDb, { contactId: RAVI, contactType: "gym", actor: { kind: "caregiver", profileId: COACH } });
+    expect(view).toMatchObject({
+      kind: "active",
+      canReturnToTracking: false,
+      adjust: { current: { caloriesKcal: 2600 }, isAdjusted: true, note: "Bulk" },
+    });
+
+    // A family caregiver's view has no editor, and keeps Return to Tracking.
+    mockUser = { id: ASHA };
+    await confirmGuidanceAction("account", MOTHER, formAnswers);
+    const familyView = await loadGuidanceView(mockDb, { contactId: MOTHER, actor: { kind: "caregiver", profileId: ASHA } });
+    expect(familyView).toMatchObject({ kind: "active", canReturnToTracking: true, adjust: null });
+    expect(await adjustTargetsAction("account", MOTHER, { caloriesKcal: 2000, proteinG: 90, carbsG: 250, fatG: 60, fiberG: 30 }, null)).toMatchObject({
+      reason: "adjustment_not_offered",
+    });
   });
 
   it("never lets a surface reach the other product's table", async () => {

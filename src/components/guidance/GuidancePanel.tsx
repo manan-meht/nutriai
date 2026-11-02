@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 
 // Type-only: activation.ts and view.ts are server modules, and nothing of
 // theirs but these shapes may reach the browser bundle.
-import type { ActivationFailure, ConfirmResult, DeactivateResult, ProposalResult } from "@/lib/guidance/activation";
+import type { ActivationFailure, AdjustResult, ConfirmResult, DeactivateResult, ProposalResult } from "@/lib/guidance/activation";
 import type { GuidancePerson, GuidanceView } from "@/lib/guidance/view";
 
 import { GuidanceSetupForm, initialSetupForm, setupFormToAnswers, type SetupFormState } from "./GuidanceSetupForm";
+import { GuidanceTargetEditor } from "./GuidanceTargetEditor";
 import { GuidanceToday } from "./GuidanceToday";
 
 // The Guidance screen, for every viewer. Which branch renders was decided
@@ -31,6 +32,8 @@ interface GuidancePanelProps {
   onPropose: (answers: unknown) => Promise<ProposalResult>;
   onConfirm: (answers: unknown) => Promise<ConfirmResult>;
   onReturnToTracking: () => Promise<DeactivateResult>;
+  /** The coach's target editor; only the coach page passes it. */
+  onAdjust?: (targets: unknown, note: unknown) => Promise<AdjustResult>;
 }
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
@@ -262,6 +265,11 @@ function SetupFlow({
       <div className="space-y-4">
         {proposal.isPreviewOnly && <PreviewBanner />}
         <TargetsReview proposal={proposal} person={person} />
+        {view.canAdjustTargets && (
+          <p className="text-sm text-[var(--gm-text-secondary)]">
+            These are the recommended starting numbers. You can fine-tune them once Guidance is on.
+          </p>
+        )}
         <button type="button" onClick={confirmTargets} disabled={pending} className={primaryButton}>
           {pending ? "Turning on…" : "Turn on Guidance"}
         </button>
@@ -296,7 +304,7 @@ function SetupFlow({
   );
 }
 
-function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: GuidancePanelProps) {
+function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking, onAdjust }: GuidancePanelProps) {
   switch (view.kind) {
     case "setup":
       return <SetupFlow view={view} backHref={backHref} onPropose={onPropose} onConfirm={onConfirm} />;
@@ -322,8 +330,11 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
               </p>
             </Notice>
           )}
+          {view.adjust && onAdjust && !person.isSelf && (
+            <GuidanceTargetEditor personName={person.name} adjust={view.adjust} onAdjust={onAdjust} />
+          )}
           <GuidanceToday today={view.today} />
-          {person.isSelf ? (
+          {!view.canReturnToTracking ? null : person.isSelf ? (
             <ReturnToTracking
               description="Return to Tracking turns off your daily targets. Your meals, history and preferences stay as they are, and you can turn Guidance back on any time."
               confirmText="Return to Tracking? Your targets will be hidden. Meals and history are kept."
@@ -346,11 +357,13 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
           <Notice title="Guidance is paused">
             <p>{view.message}</p>
           </Notice>
-          <ReturnToTracking
-            description="You can switch fully back to Tracking. Your meals and history stay as they are."
-            confirmText="Return to Tracking? Meals and history are kept."
-            onReturnToTracking={onReturnToTracking}
-          />
+          {view.canReturnToTracking && (
+            <ReturnToTracking
+              description="You can switch fully back to Tracking. Your meals and history stay as they are."
+              confirmText="Return to Tracking? Meals and history are kept."
+              onReturnToTracking={onReturnToTracking}
+            />
+          )}
         </div>
       );
 

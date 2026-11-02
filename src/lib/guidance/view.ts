@@ -5,6 +5,7 @@ import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
 import {
   buildSetupPrefill,
   getGuidanceState,
+  recommendedTargets,
   guidanceSubjectColumn,
   loadContactFacts,
   UNAVAILABLE_MESSAGE,
@@ -14,6 +15,8 @@ import {
 } from "./activation";
 import {
   authorizeGuidanceActivation,
+  authorizeGuidanceDeactivation,
+  authorizeTargetAdjustment,
   type ActivatedVia,
   type GuidanceActor,
   type GuidanceContactType,
@@ -27,6 +30,7 @@ import {
   type DailyTotals,
 } from "./daily-totals";
 import { guidanceHistory, mealImpacts, type GuidanceDay, type MealImpact } from "./meal-impact";
+import type { ProposedTargets } from "./policy";
 import { loadReleaseState, type ReleaseState } from "./release";
 
 // What the Guidance screen shows, decided on the server.
@@ -87,6 +91,8 @@ export type GuidanceView =
       isPreviewOnly: boolean;
       policyVersion: string;
       hasEverActivated: boolean;
+      /** A coach may tune the numbers once Guidance is on. */
+      canAdjustTargets: boolean;
     }
   | {
       kind: "active";
@@ -98,12 +104,26 @@ export type GuidanceView =
       policyVersion: string;
       activatedAt: string | null;
       today: TodayProgress | null;
+      /** False for a coach client, who stays in Guidance. */
+      canReturnToTracking: boolean;
+      /** Set only for the client's coach, who may tune the numbers. */
+      adjust: TargetAdjustView | null;
     }
   /** Guidance is on, but the release gate no longer allows it here — say
    * a policy retired, or a row written from a preview environment against
    * a database that production also reads. Targets stay hidden; stopping
    * stays available. */
-  | { kind: "paused"; message: string };
+  | { kind: "paused"; message: string; canReturnToTracking: boolean };
+
+/** What the coach's target editor starts from. */
+export interface TargetAdjustView {
+  current: ProposedTargets;
+  /** The policy's numbers, for reference and reset. */
+  recommended: ProposedTargets;
+  /** True once the coach's numbers differ from the policy's. */
+  isAdjusted: boolean;
+  note: string | null;
+}
 
 const PAUSED_MESSAGE =
   "Nutrition Guidance isn't available right now, so the targets are hidden. Meals are still logged as usual.";
@@ -331,6 +351,31 @@ export async function loadGuidanceDashboard(
   };
 }
 
+async function loadTargetAdjustView(
+  db: SupabaseClient,
+  contactId: string,
+  contactType: GuidanceContactType
+): Promise<TargetAdjustView | null> {
+  const { data } = await db
+    .from("nutrition_targets")
+    .select("calories_kcal, protein_g, carbs_g, fat_g, fiber_g, inputs")
+    .eq(guidanceSubjectColumn(contactType), contactId)
+    .is("effective_to", null)
+    .maybeSingle();
+  if (!data) return null;
+  const current: ProposedTargets = {
+    caloriesKcal: Number(data.calories_kcal),
+    proteinG: Number(data.protein_g),
+    carbsG: Number(data.carbs_g),
+    fatG: Number(data.fat_g),
+    fiberG: Number(data.fiber_g),
+  };
+  const recommended = recommendedTargets({ inputs: data.inputs, targets: current });
+  const note = (data.inputs as { adjustment?: { note?: string | null } } | null)?.adjustment?.note ?? null;
+  const isAdjusted = (Object.keys(current) as Array<keyof ProposedTargets>).some((k) => current[k] !== recommended[k]);
+  return { current, recommended, isAdjusted, note };
+}
+
 async function loadPrefill(
   db: SupabaseClient,
   contactId: string,
@@ -386,9 +431,10 @@ export async function loadGuidanceView(
   const state = await getGuidanceState(db, params.contactId, contactType);
   const onBehalf = activation.activatedVia === "caregiver" || activation.activatedVia === "coach";
   const person: GuidancePerson = onBehalf ? { isSelf: false, name: facts.fullName ?? "this person" } : { isSelf: true };
+  const canReturnToTracking = authorizeGuidanceDeactivation(params.actor, facts).allowed;
 
   if (state.mode === "guidance") {
-    if (!release.canActivate) return { kind: "paused", message: PAUSED_MESSAGE };
+    if (!release.canActivate) return { kind: "paused", message: PAUSED_MESSAGE, canReturnToTracking };
     return {
       kind: "active",
       person,
@@ -396,6 +442,10 @@ export async function loadGuidanceView(
       isPreviewOnly: release.isPreviewOnly,
       policyVersion: release.policyVersion,
       activatedAt: state.activatedAt,
+      canReturnToTracking,
+      adjust: authorizeTargetAdjustment(params.actor, facts).allowed
+        ? await loadTargetAdjustView(db, params.contactId, contactType)
+        : null,
       today: await loadTodayProgress(db, {
         contactId: params.contactId,
         contactType,
@@ -411,6 +461,7 @@ export async function loadGuidanceView(
     kind: "setup",
     person,
     prefill: await loadPrefill(db, params.contactId, contactType),
+    canAdjustTargets: authorizeTargetAdjustment(params.actor, facts).allowed,
     isPreviewOnly: release.isPreviewOnly,
     policyVersion: release.policyVersion,
     hasEverActivated: state.hasEverActivated,

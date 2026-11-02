@@ -29,7 +29,7 @@ import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissio
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
-import { GuidanceDashboardSection } from "@/components/guidance/GuidanceDashboardSection";
+import { GuidanceDashboardSection, GuidanceSetupPrompt } from "@/components/guidance/GuidanceDashboardSection";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -114,6 +114,9 @@ export interface ProfileDashboardProps {
   guidance?: GuidanceDashboard | null;
   /** The Guidance screen, for Return to Tracking and the full view. */
   guidanceHref?: string;
+  /** For someone who only has Guidance (a coach client) and isn't set up
+   * yet: the dashboard leads with the setup prompt instead. */
+  guidanceSetup?: { href: string; personName: string };
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -131,6 +134,7 @@ export function ProfileDashboard({
   onReactToMeal,
   guidance,
   guidanceHref,
+  guidanceSetup,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -352,6 +356,7 @@ export function ProfileDashboard({
 
         {/* Guidance mode leads, right under the date range it follows. */}
         {guidance && <GuidanceDashboardSection guidance={guidance} dateRange={dateRange} manageHref={guidanceHref} />}
+        {!guidance && guidanceSetup && <GuidanceSetupPrompt {...guidanceSetup} />}
 
         {/* Section 2 — Food Balance Score / insights. Not in Guidance mode,
             which reports against a target instead of scoring. */}

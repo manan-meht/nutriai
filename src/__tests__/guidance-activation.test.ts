@@ -12,6 +12,7 @@ jest.mock("@/lib/billing/feature-flags", () => ({
 import {
   authorizeGuidanceActivation,
   authorizeGuidanceDeactivation,
+  authorizeTargetAdjustment,
   canReadScreeningAnswers,
   type GuidanceActor,
   type GuidanceContactFacts,
@@ -23,6 +24,8 @@ import {
   getGuidanceState,
   proposeActivation,
   returnToTracking,
+  adjustTargets,
+  recommendedTargets,
   WRITE_FAILED_MESSAGE,
   type GuidanceSetupAnswers,
 } from "@/lib/guidance/activation";
@@ -134,7 +137,21 @@ describe("who may turn it off, and who may read the screening answers", () => {
     expect(authorizeGuidanceDeactivation(motherHerself, motherFacts).allowed).toBe(true);
     expect(authorizeGuidanceDeactivation(motherOnWhatsapp, motherFacts).allowed).toBe(true);
     expect(authorizeGuidanceDeactivation(daughter, motherFacts).allowed).toBe(true);
-    expect(authorizeGuidanceDeactivation(coach, clientFacts).allowed).toBe(true);
+  });
+
+  it("keeps a coach client in Guidance: there's no Tracking to return to", () => {
+    expect(authorizeGuidanceDeactivation(coach, clientFacts)).toMatchObject({ allowed: false, reason: "always_guided" });
+    // A stranger still learns only that they have no access.
+    expect(authorizeGuidanceDeactivation(otherCoach, clientFacts)).toMatchObject({ allowed: false, reason: "not_your_contact" });
+  });
+
+  it("lets only the client's own coach set numbers by hand", () => {
+    expect(authorizeTargetAdjustment(coach, clientFacts)).toEqual({ allowed: true, activatedVia: "coach" });
+    expect(authorizeTargetAdjustment(otherCoach, clientFacts)).toMatchObject({ allowed: false, reason: "not_your_contact" });
+    // A family caregiver can turn Guidance on, but the numbers stay the policy's.
+    expect(authorizeTargetAdjustment(daughter, motherFacts)).toMatchObject({ allowed: false, reason: "adjustment_not_offered" });
+    expect(authorizeTargetAdjustment(daughter, selfFacts)).toMatchObject({ allowed: false, reason: "adjustment_not_offered" });
+    expect(authorizeTargetAdjustment(motherHerself, motherFacts)).toMatchObject({ allowed: false, reason: "adjustment_not_offered" });
   });
 
   it("still refuses a stranger", () => {
@@ -669,11 +686,11 @@ describe("coach clients", () => {
     const day = new Date("2026-10-10T06:00:00Z");
     await confirmActivation(makeDb(rows), { contactId: MOTHER, actor: motherHerself, answers, now: day });
     await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers, now: day });
-    await returnToTracking(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, now: day });
+    await returnToTracking(makeDb(rows), { contactId: MOTHER, actor: motherHerself, now: day });
 
     expect(rows.nutrition_targets).toHaveLength(2);
-    expect(await getGuidanceState(makeDb(rows), MOTHER)).toMatchObject({ mode: "guidance" });
-    expect(await getGuidanceState(makeDb(rows), CLIENT, "gym")).toMatchObject({ mode: "tracking", hasEverActivated: true });
+    expect(await getGuidanceState(makeDb(rows), MOTHER)).toMatchObject({ mode: "tracking", hasEverActivated: true });
+    expect(await getGuidanceState(makeDb(rows), CLIENT, "gym")).toMatchObject({ mode: "guidance" });
 
     // Same-day re-activation works for a client as it does for a contact.
     const again = await confirmActivation(makeDb(rows), {
@@ -685,5 +702,105 @@ describe("coach clients", () => {
     });
     expect(again.ok).toBe(true);
     expect(rows.nutrition_targets.filter((t) => t.gym_client_id === CLIENT)).toHaveLength(1);
+  });
+
+  it("refuses to switch a coach client back to Tracking, and changes nothing", async () => {
+    const rows = withRavi();
+    await confirmActivation(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers });
+    expect(await returnToTracking(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach })).toMatchObject({
+      ok: false,
+      kind: "forbidden",
+      reason: "always_guided",
+    });
+    expect(rows.nutrition_guidance[0]).toMatchObject({ mode: "guidance" });
+  });
+
+  describe("a coach adjusting the numbers", () => {
+    const day1 = new Date("2026-10-10T06:00:00Z");
+    const day2 = new Date("2026-10-12T06:00:00Z");
+    const tuned = { caloriesKcal: 2600, proteinG: 170, carbsG: 300, fatG: 75, fiberG: 35 };
+
+    async function activated() {
+      const rows = withRavi();
+      const result = await confirmActivation(makeDb(rows), {
+        contactId: CLIENT, contactType: "gym", actor: coach, answers: raviAnswers, now: day1,
+      });
+      if (!result.ok) throw new Error("activation failed");
+      return { rows, policy: result.targets };
+    }
+
+    it("stores the coach's numbers as the coach's, keeping the policy's alongside", async () => {
+      const { rows, policy } = await activated();
+      const result = await adjustTargets(makeDb(rows), {
+        contactId: CLIENT, contactType: "gym", actor: coach, targets: tuned, note: "Bulk phase", now: day2,
+      });
+      expect(result).toMatchObject({ ok: true, targets: tuned, effectiveFrom: "2026-10-12" });
+
+      const current = rows.nutrition_targets.find((t) => t.effective_to == null)!;
+      expect(current).toMatchObject({ calories_kcal: 2600, protein_g: 170, approved_via: "coach", gym_client_id: CLIENT });
+      expect(current.inputs).toMatchObject({
+        adjustment: { source: "coach_adjusted", recommended: policy, adjustedByProfileId: COACH_PROFILE, note: "Bulk phase" },
+      });
+      expect(String(current.explanation)).toMatch(/^Set by the coach/);
+      // The day-1 policy target is closed, not overwritten: history keeps it.
+      expect(rows.nutrition_targets).toHaveLength(2);
+    });
+
+    it("keeps the policy's numbers as the reference through later adjustments", async () => {
+      const { rows, policy } = await activated();
+      await adjustTargets(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, targets: tuned, now: day2 });
+      await adjustTargets(makeDb(rows), {
+        contactId: CLIENT, contactType: "gym", actor: coach, targets: { ...tuned, caloriesKcal: 2500 }, now: day2,
+      });
+      const current = rows.nutrition_targets.find((t) => t.effective_to == null)!;
+      expect(current.calories_kcal).toBe(2500);
+      // Same day: replaced in place.
+      expect(rows.nutrition_targets).toHaveLength(2);
+      expect(
+        recommendedTargets({
+          inputs: current.inputs,
+          targets: { caloriesKcal: 2500, proteinG: 170, carbsG: 300, fatG: 75, fiberG: 35 },
+        })
+      ).toEqual(policy);
+    });
+
+    it("rejects a number outside the bounds, naming the field, and writes nothing", async () => {
+      const { rows } = await activated();
+      const before = JSON.stringify(rows.nutrition_targets);
+      for (const [targets, field] of [
+        [{ ...tuned, caloriesKcal: 200 }, "caloriesKcal"],
+        [{ ...tuned, proteinG: 2000 }, "proteinG"],
+        [{ ...tuned, fatG: 62.5 }, "fatG"],
+        [{ ...tuned, fiberG: Number.NaN }, "fiberG"],
+      ] as const) {
+        expect(await adjustTargets(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, targets, now: day2 })).toMatchObject({
+          ok: false,
+          kind: "invalid",
+          field,
+        });
+      }
+      expect(JSON.stringify(rows.nutrition_targets)).toBe(before);
+    });
+
+    it("needs Guidance set up first", async () => {
+      const rows = withRavi();
+      expect(await adjustTargets(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: coach, targets: tuned })).toMatchObject({
+        ok: false,
+        reason: "not_in_guidance",
+      });
+      expect(rows.nutrition_targets).toHaveLength(0);
+    });
+
+    it("refuses a family caregiver and another coach", async () => {
+      const { rows } = await activated();
+      expect(await adjustTargets(makeDb(rows), { contactId: CLIENT, contactType: "gym", actor: otherCoach, targets: tuned })).toMatchObject({
+        reason: "not_your_contact",
+      });
+      const family = freshRows();
+      await confirmActivation(makeDb(family), { contactId: MOTHER, actor: daughter, answers });
+      expect(await adjustTargets(makeDb(family), { contactId: MOTHER, actor: daughter, targets: tuned })).toMatchObject({
+        reason: "adjustment_not_offered",
+      });
+    });
   });
 });

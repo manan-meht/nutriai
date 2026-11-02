@@ -5,6 +5,7 @@ import type { ActivityLevel, MetabolicEquationSex, NutritionGoal } from "@nutria
 import {
   authorizeGuidanceActivation,
   authorizeGuidanceDeactivation,
+  authorizeTargetAdjustment,
   type ActivatedVia,
   type AuthorizationResult,
   type GuidanceActor,
@@ -114,6 +115,26 @@ export type ConfirmResult =
   | ActivationFailure;
 
 export type DeactivateResult = { ok: true; mode: "tracking" } | ActivationFailure;
+
+export type AdjustResult =
+  | { ok: true; targets: ProposedTargets; effectiveFrom: string }
+  | ActivationFailure
+  /** A number outside ADJUSTMENT_BOUNDS. Says which, so the form can mark it. */
+  | { ok: false; kind: "invalid"; field: keyof ProposedTargets; message: string };
+
+/** What a hand-set target may be. A typo guard, not clinical advice: wide
+ * enough for any adult a coach would plausibly program for, narrow enough
+ * that "200" for calories or "2000" for protein can't be saved by
+ * accident. The 800 kcal floor sits below the policy's 1,200 automation
+ * floor on purpose: a coach may knowingly program a small, older client's
+ * maintenance, which the policy itself allows. */
+export const ADJUSTMENT_BOUNDS: Record<keyof ProposedTargets, { min: number; max: number; label: string; unit: string }> = {
+  caloriesKcal: { min: 800, max: 6000, label: "Calories", unit: "kcal" },
+  proteinG: { min: 20, max: 400, label: "Protein", unit: "g" },
+  carbsG: { min: 0, max: 900, label: "Carbs", unit: "g" },
+  fatG: { min: 10, max: 300, label: "Fat", unit: "g" },
+  fiberG: { min: 0, max: 100, label: "Fiber", unit: "g" },
+};
 
 export const UNAVAILABLE_MESSAGE = "Nutrition Guidance isn't available yet. You can keep logging meals as usual.";
 
@@ -531,4 +552,123 @@ export async function returnToTracking(
   if (error) return writeFailed("returning to tracking", error);
 
   return { ok: true, mode: "tracking" };
+}
+
+
+/** Where a target row's numbers came from, as adjustTargets records it in
+ * the row's inputs. Absent on a row the policy produced. */
+export interface TargetAdjustment {
+  source: "coach_adjusted";
+  /** The policy's numbers the coach started from, for "reset". */
+  recommended: ProposedTargets;
+  adjustedByProfileId: string;
+  note: string | null;
+}
+
+/** The policy's numbers behind a target row: the row itself if the policy
+ * set it, or what it recorded before a coach adjusted it. */
+export function recommendedTargets(row: { inputs: unknown; targets: ProposedTargets }): ProposedTargets {
+  const adjustment = (row.inputs as { adjustment?: TargetAdjustment } | null)?.adjustment;
+  return adjustment?.recommended ?? row.targets;
+}
+
+/**
+ * A coach sets the client's targets by hand.
+ *
+ * Guidance must already be on, with a current target. The numbers start
+ * from the policy's and the coach tunes them (see
+ * authorizeTargetAdjustment). Unlike confirmActivation, this takes numbers,
+ * because setting the numbers IS the decision being made here, and the
+ * person making it is a professional. It is recorded that way: approved_via
+ * 'coach', the coach's profile, and the policy's numbers kept alongside in
+ * the row's inputs, so the targets can always be told apart from the
+ * policy's and reset to them.
+ */
+export async function adjustTargets(
+  db: SupabaseClient,
+  params: {
+    contactId: string;
+    contactType?: GuidanceContactType;
+    actor: GuidanceActor;
+    targets: ProposedTargets;
+    note?: string | null;
+    now?: Date;
+  }
+): Promise<AdjustResult> {
+  const facts = await loadContactFacts(db, params.contactId, params.contactType);
+  if (!facts) return { ok: false, kind: "not_found" };
+
+  const auth = authorizeTargetAdjustment(params.actor, facts);
+  if (!auth.allowed) return forbidden(auth);
+
+  const release = await loadReleaseState(db);
+  if (!release.canActivate) return unavailable(release);
+
+  for (const [field, bound] of Object.entries(ADJUSTMENT_BOUNDS) as Array<[keyof ProposedTargets, (typeof ADJUSTMENT_BOUNDS)[keyof ProposedTargets]]>) {
+    const value = params.targets[field];
+    if (!Number.isInteger(value) || value < bound.min || value > bound.max) {
+      return {
+        ok: false,
+        kind: "invalid",
+        field,
+        message: `${bound.label} must be a whole number from ${bound.min.toLocaleString("en-US")} to ${bound.max.toLocaleString("en-US")} ${bound.unit}.`,
+      };
+    }
+  }
+
+  const state = await getGuidanceState(db, params.contactId, facts.contactType);
+  const column = guidanceSubjectColumn(facts.contactType);
+  const { data: current } = await db
+    .from("nutrition_targets")
+    .select("policy_version, calories_kcal, protein_g, carbs_g, fat_g, fiber_g, inputs")
+    .eq(column, facts.contactId)
+    .is("effective_to", null)
+    .maybeSingle();
+  // Adjusting is tuning a plan that exists. Without one there is nothing to
+  // start from, and the setup flow (with its screening) comes first.
+  if (state.mode !== "guidance" || !current) {
+    return { ok: false, kind: "forbidden", reason: "not_in_guidance", message: "Set up Guidance first, then adjust the targets." };
+  }
+
+  const recommended = recommendedTargets({
+    inputs: current.inputs,
+    targets: {
+      caloriesKcal: Number(current.calories_kcal),
+      proteinG: Number(current.protein_g),
+      carbsG: Number(current.carbs_g),
+      fatG: Number(current.fat_g),
+      fiberG: Number(current.fiber_g),
+    },
+  });
+  const note = params.note?.trim().slice(0, 500) || null;
+  const adjustment: TargetAdjustment = {
+    source: "coach_adjusted",
+    recommended,
+    adjustedByProfileId: params.actor.kind === "caregiver" ? params.actor.profileId : "",
+    note,
+  };
+  const baseInputs = (current.inputs as Record<string, unknown> | null) ?? {};
+
+  const now = params.now ?? new Date();
+  const effectiveFrom = localDate(now.toISOString(), facts.timezone);
+  const t = params.targets;
+  const error = await writeCurrentTarget(db, facts, effectiveFrom, {
+    policy_version: current.policy_version,
+    calories_kcal: t.caloriesKcal,
+    protein_g: t.proteinG,
+    carbs_g: t.carbsG,
+    fat_g: t.fatG,
+    fiber_g: t.fiberG,
+    inputs: { ...baseInputs, adjustment },
+    explanation:
+      `Set by the coach, adjusting the recommended ${recommended.caloriesKcal.toLocaleString("en-US")} kcal · ` +
+      `${recommended.proteinG} g protein · ${recommended.carbsG} g carbs · ${recommended.fatG} g fat · ` +
+      `${recommended.fiberG} g fiber.` +
+      (note ? ` Coach's note: ${note}` : ""),
+    approved_at: now.toISOString(),
+    approved_via: auth.activatedVia,
+  });
+  if (error) return writeFailed("adjusting the target", error);
+
+  return { ok: true, targets: t, effectiveFrom };
 }

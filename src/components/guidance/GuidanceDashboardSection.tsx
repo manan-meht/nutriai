@@ -243,3 +243,27 @@ export function GuidanceDashboardSection({
     </section>
   );
 }
+
+/** Where the Guidance section goes, before it exists: for a coach client,
+ * who only has Guidance, setting it up is the first thing to do, not a card
+ * at the bottom of the page. */
+export function GuidanceSetupPrompt({ href, personName }: { href: string; personName: string }) {
+  return (
+    <section className="guidance-theme rounded-2xl bg-[var(--gm-page)] p-5 text-[var(--gm-text)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-[var(--gm-text)]">Set up {personName}&apos;s daily targets</h2>
+          <p className="mt-1 text-sm text-[var(--gm-text-secondary)]">
+            A few health questions, then recommended calorie and macro targets you can fine-tune.
+          </p>
+        </div>
+        <Link
+          href={href}
+          className="shrink-0 rounded-xl bg-[var(--gm-accent)] px-4 py-2.5 text-center text-sm font-semibold text-[var(--gm-on-accent)] hover:bg-[var(--gm-accent-hover)] transition"
+        >
+          Set up targets →
+        </Link>
+      </div>
+    </section>
+  );
+}

@@ -22,10 +22,12 @@ export function ClientDashboard({
   biomarkers,
   guidance,
   guidanceHref,
+  guidanceSetup,
 }: ClientDetails & {
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
   guidanceHref?: string;
+  guidanceSetup?: { href: string; personName: string };
 }) {
   const router = useRouter();
 
@@ -35,6 +37,7 @@ export function ClientDashboard({
       data={adaptClientDetails({ client, meals, workouts, biomarkers })}
       guidance={guidance}
       guidanceHref={guidanceHref}
+      guidanceSetup={guidanceSetup}
       backHref="/gym/dashboard"
       theme={COACH_THEME}
       copy={COACH_COPY}
