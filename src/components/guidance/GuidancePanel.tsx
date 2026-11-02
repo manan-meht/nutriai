@@ -52,14 +52,17 @@ function failureMessage(result: ActivationFailure): string {
 
 /** Shown on every screen that renders numbers from a policy nobody has
  * reviewed yet. release.ts only lets that happen outside production, and
- * this is how the screen says so. */
-function PreviewBanner({ policyVersion }: { policyVersion: string }) {
+ * this is how the screen says so. Written for whoever is looking, not for
+ * engineers: the policy version is under "How these were calculated" for
+ * anyone who needs it. Worded for anyone's diet, since a caregiver or
+ * coach may be the one reading. */
+function PreviewBanner() {
   return (
     <div role="note" className="rounded-2xl border border-[var(--gm-over-border)] bg-[var(--gm-over-soft)] p-4">
-      <p className="text-sm font-semibold text-[var(--gm-over-text)]">Preview: unreviewed targets</p>
+      <p className="text-sm font-semibold text-[var(--gm-over-text)]">Test version: targets not yet checked</p>
       <p className="text-sm text-[var(--gm-over-text)] opacity-80 mt-1">
-        These targets come from policy {policyVersion}, which has not been clinically reviewed yet. They are shown only
-        because this is not the production app. Don&apos;t rely on them.
+        A qualified health professional hasn&apos;t yet reviewed how Tistra works out these targets. You&apos;re seeing
+        them only because this is a test version of the app, so don&apos;t use them to change anyone&apos;s diet.
       </p>
     </div>
   );
@@ -228,7 +231,7 @@ function SetupFlow({
     });
   }
 
-  const banner = view.isPreviewOnly && <PreviewBanner policyVersion={view.policyVersion} />;
+  const banner = view.isPreviewOnly && <PreviewBanner />;
   const { person } = view;
   const changeAnswers = person.isSelf ? "Change my answers" : "Change the answers";
 
@@ -257,7 +260,7 @@ function SetupFlow({
   if (step === "review" && proposal) {
     return (
       <div className="space-y-4">
-        {proposal.isPreviewOnly && <PreviewBanner policyVersion={proposal.policyVersion} />}
+        {proposal.isPreviewOnly && <PreviewBanner />}
         <TargetsReview proposal={proposal} person={person} />
         <button type="button" onClick={confirmTargets} disabled={pending} className={primaryButton}>
           {pending ? "Turning on…" : "Turn on Guidance"}
@@ -311,7 +314,7 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking }: Guid
         : null;
       return (
         <div className="space-y-4">
-          {view.isPreviewOnly && <PreviewBanner policyVersion={view.policyVersion} />}
+          {view.isPreviewOnly && <PreviewBanner />}
           {setUpBy && (
             <Notice title="Set up for you">
               <p>
