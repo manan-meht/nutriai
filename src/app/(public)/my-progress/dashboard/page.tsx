@@ -6,6 +6,8 @@ import { getEndUserSession } from "@/lib/end-user/session";
 import { getEndUserDashboard, hasAcceptedConsent, getInviter } from "@/lib/end-user/dashboard-service";
 import { MyProgressDashboardClient } from "@/components/end-user/MyProgressDashboardClient";
 import { ConsentForm } from "@/components/end-user/ConsentForm";
+import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
+import { createServiceClient } from "@/lib/supabase/server";
 
 // The consent screen ("Review your Tistra Health access") renders inline
 // here rather than as its own /my-progress/consent route — a standalone
@@ -34,7 +36,18 @@ export default async function MyProgressDashboardPage() {
     );
   }
 
-  const dashboard = await getEndUserDashboard(session.contactId, session.contactType);
+  const [dashboard, guidanceEntry, guidance] = await Promise.all([
+    getEndUserDashboard(session.contactId, session.contactType),
+    // /my-progress offers Guidance to family contacts only.
+    session.contactType === "adults" ? loadGuidanceEntry(createServiceClient(), session.contactId) : null,
+    session.contactType === "adults" ? loadGuidanceDashboard(createServiceClient(), { contactId: session.contactId }) : null,
+  ]);
 
-  return <MyProgressDashboardClient dashboard={dashboard} />;
+  return (
+    <MyProgressDashboardClient
+      dashboard={dashboard}
+      guidanceMode={guidanceEntry?.visible ? guidanceEntry.mode : undefined}
+      guidance={guidance}
+    />
+  );
 }
