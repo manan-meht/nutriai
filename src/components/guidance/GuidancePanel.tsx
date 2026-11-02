@@ -274,27 +274,15 @@ function SetupFlow({
     <form onSubmit={submitAnswers} className="space-y-4">
       {banner}
       <Notice>
-        {person.isSelf ? (
-          <p>
-            {view.hasEverActivated
-              ? "Guidance is off. Answer a few questions to turn it back on."
-              : "Guidance adds daily calorie, protein, carb, fat and fiber targets to your tracking, calculated from a few questions."}{" "}
-            You&apos;ll see the targets before anything is switched on.
-          </p>
-        ) : (
-          <>
-            <p>
-              {view.hasEverActivated
-                ? `Guidance is off for ${person.name}. Answer a few questions to turn it back on.`
-                : `Guidance adds daily calorie, protein, carb, fat and fiber targets to ${person.name}'s tracking, calculated from a few questions.`}{" "}
-              You&apos;ll see the targets before anything is switched on.
-            </p>
-            <p>
-              You&apos;re setting this up on {person.name}&apos;s behalf, and it&apos;s recorded that way. If they use
-              Tistra themselves, they can switch it off.
-            </p>
-          </>
-        )}
+        <p>
+          {person.isSelf
+            ? view.hasEverActivated
+              ? "Guidance is off. Answer a few health questions to turn it back on."
+              : "Answer a few health questions to get daily calorie, protein, carb, fat and fiber targets. You'll see them before anything is switched on."
+            : view.hasEverActivated
+              ? `Guidance is off for ${person.name}. Answer a few health questions to turn it back on.`
+              : `Answer a few health questions for ${person.name} to get their daily targets. You'll see them before anything is switched on, and it's recorded as set up by you.`}
+        </p>
       </Notice>
       <GuidanceSetupForm person={person} value={form} onChange={setForm} />
       <button type="submit" disabled={pending} className={primaryButton}>
