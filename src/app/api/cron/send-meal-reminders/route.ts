@@ -34,6 +34,7 @@ import { pruneDeadPushTokens } from "@/lib/notifications/push";
 import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
 import { loadReleaseState } from "@/lib/guidance/release";
+import { afterMealSaved } from "@/lib/nutrients/pipeline";
 import { formatBalanceLine, formatGuidanceReminder, loadWhatsAppGuidance, totalsToday } from "@/lib/guidance/whatsapp";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
@@ -683,6 +684,10 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
       skipped++;
       continue;
     }
+
+    // Vitamins and minerals, behind GUIDANCE_MICRONUTRIENTS_ENABLED (a no-op
+    // when off). Never throws.
+    await afterMealSaved(db, { mealLogId: mealRow.id, isAdults, entityId, analysis: pending, trigger: "ingestion" });
 
     try {
       if (conv.whatsapp_number) {

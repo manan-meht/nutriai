@@ -10,8 +10,8 @@ import usdaFdcSubset from "../../../../data/food-composition/usda-fdc-subset.jso
 // its licence for commercial use hasn't been confirmed, so none of its data
 // is in the repository. Once it is confirmed:
 //
-//   1. python3 -I scripts/nutrients/import_ifct.py --in <licensed file> \
-//        --out data/food-composition/ifct-2017.json
+//   1. npx tsx scripts/nutrients/import-ifct.ts --in <licensed CSV> \
+//        --aliases <curated code -> names JSON> --out data/food-composition/ifct-2017.json
 //   2. Add `import ifct2017 from "../../../../data/food-composition/ifct-2017.json";`
 //      and put it FIRST in COMPOSITION_SOURCES below.
 //
