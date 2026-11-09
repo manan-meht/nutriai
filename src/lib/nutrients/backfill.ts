@@ -31,7 +31,14 @@ export interface BackfillResult {
 
 export async function backfillMealNutrients(
   db: SupabaseClient,
-  opts: { limit: number; dryRun: boolean; sinceIso?: string }
+  opts: {
+    limit: number;
+    dryRun: boolean;
+    sinceIso?: string;
+    /** One person only: their meals and no one else's. For testing on a
+     * single profile without writing estimates for everyone. */
+    subject?: Subject;
+  }
 ): Promise<BackfillResult> {
   const limit = Math.max(0, Math.min(opts.limit, BACKFILL_HARD_LIMIT));
   const result: BackfillResult = {
@@ -47,6 +54,7 @@ export async function backfillMealNutrients(
 
   let query = db.from("meal_logs").select("id, adults_contact_id, client_id, foods, logged_at").order("logged_at", { ascending: false }).limit(limit);
   if (opts.sinceIso) query = query.gte("logged_at", opts.sinceIso);
+  if (opts.subject) query = query.eq(opts.subject.contactType === "gym" ? "client_id" : "adults_contact_id", opts.subject.contactId);
   const { data: rows, error } = await query;
   if (error) throw new Error("meal_logs read failed");
   const meals = (rows ?? []) as Array<{ id: string; adults_contact_id: string | null; client_id: string | null; foods: AnalyzedFoodInput[] | null }>;

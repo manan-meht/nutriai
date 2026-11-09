@@ -247,6 +247,14 @@ describe("backfill", () => {
     expect(tables.meal_nutrient_estimates.every((r) => r.trigger === "backfill")).toBe(true);
   });
 
+  it("covers one person only when given one, and no one else's meals", async () => {
+    const other = { id: "o1", adults_contact_id: "someone-else", client_id: null, foods: dal, logged_at: "2026-11-03T06:00:00Z" };
+    const { db, tables } = makeNutrientsDb({ meal_logs: [...meals, other] });
+    const r = await backfillMealNutrients(db, { limit: 10, dryRun: false, subject: { contactType: "adults", contactId: A } });
+    expect(r).toMatchObject({ scanned: 5, written: 5 });
+    expect(tables.meal_nutrient_estimates.map((e) => e.meal_log_id)).not.toContain("o1");
+  });
+
   it("caps any run at the hard limit", async () => {
     const many = Array.from({ length: BACKFILL_HARD_LIMIT + 20 }, (_, i) => ({ id: `x${i}`, adults_contact_id: A, client_id: null, foods: [], logged_at: "2026-11-01T06:00:00Z" }));
     const { db } = makeNutrientsDb({ meal_logs: many });
