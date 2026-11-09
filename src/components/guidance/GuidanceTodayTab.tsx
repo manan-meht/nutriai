@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import type { GuidanceActions } from "@/lib/guidance/bound-actions";
-import { MAIN_SLOTS } from "@/lib/guidance/day-plan";
+import { MAIN_SLOTS } from "@/lib/guidance/meal-slots";
 
 import { localDate } from "@/lib/guidance/daily-totals";
 import { mealValues, NUTRIENTS, type NutrientKey } from "@/lib/guidance/meal-impact";

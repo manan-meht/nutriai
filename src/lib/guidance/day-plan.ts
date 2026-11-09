@@ -32,16 +32,9 @@ import type { MealSuggestion } from "./suggestions";
 // records it: a meal_logs row, estimated from the plan's foods and portions
 // and labelled as such (source 'guidance_plan'), linked from the plan.
 
-export type MealSlot = "breakfast" | "lunch" | "snack" | "dinner";
-export const MEAL_SLOTS: MealSlot[] = ["breakfast", "lunch", "snack", "dinner"];
-/** The meals a skip can be confirmed for. Snacks are optional by nature. */
-export const MAIN_SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner"];
+import { MAIN_SLOTS, slotOfMealType, type MealSlot } from "./meal-slots";
 
-/** meal_logs.meal_type as a planning slot. Drinks, tea and the like aren't
- * meals a plan or a skip is about. */
-export function slotOfMealType(mealType: string | null): MealSlot | null {
-  return mealType === "breakfast" || mealType === "lunch" || mealType === "snack" || mealType === "dinner" ? mealType : null;
-}
+export { MAIN_SLOTS, MEAL_SLOTS, slotOfMealType, type MealSlot } from "./meal-slots";
 
 export interface PlannedMeal {
   id: string;

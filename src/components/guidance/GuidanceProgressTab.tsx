@@ -17,7 +17,7 @@ import {
 import { localDate } from "@/lib/guidance/daily-totals";
 import { NUTRIENTS, type NutrientKey } from "@/lib/guidance/meal-impact";
 import type { GuidanceActions } from "@/lib/guidance/bound-actions";
-import { MAIN_SLOTS, slotOfMealType } from "@/lib/guidance/day-plan";
+import { MAIN_SLOTS, slotOfMealType } from "@/lib/guidance/meal-slots";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 import { HabitProgressCard } from "./GuidanceHabitCards";
