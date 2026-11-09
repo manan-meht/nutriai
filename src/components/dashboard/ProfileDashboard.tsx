@@ -29,8 +29,7 @@ import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissio
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
-import { GuidanceSetupPrompt, GuidanceTabs, type GuidanceViewer } from "@/components/guidance/GuidanceTabs";
-import { GUIDANCE_THEME } from "@/lib/dashboard/profile-dashboard-presets";
+import { GuidanceScreen, GuidanceSetupPrompt, type GuidanceViewer } from "@/components/guidance/GuidanceScreen";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -172,8 +171,7 @@ export function ProfileDashboard({
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   // Gates every dark: class added below — see ProfileDashboardTheme.enableDarkMode's own doc comment.
-  // Guidance mode has its own always-dark theme, whichever product this is.
-  const theme = guidance ? GUIDANCE_THEME : themeProp;
+  const theme = themeProp;
   const dm = theme.enableDarkMode;
   // Who's looking, for the Guidance view's wording: someone managing their
   // own profile, or a family member's, or a client's. A parent's profile
@@ -266,6 +264,47 @@ export function ProfileDashboard({
     !profile.derivedActivityLevel && (!profile.activityLevel || profile.activityLevel === "unknown") && "activity level",
   ].filter((f): f is string => Boolean(f));
 
+  const editModal =
+    showEdit &&
+    renderEditModal?.({
+      onClose: () => setShowEdit(false),
+      onSaved: () => {
+        setShowEdit(false);
+        setMacroTargetsRefreshKey((k) => k + 1);
+      },
+    });
+
+  // Guidance mode is its own screen (charcoal and lavender, Today and
+  // Progress tabs): the long tracking dashboard's summaries and charts would
+  // only repeat it.
+  if (guidance) {
+    return (
+      <>
+        <GuidanceScreen
+          guidance={guidance}
+          viewer={viewer}
+          person={{ fullName: profile.fullName, initials, photoUrl: profile.photoUrl ?? null }}
+          backHref={backHref}
+          manageHref={guidanceHref}
+          onEditDetails={permissions.canManageGoal && renderEditModal ? () => setShowEdit(true) : undefined}
+          notice={
+            showInvite && invite ? (
+              <InviteCard
+                title={copy.inviteTitle(firstName)}
+                description={copy.inviteDescription(firstName)}
+                load={invite.load}
+                regenerate={invite.regenerate}
+                revoke={invite.revoke}
+                onLinkOpened={invite.onLinkOpened}
+              />
+            ) : undefined
+          }
+        />
+        {editModal}
+      </>
+    );
+  }
+
   return (
     <div className={`min-h-screen ${theme.pageBgClassName}`}>
       <header className={`${theme.headerBgClassName} px-4 sm:px-6 py-4 sticky top-0 z-10`}>
@@ -303,13 +342,7 @@ export function ProfileDashboard({
         </div>
       </header>
 
-      {showEdit && renderEditModal?.({
-        onClose: () => setShowEdit(false),
-        onSaved: () => {
-          setShowEdit(false);
-          setMacroTargetsRefreshKey((k) => k + 1);
-        },
-      })}
+      {editModal}
 
       <main className={`${theme.containerMaxWidthClassName} mx-auto px-4 sm:px-6 py-6 space-y-6`}>
 
@@ -343,12 +376,7 @@ export function ProfileDashboard({
           />
         )}
 
-        {/* Guidance mode replaces Sections 1-7 with its two tabs: the long
-            legacy dashboard's summaries and charts would only repeat them. */}
-        {guidance ? (
-          <GuidanceTabs guidance={guidance} viewer={viewer} manageHref={guidanceHref} />
-        ) : (
-          <>
+        <>
           {guidanceSetup && <GuidanceSetupPrompt {...guidanceSetup} />}
 
           {/* Section 1 — greeting + date-range selector, goal shown inline. */}
@@ -552,8 +580,7 @@ export function ProfileDashboard({
               </div>
             </div>
           )}
-          </>
-        )}
+        </>
 
         {extraSections}
       </main>

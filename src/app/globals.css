@@ -95,6 +95,15 @@
   --gm-over-soft: rgba(245, 181, 68, 0.08);
   --gm-over-border: rgba(245, 181, 68, 0.35);
   --gm-error-text: #FCA5A5;
+  /* The one light surface: the next-meal card, so the primary card reads
+     first. Every text colour on it clears 4.5:1 (#5F5880 is 4.66:1). */
+  --gm-hero: #DDD4FB;
+  --gm-hero-text: #1C1530;
+  --gm-hero-text-secondary: #4A4166;
+  --gm-hero-text-muted: #5F5880;
+  --gm-hero-accent: #5634C0;
+  --gm-hero-button: #5B3CC4;
+  --gm-hero-border: rgba(28, 21, 48, 0.12);
   /* Native controls (select menus, radios, number spinners) follow along. */
   color-scheme: dark;
 }
