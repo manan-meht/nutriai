@@ -21,6 +21,7 @@ import { MAIN_SLOTS, slotOfMealType } from "@/lib/guidance/meal-slots";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 import { HabitProgressCard } from "./GuidanceHabitCards";
+import { MicronutrientCard } from "./GuidanceMicronutrients";
 import { MealDetail } from "./GuidanceTodayTab";
 import { useGuidanceAction } from "./use-guidance-action";
 import { formatDay } from "./GuidanceToday";
@@ -568,7 +569,6 @@ export function GuidanceProgressTab({
   detailsOpen,
   onDetailsToggle,
   actions,
-  micronutrientCard,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
@@ -576,7 +576,6 @@ export function GuidanceProgressTab({
   detailsOpen: boolean;
   onDetailsToggle: (open: boolean) => void;
   actions?: GuidanceActions;
-  micronutrientCard?: ReactNode;
 }) {
   const [periodKind, setPeriodKind] = useState<PeriodKind>("week");
   const period = periodFor(periodKind, guidance.date);
@@ -608,7 +607,9 @@ export function GuidanceProgressTab({
             {goal}
           </div>
         )}
-        {micronutrientCard ?? (
+        {guidance.micronutrients ? (
+          <MicronutrientCard panel={guidance.micronutrients} periodKind={periodKind} viewer={viewer} actions={actions} />
+        ) : (
           <section className={card} aria-labelledby="micros-title">
             <p className={`${eyebrow} text-[var(--gm-text-secondary)]`}>Vitamins &amp; minerals</p>
             <h2 id="micros-title" className="mt-2 text-xl font-bold tracking-tight text-[var(--gm-text)]">
