@@ -80,16 +80,20 @@ export function MyProgressDashboardClient({
 
   return (
     <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 flex justify-end">
-        <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
-          Sign out
-        </button>
-      </div>
+      {/* In Guidance mode, Sign out is in the screen's avatar menu. */}
+      {!guidance && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 flex justify-end">
+          <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
+            Sign out
+          </button>
+        </div>
+      )}
 
       <ProfileDashboard
         role="participant"
         guidance={guidance}
         guidanceActions={guidanceActions}
+        onSignOut={handleSignOut}
         guidanceHref="/my-progress/guidance"
         // No self-service profile-edit UI exists yet for the end-user OTP
         // session (unlike EditContactModal/EditClientModal for
@@ -102,7 +106,7 @@ export function MyProgressDashboardClient({
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
-        {guidanceMode && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
+        {guidanceMode && !guidance && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
 
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>

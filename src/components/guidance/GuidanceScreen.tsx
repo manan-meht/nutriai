@@ -31,11 +31,13 @@ function AvatarMenu({
   manageHref,
   manageLabel,
   onEditDetails,
+  onSignOut,
 }: {
   person: GuidancePerson;
   manageHref?: string;
   manageLabel: string;
   onEditDetails?: () => void;
+  onSignOut?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -71,7 +73,7 @@ function AvatarMenu({
     </span>
   );
 
-  if (!manageHref && !onEditDetails) {
+  if (!manageHref && !onEditDetails && !onSignOut) {
     return (
       <span title={person.fullName}>
         {avatar}
@@ -118,6 +120,11 @@ function AvatarMenu({
               {manageLabel}
             </Link>
           )}
+          {onSignOut && (
+            <button type="button" className={item} onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -134,6 +141,7 @@ export function GuidanceScreen({
   notice,
   actions,
   micronutrientCard,
+  onSignOut,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
@@ -148,6 +156,7 @@ export function GuidanceScreen({
    * Absent for a read-only view. */
   actions?: GuidanceActions;
   micronutrientCard?: ReactNode;
+  onSignOut?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("today");
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -228,6 +237,7 @@ export function GuidanceScreen({
               manageHref={manageHref}
               manageLabel={viewer.kind === "coach" ? "Targets and Guidance" : "Guidance settings"}
               onEditDetails={onEditDetails}
+              onSignOut={onSignOut}
             />
           </div>
         </div>

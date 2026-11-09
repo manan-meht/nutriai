@@ -120,6 +120,8 @@ export interface ProfileDashboardProps {
   guidanceSetup?: { href: string; personName: string };
   /** Guidance's plan, skip and habit actions, bound to this person. */
   guidanceActions?: GuidanceActions;
+  /** For a signed-in end user: Guidance's avatar menu offers Sign out. */
+  onSignOut?: () => void;
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -139,6 +141,7 @@ export function ProfileDashboard({
   guidanceHref,
   guidanceSetup,
   guidanceActions,
+  onSignOut,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -292,6 +295,7 @@ export function ProfileDashboard({
           manageHref={guidanceHref}
           onEditDetails={permissions.canManageGoal && renderEditModal ? () => setShowEdit(true) : undefined}
           actions={guidanceActions}
+          onSignOut={onSignOut}
           notice={
             showInvite && invite ? (
               <InviteCard
