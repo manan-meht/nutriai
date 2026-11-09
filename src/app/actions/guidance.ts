@@ -11,7 +11,18 @@ import {
   type DeactivateResult,
   type ProposalResult,
 } from "@/lib/guidance/activation";
+import {
+  cancelPlan,
+  confirmPlannedMeal,
+  MAIN_SLOTS,
+  planMeal,
+  setMealSkipped,
+  type DailyActionResult,
+  type MealSlot,
+} from "@/lib/guidance/day-plan";
+import { chooseHabit, type HabitActionResult, type HabitKey } from "@/lib/guidance/habits";
 import { resolveGuidanceActor, type GuidanceSurface } from "@/lib/guidance/request-actor";
+import { loadGuidanceDashboard } from "@/lib/guidance/view";
 import { parseSetupAnswers } from "@/lib/guidance/setup-answers";
 
 // The Guidance setup flow's three writes. Each one resolves the actor from
@@ -85,5 +96,102 @@ export async function adjustTargetsAction(
       fiberG: num(raw.fiberG),
     },
     note: typeof note === "string" ? note : null,
+  });
+}
+
+// ─── Day to day: plans, skipped meals, the weekly habit ────────────────────
+// Same shape as above: resolve the actor from the request, then hand over.
+// day-plan.ts and habits.ts check permission, the release gate and that
+// Guidance is on, on every call.
+
+const CHANGED = {
+  ok: false,
+  kind: "invalid",
+  message: "That suggestion has changed since the page loaded. Here are the latest options.",
+} as const;
+
+/** Plans one of the options on screen. The browser names the option by id
+ * and the server recomputes the options from the same data, so the stored
+ * foods, portions and estimates are the engine's, not the request's. */
+export async function planMealAction(
+  surface: GuidanceSurface,
+  contactId: string,
+  optionId: unknown
+): Promise<DailyActionResult<{ planId: string }>> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string" || typeof optionId !== "string") return NOT_SIGNED_IN;
+  const db = createServiceClient();
+  const dashboard = await loadGuidanceDashboard(db, { contactId, contactType: request.contactType });
+  const next = dashboard?.nextSteps?.nextMeal;
+  const option = next?.suggestions.kind === "options" ? next.suggestions.options.find((o) => o.id === optionId) : undefined;
+  if (!next || !option) return CHANGED;
+  return planMeal(db, { contactId, ...request, date: next.date, suggestion: option });
+}
+
+export async function cancelPlanAction(surface: GuidanceSurface, contactId: string, planId: unknown): Promise<DailyActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string" || typeof planId !== "string") return NOT_SIGNED_IN;
+  return cancelPlan(createServiceClient(), { contactId, ...request, planId });
+}
+
+/** "I had this": logs the planned meal from its planned portions. */
+export async function confirmPlannedMealAction(
+  surface: GuidanceSurface,
+  contactId: string,
+  planId: unknown
+): Promise<DailyActionResult<{ mealLogId: string }>> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string" || typeof planId !== "string") return NOT_SIGNED_IN;
+  return confirmPlannedMeal(createServiceClient(), { contactId, ...request, planId });
+}
+
+export async function setMealSkippedAction(
+  surface: GuidanceSurface,
+  contactId: string,
+  input: unknown
+): Promise<DailyActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const slot = MAIN_SLOTS.find((s) => s === raw.slot) as MealSlot | undefined;
+  if (!slot || typeof raw.date !== "string") return { ok: false, kind: "invalid", message: "Choose breakfast, lunch or dinner." };
+  return setMealSkipped(createServiceClient(), { contactId, ...request, date: raw.date, slot, skipped: raw.skipped !== false });
+}
+
+/** Chooses this week's habit ("I'll try this", "Something easier",
+ * "Adjust"), or keeps this week's for next week ("Keep this habit"). Only
+ * a habit the server proposes now, or the one already chosen, can be
+ * picked, and the evidence stored is the server's. */
+export async function chooseHabitAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<HabitActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const db = createServiceClient();
+  const dashboard = await loadGuidanceDashboard(db, { contactId, contactType: request.contactType });
+  const habit = dashboard?.nextSteps?.habit;
+  if (!habit) return { ok: false, kind: "invalid", message: "Guidance isn't on for this person." };
+  const variant = raw.variant === "easier" ? "easier" : "standard";
+  const nextWeek = new Date(Date.parse(`${habit.weekStart}T12:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+
+  if (raw.when === "next_week") {
+    if (!habit.current) return { ok: false, kind: "invalid", message: "Choose a habit for this week first." };
+    return chooseHabit(db, {
+      contactId,
+      ...request,
+      weekStart: nextWeek,
+      key: habit.current.key,
+      variant: habit.current.variant,
+      evidence: habit.current.evidence,
+    });
+  }
+  const option = habit.options.find((o) => o.key === raw.key) ?? (habit.current?.key === raw.key ? habit.current : undefined);
+  if (!option) return { ok: false, kind: "invalid", message: "That habit isn't on offer this week." };
+  return chooseHabit(db, {
+    contactId,
+    ...request,
+    weekStart: habit.weekStart,
+    key: option.key as HabitKey,
+    variant,
+    evidence: option.evidence,
   });
 }

@@ -31,7 +31,12 @@ import {
   type DailyTarget,
   type DailyTotals,
 } from "./daily-totals";
-import { DEFAULT_MEALS_PER_DAY } from "./aggregation";
+import { DEFAULT_MEALS_PER_DAY, periodFor, summarizeDays } from "./aggregation";
+import { loadPlansAndSkips, type SkippedMeal } from "./day-plan";
+import { loadHabits } from "./habits";
+import { buildNextSteps, effectiveSkips, type NextSteps } from "./next-steps";
+import { dietAllowances } from "./suggestions";
+import type { DietaryProfile } from "@/lib/dietary-profile/types";
 import { guidanceHistory, mealImpacts, type GuidanceDay, type MealImpact } from "./meal-impact";
 import type { ProposedTargets } from "./policy";
 import { loadReleaseState, type ReleaseState } from "./release";
@@ -312,6 +317,12 @@ export interface GuidanceDashboard {
   weights: Array<{ measuredAt: string; weightKg: number }>;
   /** The WhatsApp chat meals are logged in, when the number is configured. */
   logMealHref: string | null;
+  /** Meals confirmed skipped since Guidance started, minus any slot a meal
+   * was later logged for. They complete a day; they add no intake. */
+  skips: SkippedMeal[];
+  /** The next meal (plan or suggestions), meals today that can be marked
+   * skipped, and the week's habit. Null with no target for today. */
+  nextSteps: NextSteps | null;
   /** When this was computed, so "next meal" reads the same on the server
    * and in the browser. */
   generatedAt: string;
@@ -356,15 +367,57 @@ export async function loadGuidanceDashboard(
   const since = new Date(Date.parse(`${from}T00:00:00Z`) - 24 * 60 * 60 * 1000).toISOString();
   const meals = await loadMealRows(db, params.contactId, contactType, since);
 
-  const [prefs, prefill, weights] = await Promise.all([
-    db.from("nutrition_guidance").select("meals_per_day").eq(guidanceSubjectColumn(contactType), params.contactId).maybeSingle(),
+  const weekStart = periodFor("week", date).start;
+  const [prefs, prefill, weights, planRows, habits, profile] = await Promise.all([
+    db
+      .from("nutrition_guidance")
+      .select("meals_per_day, allergies, avoided_foods, cooking_access")
+      .eq(guidanceSubjectColumn(contactType), params.contactId)
+      .maybeSingle(),
     buildSetupPrefill(db, params.contactId, contactType),
     loadWeights(db, params.contactId, contactType, since),
+    loadPlansAndSkips(db, params.contactId, contactType, from),
+    loadHabits(db, params.contactId, contactType, weekStart),
+    db
+      .from(contactType === "gym" ? "gym_clients" : "adults_contacts")
+      .select("dietary_profile")
+      .eq("id", params.contactId)
+      .maybeSingle(),
   ]);
   const mealsPerDay = typeof prefs.data?.meals_per_day === "number" ? prefs.data.meals_per_day : null;
+  const expectedMealsPerDay = mealsPerDay ?? DEFAULT_MEALS_PER_DAY;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const skips = effectiveSkips(planRows.skips, meals, facts.timezone);
+  const history = guidanceHistory({ from, to: date, timezone: facts.timezone, meals, targets });
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: facts.timezone }).format(now)
+  );
   const whatsapp = process.env.TISTRA_WHATSAPP_NUMBER?.replace(/\D/g, "");
 
   const todayTarget = targetForDate(targets, date);
+  const todayTotals = todayTarget ? computeDailyTotals({ date, timezone: facts.timezone, meals, target: todayTarget }) : null;
+  const sortedMeals = meals
+    .filter((m) => localDate(m.loggedAt, facts.timezone) >= from)
+    .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+  const nextSteps = todayTarget
+    ? buildNextSteps({
+        today: date,
+        hour: Number.isFinite(hour) ? hour % 24 : 12,
+        timezone: facts.timezone,
+        totals: todayTotals,
+        target: todayTarget,
+        meals: sortedMeals,
+        plans: planRows.plans,
+        skips,
+        summaries: summarizeDays(history, date, expectedMealsPerDay, skips),
+        habits,
+        expectedMealsPerDay,
+        diet: dietAllowances((profile.data?.dietary_profile as DietaryProfile | null) ?? null),
+        allergies: list(prefs.data?.allergies),
+        avoidedFoods: list(prefs.data?.avoided_foods),
+        cookingAccess: (prefs.data?.cooking_access as "full_kitchen" | "limited" | "none" | "unknown" | null) ?? null,
+      })
+    : null;
   return {
     isPreviewOnly: release.isPreviewOnly,
     timezone: facts.timezone,
@@ -372,19 +425,19 @@ export async function loadGuidanceDashboard(
     today: todayTarget
       ? {
           target: todayTarget,
-          totals: computeDailyTotals({ date, timezone: facts.timezone, meals, target: todayTarget }),
+          totals: todayTotals!,
           meals: mealImpacts({ date, timezone: facts.timezone, meals, target: todayTarget }),
         }
       : null,
-    history: guidanceHistory({ from, to: date, timezone: facts.timezone, meals, targets }),
-    meals: meals
-      .filter((m) => localDate(m.loggedAt, facts.timezone) >= from)
-      .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt)),
-    expectedMealsPerDay: mealsPerDay ?? DEFAULT_MEALS_PER_DAY,
+    history,
+    meals: sortedMeals,
+    expectedMealsPerDay,
     expectedMealsIsDefault: mealsPerDay == null,
     goals: prefill?.goals ?? [],
     weights,
     logMealHref: whatsapp ? `https://wa.me/${whatsapp}` : null,
+    skips,
+    nextSteps,
     generatedAt: now.toISOString(),
   };
 }

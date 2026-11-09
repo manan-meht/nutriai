@@ -16,6 +16,7 @@ import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-dashboard-presets";
 import type { GuidanceMode } from "@/lib/guidance/activation";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
 
@@ -29,12 +30,14 @@ export function MyProgressDashboardClient({
   dashboard,
   guidanceMode,
   guidance,
+  guidanceActions,
 }: {
   dashboard: EndUserDashboard;
   /** Set only when the Guidance entry should show (see isGuidanceEntryVisible). */
   guidanceMode?: GuidanceMode;
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
+  guidanceActions?: GuidanceActions;
 }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
@@ -86,6 +89,7 @@ export function MyProgressDashboardClient({
       <ProfileDashboard
         role="participant"
         guidance={guidance}
+        guidanceActions={guidanceActions}
         guidanceHref="/my-progress/guidance"
         // No self-service profile-edit UI exists yet for the end-user OTP
         // session (unlike EditContactModal/EditClientModal for

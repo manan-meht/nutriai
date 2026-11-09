@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
+
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
+import { MAIN_SLOTS } from "@/lib/guidance/day-plan";
 
 import { localDate } from "@/lib/guidance/daily-totals";
 import { mealValues, NUTRIENTS, type NutrientKey } from "@/lib/guidance/meal-impact";
 import type { GuidanceDashboard, GuidanceMealRow } from "@/lib/guidance/view";
 
+import { GuidanceNextMeal } from "./GuidanceNextMeal";
+import { HabitTodayCard } from "./GuidanceHabitCards";
+import { useGuidanceAction } from "./use-guidance-action";
 import {
   Arrow,
   card,
@@ -73,27 +79,24 @@ export function MealDetail({ meal }: { meal: GuidanceMealRow }) {
   );
 }
 
-/** The hero card. Phase 1: what's left today, honestly, until meal
- * suggestions exist. */
-function NextMealCard({ guidance, viewer, children }: { guidance: GuidanceDashboard; viewer: GuidanceViewer; children?: ReactNode }) {
+/** The hero card: the next meal, planned or suggested. */
+function NextMealCard({ guidance, viewer, actions }: { guidance: GuidanceDashboard; viewer: GuidanceViewer; actions?: GuidanceActions }) {
   const totals = guidance.today?.totals;
-  const slot = nextMealSlot(guidance.generatedAt, guidance.timezone);
+  const next = guidance.nextSteps?.nextMeal ?? null;
+  const slot = next?.slot ?? nextMealSlot(guidance.generatedAt, guidance.timezone);
+  const shown = next?.plan?.suggestion ?? (next?.suggestions.kind === "options" ? next.suggestions.options[0] : null);
 
   let headline: string;
   let subline: string;
-  if (!totals) {
+  if (!totals || !next) {
     headline = "No target for today";
     subline = "There's nothing to plan against until a target is set.";
-  } else if (totals.calories.remaining === 0) {
-    headline = "Today's energy target is reached";
-    subline = "Anything more today goes past the target.";
+  } else if (shown) {
+    headline = next.plan ? `${mealLabel(slot)} is planned` : shown.headline;
+    subline = next.isTomorrow ? "Today's meals are done, so this is for tomorrow." : shown.reason;
   } else {
-    const energyLeft = totals.calories.remaining / totals.calories.target;
-    const proteinLeft = totals.protein.remaining / totals.protein.target;
-    headline = proteinLeft > energyLeft + 0.1 ? "Make room for protein" : `A balanced ${slot}`;
-    subline = `About ${fmt(roughly(totals.calories.remaining, "calories"))} kcal and ${fmt(
-      roughly(totals.protein.remaining, "protein")
-    )} g protein left today${totals.hasIncompleteData ? ", or less: some meals are missing an estimate" : ""}.`;
+    headline = totals.calories.remaining === 0 ? "Today's energy target is reached" : "No suggestion right now";
+    subline = `About ${fmt(roughly(totals.calories.remaining, "calories"))} kcal and ${fmt(roughly(totals.protein.remaining, "protein"))} g protein left today.`;
   }
 
   return (
@@ -103,21 +106,62 @@ function NextMealCard({ guidance, viewer, children }: { guidance: GuidanceDashbo
     >
       <p className={`${eyebrow} text-[var(--gm-hero-accent)]`}>
         {Possessive(viewer)} next meal · {slot}
+        {next?.isTomorrow ? " · tomorrow" : ""}
       </p>
       <h2 id="next-meal-title" className="mt-2 text-2xl font-bold tracking-tight sm:text-4xl">
         {headline}
       </h2>
       <p className="mt-1 text-[var(--gm-hero-text-secondary)] sm:text-lg">{subline}</p>
-      {children ?? (
-        <p className="mt-5 border-t border-[var(--gm-hero-border)] pt-3 text-sm text-[var(--gm-hero-text-muted)]">
-          Specific meal suggestions, with portions, aren&apos;t available yet.
-        </p>
-      )}
+      {next && <GuidanceNextMeal key={`${next.date}:${next.slot}`} nextMeal={next} actions={actions} />}
     </section>
   );
 }
 
-function TodaySoFar({ guidance }: { guidance: GuidanceDashboard }) {
+/** Today's main meals whose time has passed with nothing logged: "Skipped
+ * it" makes the day complete without adding anything to it. */
+function SkipPrompts({ guidance, actions }: { guidance: GuidanceDashboard; actions?: GuidanceActions }) {
+  const { run, pending, error } = useGuidanceAction();
+  const prompts = guidance.nextSteps?.skipPrompts ?? [];
+  const skipped = guidance.skips.filter((s) => s.date === guidance.date && MAIN_SLOTS.includes(s.slot));
+  if (!actions || (prompts.length === 0 && skipped.length === 0)) return null;
+  return (
+    <div className="mt-5 space-y-2 border-t border-[var(--gm-border)] pt-4">
+      {prompts.map((slot) => (
+        <div key={slot} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-[var(--gm-text-secondary)]">No {slot} logged.</span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => actions.setMealSkipped({ date: guidance.date, slot, skipped: true }))}
+            className={quietButton}
+          >
+            Mark as skipped
+          </button>
+        </div>
+      ))}
+      {skipped.map((s) => (
+        <div key={s.slot} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-[var(--gm-text-secondary)]">{mealLabel(s.slot)} skipped.</span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => actions.setMealSkipped({ date: guidance.date, slot: s.slot, skipped: false }))}
+            className={quietButton}
+          >
+            Undo
+          </button>
+        </div>
+      ))}
+      {error && (
+        <p role="alert" className="text-sm text-[var(--gm-error-text)]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TodaySoFar({ guidance, actions }: { guidance: GuidanceDashboard; actions?: GuidanceActions }) {
   const [open, setOpen] = useState(false);
   const totals = guidance.today?.totals;
   if (!totals) return null;
@@ -144,6 +188,7 @@ function TodaySoFar({ guidance }: { guidance: GuidanceDashboard }) {
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={`mt-3 ${quietButton}`}>
         {open ? "Fewer nutrients" : "All nutrients"} <Arrow />
       </button>
+      <SkipPrompts guidance={guidance} actions={actions} />
     </section>
   );
 }
@@ -193,17 +238,15 @@ export function GuidanceTodayTab({
   viewer,
   firstName,
   onShowHistory,
-  nextMealBody,
-  habitCard,
+  actions,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
   /** The tracked person's first name, for the greeting when it's their own view. */
   firstName: string;
   onShowHistory: () => void;
-  /** The suggestion inside the next-meal card, once there is one. */
-  nextMealBody?: ReactNode;
-  habitCard?: ReactNode;
+  /** Absent for a read-only view: the cards show, the buttons don't. */
+  actions?: GuidanceActions;
 }) {
   const { title, subtitle } = greeting(guidance, viewer, firstName);
   const canLog = viewer.kind === "self" && guidance.logMealHref;
@@ -216,11 +259,9 @@ export function GuidanceTodayTab({
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
-        <NextMealCard guidance={guidance} viewer={viewer}>
-          {nextMealBody}
-        </NextMealCard>
-        <TodaySoFar guidance={guidance} />
-        {habitCard}
+        <NextMealCard guidance={guidance} viewer={viewer} actions={actions} />
+        <TodaySoFar guidance={guidance} actions={actions} />
+        {guidance.nextSteps && <HabitTodayCard habit={guidance.nextSteps.habit} actions={actions} />}
         <RecentMeal guidance={guidance} />
       </div>
 

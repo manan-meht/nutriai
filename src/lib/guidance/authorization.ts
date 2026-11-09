@@ -207,3 +207,22 @@ export function canReadScreeningAnswers(actor: GuidanceActor, facts: GuidanceCon
   }
   return actor.contactId === facts.contactId;
 }
+
+/**
+ * May this actor do the day-to-day things in Guidance: plan a meal,
+ * confirm a planned meal was eaten, mark a meal skipped, choose the week's
+ * habit?
+ *
+ * The same people who may turn Guidance on: the tracked person, and the
+ * account holder who tracks them. The returned channel is recorded on the
+ * row, so a plan made by a caregiver is never mistaken for the person's
+ * own. A separate function for the same reason as authorizeTargetChange:
+ * if these ever need to differ (say, a family member who can view but not
+ * plan), the argument belongs here.
+ */
+export function authorizeGuidanceDailyAction(
+  actor: GuidanceActor,
+  facts: GuidanceContactFacts
+): AuthorizationResult {
+  return authorizeGuidanceActivation(actor, facts);
+}

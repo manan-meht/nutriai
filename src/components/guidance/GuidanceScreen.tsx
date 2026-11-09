@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { summarizeDays } from "@/lib/guidance/aggregation";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 import { GuidanceProgressTab } from "./GuidanceProgressTab";
@@ -131,8 +132,8 @@ export function GuidanceScreen({
   manageHref,
   onEditDetails,
   notice,
-  todayExtras,
-  progressExtras,
+  actions,
+  micronutrientCard,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
@@ -143,14 +144,16 @@ export function GuidanceScreen({
   onEditDetails?: () => void;
   /** Shown above the tabs' content, e.g. the WhatsApp invite. */
   notice?: ReactNode;
-  todayExtras?: { nextMealBody?: ReactNode; habitCard?: ReactNode };
-  progressExtras?: { habitCard?: ReactNode; micronutrientCard?: ReactNode };
+  /** Plan, skip and habit actions, bound to this person on the server.
+   * Absent for a read-only view. */
+  actions?: GuidanceActions;
+  micronutrientCard?: ReactNode;
 }) {
   const [tab, setTab] = useState<Tab>("today");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ today: null, progress: null });
   const id = useId();
-  const summaries = summarizeDays(guidance.history, guidance.date, guidance.expectedMealsPerDay);
+  const summaries = summarizeDays(guidance.history, guidance.date, guidance.expectedMealsPerDay, guidance.skips);
   const firstName = person.fullName.split(" ")[0];
   const canLog = viewer.kind === "self" && !!guidance.logMealHref;
 
@@ -244,8 +247,7 @@ export function GuidanceScreen({
               viewer={viewer}
               firstName={firstName}
               onShowHistory={showHistory}
-              nextMealBody={todayExtras?.nextMealBody}
-              habitCard={todayExtras?.habitCard}
+              actions={actions}
             />
           ) : (
             <GuidanceProgressTab
@@ -254,8 +256,8 @@ export function GuidanceScreen({
               summaries={summaries}
               detailsOpen={detailsOpen}
               onDetailsToggle={setDetailsOpen}
-              habitCard={progressExtras?.habitCard}
-              micronutrientCard={progressExtras?.micronutrientCard}
+              actions={actions}
+              micronutrientCard={micronutrientCard}
             />
           )}
         </div>
