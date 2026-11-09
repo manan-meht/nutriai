@@ -68,6 +68,11 @@ function SuggestionBody({ suggestion }: { suggestion: MealSuggestion }) {
             .filter(Boolean)
             .join(" · ")}
         </p>
+        {suggestion.brings && (
+          <p className="mt-1 text-sm font-medium text-[var(--gm-hero-accent)]">
+            Also a source of {suggestion.brings.label.toLowerCase()}: about {fmt(suggestion.brings.amount)} {suggestion.brings.unit}.
+          </p>
+        )}
         <p className="mt-1 text-sm italic text-[var(--gm-hero-text-muted)]">
           Portions are a guide, sized to what&apos;s left today. Estimates from{" "}
           {[...new Set(suggestion.components.map((c) => c.source.dataset))].join(", ")}.
