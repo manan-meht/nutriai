@@ -146,9 +146,9 @@ export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumb
         {guidanceOn ? (
           <div className="flex flex-col items-center">
             <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">Guidance</p>
-            <div className="w-20 h-20 rounded-full border-4 border-teal-500/40 bg-teal-500/10 flex flex-col items-center justify-center dark:border-teal-400/40 dark:bg-teal-400/10">
-              <span className="text-sm font-semibold text-teal-700 dark:text-teal-300">On</span>
-              <span className="text-[11px] text-teal-700/80 dark:text-teal-300/80">Daily targets</span>
+            <div className="w-20 h-20 rounded-full border-4 border-violet-500/40 bg-violet-500/10 flex flex-col items-center justify-center dark:border-violet-400/40 dark:bg-violet-400/10">
+              <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">On</span>
+              <span className="text-[11px] text-violet-700/80 dark:text-violet-300/80">Daily targets</span>
             </div>
           </div>
         ) : (

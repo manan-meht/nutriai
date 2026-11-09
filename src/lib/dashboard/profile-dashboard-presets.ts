@@ -40,6 +40,23 @@ export const COACH_THEME: ProfileDashboardTheme = {
   containerMaxWidthClassName: "max-w-5xl",
 };
 
+// Guidance mode, for every role: the charcoal and lavender theme from
+// globals.css's .guidance-theme. Always dark, so no enableDarkMode: its dark:
+// classes would only fight the tokens.
+export const GUIDANCE_THEME: ProfileDashboardTheme = {
+  headerBgClassName: "bg-[var(--gm-page)] border-b border-[var(--gm-border)]",
+  headerTextClassName: "text-[var(--gm-text)]",
+  headerSubTextClassName: "text-[var(--gm-text-muted)]",
+  headerButtonClassName:
+    "text-sm font-medium text-[var(--gm-text-secondary)] hover:text-[var(--gm-text)] bg-white/5 hover:bg-white/10 rounded-lg px-3 py-1.5 transition-colors",
+  avatarBgClassName: "bg-[var(--gm-accent-soft)]",
+  avatarTextClassName: "text-[var(--gm-accent-text)]",
+  goalBadgeClassName: "text-[var(--gm-accent-text)] bg-[var(--gm-accent-soft)]",
+  proteinTextClassName: "text-[var(--gm-accent-text)]",
+  pageBgClassName: "guidance-theme bg-[var(--gm-page)]",
+  containerMaxWidthClassName: "max-w-3xl",
+};
+
 // Participant reuses the family/adults visual identity — it's the same
 // product's self-view, just a different viewer role.
 export const PARTICIPANT_THEME: ProfileDashboardTheme = FAMILY_ADMIN_THEME;

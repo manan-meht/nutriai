@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { NutritionGoal } from "@nutriai/health-scoring";
+
 import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
 
 import {
@@ -29,6 +31,7 @@ import {
   type DailyTarget,
   type DailyTotals,
 } from "./daily-totals";
+import { DEFAULT_MEALS_PER_DAY } from "./aggregation";
 import { guidanceHistory, mealImpacts, type GuidanceDay, type MealImpact } from "./meal-impact";
 import type { ProposedTargets } from "./policy";
 import { loadReleaseState, type ReleaseState } from "./release";
@@ -292,8 +295,26 @@ export interface GuidanceDashboard {
     totals: DailyTotals;
     meals: Array<MealImpact<GuidanceMealRow>>;
   } | null;
-  /** Newest first. The dashboard narrows it with its own date range. */
+  /** Every Guidance day so far, newest first. The Progress tab groups it
+   * into periods through aggregation.ts. */
   history: GuidanceDay[];
+  /** The meals behind `history`, newest first, for the recent-meal row and
+   * the daily details. */
+  meals: GuidanceMealRow[];
+  /** Meals a day the person usually eats (their own answer, else the
+   * default). A logged day with fewer is partial, not complete. */
+  expectedMealsPerDay: number;
+  /** Whether that number is their own answer or the default. */
+  expectedMealsIsDefault: boolean;
+  goals: NutritionGoal[];
+  /** Dated weight readings, oldest first: the one goal measure the product
+   * records today. */
+  weights: Array<{ measuredAt: string; weightKg: number }>;
+  /** The WhatsApp chat meals are logged in, when the number is configured. */
+  logMealHref: string | null;
+  /** When this was computed, so "next meal" reads the same on the server
+   * and in the browser. */
+  generatedAt: string;
 }
 
 /** History reaches back at most this far, the same window the family
@@ -335,6 +356,14 @@ export async function loadGuidanceDashboard(
   const since = new Date(Date.parse(`${from}T00:00:00Z`) - 24 * 60 * 60 * 1000).toISOString();
   const meals = await loadMealRows(db, params.contactId, contactType, since);
 
+  const [prefs, prefill, weights] = await Promise.all([
+    db.from("nutrition_guidance").select("meals_per_day").eq(guidanceSubjectColumn(contactType), params.contactId).maybeSingle(),
+    buildSetupPrefill(db, params.contactId, contactType),
+    loadWeights(db, params.contactId, contactType, since),
+  ]);
+  const mealsPerDay = typeof prefs.data?.meals_per_day === "number" ? prefs.data.meals_per_day : null;
+  const whatsapp = process.env.TISTRA_WHATSAPP_NUMBER?.replace(/\D/g, "");
+
   const todayTarget = targetForDate(targets, date);
   return {
     isPreviewOnly: release.isPreviewOnly,
@@ -348,7 +377,40 @@ export async function loadGuidanceDashboard(
         }
       : null,
     history: guidanceHistory({ from, to: date, timezone: facts.timezone, meals, targets }),
+    meals: meals
+      .filter((m) => localDate(m.loggedAt, facts.timezone) >= from)
+      .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt)),
+    expectedMealsPerDay: mealsPerDay ?? DEFAULT_MEALS_PER_DAY,
+    expectedMealsIsDefault: mealsPerDay == null,
+    goals: prefill?.goals ?? [],
+    weights,
+    logMealHref: whatsapp ? `https://wa.me/${whatsapp}` : null,
+    generatedAt: now.toISOString(),
   };
+}
+
+/** Dated weights since `sinceIso`. Family contacts record them in
+ * food_balance_weight_entries; coach clients in their coach's biomarker log.
+ * Readings without a weight are skipped, never read as zero. */
+async function loadWeights(
+  db: SupabaseClient,
+  contactId: string,
+  contactType: GuidanceContactType,
+  sinceIso: string
+): Promise<Array<{ measuredAt: string; weightKg: number }>> {
+  const { data } =
+    contactType === "gym"
+      ? await db.from("biomarker_logs").select("logged_at, weight_kg").eq("client_id", contactId).gte("logged_at", sinceIso)
+      : await db
+          .from("food_balance_weight_entries")
+          .select("measured_at, weight_kg")
+          .eq("contact_id", contactId)
+          .eq("contact_type", "adults_contact")
+          .gte("measured_at", sinceIso);
+  return ((data ?? []) as Array<Record<string, unknown>>)
+    .map((r) => ({ measuredAt: String(r.logged_at ?? r.measured_at), weightKg: Number(r.weight_kg) }))
+    .filter((r) => r.weightKg > 0 && Number.isFinite(r.weightKg))
+    .sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
 }
 
 async function loadTargetAdjustView(

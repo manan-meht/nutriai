@@ -5,7 +5,7 @@ import type { TodayProgress } from "@/lib/guidance/view";
 // daily-totals.ts distinguishes them: a figure, a figure known to be a
 // floor (some meal reported nothing), and no meals yet. "Over" is shown in
 // the soft amber status colour, never red: a food target is not a debt,
-// and going past one is not a failure. Colours are the Midnight teal
+// and going past one is not a failure. Colours are the Guidance theme
 // tokens from .guidance-theme (globals.css).
 
 const ROWS: Array<{ key: "calories" | "protein" | "carbs" | "fat" | "fiber"; label: string; unit: string }> = [

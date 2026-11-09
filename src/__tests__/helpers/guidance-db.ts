@@ -20,6 +20,9 @@ export interface GuidanceRows {
   nutrition_guidance_screening: Row[];
   nutrition_targets: Row[];
   meal_logs: Row[];
+  /** Weight readings, for goal tracking. Optional: absent means none. */
+  food_balance_weight_entries?: Row[];
+  biomarker_logs?: Row[];
 }
 
 type Table = keyof GuidanceRows;
@@ -70,6 +73,8 @@ function violation(table: Table, after: Row[]): DbError | null {
 }
 
 export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []): SupabaseClient {
+  /** A table's rows, creating an optional table on first use. */
+  const tableRows = (table: Table): Row[] => (rows[table] ??= []);
   function injected(table: Table, op: string): DbError | null {
     return failing.includes(`${table}.${op}`) ? { code: "08006", message: `injected ${table}.${op} failure` } : null;
   }
@@ -77,12 +82,12 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
   /** Applies `next` as the table's new contents if nothing is broken. */
   function commit(table: Table, op: string, next: Row[]): Result {
     const error = injected(table, op) ?? violation(table, next);
-    if (!error) rows[table].splice(0, rows[table].length, ...next);
+    if (!error) tableRows(table).splice(0, tableRows(table).length, ...next);
     return { data: null, error };
   }
 
   function query(table: Table) {
-    let working = rows[table];
+    let working = tableRows(table);
     const chain = {
       select: () => chain,
       eq: (col: string, val: unknown) => {
@@ -111,13 +116,13 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
     from: (table: Table) => ({
       select: () => query(table),
       insert: (row: Row) =>
-        Promise.resolve(commit(table, "insert", [...rows[table], { id: `${table}-${rows[table].length + 1}`, ...row }])),
+        Promise.resolve(commit(table, "insert", [...tableRows(table), { id: `${table}-${tableRows(table).length + 1}`, ...row }])),
       upsert: (row: Row, opts?: { onConflict?: string }) => {
         // ON CONFLICT on the column named, as PostgREST does. A row whose
         // conflict column is null never matches, as with a real unique key.
         const key = opts?.onConflict ?? "adults_contact_id";
-        const idx = row[key] == null ? -1 : rows[table].findIndex((r) => r[key] === row[key]);
-        const next = [...rows[table]];
+        const idx = row[key] == null ? -1 : tableRows(table).findIndex((r) => r[key] === row[key]);
+        const next = [...tableRows(table)];
         if (idx >= 0) next[idx] = { ...next[idx], ...row };
         else next.push({ ...row });
         return Promise.resolve(commit(table, "upsert", next));
@@ -137,9 +142,9 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
             const matches = (r: Row) => filters.every((f) => f(r));
             // Rows are patched in place on success, so a test holding a
             // reference to one sees the change, as it did before.
-            const next = rows[table].map((r) => (matches(r) ? { ...r, ...patch } : r));
+            const next = tableRows(table).map((r) => (matches(r) ? { ...r, ...patch } : r));
             const error = injected(table, "update") ?? violation(table, next);
-            if (!error) rows[table].forEach((r) => matches(r) && Object.assign(r, patch));
+            if (!error) tableRows(table).forEach((r) => matches(r) && Object.assign(r, patch));
             return resolve({ data: null, error });
           },
         };
