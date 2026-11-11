@@ -55,11 +55,11 @@ describe("Feedback entry point visibility", () => {
   // The mobile app shipped with no in-app feedback path at all — only the
   // Helpful/Not-helpful pills on Food Balance recommendations, which is a
   // different feature. These guard the entry point on each list screen.
-  // Was "adults and gym list screens both" — the gym screen left this app
-  // with the coaching product (Aug 2026). The adults list is now the only
-  // list screen, and still owns the entry point.
-  it("the mobile adults list screen has a Send feedback trigger", () => {
-    const src = read("apps/mobile/src/app/(app)/adults/index.tsx");
+  // The gym list left the app with coaching in Aug 2026 and came back as
+  // the coach view in Oct 2026, so both list screens own an entry point
+  // again.
+  it.each(["adults", "gym"])("the mobile %s list screen has a Send feedback trigger", (product) => {
+    const src = read(`apps/mobile/src/app/(app)/${product}/index.tsx`);
     expect(src).toMatch(/Send feedback/);
     expect(src).toMatch(/FeedbackModal/);
     expect(src).toMatch(/setShowFeedback\(true\)/);

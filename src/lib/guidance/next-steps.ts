@@ -2,7 +2,15 @@ import type { DaySummary } from "./aggregation";
 import { localDate, type DailyTotals } from "./daily-totals";
 import { linkPlans, MAIN_SLOTS, slotOfMealType, type MealSlot, type PlannedMeal, type SkippedMeal } from "./day-plan";
 import { buildHabitView, type HabitView, type StoredHabit } from "./habits";
-import { laterSlots, nextSlot, suggestMeals, type DietAllowances, type MealSuggestion, type SuggestionResult } from "./suggestions";
+import {
+  laterSlots,
+  nextSlot,
+  suggestMeals,
+  type DietAllowances,
+  type MealSuggestion,
+  type MicronutrientPriority,
+  type SuggestionResult,
+} from "./suggestions";
 import type { GuidanceMealRow } from "./view";
 
 // The Today tab's "what next": the next meal (a plan if there is one, else
@@ -48,6 +56,9 @@ export function buildNextSteps(params: {
   allergies: string[];
   avoidedFoods: string[];
   cookingAccess: "full_kitchen" | "limited" | "none" | "unknown" | null;
+  /** This week's top vitamin or mineral gap, folded into the suggestion
+   * rather than shown as a separate warning. */
+  priority?: MicronutrientPriority | null;
 }): NextSteps {
   const { today, timezone } = params;
   const tomorrow = addDays(today, 1);
@@ -90,6 +101,7 @@ export function buildNextSteps(params: {
       avoidedFoods: params.avoidedFoods,
       cookingAccess: params.cookingAccess,
       usualFoods,
+      priority: params.priority ?? null,
     });
     const linked = plan ? links.get(plan.id) : undefined;
     nextMeal = {

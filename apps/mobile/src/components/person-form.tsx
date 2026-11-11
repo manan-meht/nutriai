@@ -70,28 +70,28 @@ export interface PersonFormInitialValues {
 }
 
 interface PersonFormProps {
-  /** "adults" posts/patches to /adults/contacts; "gym" to /gym/clients.
-   * Only "adults" shows the relationship field (gym clients don't have
-   * one). */
-  /** Only 'adults' remains: coaching left this app with its own product. */
-  product: 'adults';
+  /** "adults" posts/patches to /adults/contacts; "gym" to /gym/clients
+   * (the coach view, see (app)/gym). Only "adults" has the relationship,
+   * reminders, timezone and food-preference fields — gym_clients has no
+   * columns for them. */
+  product: 'adults' | 'gym';
   mode: 'add' | 'edit';
   personId?: string;
   initialValues?: PersonFormInitialValues;
   /** Hides the "Myself" relationship option — passed by the caller once it
    * already has the contacts list loaded (see adults/add.tsx). Ignored
-   * for a coaching client. */
+   * for product="gym". */
   hasSelfContact?: boolean;
   /** "self" vs "family" — passed by the caller (see adults/add.tsx). A
    * "self" plan workspace only ever has one contact (the caregiver's own
    * tracked profile), so the relationship picker is skipped entirely and
    * relationship_type is forced to "self" rather than asking a question
-   * with only one possible answer. Ignored for
+   * with only one possible answer. Ignored for product="gym" and for
    * mode="edit" (relationship never changes after creation). */
   workspacePlan?: string | null;
-  /** Passed the newly-created contact's id/name/isSelf only for
-   * product="adults" mode="add" (so the caller can offer to send the
-   * WhatsApp invite right away — see adults/add.tsx) — undefined for every
+  /** Passed the newly-created contact's (or client's) id/name/isSelf only
+   * for mode="add" (so the caller can offer to send the WhatsApp invite
+   * right away — see adults/add.tsx and gym/add.tsx) — undefined for every
    * other case. Always populated now, including a "Myself" pick: that
    * contact still needs its own WhatsApp number connected, whether it's a
    * self-plan workspace's only contact or "Myself" within an otherwise
@@ -182,8 +182,13 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
           onSuccess({ id: created.id, fullName, isSelf });
           return;
         }
-      } else {
+        const { clientId } = await api.createGymClient(body);
+        onSuccess({ id: clientId, fullName, isSelf: false });
+        return;
+      } else if (product === 'adults') {
         await api.updateAdultsContact(personId!, body);
+      } else {
+        await api.updateGymClient(personId!, body);
       }
       onSuccess();
     } catch (err) {
@@ -225,11 +230,14 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
 
 
   const isSelfRelationship = product === 'adults' && relationship === 'self';
-  const aboutSectionTitle = isSelfRelationship
-    ? 'About you'
-    : fullName.trim()
-      ? `About ${fullName.trim().split(' ')[0]}`
-      : 'About them';
+  const aboutSectionTitle =
+    product === 'gym'
+      ? 'Client details'
+      : isSelfRelationship
+        ? 'About you'
+        : fullName.trim()
+          ? `About ${fullName.trim().split(' ')[0]}`
+          : 'About them';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -485,7 +493,7 @@ export function PersonForm({ product, mode, personId, initialValues, hasSelfCont
               only once the user taps to expand it. See the web app's
               EditContactModal for the same change. */}
           <View style={[styles.targetsContent, !targetsExpanded && styles.hidden]}>
-            <NutritionTargetsCard contactId={personId} />
+            <NutritionTargetsCard {...(product === 'gym' ? { clientId: personId } : { contactId: personId })} />
           </View>
 
           {/* Adults-only, mirrors the web app's EditContactModal — Food

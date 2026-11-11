@@ -34,6 +34,7 @@ import {
 import { DEFAULT_MEALS_PER_DAY, periodFor, summarizeDays } from "./aggregation";
 import { loadPlansAndSkips, type SkippedMeal } from "./day-plan";
 import { loadHabits } from "./habits";
+import { loadMicronutrientPanel, suggestionPriority, type MicronutrientPanel } from "./micronutrient-panel";
 import { buildNextSteps, effectiveSkips, type NextSteps } from "./next-steps";
 import { dietAllowances } from "./suggestions";
 import type { DietaryProfile } from "@/lib/dietary-profile/types";
@@ -323,6 +324,9 @@ export interface GuidanceDashboard {
   /** The next meal (plan or suggestions), meals today that can be marked
    * skipped, and the week's habit. Null with no target for today. */
   nextSteps: NextSteps | null;
+  /** Vitamins and minerals for the Progress tab, or null while
+   * GUIDANCE_MICRONUTRIENTS_ENABLED is off. */
+  micronutrients: MicronutrientPanel | null;
   /** When this was computed, so "next meal" reads the same on the server
    * and in the browser. */
   generatedAt: string;
@@ -380,7 +384,7 @@ export async function loadGuidanceDashboard(
     loadHabits(db, params.contactId, contactType, weekStart),
     db
       .from(contactType === "gym" ? "gym_clients" : "adults_contacts")
-      .select("dietary_profile")
+      .select("dietary_profile, whatsapp_number")
       .eq("id", params.contactId)
       .maybeSingle(),
   ]);
@@ -399,6 +403,32 @@ export async function loadGuidanceDashboard(
   const sortedMeals = meals
     .filter((m) => localDate(m.loggedAt, facts.timezone) >= from)
     .sort((a, b) => b.loggedAt.localeCompare(a.loggedAt));
+  const summaries = summarizeDays(history, date, expectedMealsPerDay, skips);
+  const diet = dietAllowances((profile.data?.dietary_profile as DietaryProfile | null) ?? null);
+  const micronutrients = await loadMicronutrientPanel(db, {
+    contactType,
+    contactId: params.contactId,
+    today: date,
+    timezone: facts.timezone,
+    person: {
+      sex: prefill?.metabolicEquationSex ?? null,
+      ageYears: prefill?.ageYears ?? null,
+      // Screening declines Guidance for anyone pregnant or breastfeeding,
+      // and an unanswered question fails closed, so everyone in Guidance
+      // said no when it was set up.
+      pregnant: false,
+      lactating: false,
+      whatsappNumber: (profile.data?.whatsapp_number as string | null) ?? null,
+      vegetarian: !diet.eggs && !diet.chicken && !diet.fish && !diet.redMeat,
+      eatsEggs: diet.eggs,
+    },
+    expectedMealsPerDay,
+    summaries,
+  }).catch(() => {
+    // A failed vitamin and mineral read never takes the dashboard down.
+    console.error("[guidance] micronutrient panel failed to load");
+    return null;
+  });
   const nextSteps = todayTarget
     ? buildNextSteps({
         today: date,
@@ -409,13 +439,14 @@ export async function loadGuidanceDashboard(
         meals: sortedMeals,
         plans: planRows.plans,
         skips,
-        summaries: summarizeDays(history, date, expectedMealsPerDay, skips),
+        summaries,
         habits,
         expectedMealsPerDay,
-        diet: dietAllowances((profile.data?.dietary_profile as DietaryProfile | null) ?? null),
+        diet,
         allergies: list(prefs.data?.allergies),
         avoidedFoods: list(prefs.data?.avoided_foods),
         cookingAccess: (prefs.data?.cooking_access as "full_kitchen" | "limited" | "none" | "unknown" | null) ?? null,
+        priority: suggestionPriority(micronutrients),
       })
     : null;
   return {
@@ -438,6 +469,7 @@ export async function loadGuidanceDashboard(
     logMealHref: whatsapp ? `https://wa.me/${whatsapp}` : null,
     skips,
     nextSteps,
+    micronutrients,
     generatedAt: now.toISOString(),
   };
 }

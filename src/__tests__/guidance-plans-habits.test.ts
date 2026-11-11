@@ -205,6 +205,24 @@ describe("next-meal suggestions", () => {
     expect(planned.options[0].estimate.calories!).toBeLessThan(free.options[0].estimate.calories!);
   });
 
+  it("favours a vitamin or mineral gap between meals that fit equally, and says so only for a meaningful amount", () => {
+    const plain = suggestMeals(input());
+    const calcium = suggestMeals(input({ priority: { nutrient: "calcium", reference: 1000 } }));
+    if (plain.kind !== "options" || calcium.kind !== "options") throw new Error("expected options");
+    expect(plain.options[0].brings ?? null).toBeNull();
+    const amount = (o: (typeof calcium.options)[number]) => o.brings?.amount ?? 0;
+    expect(Math.max(...calcium.options.map(amount))).toBeGreaterThanOrEqual(100);
+    for (const o of calcium.options) {
+      if (o.brings) {
+        expect(o.brings).toMatchObject({ nutrient: "calcium", label: "Calcium", unit: "mg" });
+        expect(o.brings.amount).toBeGreaterThanOrEqual(100);
+      }
+    }
+    // Energy still decides: the calcium-favoured option stays inside the
+    // same energy band as the plain one.
+    expect(Math.abs(calcium.options[0].estimate.calories! - plain.options[0].estimate.calories!)).toBeLessThan(250);
+  });
+
   it("picks the next meal by the clock, skipping meals already logged or skipped", () => {
     const base = { today: TODAY, tomorrow: "2026-11-10", includeSnack: false };
     expect(nextSlot({ ...base, hour: 8, done: new Set() })).toEqual({ date: TODAY, slot: "breakfast" });

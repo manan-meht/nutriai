@@ -27,6 +27,13 @@ export interface GuidanceRows {
   nutrition_meal_plans?: Row[];
   nutrition_meal_skips?: Row[];
   nutrition_habits?: Row[];
+  /** Migration 0071. Optional: absent means none. */
+  nutrition_household_facts?: Row[];
+  nutrition_confirmed_products?: Row[];
+  supplement_schedules?: Row[];
+  supplement_doses?: Row[];
+  meal_nutrient_estimates?: Row[];
+  meal_nutrient_facts?: Row[];
 }
 
 type Table = keyof GuidanceRows;
@@ -108,6 +115,16 @@ function violation(table: Table, after: Row[]): DbError | null {
       return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_habits_one_active_adults_idx"' };
     }
   }
+  if (table === "supplement_doses" && duplicated(after, (r) => `${r.schedule_id}:${r.taken_on}:${r.slot}`)) {
+    return { code: "23505", message: 'duplicate key value violates unique constraint "supplement_doses_once_per_slot"' };
+  }
+  if (table === "supplement_schedules") {
+    for (const r of after) {
+      if (r.effective_to != null && !(String(r.effective_to) > String(r.effective_from))) {
+        return { code: "23514", message: 'new row violates check constraint "supplement_schedules_range"' };
+      }
+    }
+  }
   if (table === "nutrition_guidance") {
     for (const r of after) {
       const meals = r.meals_per_day;
@@ -151,6 +168,10 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
       },
       in: (col: string, vals: unknown[]) => {
         working = working.filter((r) => vals.includes(r[col]));
+        return chain;
+      },
+      limit: (n: number) => {
+        working = working.slice(0, n);
         return chain;
       },
       maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),

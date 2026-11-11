@@ -1,6 +1,6 @@
 import type { DietaryProfile } from "@/lib/dietary-profile/types";
 import { getFood, nutrientPer100g, portionGrams, type CompositionFood } from "@/lib/nutrients/composition";
-import type { NutrientKey as CatalogKey } from "@/lib/nutrients/catalog";
+import { NUTRIENTS as CATALOG, type MicroKey, type NutrientKey as CatalogKey } from "@/lib/nutrients/catalog";
 
 import type { DailyTotals } from "./daily-totals";
 import type { MealSlot } from "./day-plan";
@@ -63,6 +63,19 @@ export interface MealSuggestion {
   estimate: Record<NutrientKey, number | null>;
   /** Every component appears in this person's own logged meals. */
   familiar: boolean;
+  /** When a vitamin or mineral gap was the priority, what this meal brings
+   * of it: only shown when it's a meaningful amount (≥10% of the person's
+   * reference, the labelling "good source" convention). */
+  brings?: { nutrient: MicroKey; label: string; amount: number; unit: string } | null;
+}
+
+/** The highest-priority vitamin or mineral gap, from the Progress tab's
+ * assessment (phase 4), to fold into the suggestion rather than a separate
+ * warning. */
+export interface MicronutrientPriority {
+  nutrient: MicroKey;
+  /** The person's reference intake for it, canonical units. */
+  reference: number;
 }
 
 export interface DietAllowances {
@@ -196,9 +209,11 @@ interface Sized {
   label: string;
   grams: number;
   values: Record<NutrientKey, number | null>;
+  /** The priority micronutrient in this portion, or null when unknown. */
+  micro: number | null;
 }
 
-function sizeSteps(def: ComponentDef): Sized[] {
+function sizeSteps(def: ComponentDef, priority: MicroKey | null): Sized[] {
   const food = getFood(def.key);
   if (!food) return [];
   return def.steps
@@ -210,7 +225,12 @@ function sizeSteps(def: ComponentDef): Sized[] {
         const v = nutrientPer100g(food, GUIDANCE_TO_CATALOG[k]);
         values[k] = v.state === "value" ? (v.amount * grams) / 100 : v.state === "zero" || v.state === "trace" ? 0 : null;
       }
-      return { def, food, label, grams: Math.round(grams), values };
+      let micro: number | null = null;
+      if (priority) {
+        const m = nutrientPer100g(food, priority);
+        micro = m.state === "value" ? (m.amount * grams) / 100 : m.state === "zero" || m.state === "trace" ? 0 : null;
+      }
+      return { def, food, label, grams: Math.round(grams), values, micro };
     })
     .filter((s): s is Sized => s != null);
 }
@@ -261,6 +281,8 @@ export interface SuggestionInput {
   cookingAccess: "full_kitchen" | "limited" | "none" | "unknown" | null;
   /** Food names from recent logged meals, for familiarity. */
   usualFoods: string[];
+  /** A vitamin or mineral gap to favour, when the Progress tab found one. */
+  priority?: MicronutrientPriority | null;
 }
 
 export type SuggestionResult =
@@ -303,7 +325,13 @@ export function suggestMeals(input: SuggestionInput, max = 5): SuggestionResult 
     (input.cookingAccess !== "none" || d.noCook);
   const familiar = (d: ComponentDef) => usual.some((f) => d.keywords.some((k) => f.includes(k)));
 
-  const pool = LIBRARY.filter(allowed).map((d) => ({ d, steps: sizeSteps(d) })).filter((c) => c.steps.length > 0);
+  const priority = input.priority ?? null;
+  const pool = LIBRARY.filter(allowed)
+    .map((d) => ({ d, steps: sizeSteps(d, priority?.nutrient ?? null) }))
+    .filter((c) => c.steps.length > 0);
+  /** The priority nutrient across a meal's parts; unknown parts add nothing
+   * here, so the bonus only ever rewards what the source actually lists. */
+  const microOf = (parts: Sized[]) => parts.reduce((s, p) => s + (p.micro ?? 0), 0);
   const byRole = (r: Role) => pool.filter((c) => c.d.role === r);
 
   // Shapes of a meal, per slot. Each entry is a list of roles; "dal?" means
@@ -342,7 +370,10 @@ export function suggestMeals(input: SuggestionInput, max = 5): SuggestionResult 
         const proteinShort = Math.max(0, protein - est.protein) / protein;
         const fibre = est.fiber == null ? 0 : Math.min(1, est.fiber / 8);
         const known = combo.filter((c) => familiar(c.d)).length / combo.length;
-        const score = -kcalFit - 3 * over - 1.5 * proteinShort + 0.3 * fibre + 0.4 * known;
+        // A vitamin or mineral gap tips the balance between meals that fit
+        // equally well; it never outweighs energy or protein.
+        const microBonus = priority && priority.reference > 0 ? 0.5 * Math.min(1, microOf(parts) / (0.3 * priority.reference)) : 0;
+        const score = -kcalFit - 3 * over - 1.5 * proteinShort + 0.3 * fibre + 0.4 * known + microBonus;
         if (!best || score > best.score) best = { score, parts };
       }
       if (best) {
@@ -405,6 +436,16 @@ export function suggestMeals(input: SuggestionInput, max = 5): SuggestionResult 
         })),
         estimate: sum(ordered),
         familiar: ordered.every((p) => familiar(p.def)),
+        brings: (() => {
+          if (!priority) return null;
+          const amount = microOf(ordered);
+          // 21 CFR 101.54(c): a "good source" gives at least 10% of the
+          // reference in a serving. Below that, saying it "brings" the
+          // nutrient would overstate it.
+          if (!(amount >= 0.1 * priority.reference)) return null;
+          const def = CATALOG[priority.nutrient];
+          return { nutrient: priority.nutrient, label: def.label, amount: Math.round(amount * 10) / 10, unit: def.unitLabel };
+        })(),
       };
     }),
   };
