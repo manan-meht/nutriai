@@ -25,6 +25,8 @@ interface Props {
   workspaceId: string;
   contacts: AdultsContact[];
   removedContacts: AdultsContact[];
+  /** Contacts in Nutrition Guidance (see loadGuidanceContactIds). */
+  guidanceContactIds?: string[];
   extraCapacity: number;
   entitlement: EntitlementSnapshot;
   promptSelfSetup?: boolean;
@@ -52,7 +54,7 @@ interface Props {
   isBillingWhitelisted?: boolean;
 }
 
-export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, extraCapacity, entitlement, promptSelfSetup, isSelfPlan, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: Props) {
+export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspaceId, contacts, removedContacts, guidanceContactIds = [], extraCapacity, entitlement, promptSelfSetup, isSelfPlan, tistraWhatsAppNumber, requiresCardBeforeTrial, autoOpenAddModal, isBillingWhitelisted }: Props) {
   // Opens the add-contact modal automatically right after a successful
   // checkout (see autoOpenAddModal's own doc comment) — only when there's
   // still nobody added yet, so this doesn't reopen the form on an account
@@ -359,6 +361,7 @@ export function AdultsDashboardClient({ caregiverName, caregiverEmail, workspace
                 onRemove={removingId === contact.id ? undefined : () => handleRemove(contact)}
                 tistraWhatsAppNumber={tistraWhatsAppNumber}
                 onStatus={handleCardStatus}
+                guidanceOn={guidanceContactIds.includes(contact.id)}
               />
             ))}
           </div>

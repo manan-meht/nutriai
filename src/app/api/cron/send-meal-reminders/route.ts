@@ -32,6 +32,10 @@ import {
 } from "@/lib/notifications/family-meal";
 import { pruneDeadPushTokens } from "@/lib/notifications/push";
 import { analysisHasFoodContent } from "@/lib/ai/meal-content";
+import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
+import { loadReleaseState } from "@/lib/guidance/release";
+import { afterMealSaved } from "@/lib/nutrients/pipeline";
+import { formatBalanceLine, formatGuidanceReminder, loadWhatsAppGuidance, totalsToday } from "@/lib/guidance/whatsapp";
 
 // Deliberately not imported from @/lib/ai/food-analyzer — that module pulls
 // in the whole @google/generative-ai SDK at module scope (needed for real
@@ -77,7 +81,16 @@ function formatStaleMealLabel(mealType: MealTypeLabel): string {
 const REMINDER_TEMPLATE_FOCUS_FALLBACK =
   "Aim for a protein source and some vegetables or fruit in your meals today.";
 
-async function sendReminder(to: string, displayName: string, reminderTime: string, todaysFocusLine?: string): Promise<void> {
+/** `guidance` is set when Nutrition Guidance is on for this person: the
+ * reminder then says what's left for today instead of coaching, in the
+ * template's second slot or as the free-form message. */
+async function sendReminder(
+  to: string,
+  displayName: string,
+  reminderTime: string,
+  todaysFocusLine?: string,
+  guidance?: { balanceLine: string; freeForm: string }
+): Promise<void> {
   const templateName = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME;
   if (templateName) {
     // The approved template (tistra_meal_reminder) has TWO body variables:
@@ -87,8 +100,10 @@ async function sendReminder(to: string, displayName: string, reminderTime: strin
     // configured here MUST accept exactly these two parameters.
     await sendTemplateMessage(to, templateName, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE ?? "en", [
       displayName,
-      todaysFocusLine ?? REMINDER_TEMPLATE_FOCUS_FALLBACK,
+      guidance?.balanceLine ?? todaysFocusLine ?? REMINDER_TEMPLATE_FOCUS_FALLBACK,
     ]);
+  } else if (guidance) {
+    await sendTextMessage(to, guidance.freeForm);
   } else {
     const base = buildReminderMessage(displayName, reminderTime);
     await sendTextMessage(to, todaysFocusLine ? `${base}\n\n${todaysFocusLine}` : base);
@@ -401,6 +416,11 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
   let sent = 0;
   let skipped = 0;
 
+  // Nutrition Guidance changes what a reminder says. The release state is
+  // the same for everyone, so it's read once; with the flag off (as in
+  // production) or the gate closed, no contact costs an extra query.
+  const guidanceRelease = GUIDANCE_ENABLED ? await loadReleaseState(db) : null;
+
   for (const target of targets) {
     if (!target.whatsappNumber) continue;
 
@@ -425,8 +445,20 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
         continue;
       }
 
+      // Guidance on: the reminder reports what's left, and Today's Focus,
+      // which is coaching, isn't built at all. Never throws: a failure
+      // falls back to the ordinary reminder.
+      const guidance = guidanceRelease?.canActivate
+        ? await loadWhatsAppGuidance(db, { contactId: target.id, contactType: target.contactType, now, release: guidanceRelease }).catch(
+            (err) => {
+              console.error("[reminders] guidance load failed:", target.contactType, target.id, err instanceof Error ? err.message : err);
+              return null;
+            }
+          )
+        : null;
+
       let todaysFocus: { line: string; recommendationId?: string } | undefined;
-      if (mealSlotForTime(reminderTime) === "breakfast") {
+      if (!guidance && mealSlotForTime(reminderTime) === "breakfast") {
         todaysFocus = await buildTodaysFocusLine(
           db,
           {
@@ -451,7 +483,13 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
           gender: target.gender,
           normalizedWhatsappNumber: normalizePhone(target.whatsappNumber),
         });
-        await sendReminder(target.whatsappNumber, displayName, reminderTime, todaysFocus?.line);
+        const guidanceReminder = guidance
+          ? {
+              balanceLine: formatBalanceLine(totalsToday(guidance)),
+              freeForm: formatGuidanceReminder(displayName, mealSlotForTime(reminderTime), totalsToday(guidance)),
+            }
+          : undefined;
+        await sendReminder(target.whatsappNumber, displayName, reminderTime, todaysFocus?.line, guidanceReminder);
         if (todaysFocus?.recommendationId) await markTodaysFocusDelivery(db, todaysFocus.recommendationId, "sent");
         sent++;
       } catch (err) {
@@ -646,6 +684,10 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
       skipped++;
       continue;
     }
+
+    // Vitamins and minerals, behind GUIDANCE_MICRONUTRIENTS_ENABLED (a no-op
+    // when off). Never throws.
+    await afterMealSaved(db, { mealLogId: mealRow.id, isAdults, entityId, analysis: pending, trigger: "ingestion" });
 
     try {
       if (conv.whatsapp_number) {

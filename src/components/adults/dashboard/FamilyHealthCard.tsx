@@ -53,6 +53,10 @@ interface FamilyHealthCardProps {
    * behind the same fetch FoodBalanceRing/TodaysFocus need anyway (see
    * AdultsDashboardClient's cardStatuses state). */
   onStatus?: (contactId: string, status: FamilyCardStatus) => void;
+  /** In Nutrition Guidance: the card shows a Guidance marker in place of
+   * the Food Balance Score, and no Today's Focus tip. Guidance reports
+   * against a target instead of scoring or coaching. */
+  guidanceOn?: boolean;
 }
 
 /** The family dashboard's main content unit — one person's glanceable
@@ -64,7 +68,7 @@ interface FamilyHealthCardProps {
  * "not connected yet" and "gone quiet" cases can't drift apart. */
 const SELF_WHATSAPP_GREETING = "Hi! I'm ready to start tracking my meals with Tistra Health 👋";
 
-export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumber, onStatus }: FamilyHealthCardProps) {
+export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumber, onStatus, guidanceOn }: FamilyHealthCardProps) {
   // Lazy initializer, not a direct Date.now() call — react-hooks/purity
   // forbids calling impure functions during render; this only needs to be
   // "now enough", not live-ticking, so a value fixed at mount is fine (same
@@ -139,18 +143,28 @@ export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumb
       </div>
 
       <div className="grid grid-cols-3 gap-2 rounded-2xl border border-gray-50 dark:border-white/5 bg-gray-50/50 dark:bg-white/[0.03] px-3 py-4 mb-4">
-        <div className="flex flex-col items-center">
-          <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">Food Balance</p>
-          {result && result.status !== "collecting_data" && result.status !== "refreshing_data" ? (
-            <FoodBalanceRing score={result.score ?? 0} label={bandLabelFor(result.score ?? 0)} />
-          ) : (
-            <div className="w-20 h-20 rounded-full border-4 border-gray-100 dark:border-white/10 flex items-center justify-center">
-              <span className="text-[11px] text-gray-400 dark:text-gray-500 text-center px-1">
-                {foodBalanceData.status === "loading" ? "…" : "Still learning"}
-              </span>
+        {guidanceOn ? (
+          <div className="flex flex-col items-center">
+            <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">Guidance</p>
+            <div className="w-20 h-20 rounded-full border-4 border-violet-500/40 bg-violet-500/10 flex flex-col items-center justify-center dark:border-violet-400/40 dark:bg-violet-400/10">
+              <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">On</span>
+              <span className="text-[11px] text-violet-700/80 dark:text-violet-300/80">Daily targets</span>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center">
+            <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">Food Balance</p>
+            {result && result.status !== "collecting_data" && result.status !== "refreshing_data" ? (
+              <FoodBalanceRing score={result.score ?? 0} label={bandLabelFor(result.score ?? 0)} />
+            ) : (
+              <div className="w-20 h-20 rounded-full border-4 border-gray-100 dark:border-white/10 flex items-center justify-center">
+                <span className="text-[11px] text-gray-400 dark:text-gray-500 text-center px-1">
+                  {foodBalanceData.status === "loading" ? "…" : "Still learning"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex flex-col items-center justify-center">
           <p className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-1.5">7-day calorie trend</p>
           <MiniTrendChart scores={contact.last7DaysCalories} />
@@ -220,7 +234,7 @@ export function FamilyHealthCard({ contact, onOpen, onRemove, tistraWhatsAppNumb
         </div>
       )}
 
-      {topRecommendation && (
+      {topRecommendation && !guidanceOn && (
         <div className="pt-3 border-t border-gray-50 dark:border-white/5">
           <TodaysFocus text={topRecommendation.action || topRecommendation.title} />
         </div>

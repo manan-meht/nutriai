@@ -28,6 +28,9 @@ import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
+import type { GuidanceDashboard } from "@/lib/guidance/view";
+import { GuidanceScreen, GuidanceSetupPrompt, type GuidanceViewer } from "@/components/guidance/GuidanceScreen";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
 const MacronutrientSummary = dynamic(() => import("@/components/shared/dashboard/MacronutrientSummary").then((m) => m.MacronutrientSummary), { ssr: false });
@@ -105,6 +108,20 @@ export interface ProfileDashboardProps {
    * when provided, each meal card shows 👍/🎉/❤️ buttons; the first tap on
    * a meal sends the contact a WhatsApp line via reactToMeal. */
   onReactToMeal?: (mealId: string, emoji: "👍" | "🎉" | "❤️") => Promise<{ error?: string; emoji?: string }>;
+  /** Set when Nutrition Guidance is in effect for this person (see
+   * loadGuidanceDashboard). The dashboard then leads with today's meals
+   * against the target and the history against it, and drops the gentle
+   * per-meal coaching lines: Guidance reports numbers instead. */
+  guidance?: GuidanceDashboard | null;
+  /** The Guidance screen, for Return to Tracking and the full view. */
+  guidanceHref?: string;
+  /** For someone who only has Guidance (a coach client) and isn't set up
+   * yet: the dashboard leads with the setup prompt instead. */
+  guidanceSetup?: { href: string; personName: string };
+  /** Guidance's plan, skip and habit actions, bound to this person. */
+  guidanceActions?: GuidanceActions;
+  /** For a signed-in end user: Guidance's avatar menu offers Sign out. */
+  onSignOut?: () => void;
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -114,12 +131,17 @@ export function ProfileDashboard({
   permissions = permissionsForRole(role),
   data,
   backHref,
-  theme,
+  theme: themeProp,
   copy,
   invite,
   renderEditModal,
   extraSections,
   onReactToMeal,
+  guidance,
+  guidanceHref,
+  guidanceSetup,
+  guidanceActions,
+  onSignOut,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -156,7 +178,17 @@ export function ProfileDashboard({
   const firstName = profile.fullName.split(" ")[0];
   const initials = profile.fullName.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
   // Gates every dark: class added below — see ProfileDashboardTheme.enableDarkMode's own doc comment.
+  const theme = themeProp;
   const dm = theme.enableDarkMode;
+  // Who's looking, for the Guidance view's wording: someone managing their
+  // own profile, or a family member's, or a client's. A parent's profile
+  // viewed by their child mustn't address the child as the parent.
+  const viewer: GuidanceViewer =
+    role === "participant" || profile.relationshipType === "self"
+      ? { kind: "self" }
+      : role === "coach"
+        ? { kind: "coach", name: firstName }
+        : { kind: "family", name: firstName };
 
   const foodBalanceProfile: FoodBalanceUserProfile | undefined = profile.nutritionGoals && profile.nutritionGoals.length > 0
     ? {
@@ -239,6 +271,49 @@ export function ProfileDashboard({
     !profile.derivedActivityLevel && (!profile.activityLevel || profile.activityLevel === "unknown") && "activity level",
   ].filter((f): f is string => Boolean(f));
 
+  const editModal =
+    showEdit &&
+    renderEditModal?.({
+      onClose: () => setShowEdit(false),
+      onSaved: () => {
+        setShowEdit(false);
+        setMacroTargetsRefreshKey((k) => k + 1);
+      },
+    });
+
+  // Guidance mode is its own screen (charcoal and lavender, Today and
+  // Progress tabs): the long tracking dashboard's summaries and charts would
+  // only repeat it.
+  if (guidance) {
+    return (
+      <>
+        <GuidanceScreen
+          guidance={guidance}
+          viewer={viewer}
+          person={{ fullName: profile.fullName, initials, photoUrl: profile.photoUrl ?? null }}
+          backHref={backHref}
+          manageHref={guidanceHref}
+          onEditDetails={permissions.canManageGoal && renderEditModal ? () => setShowEdit(true) : undefined}
+          actions={guidanceActions}
+          onSignOut={onSignOut}
+          notice={
+            showInvite && invite ? (
+              <InviteCard
+                title={copy.inviteTitle(firstName)}
+                description={copy.inviteDescription(firstName)}
+                load={invite.load}
+                regenerate={invite.regenerate}
+                revoke={invite.revoke}
+                onLinkOpened={invite.onLinkOpened}
+              />
+            ) : undefined
+          }
+        />
+        {editModal}
+      </>
+    );
+  }
+
   return (
     <div className={`min-h-screen ${theme.pageBgClassName}`}>
       <header className={`${theme.headerBgClassName} px-4 sm:px-6 py-4 sticky top-0 z-10`}>
@@ -276,13 +351,7 @@ export function ProfileDashboard({
         </div>
       </header>
 
-      {showEdit && renderEditModal?.({
-        onClose: () => setShowEdit(false),
-        onSaved: () => {
-          setShowEdit(false);
-          setMacroTargetsRefreshKey((k) => k + 1);
-        },
-      })}
+      {editModal}
 
       <main className={`${theme.containerMaxWidthClassName} mx-auto px-4 sm:px-6 py-6 space-y-6`}>
 
@@ -316,205 +385,211 @@ export function ProfileDashboard({
           />
         )}
 
-        {/* Section 1 — greeting + date-range selector, goal shown inline. */}
-        <div>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className={`text-lg font-bold text-gray-900 leading-tight ${dm ? "dark:text-white" : ""}`}>{copy.greeting(firstName)}</h2>
-              <p className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+        <>
+          {guidanceSetup && <GuidanceSetupPrompt {...guidanceSetup} />}
+
+          {/* Section 1 — greeting + date-range selector, goal shown inline. */}
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className={`text-lg font-bold text-gray-900 leading-tight ${dm ? "dark:text-white" : ""}`}>{copy.greeting(firstName)}</h2>
+                <p className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>Showing {dateRangeLabel(dateRange).toLowerCase()}</p>
+              </div>
+              <DateRangeSelector value={dateRange} onChange={setDateRange} dm={dm} />
             </div>
-            <DateRangeSelector value={dateRange} onChange={setDateRange} dm={dm} />
+            <div className="flex items-center gap-2 mt-3">
+              <span className={`text-xs font-semibold ${theme.goalBadgeClassName} rounded-full px-3 py-1`}>
+                🎯 {profile.nutritionGoals && profile.nutritionGoals.length > 0
+                  ? profile.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")
+                  : "No goal set yet"}
+              </span>
+              {permissions.canManageGoal && (
+                <button onClick={() => setShowEdit(true)} className={`text-xs font-medium text-gray-400 underline ${dm ? "dark:text-gray-500" : ""}`}>
+                  Edit
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-3">
-            <span className={`text-xs font-semibold ${theme.goalBadgeClassName} rounded-full px-3 py-1`}>
-              🎯 {profile.nutritionGoals && profile.nutritionGoals.length > 0
-                ? profile.nutritionGoals.map((g) => NUTRITION_GOAL_LABELS[g] ?? g).join(", ")
-                : "No goal set yet"}
-            </span>
-            {permissions.canManageGoal && (
-              <button onClick={() => setShowEdit(true)} className={`text-xs font-medium text-gray-400 underline ${dm ? "dark:text-gray-500" : ""}`}>
-                Edit
+
+
+          {/* Section 2 — Food Balance Score / insights. Not in Guidance mode,
+              which reports against a target instead of scoring. */}
+          {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && !guidance && (
+            <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
+          )}
+
+          {/* Section 2b — "Your wins" shareable accomplishment cards. */}
+          {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
+            <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
+          )}
+
+          {/* Section 3 — macronutrient summary. */}
+          {permissions.canViewDetailedNutrition && (
+            <MacronutrientSummary
+              meals={mealsInRange}
+              days={rangeDays}
+              targets={{ calories: calTarget, protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
+              dm={dm}
+            />
+          )}
+
+          {/* Section 4 — key metric cards. */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <MetricCard
+              icon="🍽️"
+              iconColor="purple"
+              label="Meals logged"
+              value={`${mealsInRange.length}`}
+              sub={`${daysLoggedInRange} of ${rangeDays} day${rangeDays === 1 ? "" : "s"}`}
+              ok={rangeDays <= 1 ? undefined : daysLoggedInRange / rangeDays >= 0.7}
+              dm={dm}
+            />
+            <MetricCard
+              icon="🌱"
+              iconColor="green"
+              label="Avg protein/day"
+              value={avgProtein > 0 ? `${avgProtein}g` : "—"}
+              sub={`target: ${proteinTarget}g${isRecommendedProtein ? " (recommended)" : ""}`}
+              ok={proteinOk ?? undefined}
+              dm={dm}
+            />
+            <MetricCard
+              icon="🔥"
+              iconColor="orange"
+              label="Avg calories/day"
+              value={avgCalories > 0 ? `${avgCalories}` : "—"}
+              sub={calTarget ? `target: ≥${calTarget}` : "kcal"}
+              ok={calOk ?? undefined}
+              dm={dm}
+            />
+          </div>
+
+          {/* Section 5 — progress summary. */}
+          {insights && <ProgressInsights insights={insights} variant={role === "coach" ? "gym" : "adults"} dm={dm} />}
+
+          {/* Section 6 — meal activity heatmap (fixed 30-day window). */}
+          <div className={`bg-white rounded-2xl border border-gray-100 p-4 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+            <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4 ${dm ? "dark:text-gray-400" : ""}`}>Meal activity – last 30 days</p>
+            <ActivityHeatmap meals={heatmapMeals as any} days={30} dm={dm} />
+          </div>
+
+          {/* Section 7 — recent meals. */}
+          <div>
+            <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 ${dm ? "dark:text-gray-400" : ""}`}>Recent meals</p>
+            {meals.length === 0 ? (
+              <div className={`text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100 ${dm ? "dark:text-gray-500 dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+                {copy.noMealsMessage}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {meals.slice(0, visibleMealCount).map((meal) => {
+                  const avgProt = Math.round((meal.totalProteinMin + meal.totalProteinMax) / 2);
+                  const avgCal = Math.round((meal.totalCaloriesMin + meal.totalCaloriesMax) / 2);
+                  const time = new Date(meal.loggedAt).toLocaleString("en-IN", {
+                    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
+                    timeZone: profile.timezone,
+                  });
+                  const emoji = MEAL_EMOJIS[meal.mealType] ?? "🍽️";
+                  return (
+                    <div key={meal.id} className={`flex items-start gap-3 bg-white rounded-xl border border-gray-100 p-3 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
+                      {meal.imageUrl && permissions.canViewMealPhotos ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
+                        <img
+                          src={meal.imageUrl}
+                          alt={`${meal.mealType} photo`}
+                          onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType, shareData: buildMealShareData(meal) })}
+                          className="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
+                        />
+                      ) : (
+                        <span className="text-xl mt-0.5">{emoji}</span>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className={`text-sm font-medium text-gray-900 capitalize ${dm ? "dark:text-white" : ""}`}>{meal.mealType}</span>
+                          <span className={`text-xs text-gray-400 shrink-0 ${dm ? "dark:text-gray-500" : ""}`}>{time}</span>
+                        </div>
+                        <p className={`text-xs text-gray-500 truncate ${dm ? "dark:text-gray-400" : ""}`}>{meal.aiSummary ?? meal.foods.map((f: any) => f.name).join(", ")}</p>
+                        <div className="flex gap-3 mt-1">
+                          <span className={`text-xs font-medium ${theme.proteinTextClassName}`}>{avgProt}g protein</span>
+                          <span className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{avgCal} kcal</span>
+                        </div>
+                        {/* Coaching line grounded in reviewer-approved copy —
+                            written after save by the WhatsApp path, so older
+                            meals simply don't have one. Not truncated: unlike
+                            the summary above, the advice is the content. */}
+                        {meal.coachingSuggestion && !guidance && (
+                          <p className={`text-xs text-emerald-700 mt-1 ${dm ? "dark:text-emerald-400" : ""}`}>
+                            🌱 {meal.coachingSuggestion}
+                          </p>
+                        )}
+                        {/* Family-loop reactions: first tap on a meal sends
+                            the contact a WhatsApp "seen by family" line;
+                            switching emoji later just updates the record. */}
+                        {reactionsEnabled && (
+                          <div className="flex items-center gap-1.5 mt-2">
+                            {REACTION_EMOJIS.map((emoji) => {
+                              const active = reactions[meal.id] === emoji;
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => handleReact(meal.id, emoji)}
+                                  aria-label={`React ${emoji} to this meal`}
+                                  aria-pressed={active}
+                                  className={`text-sm leading-none rounded-full px-2 py-1 border transition-colors ${
+                                    active
+                                      ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]"
+                                      : `border-gray-150 bg-gray-50 opacity-60 hover:opacity-100 ${dm ? "dark:bg-white/5 dark:border-white/10" : ""}`
+                                  }`}
+                                >
+                                  {emoji}
+                                </button>
+                              );
+                            })}
+                            {reactions[meal.id] && (
+                              <span className={`text-[11px] text-gray-400 ml-1 ${dm ? "dark:text-gray-500" : ""}`}>
+                                sent to {profile.fullName.split(" ")[0]} on WhatsApp
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {visibleMealCount < meals.length && (
+              <button
+                onClick={() => setVisibleMealCount((c) => c + MEALS_PAGE_SIZE)}
+                className={`w-full mt-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 ${dm ? "dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/5" : ""}`}
+              >
+                Show more
               </button>
             )}
           </div>
-        </div>
 
-        {/* Section 2 — Food Balance Score / insights. */}
-        {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <FoodBalanceScoreCard {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
-        )}
-
-        {/* Section 2b — "Your wins" shareable accomplishment cards. */}
-        {FOOD_BALANCE_SCORE_ENABLED && permissions.canViewDetailedNutrition && (
-          <ShareCardsDashboardSection {...(role === "coach" ? { clientId: profile.id } : { contactId: profile.id })} data={foodBalanceData} dm={dm} />
-        )}
-
-        {/* Section 3 — macronutrient summary. */}
-        {permissions.canViewDetailedNutrition && (
-          <MacronutrientSummary
-            meals={mealsInRange}
-            days={rangeDays}
-            targets={{ calories: calTarget, protein: proteinTarget, carbs: carbTarget, fat: fatTarget, fiber: fiberTarget }}
-            dm={dm}
-          />
-        )}
-
-        {/* Section 4 — key metric cards. */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <MetricCard
-            icon="🍽️"
-            iconColor="purple"
-            label="Meals logged"
-            value={`${mealsInRange.length}`}
-            sub={`${daysLoggedInRange} of ${rangeDays} day${rangeDays === 1 ? "" : "s"}`}
-            ok={rangeDays <= 1 ? undefined : daysLoggedInRange / rangeDays >= 0.7}
-            dm={dm}
-          />
-          <MetricCard
-            icon="🌱"
-            iconColor="green"
-            label="Avg protein/day"
-            value={avgProtein > 0 ? `${avgProtein}g` : "—"}
-            sub={`target: ${proteinTarget}g${isRecommendedProtein ? " (recommended)" : ""}`}
-            ok={proteinOk ?? undefined}
-            dm={dm}
-          />
-          <MetricCard
-            icon="🔥"
-            iconColor="orange"
-            label="Avg calories/day"
-            value={avgCalories > 0 ? `${avgCalories}` : "—"}
-            sub={calTarget ? `target: ≥${calTarget}` : "kcal"}
-            ok={calOk ?? undefined}
-            dm={dm}
-          />
-        </div>
-
-        {/* Section 5 — progress summary. */}
-        {insights && <ProgressInsights insights={insights} variant={role === "coach" ? "gym" : "adults"} dm={dm} />}
-
-        {/* Section 6 — meal activity heatmap (fixed 30-day window). */}
-        <div className={`bg-white rounded-2xl border border-gray-100 p-4 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
-          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-4 ${dm ? "dark:text-gray-400" : ""}`}>Meal activity – last 30 days</p>
-          <ActivityHeatmap meals={heatmapMeals as any} days={30} dm={dm} />
-        </div>
-
-        {/* Section 7 — recent meals. */}
-        <div>
-          <p className={`text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3 ${dm ? "dark:text-gray-400" : ""}`}>Recent meals</p>
-          {meals.length === 0 ? (
-            <div className={`text-center py-10 text-gray-400 text-sm bg-white rounded-2xl border border-gray-100 ${dm ? "dark:text-gray-500 dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
-              {copy.noMealsMessage}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {meals.slice(0, visibleMealCount).map((meal) => {
-                const avgProt = Math.round((meal.totalProteinMin + meal.totalProteinMax) / 2);
-                const avgCal = Math.round((meal.totalCaloriesMin + meal.totalCaloriesMax) / 2);
-                const time = new Date(meal.loggedAt).toLocaleString("en-IN", {
-                  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: true,
-                  timeZone: profile.timezone,
-                });
-                const emoji = MEAL_EMOJIS[meal.mealType] ?? "🍽️";
-                return (
-                  <div key={meal.id} className={`flex items-start gap-3 bg-white rounded-xl border border-gray-100 p-3 ${dm ? "dark:bg-[var(--color-dashboard-dark-card)] dark:border-white/10" : ""}`}>
-                    {meal.imageUrl && permissions.canViewMealPhotos ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local asset
-                      <img
-                        src={meal.imageUrl}
-                        alt={`${meal.mealType} photo`}
-                        onClick={() => setModalPhoto({ url: meal.imageUrl!, label: meal.mealType, shareData: buildMealShareData(meal) })}
-                        className="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
-                      />
-                    ) : (
-                      <span className="text-xl mt-0.5">{emoji}</span>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <span className={`text-sm font-medium text-gray-900 capitalize ${dm ? "dark:text-white" : ""}`}>{meal.mealType}</span>
-                        <span className={`text-xs text-gray-400 shrink-0 ${dm ? "dark:text-gray-500" : ""}`}>{time}</span>
-                      </div>
-                      <p className={`text-xs text-gray-500 truncate ${dm ? "dark:text-gray-400" : ""}`}>{meal.aiSummary ?? meal.foods.map((f: any) => f.name).join(", ")}</p>
-                      <div className="flex gap-3 mt-1">
-                        <span className={`text-xs font-medium ${theme.proteinTextClassName}`}>{avgProt}g protein</span>
-                        <span className={`text-xs text-gray-400 ${dm ? "dark:text-gray-500" : ""}`}>{avgCal} kcal</span>
-                      </div>
-                      {/* Coaching line grounded in reviewer-approved copy —
-                          written after save by the WhatsApp path, so older
-                          meals simply don't have one. Not truncated: unlike
-                          the summary above, the advice is the content. */}
-                      {meal.coachingSuggestion && (
-                        <p className={`text-xs text-emerald-700 mt-1 ${dm ? "dark:text-emerald-400" : ""}`}>
-                          🌱 {meal.coachingSuggestion}
-                        </p>
-                      )}
-                      {/* Family-loop reactions: first tap on a meal sends
-                          the contact a WhatsApp "seen by family" line;
-                          switching emoji later just updates the record. */}
-                      {reactionsEnabled && (
-                        <div className="flex items-center gap-1.5 mt-2">
-                          {REACTION_EMOJIS.map((emoji) => {
-                            const active = reactions[meal.id] === emoji;
-                            return (
-                              <button
-                                key={emoji}
-                                type="button"
-                                onClick={() => handleReact(meal.id, emoji)}
-                                aria-label={`React ${emoji} to this meal`}
-                                aria-pressed={active}
-                                className={`text-sm leading-none rounded-full px-2 py-1 border transition-colors ${
-                                  active
-                                    ? "border-[var(--color-dashboard-primary)] bg-[var(--color-dashboard-primary-light)]"
-                                    : `border-gray-150 bg-gray-50 opacity-60 hover:opacity-100 ${dm ? "dark:bg-white/5 dark:border-white/10" : ""}`
-                                }`}
-                              >
-                                {emoji}
-                              </button>
-                            );
-                          })}
-                          {reactions[meal.id] && (
-                            <span className={`text-[11px] text-gray-400 ml-1 ${dm ? "dark:text-gray-500" : ""}`}>
-                              sent to {profile.fullName.split(" ")[0]} on WhatsApp
-                            </span>
-                          )}
-                        </div>
-                      )}
+          {/* Workouts — gym-only, present only when the caller supplies them. */}
+          {workouts && workouts.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent workouts</p>
+              <div className="space-y-2">
+                {workouts.slice(0, 5).map((w) => (
+                  <div key={w.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3">
+                    <span className="text-xl">💪</span>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{w.description ?? w.workoutType ?? "Workout"}</p>
+                      <p className="text-xs text-gray-400">
+                        {new Date(w.loggedAt).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
+                        {w.durationMinutes ? ` · ${w.durationMinutes} min` : ""}
+                      </p>
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           )}
-          {visibleMealCount < meals.length && (
-            <button
-              onClick={() => setVisibleMealCount((c) => c + MEALS_PAGE_SIZE)}
-              className={`w-full mt-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 ${dm ? "dark:border-white/10 dark:text-gray-400 dark:hover:bg-white/5" : ""}`}
-            >
-              Show more
-            </button>
-          )}
-        </div>
-
-        {/* Workouts — gym-only, present only when the caller supplies them. */}
-        {workouts && workouts.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Recent workouts</p>
-            <div className="space-y-2">
-              {workouts.slice(0, 5).map((w) => (
-                <div key={w.id} className="flex items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3">
-                  <span className="text-xl">💪</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{w.description ?? w.workoutType ?? "Workout"}</p>
-                    <p className="text-xs text-gray-400">
-                      {new Date(w.loggedAt).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}
-                      {w.durationMinutes ? ` · ${w.durationMinutes} min` : ""}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </>
 
         {extraSections}
       </main>

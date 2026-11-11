@@ -83,6 +83,15 @@ export interface FoodItem {
    * chicken) — lets the clarification message list every OTHER item by
    * name while asking specifically about this one. */
   is_ambiguous?: boolean;
+  /** Only requested when GUIDANCE_MICRONUTRIENTS_ENABLED is on (see
+   * MICRONUTRIENT_PROMPT_SECTION): the model's single best estimate of the
+   * edible weight as eaten, whether it's raw or cooked, and for a mixed
+   * dish the ingredients and their grams. Identities and weights only: the
+   * nutrient values come from composition data (src/lib/nutrients), never
+   * from the model. */
+  edible_grams?: number;
+  preparation_state?: "raw" | "cooked";
+  ingredients?: Array<{ name: string; grams: number; state?: "raw" | "cooked" }>;
 }
 
 export type MealType =
@@ -303,6 +312,25 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
 }
 Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
 
+/** Appended to SYSTEM_PROMPT only when GUIDANCE_MICRONUTRIENTS_ENABLED is
+ * on. With the flag off the prompt is byte-for-byte what it was before
+ * micronutrient tracking existed (src/__tests__/nutrients-analyzer-prompt.test.ts).
+ * It asks for what the model can see: weights, raw or cooked, and what a
+ * mixed dish is made of. Vitamins and minerals are then calculated from
+ * food-composition tables, so the model never supplies a nutrient value. */
+export const MICRONUTRIENT_PROMPT_SECTION = `
+
+FOR VITAMIN AND MINERAL ESTIMATES — add these fields to each item in "foods" (they are in addition to the fields above):
+      "edible_grams": number — your single best estimate of the edible weight as eaten, in grams (cooked weight for cooked food),
+      "preparation_state": "raw|cooked" — whether the item as eaten is raw or cooked,
+      "ingredients": [{ "name": "string", "grams": number, "state": "raw|cooked" }] — ONLY for a mixed dish (curry, dal, biryani, sabzi, sandwich, salad): its main ingredients and their grams in this portion, summing roughly to edible_grams. Name plain foods (e.g. "chickpeas", "onion", "tomato", "oil", "paneer"), not dish names. Omit for single foods like roti, rice, an egg or a fruit.
+- Only include an ingredient you can see or that the dish clearly requires. Do not guess salt, spices or oil types you cannot see; if the cooking fat is not visible, leave it out.
+- Do not estimate vitamins or minerals yourself, and do not add any nutrient fields beyond those already listed above.`;
+
+function micronutrientPromptEnabled(): boolean {
+  return process.env.GUIDANCE_MICRONUTRIENTS_ENABLED === "true";
+}
+
 /** Cap on Gemini's internal reasoning tokens per analysis. Unset, the model
  * chooses its own budget and spent 1,000–4,600 thinking tokens per real
  * meal photo — ~60-70% of a 12-19s median response. 512 measured ~9s median
@@ -345,7 +373,7 @@ export async function analyzeFood(input: {
     generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
-  let textPrompt = `${SYSTEM_PROMPT}\n\n${regionPromptSection(input.timezone)}`;
+  let textPrompt = `${SYSTEM_PROMPT}${micronutrientPromptEnabled() ? MICRONUTRIENT_PROMPT_SECTION : ""}\n\n${regionPromptSection(input.timezone)}`;
   if (input.correctionContext) {
     textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}\nIf this correction resolves a previous food-identity ambiguity (e.g. the user named the item), set has_high_impact_ambiguity to false and food_identity_confidence to "high" for the resolved item.`;
   } else if (input.text) {
@@ -999,6 +1027,11 @@ export function buildAutoSaveMessage(
     dailyTotals?: { protein: number; calories: number; carbs: number; fat: number; targetProteinG?: number } | null;
     isClarificationResolution?: boolean;
     timezone?: string;
+    /** Nutrition Guidance is on (see src/lib/guidance/whatsapp.ts): the
+     * estimate becomes this meal's full nutrition, "Today so far" becomes
+     * the day against the target, and the next-meal recommendation is
+     * dropped. Guidance reports; it doesn't coach. */
+    guidance?: { thisMeal: string; today: string };
   }
 ): string {
   const protein = avgProtein(analysis);
@@ -1008,7 +1041,9 @@ export function buildAutoSaveMessage(
   const label = formatMealLabel(resolvedLabel).toLowerCase();
   const estimate = `Estimated: ${protein}g protein · ${carbs}g carbs · ${fat}g fat · ${cal} kcal.`;
   const portionCheck = needsPortionConfirmation(analysis) ? `\n\n${pickPortionCaveatLine(analysis, opts.seed)}` : "";
-  const recommendation = buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null, opts.timezone);
+  const recommendation = opts.guidance
+    ? null
+    : buildMealRecommendation(analysis, resolvedLabel, opts.dailyTotals ?? null, opts.timezone);
 
   // A meal that just had its ambiguity resolved by the user reads slightly
   // differently ("Thanks — I've logged...") than a fresh, unprompted
@@ -1028,11 +1063,12 @@ export function buildAutoSaveMessage(
     ? `Need to fix anything? Just reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`
     : `If anything is off, reply with a correction — or the right meal, e.g. *${otherMeal}* — or say Undo to remove this log.`;
 
-  let msg = `${lead}\n${foodLines(analysis)}\n\n${estimate}${portionCheck}`;
+  let msg = `${lead}\n${foodLines(analysis)}\n\n${opts.guidance ? opts.guidance.thisMeal : estimate}${portionCheck}`;
   if (recommendation) msg += `\n\n${recommendation}`;
+  if (opts.guidance) msg += `\n\n${opts.guidance.today}`;
   msg += `\n\n${closing}`;
 
-  if (opts.dailyTotals) {
+  if (opts.dailyTotals && !opts.guidance) {
     const { protein: totalProtein, calories: totalCalories, carbs: totalCarbs, fat: totalFat, targetProteinG } = opts.dailyTotals;
     const proteinPart = targetProteinG ? `${totalProtein}g / ${targetProteinG}g protein` : `${totalProtein}g protein`;
     msg += `\n\nToday so far: ${proteinPart} · ${totalCarbs}g carbs · ${totalFat}g fat · ${totalCalories.toLocaleString("en-IN")} kcal.`;
@@ -1131,8 +1167,16 @@ export function buildLowConfidenceClarificationMessage(decision: SaveDecision, t
 /** Used when a correction arrives for an already-auto-saved meal — updates
  * happen silently in place (no "Reply Yes" needed, since the user already
  * gave a definitive correction), so this just reports the new numbers. */
-export function buildCorrectionUpdateMessage(resolvedLabel: MealType, analysis: FoodAnalysisResult): string {
+export function buildCorrectionUpdateMessage(
+  resolvedLabel: MealType,
+  analysis: FoodAnalysisResult,
+  /** Nutrition Guidance is on: report the corrected meal in full and where
+   * the day now stands, as buildAutoSaveMessage does. */
+  guidance?: { thisMeal: string; today: string }
+): string {
+  const lead = `Thanks for the correction — I've updated ${formatMealLabel(resolvedLabel).toLowerCase()}.`;
+  if (guidance) return `${lead}\n\n${guidance.thisMeal}\n\n${guidance.today}`;
   const protein = avgProtein(analysis);
   const cal = avgCal(analysis);
-  return `Thanks for the correction — I've updated ${formatMealLabel(resolvedLabel).toLowerCase()}.\n\nNew estimate: ${protein}g protein · ${cal} kcal.`;
+  return `${lead}\n\nNew estimate: ${protein}g protein · ${cal} kcal.`;
 }

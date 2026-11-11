@@ -7,6 +7,8 @@ import { EditContactModal } from "@/components/adults/dashboard/EditContactModal
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { adaptAdultsContactDetails } from "@/lib/dashboard/profile-dashboard-types";
 import { FAMILY_ADMIN_THEME, FAMILY_ADMIN_COPY } from "@/lib/dashboard/profile-dashboard-presets";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
+import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 /** Plain fetch instead of a Server Action — Server Actions on this
  * deployment (Cloudflare Pages via @cloudflare/next-on-pages) intermittently
@@ -31,13 +33,27 @@ async function fetchInviteJson(url: string, init?: RequestInit): Promise<any> {
  * ClientDashboard.tsx). Only the theme/copy/invite-wiring/edit-modal are
  * product-specific; everything else (insights, metrics, macro summary,
  * activity heatmap, recent meals, date-range selector) is shared. */
-export function ContactDashboard({ contact, meals }: AdultsContactDetails) {
+export function ContactDashboard({
+  contact,
+  meals,
+  guidance,
+  guidanceActions,
+  guidanceHref,
+}: AdultsContactDetails & {
+  /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
+  guidance?: GuidanceDashboard | null;
+  guidanceActions?: GuidanceActions;
+  guidanceHref?: string;
+}) {
   const router = useRouter();
 
   return (
     <ProfileDashboard
       role="family_admin"
       data={adaptAdultsContactDetails({ contact, meals })}
+      guidance={guidance}
+      guidanceActions={guidanceActions}
+      guidanceHref={guidanceHref}
       backHref="/adults/dashboard"
       theme={FAMILY_ADMIN_THEME}
       copy={FAMILY_ADMIN_COPY}

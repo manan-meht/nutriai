@@ -66,3 +66,44 @@
   50% { transform: translateY(-5px); }
 }
 .swipe-nudge { animation: swipe-nudge 2.8s ease-in-out infinite; }
+
+/* Guidance mode — charcoal and lavender (redesign, 2026-11-09; it replaced
+   "Midnight teal"). Applied by the .guidance-theme class, and always dark
+   whatever the system theme: the change of palette is how the screen says
+   you are in a different mode. Lavender is the brand purple lifted for a
+   dark background, used sparingly: one accent per card. "Over" stays a
+   soft amber, never red. Muted text is #8E8A9E, not darker, so 11px
+   captions still clear 4.5:1 on the card. */
+.guidance-theme {
+  --gm-page: #131217;
+  --gm-card: #1B1A21;
+  --gm-raised: #23222A;
+  --gm-track: #2D2B36;
+  --gm-border: rgba(255, 255, 255, 0.08);
+  --gm-border-strong: rgba(255, 255, 255, 0.14);
+  --gm-text: #ECEAF2;
+  --gm-text-secondary: #ABA7BA;
+  --gm-text-muted: #8E8A9E;
+  --gm-accent: #B7A4FF;
+  --gm-accent-hover: #C9BAFF;
+  --gm-accent-text: #C9BAFF;
+  --gm-accent-soft: rgba(183, 164, 255, 0.12);
+  --gm-accent-border: rgba(183, 164, 255, 0.35);
+  --gm-on-accent: #1C1530;
+  --gm-over: #F5B544;
+  --gm-over-text: #F5C46B;
+  --gm-over-soft: rgba(245, 181, 68, 0.08);
+  --gm-over-border: rgba(245, 181, 68, 0.35);
+  --gm-error-text: #FCA5A5;
+  /* The one light surface: the next-meal card, so the primary card reads
+     first. Every text colour on it clears 4.5:1 (#5F5880 is 4.66:1). */
+  --gm-hero: #DDD4FB;
+  --gm-hero-text: #1C1530;
+  --gm-hero-text-secondary: #4A4166;
+  --gm-hero-text-muted: #5F5880;
+  --gm-hero-accent: #5634C0;
+  --gm-hero-button: #5B3CC4;
+  --gm-hero-border: rgba(28, 21, 48, 0.12);
+  /* Native controls (select menus, radios, number spinners) follow along. */
+  color-scheme: dark;
+}
