@@ -256,6 +256,44 @@ export interface AdultsContactDetails {
   meals: MealLog[];
 }
 
+// The coach view — shown only to an account that already owns a gym
+// workspace (see lib/dashboard-route.ts). Same endpoints and shapes the web
+// Coach OS Nutrition page reads, via mobile-api's /gym routes.
+export interface GymWorkspaceResponse {
+  workspace: { id: string; name: string; extraCapacity: number };
+  entitlement: {
+    status: string;
+    trialStartAt: string | null;
+    trialEndAt: string | null;
+    trialDaysRemaining: number | null;
+    isReadOnly: boolean;
+    isBillingWhitelisted: boolean;
+  };
+}
+
+export interface GymClient extends FoodBalanceProfileFields {
+  id: string;
+  workspaceId: string;
+  fullName: string;
+  whatsappNumber: string;
+  age?: number;
+  gender?: "male" | "female" | "other";
+  weightKg?: number;
+  heightCm?: number;
+  bmi?: number;
+  mealCount: number;
+  lastMealAt?: string;
+  macroSummary?: { today: MacroWindowSummary; week: MacroWindowSummary };
+  /** Meal count for a true rolling 7-day window ending today — see
+   * AdultsContact.last7DaysMealCount's identical doc. */
+  last7DaysMealCount?: number;
+  goals: Goal[];
+  trackedBiomarkers: string[];
+  /** Set once a client has been removed (soft-deleted) — only present on
+   * rows returned by getRemovedGymClients, never on getGymClients. */
+  deletedAt?: string;
+}
+
 export interface WorkoutLog {
   id: string;
   loggedAt: string;
@@ -280,6 +318,13 @@ export interface BiomarkerLog {
   notes?: string;
 }
 
+export interface GymClientDetails {
+  client: GymClient;
+  meals: MealLog[];
+  workouts: WorkoutLog[];
+  biomarkers: BiomarkerLog[];
+}
+
 // Temporary Access Codes — mirrors the web app's AccessCodeCard/
 // generateAccessCodeAction family (see @nutriai/end-user-core's otp.ts
 // and src/app/(adults)/adults/dashboard/actions.ts on the web side). The
@@ -293,7 +338,8 @@ export interface AccessCodeResult {
 
 // Mirrors the main web app's InviteSummary (src/lib/invites/types.ts) —
 // what's needed to show a "Send invite via WhatsApp" action after adding a
-// family member (see apps/mobile-api's GET /adults/contacts/:id/invite).
+// family member or client (see apps/mobile-api's GET
+// /adults/contacts/:id/invite and /gym/clients/:id/invite).
 export interface InviteSummary {
   token: string;
   link: string;
@@ -412,7 +458,7 @@ export interface FoodPreferenceSelections {
 // ---- API calls ----
 
 export const api = {
-  // Side-effect-free — unlike getAdultsWorkspace below,
+  // Side-effect-free — unlike getAdultsWorkspace/getGymWorkspace below,
   // this never creates a workspace. Use this to decide which
   // dashboard(s) to route into after login (see apps/mobile-api's
   // /me/products route for why the get-or-create endpoints can't be used
@@ -448,6 +494,16 @@ export const api = {
   removeAdultsContact: (contactId: string) =>
     apiDelete<{ ok: boolean }>(`/adults/contacts/${contactId}`),
 
+  // get-or-create, like getAdultsWorkspace — only ever called from the gym
+  // screens, which an account reaches only once getMyProducts reports a
+  // gym workspace, so nothing here creates one for a Health-only account.
+  getGymWorkspace: () => apiFetch<GymWorkspaceResponse>("/gym/workspace"),
+  getGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients"),
+  getRemovedGymClients: () => apiFetch<{ clients: GymClient[] }>("/gym/clients/removed"),
+  getGymClientDetails: (clientId: string) =>
+    apiFetch<GymClientDetails>(`/gym/clients/${clientId}`),
+  removeGymClient: (clientId: string) =>
+    apiDelete<{ ok: boolean }>(`/gym/clients/${clientId}`),
 
   // Feature-flagged server-side — returns 404 with {error:"Not available"}
   // when NEXT_PUBLIC_FOOD_BALANCE_SCORE_V1 isn't set on mobile-api's
@@ -525,6 +581,13 @@ export const api = {
     formData.append("photo", { uri: imageUri, name: `avatar.${extension}`, type: mimeType } as any);
     return apiUpload<{ photoUrl: string }>(`/adults/contacts/${contactId}/avatar`, formData);
   },
+  // mobile-api answers POST with { clientId }, not { id } like the adults
+  // route — see addClient in apps/mobile-api/src/lib/gym.ts.
+  createGymClient: (body: unknown) =>
+    apiRequest<{ clientId: string }>("/gym/clients", { method: "POST", body: JSON.stringify(body) }),
+  getCoachClientInvite: (clientId: string) => apiFetch<InviteSummary>(`/gym/clients/${clientId}/invite`),
+  updateGymClient: (clientId: string, body: unknown) =>
+    apiRequest<{}>(`/gym/clients/${clientId}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   generateAdultsAccessCode: (contactId: string, ttlHours: 1 | 24 = 24) =>
     apiRequest<AccessCodeResult>(`/adults/contacts/${contactId}/access-code`, { method: "POST", body: JSON.stringify({ ttlHours }) }),

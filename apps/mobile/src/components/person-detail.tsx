@@ -50,7 +50,7 @@ interface PersonLike extends FoodBalanceProfileFields {
   lastMessageAt?: string;
 }
 
-// Used by (app)/adults/[contactId].tsx —
+// Shared by (app)/adults/[contactId].tsx and (app)/gym/[clientId].tsx —
 // ported from nutriai-fresh's apps/mobile/src/components/PersonDetail.tsx,
 // which is itself shared by that app's family/coach/self detail screens.
 // Mirrors nutriai-fresh's main web app's ContactDashboard.tsx/
@@ -73,7 +73,7 @@ export function PersonDetail({
   meals: MealLog[];
   workouts?: WorkoutLog[];
   biomarkers?: BiomarkerLog[];
-  foodBalanceQuery: { contactId: string };
+  foodBalanceQuery: { contactId: string } | { clientId: string };
   /** Digits-only bot number for the "stale" + self reconnect link (see
    * InviteStatusBanner below) — undefined if not configured, or for gym
    * clients (no WhatsApp invite concept there, caller doesn't pass it). */
@@ -243,7 +243,7 @@ export function PersonDetail({
     !person.heightCm && 'height',
     !person.derivedActivityLevel && (!person.activityLevel || person.activityLevel === 'unknown') && 'activity level',
   ].filter((f): f is string => Boolean(f));
-  const editHref = `/adults/edit/${foodBalanceQuery.contactId}`;
+  const editHref = 'clientId' in foodBalanceQuery ? `/gym/edit/${foodBalanceQuery.clientId}` : `/adults/edit/${foodBalanceQuery.contactId}`;
 
   // Once the user has interacted with (saved) a food preference at least
   // once, the editor moves into the edit-contact screen instead — see the
@@ -565,7 +565,7 @@ export function PersonDetail({
         meal={sharingMeal ? buildMealShareData(sharingMeal) : null}
         visible={!!sharingMeal}
         onClose={() => setSharingMeal(null)}
-        audience={person.relationshipType === 'self' ? 'self' : 'family'}
+        audience={'clientId' in foodBalanceQuery ? 'coach' : person.relationshipType === 'self' ? 'self' : 'family'}
         relationship={person.relationship}
         gender={person.gender}
       />

@@ -140,7 +140,6 @@ export function GuidanceScreen({
   onEditDetails,
   notice,
   actions,
-  micronutrientCard,
   onSignOut,
 }: {
   guidance: GuidanceDashboard;
@@ -155,7 +154,6 @@ export function GuidanceScreen({
   /** Plan, skip and habit actions, bound to this person on the server.
    * Absent for a read-only view. */
   actions?: GuidanceActions;
-  micronutrientCard?: ReactNode;
   onSignOut?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("today");
@@ -267,7 +265,6 @@ export function GuidanceScreen({
               detailsOpen={detailsOpen}
               onDetailsToggle={setDetailsOpen}
               actions={actions}
-              micronutrientCard={micronutrientCard}
             />
           )}
         </div>

@@ -1,9 +1,13 @@
 import {
+  addSupplementAction,
+  answerClarificationAction,
   cancelPlanAction,
   chooseHabitAction,
   confirmPlannedMealAction,
   planMealAction,
   setMealSkippedAction,
+  setSupplementTakenAction,
+  stopSupplementAction,
 } from "@/app/actions/guidance";
 
 import type { GuidanceSurface } from "./request-actor";
@@ -20,6 +24,10 @@ export function guidanceActionsFor(surface: GuidanceSurface, contactId: string) 
     confirmPlannedMeal: confirmPlannedMealAction.bind(null, surface, contactId),
     setMealSkipped: setMealSkippedAction.bind(null, surface, contactId),
     chooseHabit: chooseHabitAction.bind(null, surface, contactId),
+    answerClarification: answerClarificationAction.bind(null, surface, contactId),
+    addSupplement: addSupplementAction.bind(null, surface, contactId),
+    setSupplementTaken: setSupplementTakenAction.bind(null, surface, contactId),
+    stopSupplement: stopSupplementAction.bind(null, surface, contactId),
   };
 }
 

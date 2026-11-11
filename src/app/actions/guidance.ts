@@ -21,6 +21,16 @@ import {
   type MealSlot,
 } from "@/lib/guidance/day-plan";
 import { chooseHabit, type HabitActionResult, type HabitKey } from "@/lib/guidance/habits";
+import {
+  addSupplement,
+  answerHouseholdFact,
+  confirmProductBrand,
+  setSupplementTaken,
+  stopSupplement,
+  type SupplementInput,
+} from "@/lib/guidance/micronutrient-actions";
+import { MICRO_KEYS, type InputUnit, type MicroKey } from "@/lib/nutrients/catalog";
+import { HOUSEHOLD_FACT_KEYS, type FactAnswer, type HouseholdFactKey } from "@/lib/nutrients/facts";
 import { resolveGuidanceActor, type GuidanceSurface } from "@/lib/guidance/request-actor";
 import { loadGuidanceDashboard } from "@/lib/guidance/view";
 import { parseSetupAnswers } from "@/lib/guidance/setup-answers";
@@ -194,4 +204,69 @@ export async function chooseHabitAction(surface: GuidanceSurface, contactId: str
     variant,
     evidence: option.evidence,
   });
+}
+
+// ─── Vitamins and minerals: answers and supplements ───────────────────────
+// micronutrient-actions.ts checks permission, the release gate and that
+// Guidance is on, as day-plan.ts does. These only shape the input.
+
+/** A clarifying question's answer: a household yes/no/not sure, or the brand
+ * of a packaged product. */
+export async function answerClarificationAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<DailyActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const db = createServiceClient();
+  if (raw.key === "product_brand") {
+    return confirmProductBrand(db, {
+      contactId,
+      ...request,
+      itemName: typeof raw.itemName === "string" ? raw.itemName : "",
+      brand: typeof raw.brand === "string" ? raw.brand : "",
+    });
+  }
+  const key = HOUSEHOLD_FACT_KEYS.find((k) => k === raw.key) as HouseholdFactKey | undefined;
+  const answer = (["yes", "no", "unsure"] as const).find((a) => a === raw.answer) as FactAnswer | undefined;
+  if (!key || !answer) return { ok: false, kind: "invalid", message: "That answer isn't one of the options." };
+  return answerHouseholdFact(db, { contactId, ...request, key, answer });
+}
+
+const UNITS = new Set<InputUnit>(["mg", "µg", "ug", "mcg", "IU", "µg DFE", "µg RAE", "g"]);
+
+export async function addSupplementAction(
+  surface: GuidanceSurface,
+  contactId: string,
+  input: unknown
+): Promise<DailyActionResult<{ scheduleId: string }>> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const nutrients = (Array.isArray(raw.nutrients) ? raw.nutrients : []).slice(0, 12).map((n) => {
+    const r = (n && typeof n === "object" ? n : {}) as Record<string, unknown>;
+    return {
+      key: (MICRO_KEYS.find((k) => k === r.key) ?? "") as MicroKey,
+      amount: typeof r.amount === "number" ? r.amount : Number.NaN,
+      unit: (UNITS.has(r.unit as InputUnit) ? r.unit : "mg") as InputUnit,
+    };
+  });
+  const supplement: SupplementInput = {
+    name: typeof raw.name === "string" ? raw.name : "",
+    brand: typeof raw.brand === "string" ? raw.brand : null,
+    nutrients,
+  };
+  return addSupplement(createServiceClient(), { contactId, ...request, supplement });
+}
+
+export async function setSupplementTakenAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<DailyActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
+  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  if (typeof raw.scheduleId !== "string") return { ok: false, kind: "not_found" };
+  return setSupplementTaken(createServiceClient(), { contactId, ...request, scheduleId: raw.scheduleId, taken: raw.taken !== false });
+}
+
+export async function stopSupplementAction(surface: GuidanceSurface, contactId: string, scheduleId: unknown): Promise<DailyActionResult> {
+  const request = await resolveGuidanceActor(surface);
+  if (!request || typeof contactId !== "string" || typeof scheduleId !== "string") return NOT_SIGNED_IN;
+  return stopSupplement(createServiceClient(), { contactId, ...request, scheduleId });
 }

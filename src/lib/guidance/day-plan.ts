@@ -132,8 +132,10 @@ export function linkPlans<M extends { id: string; loggedAt: string; mealType: st
 }
 
 /** The shared front door: the contact exists, the actor may act for them,
- * Guidance is released and switched on for them. */
-async function guard(
+ * Guidance is released and switched on for them. Every day-to-day Guidance
+ * write goes through it (plans, skips, vitamin and mineral answers,
+ * supplements). */
+export async function guardDailyAction(
   db: SupabaseClient,
   params: { contactId: string; contactType?: GuidanceContactType; actor: GuidanceActor }
 ): Promise<{ ok: true; facts: ContactFacts; via: ActivatedVia } | ActivationFailure> {
@@ -175,7 +177,7 @@ export async function planMeal(
     now?: Date;
   }
 ): Promise<DailyActionResult<{ planId: string }>> {
-  const g = await guard(db, params);
+  const g = await guardDailyAction(db, params);
   if (!g.ok) return g;
   const today = localDate((params.now ?? new Date()).toISOString(), g.facts.timezone);
   if (!plannable(params.date, today)) return { ok: false, kind: "invalid", message: "Meals can be planned for today or tomorrow." };
@@ -222,7 +224,7 @@ export async function cancelPlan(
   db: SupabaseClient,
   params: { contactId: string; contactType?: GuidanceContactType; actor: GuidanceActor; planId: string }
 ): Promise<DailyActionResult> {
-  const g = await guard(db, params);
+  const g = await guardDailyAction(db, params);
   if (!g.ok) return g;
   // Scoped to this person: a plan id from someone else's profile matches
   // nothing.
@@ -253,7 +255,7 @@ export async function confirmPlannedMeal(
     now?: Date;
   }
 ): Promise<DailyActionResult<{ mealLogId: string }>> {
-  const g = await guard(db, params);
+  const g = await guardDailyAction(db, params);
   if (!g.ok) return g;
   const plan = await ownPlan(db, g.facts, params.planId);
   if (!plan) return { ok: false, kind: "not_found" };
@@ -350,7 +352,7 @@ export async function setMealSkipped(
   if (!MAIN_SLOTS.includes(params.slot) || !/^\d{4}-\d{2}-\d{2}$/.test(params.date)) {
     return { ok: false, kind: "invalid", message: "Choose breakfast, lunch or dinner on a recent day." };
   }
-  const g = await guard(db, params);
+  const g = await guardDailyAction(db, params);
   if (!g.ok) return g;
   const today = localDate((params.now ?? new Date()).toISOString(), g.facts.timezone);
   const weekAgo = new Date(Date.parse(`${today}T12:00:00Z`) - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
