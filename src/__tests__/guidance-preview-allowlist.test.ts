@@ -165,3 +165,35 @@ describe("what each account sees in production with the flag on", () => {
     });
   });
 });
+
+describe("vitamin and mineral estimates in the meal pipeline", () => {
+  const dal = [{ name: "dal", quantity: "1 cup", estimated_cooked_weight_grams: "240g" }];
+  const prevFlag = process.env.GUIDANCE_MICRONUTRIENTS_ENABLED;
+  beforeEach(() => {
+    process.env.GUIDANCE_MICRONUTRIENTS_ENABLED = "true";
+  });
+  afterAll(() => {
+    if (prevFlag === undefined) delete process.env.GUIDANCE_MICRONUTRIENTS_ENABLED;
+    else process.env.GUIDANCE_MICRONUTRIENTS_ENABLED = prevFlag;
+  });
+
+  it("estimates meals only for people in Guidance whose account may use it", async () => {
+    const { afterMealSaved } = await import("@/lib/nutrients/pipeline");
+    await inProduction(async () => {
+      const data = rows();
+      data.adults_contacts.push({ id: "c-tracking", caregiver_id: "p-tester", relationship_type: "family_caregiver", timezone: TZ, full_name: "Not In Guidance" });
+      data.meal_logs.push(
+        { id: "m-tester", adults_contact_id: "c-tester", logged_at: now.toISOString(), foods: dal },
+        { id: "m-other", adults_contact_id: "c-other", logged_at: now.toISOString(), foods: dal },
+        { id: "m-tracking", adults_contact_id: "c-tracking", logged_at: now.toISOString(), foods: dal }
+      );
+      const db = makeGuidanceDb(data);
+      for (const [mealLogId, entityId] of [["m-tester", "c-tester"], ["m-other", "c-other"], ["m-tracking", "c-tracking"]]) {
+        await afterMealSaved(db, { mealLogId, isAdults: true, entityId, analysis: { foods: dal }, trigger: "ingestion" });
+      }
+      // Whitelisted and in Guidance: estimated. Not whitelisted, or not in
+      // Guidance: nothing written.
+      expect((data.meal_nutrient_estimates ?? []).map((e) => e.meal_log_id)).toEqual(["m-tester"]);
+    });
+  });
+});

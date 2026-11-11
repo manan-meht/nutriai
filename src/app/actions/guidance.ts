@@ -1,45 +1,31 @@
 "use server";
 
 import { createServiceClient } from "@/lib/supabase/server";
-import {
-  adjustTargets,
-  confirmActivation,
-  proposeActivation,
-  returnToTracking,
-  type AdjustResult,
-  type ConfirmResult,
-  type DeactivateResult,
-  type ProposalResult,
-} from "@/lib/guidance/activation";
-import {
-  cancelPlan,
-  confirmPlannedMeal,
-  MAIN_SLOTS,
-  planMeal,
-  setMealSkipped,
-  type DailyActionResult,
-  type MealSlot,
-} from "@/lib/guidance/day-plan";
-import { chooseHabit, type HabitActionResult, type HabitKey } from "@/lib/guidance/habits";
-import {
-  addSupplement,
-  answerHouseholdFact,
-  confirmProductBrand,
-  setSupplementTaken,
-  stopSupplement,
-  type SupplementInput,
-} from "@/lib/guidance/micronutrient-actions";
-import { MICRO_KEYS, type InputUnit, type MicroKey } from "@/lib/nutrients/catalog";
-import { HOUSEHOLD_FACT_KEYS, type FactAnswer, type HouseholdFactKey } from "@/lib/nutrients/facts";
+import type { AdjustResult, ConfirmResult, DeactivateResult, ProposalResult } from "@/lib/guidance/activation";
+import type { DailyActionResult } from "@/lib/guidance/day-plan";
+import type { HabitActionResult } from "@/lib/guidance/habits";
 import { resolveGuidanceActor, type GuidanceSurface } from "@/lib/guidance/request-actor";
-import { loadGuidanceDashboard } from "@/lib/guidance/view";
-import { parseSetupAnswers } from "@/lib/guidance/setup-answers";
+import {
+  addSupplementRequest,
+  adjustTargetsRequest,
+  answerClarificationRequest,
+  cancelPlanRequest,
+  chooseHabitRequest,
+  confirmGuidanceRequest,
+  confirmPlannedMealRequest,
+  planMealRequest,
+  proposeGuidanceRequest,
+  returnToTrackingRequest,
+  setMealSkippedRequest,
+  setSupplementTakenRequest,
+  stopSupplementRequest,
+} from "@/lib/guidance/requests";
 
-// The Guidance setup flow's three writes. Each one resolves the actor from
-// the request's own credential and hands it to activation.ts, which checks
-// permission and the release gate again on every call — so these stay thin
-// on purpose. Anything that decides who may do what belongs in
-// authorization.ts, where it is tested on its own.
+// The web's front door to Guidance: each server action finds the caller from
+// the session cookie (request-actor.ts), then hands over to
+// lib/guidance/requests.ts, which the mobile app's JSON API shares. The
+// services under that check permission, the release gate and that Guidance
+// is on, on every call, so these stay thin on purpose.
 //
 // The service client is needed because every Guidance table is RLS-locked
 // with no policies (migration 0068): the screening answers in particular
@@ -52,96 +38,44 @@ const NOT_SIGNED_IN = {
   message: "Your session has ended. Please sign in again.",
 } as const;
 
-/** Screens and computes, and shows the result. Switches nothing on. */
-export async function proposeGuidanceAction(
+/** Resolves the caller, or says they're not signed in. */
+async function withRequest<T>(
   surface: GuidanceSurface,
-  contactId: string,
-  answers: unknown
-): Promise<ProposalResult> {
+  run: (db: ReturnType<typeof createServiceClient>, request: NonNullable<Awaited<ReturnType<typeof resolveGuidanceActor>>>) => Promise<T>
+): Promise<T | typeof NOT_SIGNED_IN> {
   const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return proposeActivation(createServiceClient(), { contactId, ...request, answers: parseSetupAnswers(answers) });
+  if (!request) return NOT_SIGNED_IN;
+  return run(createServiceClient(), request);
+}
+
+/** Screens and computes, and shows the result. Switches nothing on. */
+export async function proposeGuidanceAction(surface: GuidanceSurface, contactId: string, answers: unknown): Promise<ProposalResult> {
+  return withRequest(surface, (db, r) => proposeGuidanceRequest(db, r, contactId, answers));
 }
 
 /** Switches Guidance on. Takes the answers again, never the proposal: the
  * targets are recomputed from them on the server, so the numbers shown at
  * the review step cannot come back altered. */
-export async function confirmGuidanceAction(
-  surface: GuidanceSurface,
-  contactId: string,
-  answers: unknown
-): Promise<ConfirmResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return confirmActivation(createServiceClient(), { contactId, ...request, answers: parseSetupAnswers(answers) });
+export async function confirmGuidanceAction(surface: GuidanceSurface, contactId: string, answers: unknown): Promise<ConfirmResult> {
+  return withRequest(surface, (db, r) => confirmGuidanceRequest(db, r, contactId, answers));
 }
 
 export async function returnToTrackingAction(surface: GuidanceSurface, contactId: string): Promise<DeactivateResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  return returnToTracking(createServiceClient(), { contactId, ...request });
+  return withRequest(surface, (db, r) => returnToTrackingRequest(db, r, contactId));
 }
 
-/** A coach sets the client's targets by hand. The numbers arrive from the
- * browser untyped; anything that isn't a number becomes NaN here and fails
- * adjustTargets' bounds check with a message naming the field. */
-export async function adjustTargetsAction(
-  surface: GuidanceSurface,
-  contactId: string,
-  targets: unknown,
-  note: unknown
-): Promise<AdjustResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (targets && typeof targets === "object" ? targets : {}) as Record<string, unknown>;
-  const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
-  return adjustTargets(createServiceClient(), {
-    contactId,
-    ...request,
-    targets: {
-      caloriesKcal: num(raw.caloriesKcal),
-      proteinG: num(raw.proteinG),
-      carbsG: num(raw.carbsG),
-      fatG: num(raw.fatG),
-      fiberG: num(raw.fiberG),
-    },
-    note: typeof note === "string" ? note : null,
-  });
+/** A coach sets the client's targets by hand. */
+export async function adjustTargetsAction(surface: GuidanceSurface, contactId: string, targets: unknown, note: unknown): Promise<AdjustResult> {
+  return withRequest(surface, (db, r) => adjustTargetsRequest(db, r, contactId, targets, note));
 }
 
-// ─── Day to day: plans, skipped meals, the weekly habit ────────────────────
-// Same shape as above: resolve the actor from the request, then hand over.
-// day-plan.ts and habits.ts check permission, the release gate and that
-// Guidance is on, on every call.
-
-const CHANGED = {
-  ok: false,
-  kind: "invalid",
-  message: "That suggestion has changed since the page loaded. Here are the latest options.",
-} as const;
-
-/** Plans one of the options on screen. The browser names the option by id
- * and the server recomputes the options from the same data, so the stored
- * foods, portions and estimates are the engine's, not the request's. */
-export async function planMealAction(
-  surface: GuidanceSurface,
-  contactId: string,
-  optionId: unknown
-): Promise<DailyActionResult<{ planId: string }>> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string" || typeof optionId !== "string") return NOT_SIGNED_IN;
-  const db = createServiceClient();
-  const dashboard = await loadGuidanceDashboard(db, { contactId, contactType: request.contactType });
-  const next = dashboard?.nextSteps?.nextMeal;
-  const option = next?.suggestions.kind === "options" ? next.suggestions.options.find((o) => o.id === optionId) : undefined;
-  if (!next || !option) return CHANGED;
-  return planMeal(db, { contactId, ...request, date: next.date, suggestion: option });
+/** Plans one of the options on screen, by id; the server recomputes it. */
+export async function planMealAction(surface: GuidanceSurface, contactId: string, optionId: unknown): Promise<DailyActionResult<{ planId: string }>> {
+  return withRequest(surface, (db, r) => planMealRequest(db, r, contactId, optionId));
 }
 
 export async function cancelPlanAction(surface: GuidanceSurface, contactId: string, planId: unknown): Promise<DailyActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string" || typeof planId !== "string") return NOT_SIGNED_IN;
-  return cancelPlan(createServiceClient(), { contactId, ...request, planId });
+  return withRequest(surface, (db, r) => cancelPlanRequest(db, r, contactId, planId));
 }
 
 /** "I had this": logs the planned meal from its planned portions. */
@@ -150,123 +84,35 @@ export async function confirmPlannedMealAction(
   contactId: string,
   planId: unknown
 ): Promise<DailyActionResult<{ mealLogId: string }>> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string" || typeof planId !== "string") return NOT_SIGNED_IN;
-  return confirmPlannedMeal(createServiceClient(), { contactId, ...request, planId });
+  return withRequest(surface, (db, r) => confirmPlannedMealRequest(db, r, contactId, planId));
 }
 
-export async function setMealSkippedAction(
-  surface: GuidanceSurface,
-  contactId: string,
-  input: unknown
-): Promise<DailyActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  const slot = MAIN_SLOTS.find((s) => s === raw.slot) as MealSlot | undefined;
-  if (!slot || typeof raw.date !== "string") return { ok: false, kind: "invalid", message: "Choose breakfast, lunch or dinner." };
-  return setMealSkipped(createServiceClient(), { contactId, ...request, date: raw.date, slot, skipped: raw.skipped !== false });
+export async function setMealSkippedAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<DailyActionResult> {
+  return withRequest(surface, (db, r) => setMealSkippedRequest(db, r, contactId, input));
 }
 
-/** Chooses this week's habit ("I'll try this", "Something easier",
- * "Adjust"), or keeps this week's for next week ("Keep this habit"). Only
- * a habit the server proposes now, or the one already chosen, can be
- * picked, and the evidence stored is the server's. */
+/** Chooses this week's habit, or keeps this week's for next week. */
 export async function chooseHabitAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<HabitActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  const db = createServiceClient();
-  const dashboard = await loadGuidanceDashboard(db, { contactId, contactType: request.contactType });
-  const habit = dashboard?.nextSteps?.habit;
-  if (!habit) return { ok: false, kind: "invalid", message: "Guidance isn't on for this person." };
-  const variant = raw.variant === "easier" ? "easier" : "standard";
-  const nextWeek = new Date(Date.parse(`${habit.weekStart}T12:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
-
-  if (raw.when === "next_week") {
-    if (!habit.current) return { ok: false, kind: "invalid", message: "Choose a habit for this week first." };
-    return chooseHabit(db, {
-      contactId,
-      ...request,
-      weekStart: nextWeek,
-      key: habit.current.key,
-      variant: habit.current.variant,
-      evidence: habit.current.evidence,
-    });
-  }
-  const option = habit.options.find((o) => o.key === raw.key) ?? (habit.current?.key === raw.key ? habit.current : undefined);
-  if (!option) return { ok: false, kind: "invalid", message: "That habit isn't on offer this week." };
-  return chooseHabit(db, {
-    contactId,
-    ...request,
-    weekStart: habit.weekStart,
-    key: option.key as HabitKey,
-    variant,
-    evidence: option.evidence,
-  });
+  return withRequest(surface, (db, r) => chooseHabitRequest(db, r, contactId, input));
 }
 
-// ─── Vitamins and minerals: answers and supplements ───────────────────────
-// micronutrient-actions.ts checks permission, the release gate and that
-// Guidance is on, as day-plan.ts does. These only shape the input.
-
-/** A clarifying question's answer: a household yes/no/not sure, or the brand
- * of a packaged product. */
+/** A clarifying question's answer: household yes/no/not sure, or a brand. */
 export async function answerClarificationAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<DailyActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  const db = createServiceClient();
-  if (raw.key === "product_brand") {
-    return confirmProductBrand(db, {
-      contactId,
-      ...request,
-      itemName: typeof raw.itemName === "string" ? raw.itemName : "",
-      brand: typeof raw.brand === "string" ? raw.brand : "",
-    });
-  }
-  const key = HOUSEHOLD_FACT_KEYS.find((k) => k === raw.key) as HouseholdFactKey | undefined;
-  const answer = (["yes", "no", "unsure"] as const).find((a) => a === raw.answer) as FactAnswer | undefined;
-  if (!key || !answer) return { ok: false, kind: "invalid", message: "That answer isn't one of the options." };
-  return answerHouseholdFact(db, { contactId, ...request, key, answer });
+  return withRequest(surface, (db, r) => answerClarificationRequest(db, r, contactId, input));
 }
-
-const UNITS = new Set<InputUnit>(["mg", "µg", "ug", "mcg", "IU", "µg DFE", "µg RAE", "g"]);
 
 export async function addSupplementAction(
   surface: GuidanceSurface,
   contactId: string,
   input: unknown
 ): Promise<DailyActionResult<{ scheduleId: string }>> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  const nutrients = (Array.isArray(raw.nutrients) ? raw.nutrients : []).slice(0, 12).map((n) => {
-    const r = (n && typeof n === "object" ? n : {}) as Record<string, unknown>;
-    return {
-      key: (MICRO_KEYS.find((k) => k === r.key) ?? "") as MicroKey,
-      amount: typeof r.amount === "number" ? r.amount : Number.NaN,
-      unit: (UNITS.has(r.unit as InputUnit) ? r.unit : "mg") as InputUnit,
-    };
-  });
-  const supplement: SupplementInput = {
-    name: typeof raw.name === "string" ? raw.name : "",
-    brand: typeof raw.brand === "string" ? raw.brand : null,
-    nutrients,
-  };
-  return addSupplement(createServiceClient(), { contactId, ...request, supplement });
+  return withRequest(surface, (db, r) => addSupplementRequest(db, r, contactId, input));
 }
 
 export async function setSupplementTakenAction(surface: GuidanceSurface, contactId: string, input: unknown): Promise<DailyActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string") return NOT_SIGNED_IN;
-  const raw = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  if (typeof raw.scheduleId !== "string") return { ok: false, kind: "not_found" };
-  return setSupplementTaken(createServiceClient(), { contactId, ...request, scheduleId: raw.scheduleId, taken: raw.taken !== false });
+  return withRequest(surface, (db, r) => setSupplementTakenRequest(db, r, contactId, input));
 }
 
 export async function stopSupplementAction(surface: GuidanceSurface, contactId: string, scheduleId: unknown): Promise<DailyActionResult> {
-  const request = await resolveGuidanceActor(surface);
-  if (!request || typeof contactId !== "string" || typeof scheduleId !== "string") return NOT_SIGNED_IN;
-  return stopSupplement(createServiceClient(), { contactId, ...request, scheduleId });
+  return withRequest(surface, (db, r) => stopSupplementRequest(db, r, contactId, scheduleId));
 }
