@@ -35,6 +35,8 @@ type State =
       clients: GymClient[];
       removedClients: GymClient[];
       extraCapacity: number;
+      /** The server's own refusal for POST /gym/clients, or null. */
+      addBlockedReason: string | null;
     }
   // isReadOnly comes from mobile-api's getEntitlementSnapshot, so the
   // server decides; this screen only stops offering writes it would refuse.
@@ -71,7 +73,7 @@ export default function GymClientListScreen() {
   const load = useCallback((showSpinner: boolean) => {
     if (showSpinner) setState({ status: 'loading' });
     return Promise.all([api.getGymClients(), api.getRemovedGymClients(), api.getGymWorkspace()])
-      .then(([{ clients }, { clients: removedClients }, { workspace, entitlement }]) => {
+      .then(([{ clients }, { clients: removedClients }, { workspace, entitlement, addClientBlockedReason }]) => {
         if (entitlement.isReadOnly) {
           setState({ status: 'read_only' });
         } else {
@@ -80,6 +82,7 @@ export default function GymClientListScreen() {
             clients,
             removedClients,
             extraCapacity: workspace.extraCapacity,
+            addBlockedReason: addClientBlockedReason ?? null,
           });
         }
       })
@@ -208,8 +211,9 @@ export default function GymClientListScreen() {
   // replaces an existing row — so a billing-whitelisted coach can sit at
   // not_started for good, and a "finish setup on the web first" rule would
   // lock exactly that coach out. Whether a coach may add a client is the
-  // server's call (the DB trigger enforces the limit).
-  const canAdd = state.clients.length < clientLimit;
+  // server's call: addBlockedReason is mobile-api's own refusal (which
+  // exempts whitelisted coaches), and the DB trigger enforces the limit.
+  const canAdd = !state.addBlockedReason && state.clients.length < clientLimit;
 
   return (
     <ThemedView style={styles.container}>
@@ -238,12 +242,20 @@ export default function GymClientListScreen() {
           ) : null
         }
         ListEmptyComponent={
-          <EmptyState
-            image={require('@/assets/images/onboarding/coach.png')}
-            title="Onboard your first client"
-            message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
-            action={canAdd ? { label: 'Add client', onPress: () => router.push('/gym/add') } : undefined}
-          />
+          state.addBlockedReason ? (
+            <EmptyState
+              image={require('@/assets/images/onboarding/coach.png')}
+              title="No clients yet"
+              message={state.addBlockedReason}
+            />
+          ) : (
+            <EmptyState
+              image={require('@/assets/images/onboarding/coach.png')}
+              title="Onboard your first client"
+              message="Add a client and send them a WhatsApp invite. They just need to reply with their first meal, and you'll track their progress here."
+              action={canAdd ? { label: 'Add client', onPress: () => router.push('/gym/add') } : undefined}
+            />
+          )
         }
         renderItem={({ item }) => (
           <PersonCard
@@ -269,7 +281,8 @@ export default function GymClientListScreen() {
             {state.clients.length > 0 && !canAdd && (
               <View style={styles.limitReachedCard}>
                 <ThemedText type="small" themeColor="textSecondary" style={styles.limitReachedText}>
-                  You&apos;ve reached the limit of {clientLimit} client{clientLimit === 1 ? '' : 's'} for this account.
+                  {state.addBlockedReason ??
+                    `You've reached the limit of ${clientLimit} client${clientLimit === 1 ? '' : 's'} for this account.`}
                 </ThemedText>
               </View>
             )}

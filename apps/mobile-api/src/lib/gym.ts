@@ -7,15 +7,34 @@ import {
 } from "@nutriai/nutrition-core";
 import { deriveActivityLevel, type DailyMovementLevel, type WeeklyModerateActivity, type StrengthExerciseFrequency } from "@nutriai/health-scoring";
 import { createServiceClient } from "./supabase";
+import { getEntitlementSnapshot, startTrialIfNeeded, type EntitlementSnapshot } from "./entitlements";
 
 // Mirrors the main app's src/app/(gym)/gym/dashboard/actions.ts read paths
 // via the shared @nutriai/nutrition-core package (see
 // packages/nutrition-core and this app's README) rather than duplicating
 // them. addClient/updateClient below are a deliberately lean subset of the
-// main app's write path — the account-limit friendly pre-check, WhatsApp
-// invite auto-send, and trial-start bookkeeping stay exclusively in the
-// main app; the DB-level enforce_gym_client_limit trigger still applies
-// regardless of which app performs the insert.
+// main app's write path — the account-limit friendly pre-check and WhatsApp
+// invite auto-send stay exclusively in the main app; the DB-level
+// enforce_gym_client_limit trigger still applies regardless of which app
+// performs the insert. The billing rules are NOT lean: addClient applies
+// the same ones the main app's does (see addClientBlockedReason).
+
+/** Why this coach can't add a client right now, or null if they can — the
+ * main app's addClient refusals: an expired/cancelled plan (isReadOnly),
+ * and a new workspace whose card goes in before its first trial
+ * (requiresCardBeforeTrial). Both POST /gym/clients and GET /gym/workspace
+ * report it, so the app shows the server's own words before and after
+ * submitting. The app sells no Coach plan and the stores carry no Coach
+ * products, so this copy must never ask anyone to subscribe or pay. */
+export function addClientBlockedReason(entitlement: Pick<EntitlementSnapshot, "isReadOnly" | "requiresCardBeforeTrial">): string | null {
+  if (entitlement.isReadOnly) {
+    return "Your Coach plan is not active, so you can't add clients. It is managed in Coach OS on the web.";
+  }
+  if (entitlement.requiresCardBeforeTrial) {
+    return "Your Coach plan hasn't started yet, so you can't add clients. It is managed in Coach OS on the web.";
+  }
+  return null;
+}
 
 function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, "");
@@ -51,11 +70,16 @@ export interface AddClientInput {
 }
 
 export async function addClient(
-  workspaceId: string,
-  trainerId: string,
+  workspace: { id: string; createdAt: string },
+  trainer: { id: string; email: string | null | undefined },
   input: AddClientInput,
   supabase: SupabaseClient
 ): Promise<{ clientId: string; error?: undefined } | { clientId?: undefined; error: string }> {
+  // Server-authoritative, same as the main app: the app hiding "Add client"
+  // is a courtesy, and an older build doesn't hide it at all.
+  const blocked = addClientBlockedReason(await getEntitlementSnapshot(workspace, "gym", trainer.email));
+  if (blocked) return { error: blocked };
+
   if (await isWhatsappNumberTaken(input.whatsappNumber)) {
     return { error: "This WhatsApp number is already registered to another contact or client." };
   }
@@ -63,8 +87,8 @@ export async function addClient(
   const { data: client, error } = await supabase
     .from("gym_clients")
     .insert({
-      workspace_id: workspaceId,
-      trainer_id: trainerId,
+      workspace_id: workspace.id,
+      trainer_id: trainer.id,
       full_name: input.fullName,
       whatsapp_number: input.whatsappNumber,
       age: input.age ?? null,
@@ -92,6 +116,17 @@ export async function addClient(
     return { error: "You've reached this month's limit for adding new clients." };
   }
   if (error || !client) return { error: error?.message ?? "Failed to add client" };
+
+  // Starts the Coaching trial on the first successful add; a no-op for
+  // every later one. Unlike the main app, a failure here doesn't fail the
+  // request: the client row already exists, so reporting an error would
+  // send the coach back to a form whose retry can only fail on "number
+  // already registered". The next add tries again.
+  try {
+    await startTrialIfNeeded(workspace.id, trainer.id, "gym");
+  } catch (err) {
+    console.error("[gym] startTrialIfNeeded failed after adding a client:", err instanceof Error ? err.message : err);
+  }
 
   return { clientId: client.id };
 }

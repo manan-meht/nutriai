@@ -24,11 +24,16 @@ are thin wrappers around `packages/nutrition-core`, which the main app's
 `src/lib/entitlements/entitlements.ts` also delegate their read/mapping
 logic to — so a schema or mapping change made in one place is picked up by
 both apps. Each app still supplies its own Supabase client (cookie-based
-here vs bearer-token there) and its own business rules on top (e.g. this
-app's entitlement read-only enforcement is currently hardcoded off for
-Beta, independently of the main app's billing feature flags — see
-`src/lib/entitlements.ts`). Write actions (add/remove/invite/goals) stay
-exclusively in the main app; this app never needs them.
+here vs bearer-token there) and its own business rules on top. Self/Family
+enforcement here has its own switch, `MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED`.
+Coach ("gym") follows the main app's rules and reads its flags under the
+same names: `NEXT_PUBLIC_BILLING_AVAILABLE`,
+`NEXT_PUBLIC_SUBSCRIPTION_ENFORCEMENT_ENABLED`,
+`NEXT_PUBLIC_GYM_TRIAL_ENFORCEMENT_ENABLED` and `FEATURE_ACTIVATION_DATE`.
+With none of them set, Coach is never blocked. Set them to the main app's
+values only once this project's `BILLING_TEST_WHITELIST_EMAILS` matches
+the main app's, or a whitelisted coach gets blocked from the app. See
+`src/lib/entitlements.ts`.
 
 ## Auth
 

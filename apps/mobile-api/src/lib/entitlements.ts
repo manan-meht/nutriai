@@ -16,7 +16,9 @@ export interface EntitlementSnapshot {
    * Play/App Store subscription trial offers work the same way Stripe's
    * card-first trial does: the user approves payment now, isn't charged
    * until the trial period actually ends, and RevenueCat's webhook reports
-   * period_type: TRIAL (mapped to status "trialing") the moment they do. */
+   * period_type: TRIAL (mapped to status "trialing") the moment they do.
+   * For "gym" it is the main app's requiresCardBeforeFirstTrial instead:
+   * the card goes in at web checkout, since the app sells no Coach plan. */
   requiresCardBeforeTrial: boolean;
   /** True for BILLING_TEST_WHITELIST_EMAILS accounts — lets the client
    * show an explicit "this is a whitelisted test account" message instead
@@ -26,19 +28,20 @@ export interface EntitlementSnapshot {
 }
 
 /** Wraps the shared trial/status computation (packages/nutrition-core) with
- * this app's own enforcement rule. Only getEntitlementSnapshot is needed
- * here (read-only dashboard data) — the RevenueCat webhook that actually
- * writes entitlement status lives exclusively in the main app's
+ * this app's own enforcement rules. The RevenueCat webhook that actually
+ * writes paid status lives exclusively in the main app's
  * src/app/api/webhooks/revenuecat/route.ts (service-role Supabase access,
- * same table both apps read); this stays a pure read.
+ * same table both apps read). The one write here is startTrialIfNeeded
+ * below, which only ever inserts a missing row.
  *
  * Public launch (see git history — RevenueCat billing rollout):
  * Self/Family ("adults") on mobile is billed via RevenueCat (Apple/Google
  * Play), so this now enforces read-only the same way the web app's
  * getEntitlementSnapshot does — expired/cancelled blocks access,
  * grace_period does NOT (the store is still retrying payment and the
- * subscriber keeps access in the meantime). Coach/Gym ("gym") stays
- * unenforced — that product remains web/manual billing only for now.
+ * subscriber keeps access in the meantime). Coach/Gym ("gym") is billed
+ * only on the web, so it follows the main app's own Coach rules and flags
+ * instead — see gymIsReadOnly and gymRequiresCardBeforeTrial below.
  *
  * Gated behind MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED so shipping this
  * code doesn't itself start blocking anyone — flip it on only once the
@@ -87,8 +90,60 @@ function isBillingWhitelistLabelHidden(email: string | null | undefined): boolea
   return raw.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean).includes(normalized);
 }
 
+/** Mirrors the main app's flag() (src/lib/billing/feature-flags.ts). */
+function flag(raw: string | undefined, defaultValue: boolean): boolean {
+  if (raw === undefined) return defaultValue;
+  return raw === "true";
+}
+
+/** Mirrors the main app's featureActivationDate — same env var, same
+ * fallback to now (which grandfathers every existing workspace). */
+function featureActivationDate(): Date {
+  const raw = process.env.FEATURE_ACTIVATION_DATE;
+  if (raw) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+// The Coach rules below read the main app's own flags, under the same env
+// var names and with the same defaults, so one value set on both Cloudflare
+// projects enforces Coach identically from the web and from the app. With
+// none of them set here, BILLING_AVAILABLE defaults off and neither rule
+// ever fires. Read per call (not at module scope like the main app) only so
+// tests can vary them. Next inlines NEXT_PUBLIC_* at build time either way,
+// so a change on the Pages project takes a redeploy.
+
+/** The main app's getEntitlementSnapshot isReadOnly rule for "gym". */
+function gymIsReadOnly(status: EntitlementStatus, whitelisted: boolean): boolean {
+  return (
+    !whitelisted &&
+    flag(process.env.NEXT_PUBLIC_BILLING_AVAILABLE, false) &&
+    flag(process.env.NEXT_PUBLIC_SUBSCRIPTION_ENFORCEMENT_ENABLED, true) &&
+    flag(process.env.NEXT_PUBLIC_GYM_TRIAL_ENFORCEMENT_ENABLED, true) &&
+    (status === "expired" || status === "cancelled")
+  );
+}
+
+/** The main app's requiresCardBeforeFirstTrial. not_started never blocks on
+ * its own: the workspace must also postdate FEATURE_ACTIVATION_DATE and the
+ * owner must not be whitelisted. That matters because recordCheckoutIntent
+ * writes a not_started row that startTrialIfNeeded then never replaces, so
+ * a whitelisted coach can stay at not_started for good. */
+function gymRequiresCardBeforeTrial(status: EntitlementStatus, whitelisted: boolean, workspaceCreatedAt: string): boolean {
+  return (
+    !whitelisted &&
+    flag(process.env.NEXT_PUBLIC_BILLING_AVAILABLE, false) &&
+    status === "not_started" &&
+    new Date(workspaceCreatedAt) >= featureActivationDate()
+  );
+}
+
 export async function getEntitlementSnapshot(
-  workspaceId: string,
+  /** createdAt decides whether a Coach workspace is grandfathered onto the
+   * card-free trial — see gymRequiresCardBeforeTrial. */
+  workspace: { id: string; createdAt: string },
   module: EntitlementModule,
   /** Owner's email, checked against BILLING_TEST_WHITELIST_EMAILS — pass
    * this whenever the caller has it (every route here does, from the
@@ -97,23 +152,68 @@ export async function getEntitlementSnapshot(
   ownerEmail?: string | null
 ): Promise<EntitlementSnapshot> {
   const admin = createServiceClient();
-  const core = await getEntitlementSnapshotCore(admin, workspaceId, module, new Date());
+  const core = await getEntitlementSnapshotCore(admin, workspace.id, module, new Date());
   const whitelisted = isBillingWhitelisted(ownerEmail);
+
+  if (module === "gym") {
+    return {
+      ...core,
+      isReadOnly: gymIsReadOnly(core.status, whitelisted),
+      requiresCardBeforeTrial: gymRequiresCardBeforeTrial(core.status, whitelisted, workspace.createdAt),
+      isBillingWhitelisted: whitelisted && !isBillingWhitelistLabelHidden(ownerEmail),
+    };
+  }
 
   return {
     ...core,
     isReadOnly:
       !whitelisted &&
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
-      module === "adults" &&
       (core.status === "expired" || core.status === "cancelled"),
     requiresCardBeforeTrial:
       !whitelisted &&
       MOBILE_SUBSCRIPTION_ENFORCEMENT_ENABLED &&
-      module === "adults" &&
       core.status === "not_started",
     // Display-only — isReadOnly/requiresCardBeforeTrial above always use
     // the real `whitelisted`, so enforcement bypass is unaffected by this.
     isBillingWhitelisted: whitelisted && !isBillingWhitelistLabelHidden(ownerEmail),
   };
+}
+
+/** Mirrors the main app's TRIAL_LENGTH_DAYS_BY_MODULE
+ * (src/lib/billing/pricing.ts); a test pins the two equal. */
+export const TRIAL_LENGTH_DAYS_BY_MODULE: Record<EntitlementModule, number> = {
+  adults: 14,
+  gym: 30,
+};
+
+/** Mirrors the main app's startTrialIfNeeded: starts the trial on the
+ * first successful add, and is a no-op on every later one. The upsert's
+ * ignoreDuplicates means it never touches an existing row — including a
+ * not_started row written by recordCheckoutIntent — so status only ever
+ * moves on from there through a verified provider webhook. */
+export async function startTrialIfNeeded(
+  workspaceId: string,
+  ownerId: string,
+  module: EntitlementModule
+): Promise<void> {
+  const admin = createServiceClient();
+  const startedAt = new Date();
+  const endsAt = new Date(startedAt.getTime() + TRIAL_LENGTH_DAYS_BY_MODULE[module] * 24 * 60 * 60 * 1000);
+
+  const { error } = await admin
+    .from("entitlements")
+    .upsert(
+      {
+        workspace_id: workspaceId,
+        owner_id: ownerId,
+        module,
+        status: "trialing",
+        trial_start_at: startedAt.toISOString(),
+        trial_end_at: endsAt.toISOString(),
+      },
+      { onConflict: "workspace_id,module", ignoreDuplicates: true }
+    );
+
+  if (error) throw new Error(`Failed to start trial: ${error.message}`);
 }
