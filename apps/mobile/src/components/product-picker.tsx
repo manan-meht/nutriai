@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 
@@ -11,8 +11,10 @@ import { useTheme } from '@/hooks/use-theme';
  * Tistra Health is a two-product app: track yourself, or care for family.
  *
  * Coaching used to be a third option here. It is its own product now, on
- * its own domain and getting its own app, so nothing coach-related remains
- * in this one — not the picker, not the routing, not the types.
+ * its own domain with its own sign-up, so it is not offered here and these
+ * types stay self/family. The app's coach view is for an account that
+ * already owns a Coach workspace (see lib/dashboard-route.ts); nothing
+ * here leads to one.
  */
 export type ProductKey = 'self' | 'family';
 const OPTIONS: Array<{
@@ -47,10 +49,14 @@ export function ProductPicker({
   headline,
   subhead,
   onContinue,
+  children,
 }: {
   headline: string;
   subhead: string;
   onContinue: (selected: ProductKey) => void;
+  /** Rendered below the options, inside the scroll — select-product.tsx's
+   * "Coach? Sign in here" link card. Not an option: never selectable. */
+  children?: ReactNode;
 }) {
   const theme = useTheme();
   const [selected, setSelected] = useState<ProductKey | null>(null);
@@ -95,6 +101,7 @@ export function ProductPicker({
             </Pressable>
           );
         })}
+        {children}
       </ScrollView>
 
       <Pressable
