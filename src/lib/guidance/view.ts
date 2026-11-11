@@ -155,10 +155,8 @@ export async function loadGuidanceEntry(
   // Every contact page and /my-progress load calls this, and the flag is
   // off in production: answer without two queries whose result is known.
   if (!GUIDANCE_ENABLED) return { visible: false, mode: "tracking" };
-  const [release, state] = await Promise.all([
-    loadReleaseState(db),
-    getGuidanceState(db, contactId, contactType),
-  ]);
+  const [facts, state] = await Promise.all([loadContactFacts(db, contactId, contactType), getGuidanceState(db, contactId, contactType)]);
+  const release = await loadReleaseState(db, facts?.caregiverId);
   return { visible: isGuidanceEntryVisible(release, state), mode: state.mode };
 }
 
@@ -274,9 +272,14 @@ export async function loadTodayProgress(
  * lists several people at once. Same gate as everything else: the flag,
  * the release gate, then the mode, so in production (policy unreviewed)
  * this is always empty and costs no query past the flag. */
-export async function loadGuidanceContactIds(db: SupabaseClient, contactIds: string[]): Promise<string[]> {
+export async function loadGuidanceContactIds(
+  db: SupabaseClient,
+  contactIds: string[],
+  /** The signed-in account that owns these contacts. */
+  ownerProfileId?: string | null
+): Promise<string[]> {
   if (!GUIDANCE_ENABLED || contactIds.length === 0) return [];
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, ownerProfileId);
   if (!release.canActivate) return [];
   const { data } = await db
     .from("nutrition_guidance")
@@ -351,12 +354,13 @@ export async function loadGuidanceDashboard(
 ): Promise<GuidanceDashboard | null> {
   if (!GUIDANCE_ENABLED) return null;
   const contactType = params.contactType ?? "adults";
-  const [release, state, facts] = await Promise.all([
-    loadReleaseState(db),
+  const [state, facts] = await Promise.all([
     getGuidanceState(db, params.contactId, contactType),
     loadContactFacts(db, params.contactId, contactType),
   ]);
-  if (!release.canActivate || state.mode !== "guidance" || !facts) return null;
+  if (state.mode !== "guidance" || !facts) return null;
+  const release = await loadReleaseState(db, facts.caregiverId);
+  if (!release.canActivate) return null;
 
   const now = params.now ?? new Date();
   const date = localDate(now.toISOString(), facts.timezone);
@@ -572,7 +576,7 @@ export async function loadGuidanceView(
   const activation = authorizeGuidanceActivation(params.actor, facts);
   if (!activation.allowed) return { kind: "not_found" };
 
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, facts.caregiverId);
   if (release.blockers.includes("feature_disabled")) return { kind: "feature_off" };
 
   const state = await getGuidanceState(db, params.contactId, contactType);

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { GUIDANCE_ENABLED } from "@/lib/billing/feature-flags";
+import { GUIDANCE_ENABLED, isBillingWhitelisted } from "@/lib/billing/feature-flags";
 
 import { NUTRITION_POLICY_VERSION } from "./policy";
 
@@ -19,6 +19,14 @@ import { NUTRITION_POLICY_VERSION } from "./policy";
 //
 // Keeping them separate means the flag being on never implies a review
 // happened, and a review happening never switches the feature on.
+//
+// The one exception, decided by the product owner on 2026-11-11: accounts
+// on the billing test whitelist (BILLING_TEST_WHITELIST_EMAILS, the internal
+// and invited test accounts) may use Guidance in production before the
+// review, as a labelled beta. Everyone else stays blocked until the policy
+// row says 'reviewed'. The policy row itself is untouched: the whitelist
+// grants a preview, never a review, so isPreviewOnly stays true and every
+// screen says so.
 
 export type PolicyStatus = "unreviewed" | "reviewed" | "retired";
 
@@ -65,6 +73,10 @@ export function evaluateReleaseState(params: {
   featureEnabled: boolean;
   policyStatus: PolicyStatus | null;
   isProduction: boolean;
+  /** The account that owns the tracked person (caregiver or coach) is on the
+   * preview whitelist. Only matters in production with an unreviewed
+   * policy. */
+  ownerIsPreviewAccount?: boolean;
 }): ReleaseState {
   const blockers: ReleaseBlocker[] = [];
 
@@ -77,7 +89,8 @@ export function evaluateReleaseState(params: {
   // blocks production only: that is the single concession to being able to
   // test the feature, and it is why isPreviewOnly exists to label it.
   const blocksEverywhere = blockers.some((b) => b !== "policy_unreviewed");
-  const canActivate = !blocksEverywhere && (params.policyStatus === "reviewed" || !params.isProduction);
+  const canActivate =
+    !blocksEverywhere && (params.policyStatus === "reviewed" || !params.isProduction || params.ownerIsPreviewAccount === true);
 
   return {
     canActivate,
@@ -88,7 +101,20 @@ export function evaluateReleaseState(params: {
   };
 }
 
-export async function loadReleaseState(db: SupabaseClient): Promise<ReleaseState> {
+/** Whether an account may use Guidance before the clinical review: the
+ * billing test whitelist, compared the same way billing compares it (case
+ * and the "+nutriai-" product tag ignored). */
+export function isGuidancePreviewAccount(email: string | null | undefined): boolean {
+  return isBillingWhitelisted(email);
+}
+
+/**
+ * The release state for one tracked person, given the account that owns
+ * them (adults_contacts.caregiver_id or gym_clients.trainer_id). Without an
+ * owner, the answer for nobody in particular: production stays closed
+ * until the review.
+ */
+export async function loadReleaseState(db: SupabaseClient, ownerProfileId?: string | null): Promise<ReleaseState> {
   const { data } = await db
     .from("nutrition_policy_versions")
     .select("status")
@@ -99,9 +125,18 @@ export async function loadReleaseState(db: SupabaseClient): Promise<ReleaseState
   const policyStatus: PolicyStatus | null =
     raw === "unreviewed" || raw === "reviewed" || raw === "retired" ? raw : null;
 
+  const isProduction = isProductionEnvironment();
+  // The owner's email is only worth a query when it can change the answer.
+  let ownerIsPreviewAccount = false;
+  if (GUIDANCE_ENABLED && isProduction && policyStatus === "unreviewed" && ownerProfileId) {
+    const { data: owner } = await db.from("profiles").select("email").eq("id", ownerProfileId).maybeSingle();
+    ownerIsPreviewAccount = isGuidancePreviewAccount((owner as { email?: string } | null)?.email);
+  }
+
   return evaluateReleaseState({
     featureEnabled: GUIDANCE_ENABLED,
     policyStatus,
-    isProduction: isProductionEnvironment(),
+    isProduction,
+    ownerIsPreviewAccount,
   });
 }

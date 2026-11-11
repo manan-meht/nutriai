@@ -23,12 +23,16 @@ export function ClientDashboard({
   biomarkers,
   guidance,
   guidanceActions,
+  guidanceSwitch,
+  guidanceCanTurnOff,
   guidanceHref,
   guidanceSetup,
 }: ClientDetails & {
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
   guidanceActions?: GuidanceActions;
+  guidanceSwitch?: { setupHref: string; personName?: string };
+  guidanceCanTurnOff?: boolean;
   guidanceHref?: string;
   guidanceSetup?: { href: string; personName: string };
 }) {
@@ -40,6 +44,8 @@ export function ClientDashboard({
       data={adaptClientDetails({ client, meals, workouts, biomarkers })}
       guidance={guidance}
       guidanceActions={guidanceActions}
+      guidanceSwitch={guidanceSwitch}
+      guidanceCanTurnOff={guidanceCanTurnOff}
       guidanceHref={guidanceHref}
       guidanceSetup={guidanceSetup}
       backHref="/gym/dashboard"

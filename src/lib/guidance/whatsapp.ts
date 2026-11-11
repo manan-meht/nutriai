@@ -48,14 +48,16 @@ export async function loadWhatsAppGuidance(
   params: { contactId: string; contactType: GuidanceContactType; now?: Date; release?: ReleaseState }
 ): Promise<WhatsAppGuidance | null> {
   if (!GUIDANCE_ENABLED) return null;
-  const release = params.release ?? (await loadReleaseState(db));
-  if (!release.canActivate) return null;
-
   const [state, facts] = await Promise.all([
     getGuidanceState(db, params.contactId, params.contactType),
     loadContactFacts(db, params.contactId, params.contactType),
   ]);
   if (state.mode !== "guidance" || !facts) return null;
+  // Per person: in production before the review, only accounts on the
+  // preview whitelist (release.ts). A release passed in is used only when
+  // it already allows activation for everyone (a reviewed policy).
+  const release = params.release?.canActivate ? params.release : await loadReleaseState(db, facts.caregiverId);
+  if (!release.canActivate) return null;
 
   const now = params.now ?? new Date();
   const date = localDate(now.toISOString(), facts.timezone);

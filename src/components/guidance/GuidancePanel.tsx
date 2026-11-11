@@ -59,13 +59,17 @@ function failureMessage(result: ActivationFailure): string {
  * engineers: the policy version is under "How these were calculated" for
  * anyone who needs it. Worded for anyone's diet, since a caregiver or
  * coach may be the one reading. */
-function PreviewBanner() {
+/** Guidance mode is a beta: said at the top of its pages, always. Until the
+ * target policy is clinically reviewed it also says the targets haven't
+ * been checked. */
+function PreviewBanner({ unreviewed = true }: { unreviewed?: boolean }) {
   return (
     <div role="note" className="rounded-2xl border border-[var(--gm-over-border)] bg-[var(--gm-over-soft)] p-4">
-      <p className="text-sm font-semibold text-[var(--gm-over-text)]">Test version: targets not yet checked</p>
+      <p className="text-sm font-semibold text-[var(--gm-over-text)]">Beta: Guidance mode is still being tested</p>
       <p className="text-sm text-[var(--gm-over-text)] opacity-80 mt-1">
-        A qualified health professional hasn&apos;t yet reviewed how Tistra works out these targets. You&apos;re seeing
-        them only because this is a test version of the app, so don&apos;t use them to change anyone&apos;s diet.
+        {unreviewed
+          ? "A qualified health professional hasn't yet reviewed how Tistra works out these targets. Treat them as a starting point, not medical advice, and don't use them to make big changes to anyone's diet."
+          : "Things may change as it's improved. Targets and estimates are a starting point, not medical advice."}
       </p>
     </div>
   );
@@ -234,7 +238,7 @@ function SetupFlow({
     });
   }
 
-  const banner = view.isPreviewOnly && <PreviewBanner />;
+  const banner = <PreviewBanner unreviewed={view.isPreviewOnly} />;
   const { person } = view;
   const changeAnswers = person.isSelf ? "Change my answers" : "Change the answers";
 
@@ -263,7 +267,7 @@ function SetupFlow({
   if (step === "review" && proposal) {
     return (
       <div className="space-y-4">
-        {proposal.isPreviewOnly && <PreviewBanner />}
+        <PreviewBanner unreviewed={proposal.isPreviewOnly} />
         <TargetsReview proposal={proposal} person={person} />
         {view.canAdjustTargets && (
           <p className="text-sm text-[var(--gm-text-secondary)]">
@@ -322,7 +326,7 @@ function Body({ view, backHref, onPropose, onConfirm, onReturnToTracking, onAdju
         : null;
       return (
         <div className="space-y-4">
-          {view.isPreviewOnly && <PreviewBanner />}
+          <PreviewBanner unreviewed={view.isPreviewOnly} />
           {setUpBy && (
             <Notice title="Set up for you">
               <p>
