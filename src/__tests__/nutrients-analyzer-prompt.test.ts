@@ -82,11 +82,16 @@ describe("analyzer prompt and the micronutrient flag", () => {
     expect(hashes).toEqual(BASELINE);
   });
 
-  it("adds only the grams-and-ingredients section when the flag is on", async () => {
+  it("adds only the grams-and-ingredients section, and only when the flag is on and the caller asks for it", async () => {
     delete process.env.GUIDANCE_MICRONUTRIENTS_ENABLED;
     const off = await promptFor(INPUTS.photoIndia);
+    // Flag off: asking changes nothing.
+    expect(await promptFor({ ...INPUTS.photoIndia, micronutrientFields: true })).toBe(off);
     process.env.GUIDANCE_MICRONUTRIENTS_ENABLED = "true";
-    const on = await promptFor(INPUTS.photoIndia);
+    // Flag on, but this person isn't in Guidance: the prompt is unchanged.
+    expect(await promptFor(INPUTS.photoIndia)).toBe(off);
+    expect(await promptFor({ ...INPUTS.photoIndia, micronutrientFields: false })).toBe(off);
+    const on = await promptFor({ ...INPUTS.photoIndia, micronutrientFields: true });
     expect(on).not.toBe(off);
     expect(on.replace(MICRONUTRIENT_PROMPT_SECTION, "")).toBe(off);
     expect(MICRONUTRIENT_PROMPT_SECTION).toMatch(/edible_grams/);

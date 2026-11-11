@@ -356,7 +356,7 @@ export async function chooseHabit(
   if (!facts) return { ok: false, kind: "not_found" };
   const auth = authorizeGuidanceDailyAction(params.actor, facts);
   if (!auth.allowed) return forbidden(auth);
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, facts.caregiverId);
   if (!release.canActivate) return unavailable(release);
   const state = await getGuidanceState(db, facts.contactId, facts.contactType);
   if (state.mode !== "guidance") {

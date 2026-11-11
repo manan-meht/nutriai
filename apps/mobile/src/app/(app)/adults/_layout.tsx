@@ -2,6 +2,7 @@ import { Pressable } from 'react-native';
 import { router, Stack } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
+import { GM } from '@/constants/guidance-theme';
 
 // iOS gives a modal no back button. It can be swiped down, but nothing on
 // the screen says so, and the paywall was reported as a dead end on iPad.
@@ -23,6 +24,11 @@ export default function AdultsLayout() {
       <Stack.Screen name="add" options={{ title: 'Add family member', presentation: 'modal' }} />
       <Stack.Screen name="invite" options={{ presentation: 'modal', headerShown: false }} />
       <Stack.Screen name="edit/[contactId]" options={{ title: 'Edit contact', presentation: 'modal' }} />
+      {/* Guidance mode's setup flow, in Guidance's own always-dark palette. */}
+      <Stack.Screen
+        name="guidance/[contactId]"
+        options={{ title: 'Guidance mode', headerStyle: { backgroundColor: GM.page }, headerTintColor: GM.text, headerShadowVisible: false }}
+      />
       <Stack.Screen
         name="paywall"
         options={{ title: 'Subscribe', presentation: 'modal', headerRight: () => <CloseButton /> }}

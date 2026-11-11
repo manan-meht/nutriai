@@ -2,6 +2,7 @@ import {
   addSupplementAction,
   answerClarificationAction,
   cancelPlanAction,
+  returnToTrackingAction,
   chooseHabitAction,
   confirmPlannedMealAction,
   planMealAction,
@@ -20,6 +21,7 @@ import type { GuidanceSurface } from "./request-actor";
 export function guidanceActionsFor(surface: GuidanceSurface, contactId: string) {
   return {
     planMeal: planMealAction.bind(null, surface, contactId),
+    turnOff: returnToTrackingAction.bind(null, surface, contactId),
     cancelPlan: cancelPlanAction.bind(null, surface, contactId),
     confirmPlannedMeal: confirmPlannedMealAction.bind(null, surface, contactId),
     setMealSkipped: setMealSkippedAction.bind(null, surface, contactId),

@@ -57,6 +57,7 @@ import { buildCoachingSuggestion } from "@/lib/rag/coaching-suggestions";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
+import { micronutrientsEnabled } from "@/lib/nutrients/flags";
 import { afterMealSaved } from "@/lib/nutrients/pipeline";
 import {
   formatTargetLines,
@@ -617,7 +618,15 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
   // Every analysis carries the contact's timezone so the vision prompt is
   // told which region's dishes to expect (see src/lib/ai/region-context.ts).
-  const analyzeForContact = (input: Parameters<typeof analyzeFood>[0]) => analyzeFood({ ...input, timezone: contactTimezone });
+  // Vitamin and mineral fields are asked for only for someone in Guidance
+  // (and only while GUIDANCE_MICRONUTRIENTS_ENABLED is on): with the flag
+  // off this costs nothing and changes nothing.
+  const analyzeForContact = async (input: Parameters<typeof analyzeFood>[0]) =>
+    analyzeFood({
+      ...input,
+      timezone: contactTimezone,
+      micronutrientFields: micronutrientsEnabled() ? (await getGuidance()) != null : false,
+    });
 
   // Mark invite accepted on first-ever message from this contact
   if (isAdults && adultsContact.invite_sent_at && !adultsContact.invite_accepted_at) {
