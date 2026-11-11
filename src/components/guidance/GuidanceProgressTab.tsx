@@ -16,9 +16,14 @@ import {
 } from "@/lib/guidance/aggregation";
 import { localDate } from "@/lib/guidance/daily-totals";
 import { NUTRIENTS, type NutrientKey } from "@/lib/guidance/meal-impact";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
+import { MAIN_SLOTS, slotOfMealType } from "@/lib/guidance/meal-slots";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
+import { HabitProgressCard } from "./GuidanceHabitCards";
+import { MicronutrientCard } from "./GuidanceMicronutrients";
 import { MealDetail } from "./GuidanceTodayTab";
+import { useGuidanceAction } from "./use-guidance-action";
 import { formatDay } from "./GuidanceToday";
 import {
   amount,
@@ -417,16 +422,66 @@ function GoalCard({ guidance, viewer, periodKind }: { guidance: GuidanceDashboar
 /** Days shown at a time in the history, so a long history stays short. */
 const HISTORY_PAGE = 7;
 
+/** For a recent past day: the main meals with nothing logged can be marked
+ * skipped, and a skip can be taken back. */
+function DaySkips({ date, guidance, actions }: { date: string; guidance: GuidanceDashboard; actions?: GuidanceActions }) {
+  const { run, pending, error } = useGuidanceAction();
+  const weekAgo = new Date(Date.parse(`${guidance.date}T12:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
+  if (!actions || date >= guidance.date || date < weekAgo) return null;
+  const logged = new Set(
+    guidance.meals.filter((m) => localDate(m.loggedAt, guidance.timezone) === date).map((m) => slotOfMealType(m.mealType))
+  );
+  const skipped = new Set(guidance.skips.filter((s) => s.date === date).map((s) => s.slot));
+  const open = MAIN_SLOTS.filter((s) => !logged.has(s));
+  if (open.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+      {open.map((slot) =>
+        skipped.has(slot) ? (
+          <span key={slot} className="text-[var(--gm-text-secondary)]">
+            {mealLabel(slot)} skipped ·{" "}
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => actions.setMealSkipped({ date, slot, skipped: false }))}
+              className={quietButton}
+            >
+              Undo
+            </button>
+          </span>
+        ) : (
+          <button
+            key={slot}
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => actions.setMealSkipped({ date, slot, skipped: true }))}
+            className={quietButton}
+          >
+            Mark {slot} skipped
+          </button>
+        )
+      )}
+      {error && (
+        <span role="alert" className="text-[var(--gm-error-text)]">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function DailyDetails({
   summaries,
   guidance,
   open,
   onToggle,
+  actions,
 }: {
   summaries: DaySummary[];
   guidance: GuidanceDashboard;
   open: boolean;
   onToggle: (open: boolean) => void;
+  actions?: GuidanceActions;
 }) {
   // The whole history since Guidance started, not just the selected
   // period: this is where "View meal history" leads.
@@ -461,8 +516,10 @@ function DailyDetails({
                   <span className="font-medium text-[var(--gm-text)]">{formatDay(d.date)}</span>
                   <span className="text-sm text-[var(--gm-text-secondary)]">
                     {STATUS_LABEL[d.status]} · {d.totals.mealCount} {d.totals.mealCount === 1 ? "meal" : "meals"}
+                    {d.skipped > 0 ? ` · ${d.skipped} skipped` : ""}
                   </span>
                 </div>
+                <DaySkips date={d.date} guidance={guidance} actions={actions} />
                 {d.status === "unlogged" ? (
                   <p className="mt-1 text-sm text-[var(--gm-text-secondary)]">Nothing logged. This isn&apos;t counted as zero intake.</p>
                 ) : (
@@ -511,20 +568,19 @@ export function GuidanceProgressTab({
   summaries,
   detailsOpen,
   onDetailsToggle,
-  habitCard,
-  micronutrientCard,
+  actions,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
   summaries: DaySummary[];
   detailsOpen: boolean;
   onDetailsToggle: (open: boolean) => void;
-  habitCard?: ReactNode;
-  micronutrientCard?: ReactNode;
+  actions?: GuidanceActions;
 }) {
   const [periodKind, setPeriodKind] = useState<PeriodKind>("week");
   const period = periodFor(periodKind, guidance.date);
   const tzNote = useTimezoneNote(guidance.timezone);
+  const habitCard = guidance.nextSteps ? <HabitProgressCard habit={guidance.nextSteps.habit} viewer={viewer} actions={actions} /> : null;
   const goal = hasGoalCard(guidance) ? <GoalCard guidance={guidance} viewer={viewer} periodKind={periodKind} /> : null;
 
   return (
@@ -551,7 +607,9 @@ export function GuidanceProgressTab({
             {goal}
           </div>
         )}
-        {micronutrientCard ?? (
+        {guidance.micronutrients ? (
+          <MicronutrientCard panel={guidance.micronutrients} periodKind={periodKind} viewer={viewer} actions={actions} />
+        ) : (
           <section className={card} aria-labelledby="micros-title">
             <p className={`${eyebrow} text-[var(--gm-text-secondary)]`}>Vitamins &amp; minerals</p>
             <h2 id="micros-title" className="mt-2 text-xl font-bold tracking-tight text-[var(--gm-text)]">
@@ -562,7 +620,7 @@ export function GuidanceProgressTab({
             </p>
           </section>
         )}
-        <DailyDetails summaries={summaries} guidance={guidance} open={detailsOpen} onToggle={onDetailsToggle} />
+        <DailyDetails summaries={summaries} guidance={guidance} open={detailsOpen} onToggle={onDetailsToggle} actions={actions} />
         <p className="text-sm italic text-[var(--gm-text-muted)]">Missing logs aren&apos;t counted as zero intake.</p>
       </div>
     </>

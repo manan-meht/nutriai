@@ -57,6 +57,7 @@ import { buildCoachingSuggestion } from "@/lib/rag/coaching-suggestions";
 import { getEarnedCards, type ShareCardMealInput } from "@/lib/share-cards/triggers";
 import { SHARE_CARD_CONCEPTS } from "@/lib/share-cards/concepts";
 import { canShowImmediatePrompt } from "@/lib/share-cards/selector";
+import { afterMealSaved } from "@/lib/nutrients/pipeline";
 import {
   formatTargetLines,
   formatThisMeal,
@@ -899,6 +900,9 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     scheduleCoachingSuggestion(mealRow.id, analysis);
     await notifyCaregiverOfFamilyMeal(resolvedLabel, analysis);
     await updateDietaryProfileForSavedMeal(db, isAdults, entityId, analysis);
+    // Vitamins and minerals, behind GUIDANCE_MICRONUTRIENTS_ENABLED (a no-op
+    // when off). Never throws: the meal is already saved.
+    await afterMealSaved(db, { mealLogId: mealRow.id, isAdults, entityId, analysis, trigger: "ingestion" });
     return mealRow.id;
   }
 
@@ -1056,6 +1060,8 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       })
       .eq("id", mealLogId);
     if (error) console.error("[whatsapp] meal_logs update failed:", error.message);
+    // The correction replaces this meal's estimate in place.
+    else await afterMealSaved(db, { mealLogId, isAdults, entityId, analysis, trigger: "correction" });
   }
 
   /** "Undo" — removes an already-auto-saved meal_logs row outright.

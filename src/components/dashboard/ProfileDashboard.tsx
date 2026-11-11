@@ -28,6 +28,7 @@ import { computeInsights } from "@/lib/insights";
 import type { ViewerRole, DashboardPermissions } from "@/lib/dashboard/permissions";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 import { GuidanceScreen, GuidanceSetupPrompt, type GuidanceViewer } from "@/components/guidance/GuidanceScreen";
 
@@ -117,6 +118,10 @@ export interface ProfileDashboardProps {
   /** For someone who only has Guidance (a coach client) and isn't set up
    * yet: the dashboard leads with the setup prompt instead. */
   guidanceSetup?: { href: string; personName: string };
+  /** Guidance's plan, skip and habit actions, bound to this person. */
+  guidanceActions?: GuidanceActions;
+  /** For a signed-in end user: Guidance's avatar menu offers Sign out. */
+  onSignOut?: () => void;
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -135,6 +140,8 @@ export function ProfileDashboard({
   guidance,
   guidanceHref,
   guidanceSetup,
+  guidanceActions,
+  onSignOut,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -287,6 +294,8 @@ export function ProfileDashboard({
           backHref={backHref}
           manageHref={guidanceHref}
           onEditDetails={permissions.canManageGoal && renderEditModal ? () => setShowEdit(true) : undefined}
+          actions={guidanceActions}
+          onSignOut={onSignOut}
           notice={
             showInvite && invite ? (
               <InviteCard

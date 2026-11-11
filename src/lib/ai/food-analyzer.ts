@@ -83,6 +83,15 @@ export interface FoodItem {
    * chicken) — lets the clarification message list every OTHER item by
    * name while asking specifically about this one. */
   is_ambiguous?: boolean;
+  /** Only requested when GUIDANCE_MICRONUTRIENTS_ENABLED is on (see
+   * MICRONUTRIENT_PROMPT_SECTION): the model's single best estimate of the
+   * edible weight as eaten, whether it's raw or cooked, and for a mixed
+   * dish the ingredients and their grams. Identities and weights only: the
+   * nutrient values come from composition data (src/lib/nutrients), never
+   * from the model. */
+  edible_grams?: number;
+  preparation_state?: "raw" | "cooked";
+  ingredients?: Array<{ name: string; grams: number; state?: "raw" | "cooked" }>;
 }
 
 export type MealType =
@@ -303,6 +312,25 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
 }
 Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
 
+/** Appended to SYSTEM_PROMPT only when GUIDANCE_MICRONUTRIENTS_ENABLED is
+ * on. With the flag off the prompt is byte-for-byte what it was before
+ * micronutrient tracking existed (src/__tests__/nutrients-analyzer-prompt.test.ts).
+ * It asks for what the model can see: weights, raw or cooked, and what a
+ * mixed dish is made of. Vitamins and minerals are then calculated from
+ * food-composition tables, so the model never supplies a nutrient value. */
+export const MICRONUTRIENT_PROMPT_SECTION = `
+
+FOR VITAMIN AND MINERAL ESTIMATES — add these fields to each item in "foods" (they are in addition to the fields above):
+      "edible_grams": number — your single best estimate of the edible weight as eaten, in grams (cooked weight for cooked food),
+      "preparation_state": "raw|cooked" — whether the item as eaten is raw or cooked,
+      "ingredients": [{ "name": "string", "grams": number, "state": "raw|cooked" }] — ONLY for a mixed dish (curry, dal, biryani, sabzi, sandwich, salad): its main ingredients and their grams in this portion, summing roughly to edible_grams. Name plain foods (e.g. "chickpeas", "onion", "tomato", "oil", "paneer"), not dish names. Omit for single foods like roti, rice, an egg or a fruit.
+- Only include an ingredient you can see or that the dish clearly requires. Do not guess salt, spices or oil types you cannot see; if the cooking fat is not visible, leave it out.
+- Do not estimate vitamins or minerals yourself, and do not add any nutrient fields beyond those already listed above.`;
+
+function micronutrientPromptEnabled(): boolean {
+  return process.env.GUIDANCE_MICRONUTRIENTS_ENABLED === "true";
+}
+
 /** Cap on Gemini's internal reasoning tokens per analysis. Unset, the model
  * chooses its own budget and spent 1,000–4,600 thinking tokens per real
  * meal photo — ~60-70% of a 12-19s median response. 512 measured ~9s median
@@ -345,7 +373,7 @@ export async function analyzeFood(input: {
     generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
-  let textPrompt = `${SYSTEM_PROMPT}\n\n${regionPromptSection(input.timezone)}`;
+  let textPrompt = `${SYSTEM_PROMPT}${micronutrientPromptEnabled() ? MICRONUTRIENT_PROMPT_SECTION : ""}\n\n${regionPromptSection(input.timezone)}`;
   if (input.correctionContext) {
     textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}\nIf this correction resolves a previous food-identity ambiguity (e.g. the user named the item), set has_high_impact_ambiguity to false and food_identity_confidence to "high" for the resolved item.`;
   } else if (input.text) {

@@ -13,26 +13,43 @@ import { scopedEmail } from '@/lib/auth';
 import { signInWithProvider, type OAuthProvider } from '@/lib/oauth';
 import { signInWithApple, AppleSignInCancelled } from '@/lib/apple-auth';
 import { AppleSignInButton } from '@/components/apple-sign-in-button';
-import { setPendingProductSelection } from '@/lib/product-intent';
+import { clearPendingProductSelection, setPendingProductSelection } from '@/lib/product-intent';
+import { clearLastDashboardChoice, saveLastDashboardChoice } from '@/lib/product-choice';
 import { GoogleIcon, FacebookIcon } from '@/components/brand-icons';
 
-type Product = 'self' | 'family';
+type Product = 'self' | 'family' | 'coach';
 
 // Which scoped Supabase account (see lib/auth.ts#scopedEmail) each product
 // choice signs into, and the subtitle copy for it. One parameterized
 // screen rather than a route file per product, since expo-router's params
 // already give the same effect.
 //
-// Coaching is deliberately absent. It is its own product on its own domain
-// with its own sign-in, so this app offers only the two adult products —
-// matching the product picker (which dropped it in Aug 2026) and Tistra
-// Health's web surfaces. A stale /login?product=coach deep link now falls
-// through the guard below and lands on the picker instead of presenting a
-// coaching sign-in the app can't complete.
-const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults'; subtitle: string }> = {
+// 'coach' is sign-in only, reached from select-product.tsx's "Coach? Sign
+// in here" card: it signs into the same unscoped account coach.tistra.club
+// uses, whose gym workspace opens the app's coach view. It was removed in
+// Aug 2026 when the app had no coach view, and came back with it. There is
+// still no coach sign-up here (see signup.tsx) — coach accounts are created
+// on the web.
+const PRODUCT_CONFIG: Record<Product, { scopeAs: 'adults' | 'gym'; subtitle: string }> = {
   self: { scopeAs: 'adults', subtitle: 'Sign in to track your own meals' },
   family: { scopeAs: 'adults', subtitle: 'Sign in to your family account' },
+  coach: { scopeAs: 'gym', subtitle: 'Sign in to your coaching account' },
 };
+
+/** What (app)/index.tsx should act on once signed in, written right before
+ * every sign-in method. A self/family pick is the usual hand-off (see
+ * lib/product-intent.ts). The coach entry instead records no pick — so
+ * signing in can never create a workspace — and remembers the coach view,
+ * which only opens if the account owns a gym workspace. */
+async function rememberEntry(product: Product): Promise<void> {
+  if (product === 'coach') {
+    await clearPendingProductSelection();
+    await saveLastDashboardChoice('gym');
+  } else {
+    await setPendingProductSelection(product);
+    await clearLastDashboardChoice();
+  }
+}
 
 export default function LoginScreen() {
   const theme = useTheme();
@@ -60,6 +77,7 @@ export default function LoginScreen() {
     setError(null);
     setLoading(true);
     try {
+      await rememberEntry(product as Product);
       const { error } = await supabase.auth.signInWithPassword({
         email: scopedEmail(email, scopeAs),
         password,
@@ -80,7 +98,7 @@ export default function LoginScreen() {
     try {
       // Same product-intent write the other providers do before handing
       // off — see lib/product-intent.ts.
-      await setPendingProductSelection(product as Product);
+      await rememberEntry(product as Product);
       await signInWithApple();
     } catch (err) {
       // Dismissing Apple's sheet is not an error worth showing.
@@ -99,7 +117,7 @@ export default function LoginScreen() {
       // external OAuth browser (see lib/product-intent.ts) — reachable here
       // reliably via the route param regardless of whether
       // select-product.tsx's own write already landed.
-      await setPendingProductSelection(product as Product);
+      await rememberEntry(product as Product);
       await signInWithProvider(provider);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed.');
@@ -196,15 +214,23 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
-        <Pressable
-          style={styles.switchLink}
-          onPress={() => router.replace({ pathname: '/signup', params: { product } })}
-          disabled={anyLoading}
-        >
-          <ThemedText type="default" themeColor="textSecondary" style={styles.switchLinkText}>
-            Don&apos;t have an account? <ThemedText style={styles.switchLinkAccent}>Create one</ThemedText>
+        {product === 'coach' ? (
+          // No coach sign-up in this app; no link either — creating the
+          // account on the web leads into Coach plan checkout.
+          <ThemedText type="small" themeColor="textSecondary" style={styles.switchLinkText}>
+            New to coaching? Coach accounts are set up in Coach OS on the web.
           </ThemedText>
-        </Pressable>
+        ) : (
+          <Pressable
+            style={styles.switchLink}
+            onPress={() => router.replace({ pathname: '/signup', params: { product } })}
+            disabled={anyLoading}
+          >
+            <ThemedText type="default" themeColor="textSecondary" style={styles.switchLinkText}>
+              Don&apos;t have an account? <ThemedText style={styles.switchLinkAccent}>Create one</ThemedText>
+            </ThemedText>
+          </Pressable>
+        )}
       </SafeAreaView>
     </ThemedView>
   );

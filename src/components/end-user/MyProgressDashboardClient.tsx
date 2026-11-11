@@ -16,6 +16,7 @@ import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { permissionsForRole } from "@/lib/dashboard/permissions";
 import { PARTICIPANT_THEME, PARTICIPANT_COPY } from "@/lib/dashboard/profile-dashboard-presets";
 import type { GuidanceMode } from "@/lib/guidance/activation";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
 
@@ -29,12 +30,14 @@ export function MyProgressDashboardClient({
   dashboard,
   guidanceMode,
   guidance,
+  guidanceActions,
 }: {
   dashboard: EndUserDashboard;
   /** Set only when the Guidance entry should show (see isGuidanceEntryVisible). */
   guidanceMode?: GuidanceMode;
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
+  guidanceActions?: GuidanceActions;
 }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
@@ -77,15 +80,20 @@ export function MyProgressDashboardClient({
 
   return (
     <div className="min-h-screen bg-[var(--color-dashboard-surface)]">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 flex justify-end">
-        <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
-          Sign out
-        </button>
-      </div>
+      {/* In Guidance mode, Sign out is in the screen's avatar menu. */}
+      {!guidance && (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 flex justify-end">
+          <button onClick={handleSignOut} className="text-sm text-gray-400 underline">
+            Sign out
+          </button>
+        </div>
+      )}
 
       <ProfileDashboard
         role="participant"
         guidance={guidance}
+        guidanceActions={guidanceActions}
+        onSignOut={handleSignOut}
         guidanceHref="/my-progress/guidance"
         // No self-service profile-edit UI exists yet for the end-user OTP
         // session (unlike EditContactModal/EditClientModal for
@@ -98,7 +106,7 @@ export function MyProgressDashboardClient({
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
-        {guidanceMode && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
+        {guidanceMode && !guidance && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
 
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>

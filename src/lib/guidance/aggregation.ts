@@ -12,6 +12,9 @@ import type { GuidanceDay, NutrientKey } from "./meal-impact";
 //   - A day with fewer meals than the person usually eats is partial, and
 //     so is a day where some meal reported nothing for the nutrient in
 //     question. Its total is a floor, so it doesn't enter an average either.
+//     A meal confirmed skipped counts towards the usual number (migration
+//     0070): "I skipped lunch" makes the day's total a real figure, where an
+//     unlogged lunch leaves it a floor.
 //   - Today is in progress, not short. It's shown, but kept out of every
 //     average and comparison.
 //   - A comparison needs enough comparable days on both sides. With fewer,
@@ -23,6 +26,8 @@ export type DayStatus = "complete" | "partial" | "unlogged" | "in_progress";
 
 export interface DaySummary extends GuidanceDay {
   status: DayStatus;
+  /** Meals confirmed skipped that day (with no meal logged in that slot). */
+  skipped: number;
 }
 
 /** How many meals make a day complete when the person hasn't said how many
@@ -32,19 +37,35 @@ export const DEFAULT_MEALS_PER_DAY = 3;
 /** Fewer complete days than this on either side and there is no comparison. */
 export const MIN_COMPARABLE_DAYS = 3;
 
-export function summarizeDays(days: GuidanceDay[], today: string, expectedMealsPerDay: number): DaySummary[] {
+export function summarizeDays(
+  days: GuidanceDay[],
+  today: string,
+  expectedMealsPerDay: number,
+  /** Confirmed skips, already without any slot that has a logged meal. */
+  skips: Array<{ date: string }> = []
+): DaySummary[] {
   const expected = Math.max(1, expectedMealsPerDay);
-  return days.map((day) => ({
-    ...day,
-    status:
-      day.date === today
-        ? "in_progress"
-        : day.totals.mealCount === 0
-          ? "unlogged"
-          : day.totals.mealCount < expected
-            ? "partial"
-            : "complete",
-  }));
+  const skippedOn = new Map<string, number>();
+  for (const s of skips) skippedOn.set(s.date, (skippedOn.get(s.date) ?? 0) + 1);
+  return days.map((day) => {
+    const skipped = skippedOn.get(day.date) ?? 0;
+    const accounted = day.totals.mealCount + skipped;
+    return {
+      ...day,
+      skipped,
+      status:
+        day.date === today
+          ? "in_progress"
+          : accounted === 0
+            ? "unlogged"
+            : // Every meal skipped and nothing logged stays partial: a fast
+              // day may still have had tea or fruit nobody logged, and a
+              // zero would pull the average down on a guess.
+              accounted < expected || day.totals.mealCount === 0
+              ? "partial"
+              : "complete",
+    };
+  });
 }
 
 export type PeriodKind = "week" | "month";

@@ -6,6 +6,7 @@ import { getEndUserSession } from "@/lib/end-user/session";
 import { getEndUserDashboard, hasAcceptedConsent, getInviter } from "@/lib/end-user/dashboard-service";
 import { MyProgressDashboardClient } from "@/components/end-user/MyProgressDashboardClient";
 import { ConsentForm } from "@/components/end-user/ConsentForm";
+import { guidanceActionsFor } from "@/lib/guidance/bound-actions";
 import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
 import { createServiceClient } from "@/lib/supabase/server";
 
@@ -48,6 +49,7 @@ export default async function MyProgressDashboardPage() {
       dashboard={dashboard}
       guidanceMode={guidanceEntry?.visible ? guidanceEntry.mode : undefined}
       guidance={guidance}
+      guidanceActions={guidance ? guidanceActionsFor("my_progress", session.contactId) : undefined}
     />
   );
 }

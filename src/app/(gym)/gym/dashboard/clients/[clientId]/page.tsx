@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getClientDetails, generateClientAccessCodeAction, regenerateClientAccessCodeAction, revokeClientAccessCodeAction } from "../../actions";
 import { ClientDashboard } from "@/components/gym/dashboard/ClientDashboard";
 import { AccessCodeCard } from "@/components/shared/dashboard/AccessCodeCard";
+import { guidanceActionsFor } from "@/lib/guidance/bound-actions";
 import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
 
 export default async function ClientPage({ params }: { params: Promise<{ clientId: string }> }) {
@@ -27,6 +28,7 @@ export default async function ClientPage({ params }: { params: Promise<{ clientI
       <ClientDashboard
         {...details}
         guidance={guidance}
+        guidanceActions={guidance ? guidanceActionsFor("coach", clientId) : undefined}
         guidanceHref={guidanceHref}
         // Coach clients only have Guidance, so until it's set up, setting it
         // up leads the page. Shown only where Guidance is offered at all.

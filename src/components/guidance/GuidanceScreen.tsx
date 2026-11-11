@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { summarizeDays } from "@/lib/guidance/aggregation";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 import { GuidanceProgressTab } from "./GuidanceProgressTab";
@@ -30,11 +31,13 @@ function AvatarMenu({
   manageHref,
   manageLabel,
   onEditDetails,
+  onSignOut,
 }: {
   person: GuidancePerson;
   manageHref?: string;
   manageLabel: string;
   onEditDetails?: () => void;
+  onSignOut?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -70,7 +73,7 @@ function AvatarMenu({
     </span>
   );
 
-  if (!manageHref && !onEditDetails) {
+  if (!manageHref && !onEditDetails && !onSignOut) {
     return (
       <span title={person.fullName}>
         {avatar}
@@ -117,6 +120,11 @@ function AvatarMenu({
               {manageLabel}
             </Link>
           )}
+          {onSignOut && (
+            <button type="button" className={item} onClick={onSignOut}>
+              Sign out
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -131,8 +139,8 @@ export function GuidanceScreen({
   manageHref,
   onEditDetails,
   notice,
-  todayExtras,
-  progressExtras,
+  actions,
+  onSignOut,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
@@ -143,14 +151,16 @@ export function GuidanceScreen({
   onEditDetails?: () => void;
   /** Shown above the tabs' content, e.g. the WhatsApp invite. */
   notice?: ReactNode;
-  todayExtras?: { nextMealBody?: ReactNode; habitCard?: ReactNode };
-  progressExtras?: { habitCard?: ReactNode; micronutrientCard?: ReactNode };
+  /** Plan, skip and habit actions, bound to this person on the server.
+   * Absent for a read-only view. */
+  actions?: GuidanceActions;
+  onSignOut?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>("today");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ today: null, progress: null });
   const id = useId();
-  const summaries = summarizeDays(guidance.history, guidance.date, guidance.expectedMealsPerDay);
+  const summaries = summarizeDays(guidance.history, guidance.date, guidance.expectedMealsPerDay, guidance.skips);
   const firstName = person.fullName.split(" ")[0];
   const canLog = viewer.kind === "self" && !!guidance.logMealHref;
 
@@ -225,6 +235,7 @@ export function GuidanceScreen({
               manageHref={manageHref}
               manageLabel={viewer.kind === "coach" ? "Targets and Guidance" : "Guidance settings"}
               onEditDetails={onEditDetails}
+              onSignOut={onSignOut}
             />
           </div>
         </div>
@@ -244,8 +255,7 @@ export function GuidanceScreen({
               viewer={viewer}
               firstName={firstName}
               onShowHistory={showHistory}
-              nextMealBody={todayExtras?.nextMealBody}
-              habitCard={todayExtras?.habitCard}
+              actions={actions}
             />
           ) : (
             <GuidanceProgressTab
@@ -254,8 +264,7 @@ export function GuidanceScreen({
               summaries={summaries}
               detailsOpen={detailsOpen}
               onDetailsToggle={setDetailsOpen}
-              habitCard={progressExtras?.habitCard}
-              micronutrientCard={progressExtras?.micronutrientCard}
+              actions={actions}
             />
           )}
         </div>

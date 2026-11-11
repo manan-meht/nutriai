@@ -7,6 +7,7 @@ import { EditContactModal } from "@/components/adults/dashboard/EditContactModal
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { adaptAdultsContactDetails } from "@/lib/dashboard/profile-dashboard-types";
 import { FAMILY_ADMIN_THEME, FAMILY_ADMIN_COPY } from "@/lib/dashboard/profile-dashboard-presets";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 /** Plain fetch instead of a Server Action — Server Actions on this
@@ -36,10 +37,12 @@ export function ContactDashboard({
   contact,
   meals,
   guidance,
+  guidanceActions,
   guidanceHref,
 }: AdultsContactDetails & {
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
+  guidanceActions?: GuidanceActions;
   guidanceHref?: string;
 }) {
   const router = useRouter();
@@ -49,6 +52,7 @@ export function ContactDashboard({
       role="family_admin"
       data={adaptAdultsContactDetails({ contact, meals })}
       guidance={guidance}
+      guidanceActions={guidanceActions}
       guidanceHref={guidanceHref}
       backHref="/adults/dashboard"
       theme={FAMILY_ADMIN_THEME}
