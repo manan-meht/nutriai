@@ -8,14 +8,18 @@ import { ThemedView } from '@/components/themed-view';
 import { ProductPicker } from '@/components/product-picker';
 import { Spacing, MaxContentWidth } from '@/constants/theme';
 import { api, ApiError, type MyProductsResponse } from '@/lib/api';
+import { chooseDashboard } from '@/lib/dashboard-route';
 import { consumePendingProductSelection, type PendingProduct } from '@/lib/product-intent';
-import { clearLastDashboardChoice } from '@/lib/product-choice';
+import { clearLastDashboardChoice, getLastDashboardChoice, type DashboardChoice } from '@/lib/product-choice';
 import { supabase } from '@/lib/supabase';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; products: MyProductsResponse; pendingProduct: PendingProduct | null };
+  | { status: 'ready'; products: MyProductsResponse; lastChoice: DashboardChoice | null; pendingProduct: PendingProduct | null }
+  // "Use Tistra Health instead" from the no-coach-account screen: the
+  // ordinary self/family picker.
+  | { status: 'picker' };
 
 export default function ProductRouterScreen() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -30,9 +34,9 @@ export default function ProductRouterScreen() {
     // an account seeded with both — or, just as importantly, a brand-new
     // account seeded with NEITHER yet — would otherwise ignore that choice
     // and ask again below.
-    Promise.all([api.getMyProducts(), consumePendingProductSelection()])
-      .then(([products, pendingProduct]) => {
-        if (!cancelled) setState({ status: 'ready', products, pendingProduct });
+    Promise.all([api.getMyProducts(), getLastDashboardChoice(), consumePendingProductSelection()])
+      .then(([products, lastChoice, pendingProduct]) => {
+        if (!cancelled) setState({ status: 'ready', products, lastChoice, pendingProduct });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -80,15 +84,22 @@ export default function ProductRouterScreen() {
     );
   }
 
-  const { adults } = state.products;
-  const { pendingProduct } = state;
+  if (state.status === 'picker') return <HealthPicker />;
 
-  // One product, one destination. This screen used to arbitrate between an
-  // adults and a gym dashboard — which product to open, which choice to
-  // remember, which to re-ask about. Coaching is its own product now, on
-  // its own domain and getting its own app, so all of that arbitration is
-  // gone: a Tistra Health account has an adults workspace or it has none.
-  if (adults) return <Redirect href="/adults" />;
+  const { adults, gym } = state.products;
+  const route = chooseDashboard({
+    ownsAdults: Boolean(adults),
+    ownsGym: Boolean(gym),
+    lastChoice: state.lastChoice,
+    pendingProduct: state.pendingProduct,
+  });
+
+  // An account reaches the coach view only by already owning a gym
+  // workspace (created in Coach OS on the web) — sign-up here offers only
+  // self and family. See lib/dashboard-route.ts for the whole decision.
+  if (route.kind === 'dashboard') {
+    return <Redirect href={route.dashboard === 'gym' ? '/gym' : '/adults'} />;
+  }
 
   // No workspace yet — almost always a brand-new signup. GET
   // /adults/workspace get-or-creates as a side effect of being called, so
@@ -100,12 +111,54 @@ export default function ProductRouterScreen() {
   // than omitted — adults/index.tsx reads it via useLocalSearchParams, and
   // an omitted param can inherit a stale self=1 from an earlier navigation
   // to the same route, silently flipping a Family signup to the Self plan.
-  if (pendingProduct) {
+  if (route.kind === 'new-adults') {
+    return <Redirect href={{ pathname: '/adults', params: { self: route.self ? '1' : '0' } }} />;
+  }
+
+  // Signed in through "Coach? Sign in here" with an account that owns no
+  // workspace at all. Creating one here would be wrong both ways: a coach
+  // account is set up on the web, and a Health workspace is not what they
+  // came for — so explain, and let them choose.
+  if (route.kind === 'no-coach-account') {
     return (
-      <Redirect href={{ pathname: '/adults', params: { self: pendingProduct === 'self' ? '1' : '0' } }} />
+      <ThemedView style={styles.centered}>
+        <SafeAreaView style={styles.safeArea}>
+          <ThemedText type="subtitle" style={styles.errorText}>
+            No Coach account found
+          </ThemedText>
+          <ThemedText type="default" themeColor="textSecondary" style={styles.errorText}>
+            This sign-in doesn&apos;t have a Coach workspace. Coach accounts are set up in Coach OS on the web — sign in
+            here with the same Google, Apple or email account you use there.
+          </ThemedText>
+          <Pressable
+            style={styles.button}
+            onPress={() => {
+              clearLastDashboardChoice();
+              supabase.auth.signOut();
+            }}
+          >
+            <ThemedText style={styles.buttonText}>Sign out</ThemedText>
+          </Pressable>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              clearLastDashboardChoice();
+              setState({ status: 'picker' });
+            }}
+          >
+            <ThemedText type="default" themeColor="textSecondary">
+              Use Tistra Health instead
+            </ThemedText>
+          </Pressable>
+        </SafeAreaView>
+      </ThemedView>
     );
   }
 
+  return <HealthPicker />;
+}
+
+function HealthPicker() {
   return (
     <ProductPicker
       headline="How will you use Tistra Health?"
@@ -147,5 +200,9 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#ffffff',
     fontWeight: '600',
+  },
+  secondaryButton: {
+    paddingVertical: Spacing.two,
+    alignItems: 'center',
   },
 });

@@ -36,18 +36,22 @@ function bowlIconForWeeklyMealCount(mealCount: number): BowlIconName {
  * the signed-in account has. Recomputed server-side on every fetch, so
  * calling this on any given day always reflects that day's own rolling
  * window; no separate "reset" logic needed here. Uses api.getMyProducts to
- * only fetch whichever of the two the account actually has. Reuses the
- * same list endpoint the family screens already call — no
- * new server endpoint. */
+ * only fetch whichever of the two the account actually has — which also
+ * matters because /gym/clients get-or-creates a gym workspace, so it must
+ * never be called for an account that doesn't already own one. Reuses the
+ * same list endpoints the family and coach screens already call — no new
+ * server endpoint. */
 async function totalWeeklyMealCount(): Promise<number> {
   const products = await api.getMyProducts();
   let total = 0;
 
-  // Adults only. This used to add a coaching workspace's client meals too;
-  // coaching is its own product now and no longer lives in this app.
   if (products.adults) {
     const { contacts } = await api.getAdultsContacts();
     total += contacts.reduce((sum, c) => sum + (c.last7DaysMealCount ?? 0), 0);
+  }
+  if (products.gym) {
+    const { clients } = await api.getGymClients();
+    total += clients.reduce((sum, c) => sum + (c.last7DaysMealCount ?? 0), 0);
   }
   return total;
 }

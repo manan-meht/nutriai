@@ -130,7 +130,7 @@ const input =
   "w-full rounded-xl border border-[var(--gm-border-strong)] bg-[var(--gm-raised)] px-4 py-3 text-sm text-[var(--gm-text)] placeholder:text-[var(--gm-text-muted)] outline-none focus:border-[var(--gm-accent)] focus:ring-2 focus:ring-[var(--gm-accent-soft)] transition";
 const label = "block text-sm font-medium text-[var(--gm-text)] mb-1.5";
 const hint = "text-xs text-[var(--gm-text-muted)] mt-1";
-// A tappable answer card: teal when chosen, a quiet outline otherwise.
+// A tappable answer card: accented when chosen, a quiet outline otherwise.
 const choice = (selected: boolean) =>
   `flex-1 flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm cursor-pointer transition ${
     selected

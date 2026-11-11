@@ -27,6 +27,14 @@ export async function setPendingProductSelection(product: PendingProduct): Promi
   await SecureStore.setItemAsync(PENDING_PRODUCT_KEY, product);
 }
 
+/** Drops any pick left from an earlier visit to the picker — called by the
+ * coach sign-in entry (select-product.tsx, login.tsx), so a self/family
+ * card tapped before switching to "Coach? Sign in here" can't create an
+ * adults workspace for an account that has none. */
+export async function clearPendingProductSelection(): Promise<void> {
+  await SecureStore.deleteItemAsync(PENDING_PRODUCT_KEY);
+}
+
 /** Reads and clears in one step — only the very next screen that checks
  * after a fresh login should act on it. */
 export async function consumePendingProductSelection(): Promise<PendingProduct | null> {

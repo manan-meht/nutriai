@@ -20,6 +20,20 @@ export interface GuidanceRows {
   nutrition_guidance_screening: Row[];
   nutrition_targets: Row[];
   meal_logs: Row[];
+  /** Weight readings, for goal tracking. Optional: absent means none. */
+  food_balance_weight_entries?: Row[];
+  biomarker_logs?: Row[];
+  /** Migration 0070. Optional: absent means none. */
+  nutrition_meal_plans?: Row[];
+  nutrition_meal_skips?: Row[];
+  nutrition_habits?: Row[];
+  /** Migration 0071. Optional: absent means none. */
+  nutrition_household_facts?: Row[];
+  nutrition_confirmed_products?: Row[];
+  supplement_schedules?: Row[];
+  supplement_doses?: Row[];
+  meal_nutrient_estimates?: Row[];
+  meal_nutrient_facts?: Row[];
 }
 
 type Table = keyof GuidanceRows;
@@ -31,8 +45,23 @@ export type FailingWrites = string[];
 type DbError = { message: string; code: string };
 type Result = { data: unknown; error: DbError | null };
 
-/** The tables 0069 lets point at either kind of tracked person. */
-const SUBJECT_TABLES: Table[] = ["nutrition_guidance", "nutrition_guidance_screening", "nutrition_targets"];
+/** The tables 0069 and 0070 let point at either kind of tracked person. */
+const SUBJECT_TABLES: Table[] = [
+  "nutrition_guidance",
+  "nutrition_guidance_screening",
+  "nutrition_targets",
+  "nutrition_meal_plans",
+  "nutrition_meal_skips",
+  "nutrition_habits",
+];
+const CHANNELS = ["self_account", "end_user_session", "whatsapp", "caregiver", "coach"];
+const SLOTS = ["breakfast", "lunch", "snack", "dinner"];
+
+/** Duplicate keys among `rows` for `key`, as a unique index would see them. */
+function duplicated(rows: Row[], key: (r: Row) => string): boolean {
+  const keys = rows.map(key);
+  return new Set(keys).size !== keys.length;
+}
 
 /** One tracked person, whichever column names them. */
 const subjectOf = (r: Row) => (r.adults_contact_id != null ? `a:${r.adults_contact_id}` : `g:${r.gym_client_id}`);
@@ -58,6 +87,44 @@ function violation(table: Table, after: Row[]): DbError | null {
       return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_targets_one_current_idx"' };
     }
   }
+  if (table === "nutrition_meal_plans") {
+    for (const r of after) {
+      if (!SLOTS.includes(String(r.meal_slot))) return { code: "23514", message: 'violates check constraint "nutrition_meal_plans_meal_slot_check"' };
+      if (!["planned", "cancelled"].includes(String(r.status ?? "planned"))) return { code: "23514", message: 'violates check constraint "nutrition_meal_plans_status_check"' };
+      if (!CHANNELS.includes(String(r.planned_via))) return { code: "23514", message: 'violates check constraint "nutrition_meal_plans_planned_via_check"' };
+    }
+    if (duplicated(after.filter((r) => (r.status ?? "planned") !== "cancelled"), (r) => `${subjectOf(r)}:${r.local_date}:${r.meal_slot}`)) {
+      return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_meal_plans_one_live_adults_idx"' };
+    }
+  }
+  if (table === "nutrition_meal_skips") {
+    for (const r of after) {
+      if (!SLOTS.includes(String(r.meal_slot))) return { code: "23514", message: 'violates check constraint "nutrition_meal_skips_meal_slot_check"' };
+      if (!CHANNELS.includes(String(r.confirmed_via))) return { code: "23514", message: 'violates check constraint "nutrition_meal_skips_confirmed_via_check"' };
+    }
+    if (duplicated(after, (r) => `${subjectOf(r)}:${r.local_date}:${r.meal_slot}`)) {
+      return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_meal_skips_adults_unique"' };
+    }
+  }
+  if (table === "nutrition_habits") {
+    for (const r of after) {
+      if (new Date(`${r.week_start}T12:00:00Z`).getUTCDay() !== 1) return { code: "23514", message: 'violates check constraint "nutrition_habits_week_start_check"' };
+      if (!CHANNELS.includes(String(r.chosen_via))) return { code: "23514", message: 'violates check constraint "nutrition_habits_chosen_via_check"' };
+    }
+    if (duplicated(after.filter((r) => (r.status ?? "active") === "active"), (r) => `${subjectOf(r)}:${r.week_start}`)) {
+      return { code: "23505", message: 'duplicate key value violates unique constraint "nutrition_habits_one_active_adults_idx"' };
+    }
+  }
+  if (table === "supplement_doses" && duplicated(after, (r) => `${r.schedule_id}:${r.taken_on}:${r.slot}`)) {
+    return { code: "23505", message: 'duplicate key value violates unique constraint "supplement_doses_once_per_slot"' };
+  }
+  if (table === "supplement_schedules") {
+    for (const r of after) {
+      if (r.effective_to != null && !(String(r.effective_to) > String(r.effective_from))) {
+        return { code: "23514", message: 'new row violates check constraint "supplement_schedules_range"' };
+      }
+    }
+  }
   if (table === "nutrition_guidance") {
     for (const r of after) {
       const meals = r.meals_per_day;
@@ -70,6 +137,8 @@ function violation(table: Table, after: Row[]): DbError | null {
 }
 
 export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []): SupabaseClient {
+  /** A table's rows, creating an optional table on first use. */
+  const tableRows = (table: Table): Row[] => (rows[table] ??= []);
   function injected(table: Table, op: string): DbError | null {
     return failing.includes(`${table}.${op}`) ? { code: "08006", message: `injected ${table}.${op} failure` } : null;
   }
@@ -77,12 +146,12 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
   /** Applies `next` as the table's new contents if nothing is broken. */
   function commit(table: Table, op: string, next: Row[]): Result {
     const error = injected(table, op) ?? violation(table, next);
-    if (!error) rows[table].splice(0, rows[table].length, ...next);
+    if (!error) tableRows(table).splice(0, tableRows(table).length, ...next);
     return { data: null, error };
   }
 
   function query(table: Table) {
-    let working = rows[table];
+    let working = tableRows(table);
     const chain = {
       select: () => chain,
       eq: (col: string, val: unknown) => {
@@ -101,6 +170,10 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
         working = working.filter((r) => vals.includes(r[col]));
         return chain;
       },
+      limit: (n: number) => {
+        working = working.slice(0, n);
+        return chain;
+      },
       maybeSingle: () => Promise.resolve({ data: working[0] ?? null, error: null }),
       then: (resolve: (v: Result) => void) => resolve({ data: working, error: null }),
     };
@@ -110,17 +183,49 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
   return {
     from: (table: Table) => ({
       select: () => query(table),
-      insert: (row: Row) =>
-        Promise.resolve(commit(table, "insert", [...rows[table], { id: `${table}-${rows[table].length + 1}`, ...row }])),
-      upsert: (row: Row, opts?: { onConflict?: string }) => {
-        // ON CONFLICT on the column named, as PostgREST does. A row whose
+      insert: (row: Row) => {
+        // Runs once, whether awaited directly or through .select().single().
+        const inserted = { id: `${table}-${tableRows(table).length + 1}`, ...row };
+        let result: Result | null = null;
+        const exec = () => (result ??= commit(table, "insert", [...tableRows(table), inserted]));
+        return {
+          then: (resolve: (v: Result) => void, reject?: (e: unknown) => void) => Promise.resolve(exec()).then(resolve, reject),
+          select: () => ({
+            single: () => {
+              const r = exec();
+              return Promise.resolve(r.error ? { data: null, error: r.error } : { data: inserted, error: null });
+            },
+          }),
+        };
+      },
+      upsert: (row: Row, opts?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
+        // ON CONFLICT on the columns named, as PostgREST does. A row whose
         // conflict column is null never matches, as with a real unique key.
-        const key = opts?.onConflict ?? "adults_contact_id";
-        const idx = row[key] == null ? -1 : rows[table].findIndex((r) => r[key] === row[key]);
-        const next = [...rows[table]];
+        const keys = (opts?.onConflict ?? "adults_contact_id").split(",").map((k) => k.trim());
+        const idx = keys.some((k) => row[k] == null) ? -1 : tableRows(table).findIndex((r) => keys.every((k) => r[k] === row[k]));
+        if (idx >= 0 && opts?.ignoreDuplicates) return Promise.resolve({ data: null, error: injected(table, "upsert") });
+        const next = [...tableRows(table)];
         if (idx >= 0) next[idx] = { ...next[idx], ...row };
         else next.push({ ...row });
         return Promise.resolve(commit(table, "upsert", next));
+      },
+      delete: () => {
+        const filters: Array<(r: Row) => boolean> = [];
+        const chain = {
+          eq: (col: string, val: unknown) => {
+            filters.push((r) => r[col] === val);
+            return chain;
+          },
+          then: (resolve: (v: Result) => void) => {
+            const error = injected(table, "delete");
+            if (!error) {
+              const keep = tableRows(table).filter((r) => !filters.every((f) => f(r)));
+              tableRows(table).splice(0, tableRows(table).length, ...keep);
+            }
+            return resolve({ data: null, error });
+          },
+        };
+        return chain;
       },
       update: (patch: Row) => {
         const filters: Array<(r: Row) => boolean> = [];
@@ -137,9 +242,9 @@ export function makeGuidanceDb(rows: GuidanceRows, failing: FailingWrites = []):
             const matches = (r: Row) => filters.every((f) => f(r));
             // Rows are patched in place on success, so a test holding a
             // reference to one sees the change, as it did before.
-            const next = rows[table].map((r) => (matches(r) ? { ...r, ...patch } : r));
+            const next = tableRows(table).map((r) => (matches(r) ? { ...r, ...patch } : r));
             const error = injected(table, "update") ?? violation(table, next);
-            if (!error) rows[table].forEach((r) => matches(r) && Object.assign(r, patch));
+            if (!error) tableRows(table).forEach((r) => matches(r) && Object.assign(r, patch));
             return resolve({ data: null, error });
           },
         };

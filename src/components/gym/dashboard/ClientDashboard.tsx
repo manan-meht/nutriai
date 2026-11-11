@@ -8,6 +8,7 @@ import { getOrCreateCoachClientInvite, regenerateCoachClientInvite, revokeCoachC
 import { ProfileDashboard } from "@/components/dashboard/ProfileDashboard";
 import { adaptClientDetails } from "@/lib/dashboard/profile-dashboard-types";
 import { COACH_THEME, COACH_COPY } from "@/lib/dashboard/profile-dashboard-presets";
+import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
 /** Coach's view of one tracked client — a thin, role-specific wrapper
@@ -21,11 +22,13 @@ export function ClientDashboard({
   workouts,
   biomarkers,
   guidance,
+  guidanceActions,
   guidanceHref,
   guidanceSetup,
 }: ClientDetails & {
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
+  guidanceActions?: GuidanceActions;
   guidanceHref?: string;
   guidanceSetup?: { href: string; personName: string };
 }) {
@@ -36,6 +39,7 @@ export function ClientDashboard({
       role="coach"
       data={adaptClientDetails({ client, meals, workouts, biomarkers })}
       guidance={guidance}
+      guidanceActions={guidanceActions}
       guidanceHref={guidanceHref}
       guidanceSetup={guidanceSetup}
       backHref="/gym/dashboard"

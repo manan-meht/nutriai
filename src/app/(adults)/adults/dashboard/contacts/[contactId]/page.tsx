@@ -6,6 +6,7 @@ import { ContactDashboard } from "@/components/adults/dashboard/ContactDashboard
 import { FoodPreferencesEditor } from "@/components/adults/FoodPreferencesEditor";
 import { AccessCodeCard } from "@/components/shared/dashboard/AccessCodeCard";
 import { GuidanceEntryCard } from "@/components/guidance/GuidanceEntryCard";
+import { guidanceActionsFor } from "@/lib/guidance/bound-actions";
 import { loadGuidanceDashboard, loadGuidanceEntry } from "@/lib/guidance/view";
 
 export default async function ContactPage({ params }: { params: Promise<{ contactId: string }> }) {
@@ -30,6 +31,7 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
       <ContactDashboard
         {...details}
         guidance={guidance}
+        guidanceActions={guidance ? guidanceActionsFor("account", contactId) : undefined}
         guidanceHref={`/adults/dashboard/contacts/${contactId}/guidance`}
       />
       {/* Full-width dark background — a max-w-3xl div alone only colors its
@@ -40,7 +42,8 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
           where this section ends up shorter). */}
       <div className="bg-[var(--color-dashboard-page-bg)]">
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
-        {guidanceEntry.visible && (
+        {/* In Guidance mode the settings are in the screen's avatar menu. */}
+        {guidanceEntry.visible && !guidance && (
           <GuidanceEntryCard
             href={`/adults/dashboard/contacts/${contactId}/guidance`}
             mode={guidanceEntry.mode}

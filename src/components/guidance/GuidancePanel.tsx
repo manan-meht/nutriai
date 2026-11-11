@@ -38,7 +38,7 @@ interface GuidancePanelProps {
 
 const GENERIC_ERROR = "Something went wrong. Please try again.";
 
-// Midnight teal: the --gm-* tokens are defined on .guidance-theme in
+// The Guidance theme: the --gm-* tokens are defined on .guidance-theme in
 // globals.css, which <main> below carries.
 const primaryButton =
   "w-full rounded-xl bg-[var(--gm-accent)] hover:bg-[var(--gm-accent-hover)] text-[var(--gm-on-accent)] font-semibold py-3 text-sm disabled:opacity-50 transition";

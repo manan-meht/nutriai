@@ -194,15 +194,15 @@ export async function loadContactFacts(
   };
 }
 
-function forbidden(result: Extract<AuthorizationResult, { allowed: false }>): ActivationFailure {
+export function forbidden(result: Extract<AuthorizationResult, { allowed: false }>): ActivationFailure {
   return { ok: false, kind: "forbidden", reason: result.reason, message: result.message };
 }
 
-function unavailable(release: ReleaseState): ActivationFailure {
+export function unavailable(release: ReleaseState): ActivationFailure {
   return { ok: false, kind: "unavailable", blockers: release.blockers, message: UNAVAILABLE_MESSAGE };
 }
 
-function writeFailed(step: string, error: NonNullable<WriteError>): ActivationFailure {
+export function writeFailed(step: string, error: NonNullable<WriteError>): ActivationFailure {
   // The step and the database's own message only. Never the answers: they
   // include pregnancy and eating-disorder history.
   console.error(`[guidance] ${step} failed:`, error.message);
