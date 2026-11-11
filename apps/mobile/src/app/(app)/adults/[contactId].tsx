@@ -6,11 +6,12 @@ import { PersonDetail } from '@/components/person-detail';
 import { ThemedText } from '@/components/themed-text';
 import { ErrorState, LoadingState } from '@/components/screen-states';
 import { api, type AdultsContactDetails } from '@/lib/api';
+import type { GuidanceResponse } from '@/lib/guidance-types';
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; details: AdultsContactDetails; tistraWhatsAppNumber?: string };
+  | { status: 'ready'; details: AdultsContactDetails; tistraWhatsAppNumber?: string; guidance: GuidanceResponse | null };
 
 export default function AdultsContactDetailScreen() {
   const { contactId } = useLocalSearchParams<{ contactId: string }>();
@@ -18,8 +19,15 @@ export default function AdultsContactDetailScreen() {
 
   const load = useCallback(() => {
     setState({ status: 'loading' });
-    Promise.all([api.getAdultsContactDetails(contactId), api.getAdultsWorkspace()])
-      .then(([details, { tistraWhatsAppNumber }]) => setState({ status: 'ready', details, tistraWhatsAppNumber }))
+    // Guidance's state loads alongside, so a person in Guidance mode opens
+    // straight on it rather than on tracking first. Any failure there just
+    // means no Guidance on this screen: it never blocks the contact.
+    Promise.all([
+      api.getAdultsContactDetails(contactId),
+      api.getAdultsWorkspace(),
+      api.getGuidance({ kind: 'adults', id: contactId }).catch(() => null),
+    ])
+      .then(([details, { tistraWhatsAppNumber }, guidance]) => setState({ status: 'ready', details, tistraWhatsAppNumber, guidance }))
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load contact.' })
       );
@@ -64,6 +72,7 @@ export default function AdultsContactDetailScreen() {
         foodPreferencesContactId={contactId}
         tistraWhatsAppNumber={state.tistraWhatsAppNumber}
         onReactToMeal={(mealLogId, emoji) => api.reactToAdultsMeal(contactId, mealLogId, emoji)}
+        guidance={{ subject: { kind: 'adults', id: contactId }, initial: state.guidance }}
       />
     </>
   );
