@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
+import { forwardGuidance, guidancePath } from "@/lib/guidance-proxy";
 import { getOrCreateAdultsWorkspace, getContacts, getRemovedContacts, getContactDetails, addContact, updateContact, removeContact, markWorkspaceSelfPlan } from "@/lib/adults";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { DEFAULT_DIETARY_PROFILE } from "@/lib/dietary-profile-types";
@@ -25,6 +26,8 @@ export const runtime = "edge";
 //   PATCH /adults/contacts/:contactId/food-preferences
 //   GET /adults/contacts/:contactId/invite            (get-or-create)
 //   PATCH /adults/contacts/:contactId/avatar          (multipart photo upload)
+//   GET  /adults/contacts/:contactId/guidance         (Nutrition Guidance state;
+//   POST /adults/contacts/:contactId/guidance/:op      forwarded, see guidance-proxy.ts)
 //
 // Temporary Access Codes (mobile equivalent of the web app's
 // generateAccessCodeAction/regenerateAccessCodeAction/revokeAccessCodeAction
@@ -58,6 +61,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  const guidance = guidancePath(path, "contacts");
+  if (guidance) return forwardGuidance(request, { contactType: "adults", ...guidance });
 
   if (path.length === 1 && path[0] === "workspace") {
     const { data: profile } = await auth.supabase
@@ -168,6 +174,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  const guidance = guidancePath(path, "contacts");
+  if (guidance) return forwardGuidance(request, { contactType: "adults", ...guidance });
 
   if (path.length === 3 && path[0] === "contacts" && path[2] === "access-code") {
     const contact = await requireOwnedAdultsContactForAccessCode(auth, path[1]);

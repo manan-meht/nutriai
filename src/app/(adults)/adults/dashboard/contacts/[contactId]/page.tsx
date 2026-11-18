@@ -32,6 +32,15 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
         {...details}
         guidance={guidance}
         guidanceActions={guidance ? guidanceActionsFor("account", contactId) : undefined}
+        guidanceCanTurnOff
+        guidanceSwitch={
+          guidanceEntry.visible && guidanceEntry.mode === "tracking"
+            ? {
+                setupHref: `/adults/dashboard/contacts/${contactId}/guidance`,
+                personName: isSelf ? undefined : details.contact.fullName.split(" ")[0],
+              }
+            : undefined
+        }
         guidanceHref={`/adults/dashboard/contacts/${contactId}/guidance`}
       />
       {/* Full-width dark background — a max-w-3xl div alone only colors its
@@ -42,8 +51,10 @@ export default async function ContactPage({ params }: { params: Promise<{ contac
           where this section ends up shorter). */}
       <div className="bg-[var(--color-dashboard-page-bg)]">
       <div className="max-w-3xl mx-auto px-4 pt-6 pb-8 space-y-6">
-        {/* In Guidance mode the settings are in the screen's avatar menu. */}
-        {guidanceEntry.visible && !guidance && (
+        {/* The switch at the top of the dashboard is the way in. This card
+            remains only for Guidance that's on but paused (its release gate
+            closed), as the way to Return to Tracking. */}
+        {guidanceEntry.visible && guidanceEntry.mode === "guidance" && !guidance && (
           <GuidanceEntryCard
             href={`/adults/dashboard/contacts/${contactId}/guidance`}
             mode={guidanceEntry.mode}

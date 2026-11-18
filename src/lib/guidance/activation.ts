@@ -420,7 +420,7 @@ export async function proposeActivation(
   const auth = authorizeGuidanceActivation(params.actor, facts);
   if (!auth.allowed) return forbidden(auth);
 
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, facts.caregiverId);
   if (!release.canActivate) return unavailable(release);
 
   const screeningError = await recordScreening(db, facts, params.answers);
@@ -460,7 +460,7 @@ export async function confirmActivation(
   const auth = authorizeGuidanceActivation(params.actor, facts);
   if (!auth.allowed) return forbidden(auth);
 
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, facts.caregiverId);
   if (!release.canActivate) return unavailable(release);
 
   const screeningError = await recordScreening(db, facts, params.answers);
@@ -601,7 +601,7 @@ export async function adjustTargets(
   const auth = authorizeTargetAdjustment(params.actor, facts);
   if (!auth.allowed) return forbidden(auth);
 
-  const release = await loadReleaseState(db);
+  const release = await loadReleaseState(db, facts.caregiverId);
   if (!release.canActivate) return unavailable(release);
 
   for (const [field, bound] of Object.entries(ADJUSTMENT_BOUNDS) as Array<[keyof ProposedTargets, (typeof ADJUSTMENT_BOUNDS)[keyof ProposedTargets]]>) {

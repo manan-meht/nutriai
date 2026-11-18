@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromBearerToken, createServiceClient } from "@/lib/supabase";
+import { forwardGuidance, guidancePath } from "@/lib/guidance-proxy";
 import { getOrCreateWorkspace, getClients, getRemovedClients, getClientDetails, addClient, updateClient, removeClient } from "@/lib/gym";
 import { getEntitlementSnapshot } from "@/lib/entitlements";
 import { getOrCreateCoachClientInvite } from "@/lib/invites";
@@ -48,6 +49,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  const guidance = guidancePath(path, "clients");
+  if (guidance) return forwardGuidance(request, { contactType: "gym", ...guidance });
 
   if (path.length === 1 && path[0] === "workspace") {
     const { data: profile } = await auth.supabase
@@ -123,6 +127,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!auth) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const { path } = await params;
+
+  const guidance = guidancePath(path, "clients");
+  if (guidance) return forwardGuidance(request, { contactType: "gym", ...guidance });
 
   if (path.length === 3 && path[0] === "clients" && path[2] === "access-code") {
     const contact = await requireOwnedGymClientForAccessCode(auth, path[1]);

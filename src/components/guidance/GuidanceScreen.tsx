@@ -8,6 +8,7 @@ import { summarizeDays } from "@/lib/guidance/aggregation";
 import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
 
+import { GuidanceModeOnSwitch } from "./GuidanceModeSwitch";
 import { GuidanceProgressTab } from "./GuidanceProgressTab";
 import { GuidanceTodayTab } from "./GuidanceTodayTab";
 import { primaryAction, type GuidanceViewer } from "./ui";
@@ -141,6 +142,7 @@ export function GuidanceScreen({
   notice,
   actions,
   onSignOut,
+  canTurnOff = false,
 }: {
   guidance: GuidanceDashboard;
   viewer: GuidanceViewer;
@@ -155,6 +157,9 @@ export function GuidanceScreen({
    * Absent for a read-only view. */
   actions?: GuidanceActions;
   onSignOut?: () => void;
+  /** Whether this viewer may switch Guidance off (never for a coach
+   * client, who has Guidance only). */
+  canTurnOff?: boolean;
 }) {
   const [tab, setTab] = useState<Tab>("today");
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -229,7 +234,11 @@ export function GuidanceScreen({
             ))}
           </div>
 
-          <div className="ml-auto flex justify-end sm:ml-0 sm:w-48">
+          <div className="ml-auto flex items-center justify-end gap-4 sm:ml-0 sm:w-48">
+            <GuidanceModeOnSwitch
+              onTurnOff={canTurnOff ? actions?.turnOff : undefined}
+              personName={viewer.kind === "self" ? undefined : viewer.name}
+            />
             <AvatarMenu
               person={person}
               manageHref={manageHref}
@@ -242,11 +251,15 @@ export function GuidanceScreen({
       </header>
 
       <main className={`mx-auto max-w-5xl px-4 pt-6 sm:px-6 sm:pb-12 sm:pt-10 ${canLog ? "pb-28" : "pb-12"}`}>
-        {guidance.isPreviewOnly && (
-          <p className="mb-6 rounded-xl border border-[var(--gm-over-border)] bg-[var(--gm-over-soft)] px-4 py-2.5 text-sm text-[var(--gm-over-text)]">
-            Test version: these targets haven&apos;t been checked by a health professional yet.
-          </p>
-        )}
+        {/* Always shown: Guidance mode is a beta, whatever the environment. */}
+        <p
+          role="note"
+          className="mb-6 rounded-xl border border-[var(--gm-over-border)] bg-[var(--gm-over-soft)] px-4 py-2.5 text-sm text-[var(--gm-over-text)]"
+        >
+          <strong className="font-semibold">Beta.</strong> Guidance mode is new and still being tested
+          {guidance.isPreviewOnly ? ", and its targets haven't been checked by a health professional yet" : ""}. Estimates come from
+          meal photos.
+        </p>
         {notice && <div className="mb-6">{notice}</div>}
         <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${tab}`}>
           {tab === "today" ? (

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { guidanceSubjectColumn } from "@/lib/guidance/activation";
+import { getGuidanceState, guidanceSubjectColumn, loadContactFacts } from "@/lib/guidance/activation";
+import { loadReleaseState } from "@/lib/guidance/release";
 
 import { micronutrientsEnabled } from "./flags";
 import { estimateInputHash, estimateMeal, type AnalyzedFoodInput, type MealEstimate, type MealEstimateInput } from "./meal-estimate";
@@ -96,12 +97,32 @@ export interface AnalysisLike {
   food_identity_confidence?: "high" | "medium" | "low" | null;
 }
 
+/**
+ * Whether this person's meals get vitamin and mineral estimates: they're in
+ * Nutrition Guidance, and Guidance is allowed for them here (release.ts:
+ * before the clinical review, in production, only people whose account is
+ * on the preview whitelist). Nobody else's meals are estimated.
+ */
+export async function micronutrientsActiveFor(db: SupabaseClient, subject: Subject): Promise<boolean> {
+  const state = await getGuidanceState(db, subject.contactId, subject.contactType);
+  if (state.mode !== "guidance") return false;
+  const facts = await loadContactFacts(db, subject.contactId, subject.contactType);
+  if (!facts) return false;
+  return (await loadReleaseState(db, facts.caregiverId)).canActivate;
+}
+
 /** The call every meal-save path makes. Never throws. */
 export async function afterMealSaved(
   db: SupabaseClient,
   params: { mealLogId: string; isAdults: boolean; entityId: string; analysis: AnalysisLike; trigger: EstimateTrigger }
 ): Promise<void> {
   if (!micronutrientsEnabled()) return;
+  const subject: Subject = { contactType: params.isAdults ? "adults" : "gym", contactId: params.entityId };
+  try {
+    if (!(await micronutrientsActiveFor(db, subject))) return;
+  } catch {
+    return;
+  }
   await recordMealNutrients(db, {
     mealLogId: params.mealLogId,
     subject: { contactType: params.isAdults ? "adults" : "gym", contactId: params.entityId },

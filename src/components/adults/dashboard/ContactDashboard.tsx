@@ -38,11 +38,15 @@ export function ContactDashboard({
   meals,
   guidance,
   guidanceActions,
+  guidanceSwitch,
+  guidanceCanTurnOff,
   guidanceHref,
 }: AdultsContactDetails & {
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
   guidanceActions?: GuidanceActions;
+  guidanceSwitch?: { setupHref: string; personName?: string };
+  guidanceCanTurnOff?: boolean;
   guidanceHref?: string;
 }) {
   const router = useRouter();
@@ -53,6 +57,8 @@ export function ContactDashboard({
       data={adaptAdultsContactDetails({ contact, meals })}
       guidance={guidance}
       guidanceActions={guidanceActions}
+      guidanceSwitch={guidanceSwitch}
+      guidanceCanTurnOff={guidanceCanTurnOff}
       guidanceHref={guidanceHref}
       backHref="/adults/dashboard"
       theme={FAMILY_ADMIN_THEME}

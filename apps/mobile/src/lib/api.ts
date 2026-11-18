@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import type { GuidanceActionResult, GuidanceOp, GuidanceResponse, GuidanceSubject } from "./guidance-types";
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_MOBILE_API_URL!;
 
@@ -455,9 +456,60 @@ export interface FoodPreferenceSelections {
   avoidsPork?: boolean;
 }
 
+// ---- Nutrition Guidance ----
+// The wire types live in ./guidance-types (dependency-free, so jest can
+// test the helpers built on them). mobile-api forwards these routes to the
+// web app's src/app/api/mobile/guidance, see its lib/guidance-proxy.ts.
+
+function guidancePath(subject: GuidanceSubject): string {
+  return subject.kind === "gym"
+    ? `/gym/clients/${encodeURIComponent(subject.id)}/guidance`
+    : `/adults/contacts/${encodeURIComponent(subject.id)}/guidance`;
+}
+
 // ---- API calls ----
 
 export const api = {
+  /** Guidance's state for one person. null on 404: Guidance isn't
+   * available for this person, or not to this viewer, and the app shows
+   * nothing Guidance-related. Other failures throw. */
+  getGuidance: async (subject: GuidanceSubject, opts: { timeoutMs?: number } = {}): Promise<GuidanceResponse | null> => {
+    // The person screens load this alongside the contact itself, so a slow
+    // upstream (mobile-api forwards to the web app) mustn't hold the whole
+    // screen: past the timeout the request is aborted and this throws.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10_000);
+    try {
+      return await apiRequest<GuidanceResponse>(guidancePath(subject), { method: "GET", signal: controller.signal });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+
+  /** One Guidance action (propose, confirm, off, plan, skip, habit, …).
+   * Never throws: the server answers { ok: false, kind, message? } for
+   * anything it refused, and a request that got no usable answer comes back
+   * as kind "request_failed", with no message, for the caller's generic
+   * "try again". */
+  guidanceAction: async (subject: GuidanceSubject, op: GuidanceOp, body: Record<string, unknown> = {}): Promise<GuidanceActionResult> => {
+    try {
+      const result = await apiRequest<GuidanceActionResult>(`${guidancePath(subject)}/${op}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      return result && typeof result === "object" && "ok" in result ? result : { ok: false, kind: "request_failed" };
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        return { ok: false, kind: "request_failed", message: "You've been signed out. Sign in again, then try once more." };
+      }
+      return { ok: false, kind: "request_failed" };
+    }
+  },
+
+
   // Side-effect-free — unlike getAdultsWorkspace/getGymWorkspace below,
   // this never creates a workspace. Use this to decide which
   // dashboard(s) to route into after login (see apps/mobile-api's

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, FlatList, Linking, Modal, Platform, Pressable, Share, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +23,11 @@ import { NUTRITION_GOAL_LABELS } from '@/lib/goals';
 import { calculateEnergyTargetRange, proteinTargetG, mapDerivedToLegacyActivityLevel, type FoodBalanceUserProfile } from '@nutriai/health-scoring';
 import { buildMealShareData } from '@/lib/meal-share/types';
 import { inviteStatusFor, type InviteStatus } from '@/lib/invite-status';
+import { viewerFor } from '@/lib/guidance-format';
+import type { GuidanceResponse, GuidanceSubject } from '@/lib/guidance-types';
+import { GuidanceModeSwitch, isSwitchView } from './guidance/guidance-mode-switch';
+import { GuidanceScreen } from './guidance/guidance-screen';
+import { GuidanceRefreshProvider, guidanceActionsFor, useGuidanceData } from './guidance/use-guidance';
 
 function initialsFor(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -68,6 +73,7 @@ export function PersonDetail({
   foodPreferencesContactId,
   tistraWhatsAppNumber,
   onReactToMeal,
+  guidance,
 }: {
   person: PersonLike;
   meals: MealLog[];
@@ -93,9 +99,35 @@ export function PersonDetail({
    * First reaction on a meal sends the contact a WhatsApp "seen by
    * family" line; hidden automatically on self-tracked contacts. */
   onReactToMeal?: (mealLogId: string, emoji: '👍' | '🎉' | '❤️') => Promise<{ emoji?: string; error?: string }>;
+  /** Nutrition Guidance for this person: who they are to the API, and the
+   * state the screen loaded alongside the person (null when there's nothing
+   * Guidance-related to show). In Guidance mode the screen shows the
+   * Guidance view in place of the tracking content; otherwise the Guidance
+   * mode switch leads the tracking content. */
+  guidance?: { subject: GuidanceSubject; initial: GuidanceResponse | null };
 }) {
   const theme = useTheme();
   const inviteStatusForPerson = inviteStatusFor(person);
+
+  // Nutrition Guidance: the state, refetched after every Guidance action
+  // (and after the switch turns it off), and the actions bound to this person.
+  const guidanceSubject = guidance?.subject;
+  const { data: guidanceData, refresh: refreshGuidance } = useGuidanceData(guidanceSubject, guidance ? guidance.initial : null);
+  const subjectKind = guidanceSubject?.kind;
+  const subjectId = guidanceSubject?.id;
+  const guidanceActions = useMemo(
+    () =>
+      subjectKind && subjectId
+        ? guidanceActionsFor(subjectKind === 'gym' ? { kind: 'gym', id: subjectId } : { kind: 'adults', id: subjectId })
+        : undefined,
+    [subjectKind, subjectId]
+  );
+  const guidanceViewer = viewerFor({
+    fullName: person.fullName,
+    isCoach: guidanceSubject?.kind === 'gym',
+    relationshipType: person.relationshipType,
+  });
+  const guidanceView = guidanceData?.view;
   const [dateRange, setDateRange] = useState<DashboardDateRange>(DEFAULT_DASHBOARD_DATE_RANGE);
   const [modalPhoto, setModalPhoto] = useState<{ url: string; label: string; meal: MealLog } | null>(null);
   // Optimistic family-loop reaction state, seeded from the server's
@@ -263,6 +295,55 @@ export function PersonDetail({
     };
   }, [foodPreferencesContactId]);
 
+  // The Guidance mode switch: hidden on a 404, and when Guidance is
+  // unavailable or off in this environment.
+  const guidanceSwitch = (tone: 'guidance' | 'tracking') =>
+    guidanceSubject && isSwitchView(guidanceView) ? (
+      <GuidanceModeSwitch
+        view={guidanceView}
+        tone={tone}
+        personName={guidanceViewer.kind === 'self' ? undefined : guidanceViewer.name}
+        onTurnOn={() =>
+          router.push(
+            (guidanceSubject.kind === 'gym'
+              ? `/gym/guidance/${guidanceSubject.id}`
+              : `/adults/guidance/${guidanceSubject.id}`) as never
+          )
+        }
+        onTurnOff={guidanceActions?.turnOff}
+        onChanged={refreshGuidance}
+      />
+    ) : null;
+
+  const inviteBanner =
+    'contactId' in foodBalanceQuery && inviteStatusForPerson !== 'connected' ? (
+      <InviteStatusBanner
+        contactId={foodBalanceQuery.contactId}
+        personName={person.fullName}
+        isSelf={person.relationshipType === 'self'}
+        status={inviteStatusForPerson}
+        tistraWhatsAppNumber={tistraWhatsAppNumber}
+      />
+    ) : null;
+
+  // In Guidance mode the Guidance view replaces the tracking content: its
+  // Today and Progress tabs would only repeat the summaries and charts below.
+  if (guidanceView?.kind === 'active' && guidanceData?.dashboard) {
+    return (
+      <GuidanceRefreshProvider value={refreshGuidance}>
+        <GuidanceScreen
+          guidance={guidanceData.dashboard}
+          viewer={guidanceViewer}
+          firstName={person.fullName.trim().split(/\s+/)[0] ?? person.fullName}
+          actions={guidanceActions}
+          header={guidanceSwitch('guidance')}
+          notice={inviteBanner}
+          onRefresh={refreshGuidance}
+        />
+      </GuidanceRefreshProvider>
+    );
+  }
+
   return (
     <>
       <FlatList
@@ -271,6 +352,10 @@ export function PersonDetail({
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <View style={styles.sections}>
+            {/* Guidance mode's switch leads the page, as the off state of
+                the same switch the Guidance view shows at its top. */}
+            {guidanceSwitch('tracking')}
+
             {/* Highest-priority item on this page until connected — mirrors
                 the web dashboard's invite status badge/InviteCard (see
                 AdultsDashboardClient.tsx). Shown for "self" too (that
@@ -282,15 +367,7 @@ export function PersonDetail({
                 WhatsApp's own customer-service window, so meal reminders
                 stop being delivered even though the contact is a genuine,
                 active user — see inviteStatusFor's own doc comment). */}
-            {'contactId' in foodBalanceQuery && inviteStatusForPerson !== 'connected' && (
-              <InviteStatusBanner
-                contactId={foodBalanceQuery.contactId}
-                personName={person.fullName}
-                isSelf={person.relationshipType === 'self'}
-                status={inviteStatusForPerson}
-                tistraWhatsAppNumber={tistraWhatsAppNumber}
-              />
-            )}
+            {inviteBanner}
 
             <View>
               {'contactId' in foodBalanceQuery && (

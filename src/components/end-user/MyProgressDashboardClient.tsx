@@ -31,6 +31,8 @@ export function MyProgressDashboardClient({
   guidanceMode,
   guidance,
   guidanceActions,
+  guidanceSwitch,
+  guidanceCanTurnOff,
 }: {
   dashboard: EndUserDashboard;
   /** Set only when the Guidance entry should show (see isGuidanceEntryVisible). */
@@ -38,6 +40,8 @@ export function MyProgressDashboardClient({
   /** Nutrition Guidance, when it's in effect — see ProfileDashboard. */
   guidance?: GuidanceDashboard | null;
   guidanceActions?: GuidanceActions;
+  guidanceSwitch?: { setupHref: string; personName?: string };
+  guidanceCanTurnOff?: boolean;
 }) {
   const router = useRouter();
   const [paused, setPaused] = useState(dashboard.isPaused);
@@ -93,6 +97,8 @@ export function MyProgressDashboardClient({
         role="participant"
         guidance={guidance}
         guidanceActions={guidanceActions}
+        guidanceSwitch={guidanceMode === "tracking" ? { setupHref: "/my-progress/guidance" } : guidanceSwitch}
+        guidanceCanTurnOff={guidanceCanTurnOff ?? true}
         onSignOut={handleSignOut}
         guidanceHref="/my-progress/guidance"
         // No self-service profile-edit UI exists yet for the end-user OTP
@@ -106,7 +112,7 @@ export function MyProgressDashboardClient({
       />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-8 space-y-6">
-        {guidanceMode && !guidance && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
+        {guidanceMode === "guidance" && !guidance && <GuidanceEntryCard href="/my-progress/guidance" mode={guidanceMode} />}
 
         <section className="bg-white rounded-xl p-5 shadow-sm">
           <p className="text-sm font-medium text-neutral-900 mb-2">Who has access</p>

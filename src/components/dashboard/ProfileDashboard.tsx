@@ -30,6 +30,7 @@ import { permissionsForRole } from "@/lib/dashboard/permissions";
 import type { ProfileDashboardData } from "@/lib/dashboard/profile-dashboard-types";
 import type { GuidanceActions } from "@/lib/guidance/bound-actions";
 import type { GuidanceDashboard } from "@/lib/guidance/view";
+import { GuidanceModeOffBar } from "@/components/guidance/GuidanceModeSwitch";
 import { GuidanceScreen, GuidanceSetupPrompt, type GuidanceViewer } from "@/components/guidance/GuidanceScreen";
 
 const ActivityHeatmap = dynamic(() => import("@/components/gym/dashboard/ActivityHeatmap").then((m) => m.ActivityHeatmap), { ssr: false });
@@ -122,6 +123,11 @@ export interface ProfileDashboardProps {
   guidanceActions?: GuidanceActions;
   /** For a signed-in end user: Guidance's avatar menu offers Sign out. */
   onSignOut?: () => void;
+  /** Guidance is offered but off: a switch at the top of the page opens
+   * its setup. */
+  guidanceSwitch?: { setupHref: string; personName?: string };
+  /** Whether this viewer may switch Guidance off from its header. */
+  guidanceCanTurnOff?: boolean;
 }
 
 const REACTION_EMOJIS = ["👍", "🎉", "❤️"] as const;
@@ -142,6 +148,8 @@ export function ProfileDashboard({
   guidanceSetup,
   guidanceActions,
   onSignOut,
+  guidanceSwitch,
+  guidanceCanTurnOff,
 }: ProfileDashboardProps) {
   const { profile, meals, workouts, biomarkers } = data;
   const [showEdit, setShowEdit] = useState(false);
@@ -296,6 +304,7 @@ export function ProfileDashboard({
           onEditDetails={permissions.canManageGoal && renderEditModal ? () => setShowEdit(true) : undefined}
           actions={guidanceActions}
           onSignOut={onSignOut}
+          canTurnOff={guidanceCanTurnOff}
           notice={
             showInvite && invite ? (
               <InviteCard
@@ -354,6 +363,9 @@ export function ProfileDashboard({
       {editModal}
 
       <main className={`${theme.containerMaxWidthClassName} mx-auto px-4 sm:px-6 py-6 space-y-6`}>
+        {/* Guidance mode's switch leads the page, as the off state of the
+            same switch the Guidance screen shows in its header. */}
+        {!guidanceSetup && guidanceSwitch && <GuidanceModeOffBar dm={dm} {...guidanceSwitch} />}
 
         {/* Health-markers completeness nudge — shown above everything else
             so it's the first thing a caregiver/participant sees when

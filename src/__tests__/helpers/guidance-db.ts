@@ -34,6 +34,8 @@ export interface GuidanceRows {
   supplement_doses?: Row[];
   meal_nutrient_estimates?: Row[];
   meal_nutrient_facts?: Row[];
+  /** Account owners, for the preview whitelist (release.ts). */
+  profiles?: Row[];
 }
 
 type Table = keyof GuidanceRows;

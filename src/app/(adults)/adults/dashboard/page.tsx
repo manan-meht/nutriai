@@ -62,7 +62,7 @@ export default async function AdultsDashboardPage({ searchParams }: AdultsDashbo
   const hasSelfContact = contacts.some((c) => c.relationshipType === "self");
   // People in Nutrition Guidance get a Guidance marker on their card in
   // place of the Food Balance Score.
-  const guidanceContactIds = await loadGuidanceContactIds(createServiceClient(), contacts.map((c) => c.id));
+  const guidanceContactIds = await loadGuidanceContactIds(createServiceClient(), contacts.map((c) => c.id), user.id);
 
   // Persist self-tracking intent as soon as it's known, rather than only
   // relying on the one-time ?self=1 redirect param — see markWorkspaceSelfPlan.

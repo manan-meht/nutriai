@@ -54,7 +54,7 @@ describe("the region reaches the person", () => {
 
   it("is passed from the WhatsApp handler on every analysis", () => {
     const t = src("lib/whatsapp/conversation-handler.ts");
-    expect(t).toMatch(/analyzeFood\(\{ \.\.\.input, timezone: contactTimezone \}\)/);
+    expect(t).toMatch(/analyzeFood\(\{\s*\.\.\.input,\s*timezone: contactTimezone,/);
     // No call may bypass the wrapper, or that path silently loses the region.
     expect(t.match(/\banalyzeFood\(\{/g) ?? []).toHaveLength(1);
     expect(t).toMatch(/buildLowConfidenceClarificationMessage\(decision, contactTimezone\)/);

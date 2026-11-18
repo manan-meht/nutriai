@@ -6,8 +6,12 @@ import { PersonDetail } from '@/components/person-detail';
 import { ThemedText } from '@/components/themed-text';
 import { ErrorState, LoadingState } from '@/components/screen-states';
 import { api, type GymClientDetails } from '@/lib/api';
+import type { GuidanceResponse } from '@/lib/guidance-types';
 
-type State = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; details: GymClientDetails };
+type State =
+  | { status: 'loading' }
+  | { status: 'error'; message: string }
+  | { status: 'ready'; details: GymClientDetails; guidance: GuidanceResponse | null };
 
 export default function GymClientDetailScreen() {
   const { clientId } = useLocalSearchParams<{ clientId: string }>();
@@ -15,9 +19,10 @@ export default function GymClientDetailScreen() {
 
   const load = useCallback(() => {
     setState({ status: 'loading' });
-    api
-      .getGymClientDetails(clientId)
-      .then((details) => setState({ status: 'ready', details }))
+    // Guidance's state loads alongside (see adults/[contactId].tsx); a
+    // failure there only means no Guidance on this screen.
+    Promise.all([api.getGymClientDetails(clientId), api.getGuidance({ kind: 'gym', id: clientId }).catch(() => null)])
+      .then(([details, guidance]) => setState({ status: 'ready', details, guidance }))
       .catch((err) =>
         setState({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load client.' })
       );
@@ -59,6 +64,7 @@ export default function GymClientDetailScreen() {
           onRegenerate: (ttlHours) => api.regenerateGymAccessCode(clientId, ttlHours),
           onRevoke: () => api.revokeGymAccessCode(clientId),
         }}
+        guidance={{ subject: { kind: 'gym', id: clientId }, initial: state.guidance }}
       />
     </>
   );

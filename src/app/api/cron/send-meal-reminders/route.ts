@@ -416,9 +416,11 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
   let sent = 0;
   let skipped = 0;
 
-  // Nutrition Guidance changes what a reminder says. The release state is
-  // the same for everyone, so it's read once; with the flag off (as in
-  // production) or the gate closed, no contact costs an extra query.
+  // Nutrition Guidance changes what a reminder says. With the flag off no
+  // contact costs an extra query. With it on, the gate is per person
+  // (before the clinical review only preview-whitelisted accounts' people
+  // can be in Guidance), so loadWhatsAppGuidance decides for each one; a
+  // reviewed policy, read once here, lets it skip the owner lookup.
   const guidanceRelease = GUIDANCE_ENABLED ? await loadReleaseState(db) : null;
 
   for (const target of targets) {
@@ -448,7 +450,7 @@ async function runMealReminders(db: ReturnType<typeof createServiceClient>) {
       // Guidance on: the reminder reports what's left, and Today's Focus,
       // which is coaching, isn't built at all. Never throws: a failure
       // falls back to the ordinary reminder.
-      const guidance = guidanceRelease?.canActivate
+      const guidance = guidanceRelease
         ? await loadWhatsAppGuidance(db, { contactId: target.id, contactType: target.contactType, now, release: guidanceRelease }).catch(
             (err) => {
               console.error("[reminders] guidance load failed:", target.contactType, target.id, err instanceof Error ? err.message : err);

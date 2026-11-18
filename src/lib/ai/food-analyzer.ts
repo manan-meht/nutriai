@@ -355,6 +355,11 @@ export async function analyzeFood(input: {
   /** The contact's IANA timezone — picks the regional dish vocabulary the
    * prompt is told to expect (see region-context.ts). */
   timezone?: string;
+  /** Ask for the extra fields vitamin and mineral estimates use (weights,
+   * raw or cooked, ingredients). Only for a person in Nutrition Guidance,
+   * and only while GUIDANCE_MICRONUTRIENTS_ENABLED is on: everyone else's
+   * prompt stays exactly as it was. */
+  micronutrientFields?: boolean;
 }): Promise<FoodAnalysisResult> {
   // Reverted from gemini-3.1-flash-lite back to gemini-2.5-flash: flash-lite
   // was ~5x faster and did well in a 14-photo image-analysis comparison,
@@ -373,7 +378,8 @@ export async function analyzeFood(input: {
     generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
-  let textPrompt = `${SYSTEM_PROMPT}${micronutrientPromptEnabled() ? MICRONUTRIENT_PROMPT_SECTION : ""}\n\n${regionPromptSection(input.timezone)}`;
+  const withMicronutrients = input.micronutrientFields === true && micronutrientPromptEnabled();
+  let textPrompt = `${SYSTEM_PROMPT}${withMicronutrients ? MICRONUTRIENT_PROMPT_SECTION : ""}\n\n${regionPromptSection(input.timezone)}`;
   if (input.correctionContext) {
     textPrompt += `\n\nPrevious identification: ${input.correctionContext}\nUser correction (trust this over the image): ${input.text ?? ""}\nIf this correction resolves a previous food-identity ambiguity (e.g. the user named the item), set has_high_impact_ambiguity to false and food_identity_confidence to "high" for the resolved item.`;
   } else if (input.text) {
