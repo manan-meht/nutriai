@@ -152,6 +152,18 @@ function fakeDb(
       }
       if (table === "meal_logs") {
         return {
+          update: (patch: any) => ({
+            eq: (_col: string, id: string) => ({
+              select: () => ({
+                maybeSingle: async () => {
+                  const idx = mealLogs.findIndex((m) => m.id === id);
+                  if (idx < 0) return { data: null, error: null };
+                  mealLogs[idx] = { ...mealLogs[idx], ...patch };
+                  return { data: { id }, error: null };
+                },
+              }),
+            }),
+          }),
           insert: (row: any) => ({
             select: () => ({
               single: async () => {
@@ -188,6 +200,29 @@ function fakeDb(
   };
 
   return { db, mealLogs, updatedConversations };
+}
+
+function staleConv(pending: Record<string, unknown>) {
+  return {
+    id: "conv-1",
+    adults_contact_id: "contact-1",
+    client_id: null,
+    workspace_id: "ws-1",
+    whatsapp_number: "919999999999",
+    pending_meal: pending,
+  };
+}
+
+async function runSweep(db: any) {
+  (createServiceClient as jest.Mock).mockReturnValue(db);
+  const mod = await import("@/app/api/cron/send-meal-reminders/route");
+  const res = await mod.POST(
+    new NextRequest("https://x/api/cron/send-meal-reminders", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-secret" },
+    })
+  );
+  return res.json();
 }
 
 describe("POST /api/cron/send-meal-reminders — stale clarification resolution", () => {
@@ -257,6 +292,38 @@ describe("POST /api/cron/send-meal-reminders — stale clarification resolution"
     expect(updatedConversations).toHaveLength(1);
     expect(updatedConversations[0].patch.state).toBe("idle");
     expect(updatedConversations[0].patch.pending_meal.status).toBe("saved");
+  });
+
+  // A correction to a saved meal that paused on a question carries the
+  // saved meal's id. Its best guess must replace that row: inserting it left
+  // the original's old numbers in place next to a second copy of the meal.
+  it("applies a stale correction's best guess to the meal it corrects, without adding a row", async () => {
+    const { db, mealLogs, updatedConversations } = fakeDb([
+      staleConv({ ...pendingMeal, summary: "rice and dal, large bowl", total_calories_max: 650, savedMealId: "meal-saved" }),
+    ]);
+    mealLogs.push({ id: "meal-saved", adults_contact_id: "contact-1", ai_summary: "rice and dal", total_calories_max: 400 });
+
+    const body = await runSweep(db);
+
+    expect(body.staleClarifications).toEqual({ checked: 1, resolved: 1, skipped: 0 });
+    expect(mealLogs).toHaveLength(1);
+    expect(mealLogs[0]).toMatchObject({ id: "meal-saved", ai_summary: "rice and dal, large bowl", total_calories_max: 650 });
+    expect(sendTextMessage).toHaveBeenCalledWith("919999999999", expect.stringContaining("I've updated your"));
+    // The caregiver heard about this meal when it was first saved.
+    expect(sendPushNotificationToProfile).not.toHaveBeenCalled();
+    expect(updatedConversations[0].patch.pending_meal).toMatchObject({ status: "saved", savedMealId: "meal-saved" });
+  });
+
+  it("saves the best guess as a new meal when the meal it corrects has since been deleted", async () => {
+    const { db, mealLogs, updatedConversations } = fakeDb([staleConv({ ...pendingMeal, savedMealId: "meal-gone" })]);
+
+    const body = await runSweep(db);
+
+    expect(body.staleClarifications).toEqual({ checked: 1, resolved: 1, skipped: 0 });
+    expect(mealLogs).toHaveLength(1);
+    expect(mealLogs[0]).toMatchObject({ id: "meal-1", adults_contact_id: "contact-1", trainer_id: "caregiver-1" });
+    expect(sendTextMessage).toHaveBeenCalledWith("919999999999", expect.stringContaining("I've saved your"));
+    expect(updatedConversations[0].patch.pending_meal.savedMealId).toBe("meal-1");
   });
 
   it("skips conversations with no pending_meal without erroring", async () => {
