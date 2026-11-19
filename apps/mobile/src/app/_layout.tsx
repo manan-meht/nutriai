@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 // DarkTheme/DefaultTheme/ThemeProvider used to be re-exported from
 // expo-router itself (SDK 57) — the SDK 54 version this app is now pinned
@@ -16,7 +16,11 @@ import { configurePurchases, logOutPurchases } from '@/lib/purchases';
 import { checkForUpdate } from '@/lib/check-for-update';
 import { checkVersionGate } from '@/lib/version-gate';
 import { UnsupportedVersionScreen } from '@/components/unsupported-version';
-import { updateAppIconForWeeklyActivity } from '@/lib/dynamic-app-icon';
+import {
+  chooseAppIconForWeeklyActivity,
+  noteAppTouch,
+  switchAppIconIfDue,
+} from '@/lib/dynamic-app-icon';
 
 // Hold the native splash (the Tistra bowl on purple) until the stored
 // session has been restored, so the login screen never flashes on a cold
@@ -73,9 +77,19 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      {/* Touches are recorded so the launcher icon never switches while an
+          in-app action has just opened another screen (share sheet, picker,
+          billing, sign-in). See app-icon-switch-rules.ts. */}
+      <View
+        style={styles.root}
+        onTouchStart={noteAppTouch}
+        onTouchEndCapture={noteAppTouch}
+        onTouchCancel={noteAppTouch}
+      >
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </View>
     </ThemeProvider>
   );
 }
@@ -109,17 +123,18 @@ function RootNavigator() {
     }
   }, [session?.user.id]);
 
-  // Refreshes the Android launcher icon (empty/starting-to-fill/filling-up/
-  // full bowl) from the trailing week's meal-sharing activity — once as
-  // soon as a session exists, and again on every subsequent foreground
-  // (mirrors checkForUpdate's cadence), so the icon reflects reasonably
-  // fresh data without a per-screen refetch. No-op on iOS and while
-  // signed out — see dynamic-app-icon.ts.
+  // Android launcher icon (empty/starting-to-fill/filling-up/full bowl) from
+  // the trailing week's meal-sharing activity. The bowl is chosen as soon as
+  // a session exists and on every return to the foreground, but the icon
+  // only switches once the app goes to the background: switching closes
+  // whatever the app has open. No-op on iOS and while signed out. See
+  // dynamic-app-icon.ts.
   useEffect(() => {
     if (!session) return;
-    updateAppIconForWeeklyActivity();
+    chooseAppIconForWeeklyActivity();
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') updateAppIconForWeeklyActivity();
+      if (state === 'active') chooseAppIconForWeeklyActivity();
+      else if (state === 'background') switchAppIconIfDue();
     });
     return () => subscription.remove();
   }, [session]);
@@ -161,3 +176,7 @@ function RootNavigator() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

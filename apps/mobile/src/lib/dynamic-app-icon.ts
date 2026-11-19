@@ -1,6 +1,8 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { setAppIcon, getAppIcon } from 'expo-dynamic-app-icon';
 import { api } from './api';
+import { shouldSwitchIconNow } from './app-icon-switch-rules';
 
 // Android-only, by request — iOS has no equivalent of "silently swap the
 // launcher icon in the background"; Apple only allows a user-triggered,
@@ -56,46 +58,94 @@ async function totalWeeklyMealCount(): Promise<number> {
   return total;
 }
 
+// --- When the icon switches -------------------------------------------------
+//
+// A check only *chooses* the icon (chooseAppIconForWeeklyActivity, while the
+// app is open). The switch itself waits until the person leaves the app
+// (switchAppIconIfDue, on AppState 'background'), because switching closes
+// every screen the app has open; see app-icon-switch-rules.ts.
+//
+// Until 2026-11-19 this module switched as soon as a foreground check found a
+// new bowl. It also forced one switch call per launch to clear a duplicate
+// icon left by the unpatched native module (versionCode 34 and earlier). Only
+// 1.0.1 builds receive this code over the air, and those builds already run
+// the native self-heal at startup (patches/expo-dynamic-app-icon+1.2.0.patch),
+// so the forced call is gone.
+//
+// A skipped switch is not lost. The next check chooses the same bowl again,
+// and the switch happens on a later exit.
+
+const LAST_SWITCH_KEY = 'app_icon_last_switch_at';
+
 let checking = false;
+let pendingIcon: BowlIconName | null = null;
+let lastTouchAt = 0;
+/** Loaded from SecureStore by the first check. null until then, which blocks
+ * switching. */
+let lastSwitchAt: number | null = null;
 
-/** Cleared once per app process — see the self-heal note in
- * updateAppIconForWeeklyActivity. */
-let hasForcedIconSyncThisLaunch = false;
+/** Called by the root view on every touch. */
+export function noteAppTouch(): void {
+  lastTouchAt = Date.now();
+}
 
-/** Best-effort — a failure here should never surface to the person using
- * the app; the launcher icon just doesn't update until the next successful
- * check. Safe to call repeatedly (e.g. every foreground): setAppIcon() is a
- * no-op if the target icon is already the active one under the hood, but we
- * also skip the call ourselves via getAppIcon() to avoid the brief
- * relaunch blip Android does on every activity-alias swap, even a same-icon
- * one.
- *
- * The getAppIcon() skip is deliberately bypassed once per app launch. Builds
- * up to and including versionCode 34 shipped the unpatched
- * expo-dynamic-app-icon, which enabled the new launcher alias but only
- * queued the old component for disabling — so any install whose process died
- * before that ran is sitting with two enabled launcher components and shows
- * the app twice. getAppIcon() reports only the *active* alias, so on those
- * installs it already equals the target and the guard would skip forever,
- * leaving the duplicate stuck. Forcing one call per launch lets the patched
- * native side (which now disables every non-target alias synchronously)
- * sweep the leftover. Enabling an already-enabled component is a no-op, so
- * the forced call costs nothing on healthy installs.
- */
-export async function updateAppIconForWeeklyActivity(): Promise<void> {
+function shownIcon(): string | null {
+  try {
+    return getAppIcon();
+  } catch {
+    return null;
+  }
+}
+
+async function loadLastSwitchAt(): Promise<number> {
+  try {
+    return Number(await SecureStore.getItemAsync(LAST_SWITCH_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Works out which bowl the icon should show, without switching it. Call while
+ * the app is open (once a session exists, and on every return to the
+ * foreground). Best-effort: a failure never reaches the person using the app,
+ * and the icon stays as it is until a later check succeeds. */
+export async function chooseAppIconForWeeklyActivity(): Promise<void> {
   if (Platform.OS !== 'android' || checking) return;
   checking = true;
   try {
-    const mealCount = await totalWeeklyMealCount();
-    const target = bowlIconForWeeklyMealCount(mealCount);
-    const mustForceSync = !hasForcedIconSyncThisLaunch;
-    if (mustForceSync || getAppIcon() !== target) {
-      setAppIcon(target);
-      hasForcedIconSyncThisLaunch = true;
-    }
+    if (lastSwitchAt === null) lastSwitchAt = await loadLastSwitchAt();
+    const target = bowlIconForWeeklyMealCount(await totalWeeklyMealCount());
+    pendingIcon = shownIcon() === target ? null : target;
   } catch (err) {
     console.warn('[dynamic-app-icon] failed:', err);
   } finally {
     checking = false;
+  }
+}
+
+/** Call when the app goes to the background. Synchronous on purpose: it has
+ * to finish while the app is on its way out, before Android pauses JS. */
+export function switchAppIconIfDue(): void {
+  if (Platform.OS !== 'android') return;
+  const now = Date.now();
+  if (
+    !shouldSwitchIconNow({
+      pendingIcon,
+      appState: AppState.currentState,
+      now,
+      lastTouchAt,
+      lastSwitchAt,
+    })
+  ) {
+    return;
+  }
+  const target = pendingIcon as BowlIconName;
+  pendingIcon = null;
+  lastSwitchAt = now;
+  SecureStore.setItemAsync(LAST_SWITCH_KEY, String(now)).catch(() => {});
+  try {
+    setAppIcon(target);
+  } catch (err) {
+    console.warn('[dynamic-app-icon] switch failed:', err);
   }
 }
