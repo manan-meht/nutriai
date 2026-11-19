@@ -10,7 +10,7 @@ export const runtime = "edge";
 // helper into a shared package for one config value.
 function sessionTtlDays(): number {
   const raw = Number(process.env.PARENT_TRUSTED_SESSION_DAYS);
-  return Number.isFinite(raw) && raw > 0 ? raw : 90;
+  return Number.isFinite(raw) && raw > 0 ? raw : 365;
 }
 
 // POST /end-user/verify-otp — mobile equivalent of the web app's

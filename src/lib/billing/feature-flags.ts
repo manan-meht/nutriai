@@ -236,7 +236,10 @@ export function isMealSpecificRecommendationsEnabledFor(contactId: string, owner
 export function parentTrustedSessionDays(): number {
   const raw = process.env.PARENT_TRUSTED_SESSION_DAYS;
   const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 90;
+  // 365 since 2026-11-19 (was 90): with sliding expiry (see
+  // validateEndUserSessionToken) this is how long a session may sit unused
+  // before it asks for a code again.
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 365;
 }
 
 /** Configurable activation date for the account-limit/trial-enforcement

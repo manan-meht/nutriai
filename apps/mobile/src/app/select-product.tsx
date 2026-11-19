@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { router } from 'expo-router';
+import { getEndUserSessionToken } from '@/lib/end-user-session';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Pressable, StyleSheet } from 'react-native';
 
@@ -16,6 +18,23 @@ import { clearLastDashboardChoice, saveLastDashboardChoice } from '@/lib/product
 // components/product-picker.tsx for why the card UI itself lives there
 // instead of here.
 export default function SelectProductScreen() {
+  // A participant who signed in with a WhatsApp code keeps that session in
+  // the keychain (lib/end-user-session.ts). Reopening the app lands here,
+  // the signed-out start screen, so send them straight back to their
+  // dashboard instead of asking for another code. The dashboard itself
+  // clears the token and returns to sign-in if the server rejects it.
+  useEffect(() => {
+    let cancelled = false;
+    getEndUserSessionToken()
+      .then((token) => {
+        if (token && !cancelled) router.replace('/end-user/dashboard');
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>

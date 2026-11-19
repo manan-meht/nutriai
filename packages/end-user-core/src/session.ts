@@ -44,7 +44,14 @@ export interface EndUserSessionInfo {
 
 /** Validates a raw session token against end_user_sessions. Returns null
  * for missing/expired/unknown tokens — callers must treat that as "not
- * authenticated" and require re-verification. */
+ * authenticated" and require re-verification.
+ *
+ * Sliding expiry (2026-11-19, "make the sessions permanent"): every
+ * successful use pushes expires_at forward by the session's own window
+ * (expires_at - created_at, as issued), so someone who keeps using the app
+ * or site never has to verify again. Only a session left unused for its
+ * whole window lapses. Signing out, or "sign out all devices", still ends
+ * it at once. */
 export async function validateEndUserSessionToken(db: SupabaseClient, token: string): Promise<EndUserSessionInfo | null> {
   const tokenHash = await hashToken(token);
   const { data } = await db
@@ -54,11 +61,18 @@ export async function validateEndUserSessionToken(db: SupabaseClient, token: str
     .maybeSingle();
 
   if (!data) return null;
-  if (new Date(data.expires_at).getTime() < Date.now()) return null;
+  const now = Date.now();
+  const expiresAt = new Date(data.expires_at).getTime();
+  if (expiresAt < now) return null;
 
+  const window = expiresAt - new Date(data.created_at).getTime();
+  const renewed = Number.isFinite(window) && window > 0 ? now + window : expiresAt;
   await db
     .from("end_user_sessions")
-    .update({ last_seen_at: new Date().toISOString() })
+    .update({
+      last_seen_at: new Date(now).toISOString(),
+      ...(renewed > expiresAt ? { expires_at: new Date(renewed).toISOString() } : {}),
+    })
     .eq("id", data.id);
 
   return { contactId: data.contact_id, contactType: data.contact_type };
