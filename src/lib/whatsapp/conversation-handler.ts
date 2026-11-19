@@ -24,7 +24,9 @@ import {
   FoodAnalysisResult,
   MealType,
   ANALYZER_MODEL_VERSION,
+  ANALYZER_PROMPT_VERSION,
 } from "@/lib/ai/food-analyzer";
+import { classifyCorrection, portionHistoryLines, type PortionCorrectionRow } from "@/lib/ai/portion-reference";
 import { analysisHasFoodContent } from "@/lib/ai/meal-content";
 import { getEntitlementSnapshot } from "@/lib/entitlements/entitlements";
 import { END_USER_DASHBOARD_ENABLED } from "@/lib/billing/feature-flags";
@@ -621,12 +623,44 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
   // Vitamin and mineral fields are asked for only for someone in Guidance
   // (and only while GUIDANCE_MICRONUTRIENTS_ENABLED is on): with the flag
   // off this costs nothing and changes nothing.
-  const analyzeForContact = async (input: Parameters<typeof analyzeFood>[0]) =>
-    analyzeFood({
+  //
+  // A fresh analysis (not a correction) also carries this person's recent
+  // portion corrections, so "the avocado is 1/4" carries over to their next
+  // photo instead of having to be made again. Loaded at most once per
+  // message, and never throws: no history is the fallback, never a lost meal.
+  let portionHistoryLoad: Promise<string[]> | undefined;
+  const getPortionHistory = () =>
+    (portionHistoryLoad ??= (async () => {
+      try {
+        const since = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+        const { data, error } = await db
+          .from("meal_portion_corrections")
+          .select("user_correction_text, original_foods:original_model_output->foods, final_foods:final_logged_meal->foods")
+          .eq("user_id", entityId)
+          .eq("user_type", isAdults ? "adults" : "gym")
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(15);
+        if (error || !Array.isArray(data)) return [];
+        return portionHistoryLines(data as PortionCorrectionRow[]);
+      } catch (err) {
+        console.error("[whatsapp] portion history load failed:", err instanceof Error ? err.message : err);
+        return [];
+      }
+    })());
+
+  const analyzeForContact = async (input: Parameters<typeof analyzeFood>[0]) => {
+    const [guidance, portionHistory] = await Promise.all([
+      micronutrientsEnabled() ? getGuidance() : Promise.resolve(null),
+      input.correctionContext ? Promise.resolve([]) : getPortionHistory(),
+    ]);
+    return analyzeFood({
       ...input,
       timezone: contactTimezone,
-      micronutrientFields: micronutrientsEnabled() ? (await getGuidance()) != null : false,
+      micronutrientFields: guidance != null,
+      ...(portionHistory.length ? { portionHistory } : {}),
     });
+  };
 
   // Mark invite accepted on first-ever message from this contact
   if (isAdults && adultsContact.invite_sent_at && !adultsContact.invite_accepted_at) {
@@ -1132,7 +1166,7 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         // console's human corrections can be compared across budgets —
         // this is the measurement the 512 decision explicitly deferred to.
         model_version: ANALYZER_MODEL_VERSION,
-        prompt_version: "v2",
+        prompt_version: ANALYZER_PROMPT_VERSION,
         taxonomy_version: "v1",
         food_knowledge_base_version: "v1",
         detected_items_json: analysis.foods,
@@ -1168,23 +1202,12 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
     mealLogId?: string
   ) {
     try {
+      // Nothing worth recording when the correction didn't move the
+      // estimate in any way we'd want to learn from.
+      const issueType = classifyCorrection(previous, corrected);
+      if (!issueType) return;
       const prevProtein = (previous.total_protein_min + previous.total_protein_max) / 2;
       const newProtein = (corrected.total_protein_min + corrected.total_protein_max) / 2;
-      const proteinDelta = newProtein - prevProtein;
-      const proteinChangedMeaningfully = Math.abs(proteinDelta) >= Math.max(5, prevProtein * 0.2);
-      const foodChanged = previous.foods.map((f) => f.name.toLowerCase()).join(",") !== corrected.foods.map((f) => f.name.toLowerCase()).join(",");
-      const mealTypeChanged = previous.meal_type !== corrected.meal_type;
-
-      // Nothing worth recording — the correction didn't move the estimate
-      // in any way we'd want to learn from.
-      if (!proteinChangedMeaningfully && !foodChanged && !mealTypeChanged) return;
-
-      let issueType: string;
-      if (foodChanged && !proteinChangedMeaningfully) issueType = "wrong_food";
-      else if (mealTypeChanged && !proteinChangedMeaningfully && !foodChanged) issueType = "wrong_meal_type";
-      else if (proteinDelta < 0) issueType = "portion_overestimate";
-      else if (proteinDelta > 0) issueType = "portion_underestimate";
-      else issueType = "wrong_calories";
 
       const primaryFood = corrected.foods[0]?.name ?? previous.foods[0]?.name ?? null;
 
