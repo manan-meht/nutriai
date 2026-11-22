@@ -16,7 +16,7 @@
 // sanity bounds drawn from typical published values (IFCT/USDA-style
 // figures for cooked, as-eaten food), not lab-grade composition data.
 
-import type { FoodAnalysisResult, FoodItem } from "./food-analyzer";
+import type { FoodAnalysisResult, FoodCategory, FoodItem } from "./food-analyzer";
 
 export type PieceSize = "small" | "medium" | "large";
 type GramRange = readonly [number, number];
@@ -32,7 +32,9 @@ interface PieceSpec {
 export const PIECE_WEIGHTS = {
   paneer_cube: { label: "paneer cube", small: [8, 14], medium: [15, 25], large: [30, 45] },
   tofu_cube: { label: "tofu cube", small: [8, 14], medium: [15, 25], large: [30, 45] },
-  chicken_piece: { label: "boneless chicken piece, edible meat", small: [10, 20], medium: [20, 35], large: [40, 60] },
+  // Any boneless meat or fish, not just chicken: with no generic piece the
+  // model weighed 3 glazed meat cubes as cutlets (50-70g each).
+  meat_piece: { label: "boneless chicken, mutton, pork, beef or fish piece, edible meat", small: [10, 20], medium: [20, 35], large: [40, 60] },
   momo_dumpling: { label: "momo, dumpling, dim sum or gyoza, whole", small: [15, 22], medium: [25, 35], large: [40, 55] },
   indian_sweet_piece: { label: "burfi, katli, peda or ladoo piece", small: [12, 18], medium: [20, 30], large: [35, 50] },
   chocolate_square: { label: "square of a chocolate bar", small: [4, 6], medium: [7, 10], large: [12, 18] },
@@ -46,6 +48,21 @@ export const PIECE_WEIGHTS = {
 } as const satisfies Record<string, PieceSpec>;
 
 export type PieceType = keyof typeof PIECE_WEIGHTS;
+
+const MEAT_CATEGORIES: readonly FoodCategory[] = ["chicken", "fish", "beef", "pork", "shellfish", "red_meat"];
+
+/** A protein food may only be weighed with its own kind of piece: paneer
+ * as paneer cubes, meat and fish as meat pieces. A mismatch (meat cubes
+ * weighed as cutlets, say) means the model reached for the wrong table,
+ * so the count is ignored and the model's own weight is used instead. Any
+ * piece type is fine for a dish or an unclassified item. */
+function pieceTypeFits(pieceType: PieceType, category: FoodItem["food_category"]): boolean {
+  if (!category || category === "other") return true;
+  if (category === "paneer") return pieceType === "paneer_cube";
+  if (category === "tofu") return pieceType === "tofu_cube";
+  if (MEAT_CATEGORIES.includes(category)) return pieceType === "meat_piece";
+  return false; // egg (counted as eggs), avocado, seeds_nuts, legume_dal
+}
 
 interface DishClassSpec {
   examples: string;
@@ -82,6 +99,9 @@ export const DISH_CLASSES = {
   raw_vegetables: { examples: "cucumber, carrot, salad leaves, tomato, without dressing", kcalPerGram: [0.1, 0.5], maxProteinPerGram: 0.03, composite: false },
   sweetened_drink: { examples: "juice, soda, sweetened tea or coffee, bubble tea, dessert soup (not protein shakes)", kcalPerGram: [0.3, 1.2], maxProteinPerGram: 0.04, composite: false },
   milk_yogurt: { examples: "milk, curd or dahi, lassi, yogurt", kcalPerGram: [0.4, 1.2], maxProteinPerGram: 0.1, composite: false },
+  // Without this, a bowl of momo chutney was filed as a curry (up to 2.4
+  // kcal/g). Mayonnaise and nut or sesame sauces are far richer: "other".
+  sauce_chutney: { examples: "chutney, ketchup, chilli or soy sauce, salsa, raita (not mayonnaise or nut sauces)", kcalPerGram: [0.2, 1.5], maxProteinPerGram: 0.04, composite: false },
 } as const satisfies Record<string, DishClassSpec>;
 
 export type DishClass = keyof typeof DISH_CLASSES;
@@ -109,11 +129,14 @@ export function isCompositeDish(item: Pick<FoodItem, "dish_class">): boolean {
 /** Count x weight of one piece, or null when the model didn't give a
  * usable count, piece type and piece size. */
 export function pieceWeightRange(
-  item: Pick<FoodItem, "count_visible_pieces" | "piece_type" | "piece_size">
+  item: Pick<FoodItem, "count_visible_pieces" | "piece_type" | "piece_size" | "food_category" | "dish_class">
 ): [number, number] | null {
   const count = item.count_visible_pieces;
   if (typeof count !== "number" || !Number.isFinite(count) || count <= 0 || count > 50) return null;
   if (!isPieceType(item.piece_type)) return null;
+  // A dish that contains a protein is a dish (see isCompositeDish), so its
+  // protein tag doesn't restrict how its pieces are weighed.
+  if (!pieceTypeFits(item.piece_type, isCompositeDish(item) ? "other" : item.food_category)) return null;
   const size = PIECE_SIZES.includes(item.piece_size as PieceSize) ? (item.piece_size as PieceSize) : null;
   if (!size) return null;
   const [min, max] = PIECE_WEIGHTS[item.piece_type][size];
@@ -164,14 +187,12 @@ function modelWeightRange(item: FoodItem): [number, number] | null {
   return whole ?? edible;
 }
 
-const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
 export const formatGramRange = ([min, max]: [number, number]) => (min === max ? `${min}g` : `${min}-${max}g`);
 
 /** For an item whose calories are the model's own (no protein-category
  * density applies): keep the model's sense of how calorie-dense the dish
  * is, but
- *   - bound that density to what this kind of dish can plausibly be, and
+ *   - cap that density at the most this kind of dish can plausibly be, and
  *   - apply it to the counted weight when there is one, rather than to the
  *     model's guessed weight.
  * Protein, carbs, fat and fibre are scaled with calories so the item stays
@@ -197,9 +218,13 @@ export function applyDishCalorieBounds(item: FoodItem, countedWeight: [number, n
   } else {
     return item;
   }
+  // Cap only, never raise. Raising a lean estimate to the band's floor
+  // looked symmetric on paper, but on live photos it amplified identity
+  // mistakes: a clear chicken soup read as "fruit jelly" was lifted to the
+  // dessert floor, 200-250 kcal. These bounds exist to stop overestimates.
   if (cls) {
-    densityMin = clamp(densityMin, cls.kcalPerGram[0], cls.kcalPerGram[1]);
-    densityMax = clamp(densityMax, cls.kcalPerGram[0], cls.kcalPerGram[1]);
+    densityMin = Math.min(densityMin, cls.kcalPerGram[1]);
+    densityMax = Math.min(densityMax, cls.kcalPerGram[1]);
   }
 
   let caloriesMin = Math.round(weight[0] * densityMin);

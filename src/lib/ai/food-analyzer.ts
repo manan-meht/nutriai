@@ -230,6 +230,7 @@ Your job is to help users log meals accurately with LOW friction. Follow these r
 PORTION ESTIMATION — go from what is visible to a weight, never from the food's name to a default serving:
   visible food -> visible count/area -> estimated portion size -> nutrition estimate
 - Be conservative. Count only visible pieces — do not infer food that might be hidden behind other items or off-frame.
+- Log only what this person is eating: their own plate, bowl or hand. Leave out shared bowls, serving dishes, condiment pots and other people's plates in the background unless the person says they ate from them.
 - Do not assume a standard restaurant portion just because you recognize the dish. A photo of 3 chicken pieces is 3 pieces, not "a typical tikka plate."
 - If the visible portion looks small, describe it and size it as small.
 - When portion size is genuinely uncertain, use a wider range and lower confidence rather than picking a confident midpoint.
@@ -249,11 +250,13 @@ Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use th
 - Tofu: small 50-90g, medium 100-150g, large 180-250g — tofu is much leaner than paneer (roughly a third of the protein and calories per gram), so do not treat the two as interchangeable just because they can look similar in a curry.
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
+- Kitchen scale: a reading on a scale includes the plate or bowl on it, unless the person says they zeroed the scale with it on. If they haven't said, that is a high-impact ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below): ask whether the scale was zeroed with the container on it, and for your best guess subtract a typical container (glass or ceramic bowl 250-450g, dinner plate 350-600g, steel katori or plate 60-150g). If they say it was zeroed, the reading is the food's weight.
 
 COUNTABLE FOODS — count, and let the app weigh:
 - When an item is separate pieces you can count, set count_visible_pieces to the number you can actually see, piece_type to the kind of piece, and piece_size to the size of ONE piece (small|medium|large), judged against the plate, bowl, cutlery or hand. The app works out the weight from these, so count carefully rather than guessing grams.
 - Weight of one piece (small / medium / large):
 ${PIECE_WEIGHT_PROMPT_LINES}
+- piece_type must match food_category: paneer_cube for paneer, tofu_cube for tofu, meat_piece for any chicken, meat or fish pieces. cutlet_tikki_kebab is only for patties, tikkis and seekh kebabs, never for cubes of meat or paneer.
 - Three small paneer cubes are 3 x 8-14g, not a medium paneer serving. Two momos are 2 x one momo, not a plate.
 
 DISH CLASS — for every item whose food_category is "other", set dish_class to the closest of these (leave it out only if none fits). The app uses it to check calories per gram, so also give estimated_cooked_weight_grams for the whole item as eaten:
@@ -286,9 +289,10 @@ Worked example — a plate showing 3-4 small pieces of grilled/tikka chicken, ha
   Wrong: "5-6 medium chicken pieces", "180-250g chicken", or 49g+ total protein — that overstates what 3-4 small pieces actually are.
 
 AUTO-SAVE AND HIGH-IMPACT AMBIGUITY — your job is to help log meals with LOW friction. Most meals should be logged automatically, not held up waiting for confirmation. But a small set of ambiguities change the nutrition enough that guessing would actively mislead the user, so those must pause for one specific question instead of being guessed.
-- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, beef vs mutton/lamb/goat vs pork (a real-meat identity question, not just a portion one — see the food_category note above), fried vs grilled preparation, 1 egg vs 3 eggs, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
+- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, beef vs mutton/lamb/goat vs pork (a real-meat identity question, not just a portion one — see the food_category note above), fried vs grilled preparation, 1 egg vs 3 eggs, a kitchen-scale reading that may include the bowl or plate, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
 - When has_high_impact_ambiguity is true, set food_identity_confidence to "low", write a short high_impact_ambiguity_reason (e.g. "tofu vs paneer vs chicken changes protein significantly"), and write a SPECIFIC clarification_question naming exactly what's ambiguous and the plausible options — e.g. "Is the top-left cubed item tofu, paneer, or chicken?" or "Was the omelette 1 egg or 2 eggs?". Never ask a vague question like "What should I change?". Mark the specific food item this concerns with is_ambiguous: true so the app can list the other items separately.
 - Still fill in your best-guess foods/macros even when has_high_impact_ambiguity is true — the app won't use them to save until the user answers, but they're a useful fallback.
+- A filling or ingredient you cannot see, inside a dish where it is a small part of the portion (what is in momos, dumplings, samosas, parathas, wraps or sandwiches, or which protein is in a soup), is ordinary uncertainty, not a high-impact ambiguity: log the likeliest option for the region with medium confidence, name it in the summary so the person can correct it, and do not pause to ask.
 - When there is no high-impact ambiguity, do not invent one — leave has_high_impact_ambiguity false and clarification_question unset, and let the meal be logged normally.
 
 Example — a plate shows rice, mixed vegetable curry, an orange curry/stir-fry, and a top-left cubed item that could be tofu, paneer, or chicken:
@@ -383,13 +387,21 @@ function micronutrientPromptEnabled(): boolean {
  * changing this number in either direction. */
 const THINKING_BUDGET = 512;
 
+/** Sampling temperature. Unset, Gemini 2.5 Flash samples at 1.0, and the
+ * same photo run twice came back up to 1.5x apart on 7 of 18 coach-client
+ * photos (Nov 2026) — more than any portion fix could correct, and enough
+ * for a coach to stop trusting the numbers. 0 makes repeat estimates of
+ * the same photo agree. */
+const TEMPERATURE = 0;
+
 /** Written to ai_meal_classifications.model_version so review-console
  * corrections can be sliced by analyzer configuration, not just model name. */
-export const ANALYZER_MODEL_VERSION = `thinking-${THINKING_BUDGET}`;
+export const ANALYZER_MODEL_VERSION = `thinking-${THINKING_BUDGET}-t${TEMPERATURE}`;
 
 /** Written to ai_meal_classifications.prompt_version. v3 added counted
- * pieces, dish classes, egg preparation and the person's portion history,
- * so corrections before and after can be compared. */
+ * pieces, dish classes, egg preparation, the person's portion history,
+ * shared-bowl and kitchen-scale rules, so corrections before and after can
+ * be compared. */
 export const ANALYZER_PROMPT_VERSION = "v3";
 
 /** Appended only for a fresh analysis (never a correction) of someone who
@@ -432,7 +444,7 @@ export async function analyzeFood(input: {
     // deprecated and no longer gains types), but the SDK serializes
     // generationConfig into the request verbatim and the v1beta REST API
     // accepts it — verified against production photos before shipping.
-    generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
+    generationConfig: { temperature: TEMPERATURE, thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
   const withMicronutrients = input.micronutrientFields === true && micronutrientPromptEnabled();

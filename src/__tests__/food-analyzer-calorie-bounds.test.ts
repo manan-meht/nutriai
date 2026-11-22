@@ -90,6 +90,17 @@ describe("counted pieces: the model counts, code weighs", () => {
     expect(momos.carbs_max).toBeLessThan(25);
   });
 
+  it("weighs meat cubes as meat pieces, and ignores a piece type that doesn't match the food", () => {
+    // Live run, Nov 2026: 3 glazed meat cubes tagged red_meat were weighed
+    // as 3 medium cutlets, 150-210g.
+    const asCutlets = { food_category: "red_meat" as const, count_visible_pieces: 3, piece_type: "cutlet_tikki_kebab" as const, piece_size: "medium" as const };
+    expect(pieceWeightRange(asCutlets)).toBeNull();
+    expect(pieceWeightRange({ ...asCutlets, piece_type: "meat_piece" })).toEqual([60, 105]);
+    expect(pieceWeightRange({ ...asCutlets, food_category: "paneer", piece_type: "meat_piece" })).toBeNull();
+    // A dish may use any piece type.
+    expect(pieceWeightRange({ ...asCutlets, food_category: "other" })).toEqual([150, 210]);
+  });
+
   it("ignores piece data it can't use, rather than guessing", () => {
     expect(pieceWeightRange({ count_visible_pieces: 3, piece_type: "paneer_cube", piece_size: "medium" })).toEqual([45, 75]);
     expect(pieceWeightRange({ count_visible_pieces: 0, piece_type: "paneer_cube", piece_size: "medium" })).toBeNull();
@@ -151,10 +162,18 @@ describe("calories per gram, bounded for the kind of dish", () => {
     expect(after.estimated_cooked_weight_grams).toBe("200-250g");
   });
 
-  it("raises one that's too lean for what it is", () => {
-    const noodles = item({ name: "Crispy fried noodles", dish_class: "crisps_namkeen", estimated_cooked_weight_grams: "25-40g", calories_min: 50, calories_max: 80 });
-    const after = applyDishCalorieBounds(noodles, null);
-    expect([after.calories_min, after.calories_max]).toEqual([113, 180]);
+  it("never raises a lean estimate: a misread dish would be lifted to the wrong floor", () => {
+    // Live run: a clear chicken soup read as "fruit jelly" was raised to the
+    // dessert floor, 200-250 kcal, when the bounds also had a minimum.
+    const soupReadAsJelly = item({ name: "Fruit jelly", dish_class: "creamy_dessert", estimated_cooked_weight_grams: "200-250g", calories_min: 60, calories_max: 120 });
+    expect(applyDishCalorieBounds(soupReadAsJelly, null)).toBe(soupReadAsJelly);
+  });
+
+  it("treats a bowl of chutney as a sauce, not a curry", () => {
+    // Live run: a 50-70g bowl of momo chutney came back at 75-140 kcal.
+    const chutney = item({ name: "Momo chutney", dish_class: "sauce_chutney", estimated_cooked_weight_grams: "50-70g", calories_min: 75, calories_max: 140 });
+    const after = applyDishCalorieBounds(chutney, null);
+    expect([after.calories_min, after.calories_max]).toEqual([75, 105]);
   });
 
   it("leaves a plausible estimate exactly as it was (a 20-30g piece of burfi at 80-150 kcal)", () => {

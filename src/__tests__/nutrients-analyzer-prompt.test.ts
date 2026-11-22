@@ -5,9 +5,9 @@
 // raw or cooked, and ingredients, and never for nutrient values.
 //
 // The fingerprint was first taken before the micronutrient feature existed
-// (commit b6088d6) and retaken for prompt v3 (counted pieces, dish classes
-// and egg preparation; see src/lib/ai/portion-reference.ts), a deliberate
-// change to the base prompt. Retake it only for a deliberate change like
+// (commit b6088d6) and retaken for prompt v3 (counted pieces, dish classes,
+// egg preparation, shared bowls and kitchen scales; see
+// src/lib/ai/portion-reference.ts), a deliberate change to the base prompt. Retake it only for a deliberate change like
 // that, never to make a micronutrient change pass.
 
 import { createHash } from "crypto";
@@ -51,9 +51,9 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 /** sha256 of the prompt analyzeFood sends at prompt v3, for each input below. */
 const BASELINE: Record<string, string> = {
-  photoIndia: "48894f0aaf3ff30402524bfc0cd78a37240ec4a86e976e8d954871b6261429e7",
-  textSingapore: "622140e38d44da56547022590c96f906d100d7dffa3b8aad00a34cfc692524fa",
-  correction: "0e4d3a650e4ec6be262dd7543eb15c4b766242b8cd0ba39c2a61672983ba260b",
+  photoIndia: "bf9d411d2582a17c375b6b651fdd18d6f36be693c97c026786dcc60abb74fd7f",
+  textSingapore: "d46c62f14751e04e0c28b0d3dbd72b0689f709d585bf2e41bb5bf235d3d36987",
+  correction: "6bbbe625e0c8152b7229e83acadede91b57c1fc2215630c4d72f7adf3e10dda1",
 };
 
 const INPUTS = {
