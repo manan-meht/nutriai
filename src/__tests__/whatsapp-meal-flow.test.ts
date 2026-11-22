@@ -117,6 +117,7 @@ function makeFakeSupabase(contact: any) {
 
   return {
     _mealLogs: mealLogs,
+    _conversation: () => conversationRow,
     from: (table: string) => {
       if (table === "adults_contacts") {
         return { select: () => ({ order: async () => ({ data: [contact] }) }) };
@@ -460,6 +461,87 @@ describe("handleIncomingMessage — confidence-based auto-save flow", () => {
     expect(fakeDb._mealLogs.length).toBe(1); // unchanged — the question didn't touch the saved meal
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("500-600 kcal"));
     expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("was this just a question"));
+  });
+});
+
+// A correction to a saved meal whose re-analysis comes back unsure pauses on
+// a question. That pause used to drop savedMealId, so the saved meal kept its
+// old numbers while the answer, a new photo, or the stale sweep inserted the
+// corrected meal as a second row. Seen in production: a butter toast
+// corrected to a burrito ended up as three meals (toast, burrito, burrito).
+describe("handleIncomingMessage — a correction that pauses on a question", () => {
+  afterEach(() => jest.resetModules());
+
+  async function savedMealThenUnsureCorrection() {
+    const ctx = await setup();
+    const { fakeDb, foodAnalyzer, handleIncomingMessage } = ctx;
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "butter toast" }));
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs).toHaveLength(1);
+    const mealId = fakeDb._mealLogs[0].id;
+
+    // The correction's re-analysis is unsure, so the bot asks before saving.
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
+      summary: "protein burrito", total_calories_min: 700, total_calories_max: 900,
+      has_high_impact_ambiguity: true, clarification_question: "Chicken or paneer?",
+    }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(highImpactAmbiguityDecision("Chicken or paneer?"));
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue("Chicken or paneer?");
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "It was a protein burrito" });
+
+    expect(fakeDb._mealLogs).toHaveLength(1);
+    expect(fakeDb._conversation().state).toBe("awaiting_clarification");
+    expect(fakeDb._conversation().pending_meal.savedMealId).toBe(mealId);
+    return { ...ctx, mealId };
+  }
+
+  it("answering the question updates the saved meal instead of adding a second one", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage, mealId } = await savedMealThenUnsureCorrection();
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({
+      summary: "chicken burrito", total_calories_min: 750, total_calories_max: 850,
+    }));
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Chicken" });
+
+    expect(fakeDb._mealLogs).toHaveLength(1);
+    expect(fakeDb._mealLogs[0]).toMatchObject({
+      id: mealId, ai_summary: "chicken burrito", total_calories_min: 750, total_calories_max: 850,
+    });
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("updated the log"));
+    expect(fakeDb._conversation().pending_meal).toMatchObject({ status: "saved", savedMealId: mealId });
+  });
+
+  it("a new photo before the answer applies the best guess to the saved meal, then logs the photo", async () => {
+    const { fakeDb, foodAnalyzer, sendTextMessage, handleIncomingMessage, mealId } = await savedMealThenUnsureCorrection();
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "evening snack", meal_type: "snack" }));
+    await handleIncomingMessage(photoMsg, new Uint8Array([4, 5, 6]));
+
+    expect(fakeDb._mealLogs).toHaveLength(2);
+    expect(fakeDb._mealLogs[0]).toMatchObject({ id: mealId, ai_summary: "protein burrito", total_calories_max: 900 });
+    expect(fakeDb._mealLogs[1].ai_summary).toBe("evening snack");
+    expect(sendTextMessage).toHaveBeenCalledWith("911234567890", expect.stringContaining("updated your earlier"));
+  });
+
+  it("a fresh meal that pauses on a question still saves as a new meal once answered", async () => {
+    const { fakeDb, foodAnalyzer, handleIncomingMessage } = await setup();
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis());
+    await handleIncomingMessage(photoMsg, photoBuffer);
+    expect(fakeDb._mealLogs).toHaveLength(1);
+
+    // A second, unrelated photo that is unsure: no savedMealId to carry.
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "dinner plate", has_high_impact_ambiguity: true }));
+    (foodAnalyzer.computeSaveDecision as jest.Mock).mockReturnValueOnce(highImpactAmbiguityDecision("Tofu or paneer?"));
+    (foodAnalyzer.buildHighImpactClarificationMessage as jest.Mock).mockReturnValue("Tofu or paneer?");
+    await handleIncomingMessage(photoMsg, new Uint8Array([7, 8, 9]));
+    expect(fakeDb._conversation().pending_meal.savedMealId).toBeUndefined();
+
+    (foodAnalyzer.analyzeFood as jest.Mock).mockResolvedValueOnce(realFoodAnalysis({ summary: "paneer dinner" }));
+    await handleIncomingMessage({ from: "911234567890", type: "text", text: "Paneer" });
+
+    expect(fakeDb._mealLogs).toHaveLength(2);
+    expect(fakeDb._mealLogs[0].ai_summary).toBe("rice and chicken curry");
+    expect(fakeDb._mealLogs[1].ai_summary).toBe("paneer dinner");
   });
 });
 

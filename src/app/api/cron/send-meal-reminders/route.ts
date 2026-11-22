@@ -651,51 +651,87 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
 
     const resolvedLabel = resolveStaleMealLabel(pending.meal_type, new Date(), timezone);
 
-    const { data: mealRow, error: mealError } = await db
-      .from("meal_logs")
-      .insert({
-        ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
-        workspace_id: conv.workspace_id,
-        // whatsapp_conversations has NO trainer_id column, so the old
-        // `conv.trainer_id` here was always undefined and every meal this
-        // sweep committed landed with a null trainer_id. It comes from the
-        // contact/client, exactly as conversation-handler resolves it.
-        trainer_id: trainerId,
-        meal_type: resolvedLabel,
-        logged_at: new Date().toISOString(),
-        foods: pending.foods,
-        total_calories_min: pending.total_calories_min,
-        total_calories_max: pending.total_calories_max,
-        total_protein_min: pending.total_protein_min,
-        total_protein_max: pending.total_protein_max,
-        total_carbs_min: pending.total_carbs_min,
-        total_carbs_max: pending.total_carbs_max,
-        total_fat_min: pending.total_fat_min,
-        total_fat_max: pending.total_fat_max,
-        total_fiber_min: pending.total_fiber_min,
-        total_fiber_max: pending.total_fiber_max,
-        ai_summary: pending.summary,
-        image_url: pending.image_url ?? null,
-        source: "whatsapp",
-      })
-      .select("id")
-      .single();
+    const estimate = {
+      meal_type: resolvedLabel,
+      foods: pending.foods,
+      total_calories_min: pending.total_calories_min,
+      total_calories_max: pending.total_calories_max,
+      total_protein_min: pending.total_protein_min,
+      total_protein_max: pending.total_protein_max,
+      total_carbs_min: pending.total_carbs_min,
+      total_carbs_max: pending.total_carbs_max,
+      total_fat_min: pending.total_fat_min,
+      total_fat_max: pending.total_fat_max,
+      total_fiber_min: pending.total_fiber_min,
+      total_fiber_max: pending.total_fiber_max,
+      ai_summary: pending.summary,
+    };
 
-    if (mealError || !mealRow) {
-      console.error("[resolve-stale-clarifications] meal_logs insert failed:", conv.id, mealError?.message);
-      skipped++;
-      continue;
+    // A correction to an already-saved meal that paused on a question
+    // carries that meal's id (see savedMealIdOf in conversation-handler):
+    // its best guess replaces the saved row. Inserting it made a second
+    // meal next to the stale original. If that row is gone (deleted since),
+    // the meal is saved as a new one, as before.
+    let mealRow: { id: string } | null = null;
+    let updatedExisting = false;
+    if (typeof pending.savedMealId === "string") {
+      const { data: updated, error: updateError } = await db
+        .from("meal_logs")
+        .update(estimate)
+        .eq("id", pending.savedMealId)
+        .select("id")
+        .maybeSingle();
+      if (updateError) {
+        console.error("[resolve-stale-clarifications] meal_logs update failed:", conv.id, updateError.message);
+        skipped++;
+        continue;
+      }
+      mealRow = updated ?? null;
+      updatedExisting = !!mealRow;
+    }
+
+    if (!mealRow) {
+      const { data: inserted, error: mealError } = await db
+        .from("meal_logs")
+        .insert({
+          ...(isAdults ? { adults_contact_id: entityId } : { client_id: entityId }),
+          workspace_id: conv.workspace_id,
+          // whatsapp_conversations has NO trainer_id column, so the old
+          // `conv.trainer_id` here was always undefined and every meal this
+          // sweep committed landed with a null trainer_id. It comes from the
+          // contact/client, exactly as conversation-handler resolves it.
+          trainer_id: trainerId,
+          logged_at: new Date().toISOString(),
+          ...estimate,
+          image_url: pending.image_url ?? null,
+          source: "whatsapp",
+        })
+        .select("id")
+        .single();
+
+      if (mealError || !inserted) {
+        console.error("[resolve-stale-clarifications] meal_logs insert failed:", conv.id, mealError?.message);
+        skipped++;
+        continue;
+      }
+      mealRow = inserted;
     }
 
     // Vitamins and minerals, behind GUIDANCE_MICRONUTRIENTS_ENABLED (a no-op
     // when off). Never throws.
-    await afterMealSaved(db, { mealLogId: mealRow.id, isAdults, entityId, analysis: pending, trigger: "ingestion" });
+    await afterMealSaved(db, {
+      mealLogId: mealRow.id,
+      isAdults,
+      entityId,
+      analysis: pending,
+      trigger: updatedExisting ? "correction" : "ingestion",
+    });
 
     try {
       if (conv.whatsapp_number) {
         await sendTextMessage(
           conv.whatsapp_number,
-          `Since I didn't hear back, I've saved your ${formatStaleMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+          `Since I didn't hear back, I've ${updatedExisting ? "updated" : "saved"} your ${formatStaleMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
         );
       }
     } catch (err) {
@@ -707,8 +743,10 @@ async function runResolveStaleClarifications(db: ReturnType<typeof createService
     // notifying is done — but the family-plan caregiver watching from the
     // app got nothing, so every meal whose clarification went unanswered
     // was invisible to them while still appearing in the app. Same
-    // best-effort contract as the WhatsApp path: never throws.
-    if (isAdults && adultsContact) {
+    // best-effort contract as the WhatsApp path: never throws. Not sent
+    // again for an update: the caregiver heard about this meal when it was
+    // first saved, as with any other correction.
+    if (isAdults && adultsContact && !updatedExisting) {
       await notifyCaregiverOfFamilyMeal(db, {
         workspaceId: conv.workspace_id,
         mealType: resolvedLabel,

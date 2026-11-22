@@ -383,6 +383,15 @@ interface PendingMeal extends FoodAnalysisResult {
   updatedAt: string;
 }
 
+/** The meal_logs row this pending meal is an edit of, if any: a saved meal,
+ * or a correction to one that paused on a clarification question. The
+ * second case matters: when savedMealId was dropped there, the saved meal
+ * kept its old numbers and the answer (or the 10-minute stale sweep, or a
+ * new photo) inserted the corrected meal as a second row. */
+function savedMealIdOf(p: PendingMeal | null | undefined): string | undefined {
+  return p && (p.status === "saved" || p.status === "awaiting_clarification") ? p.savedMealId : undefined;
+}
+
 const RECENT_SAVE_WINDOW_MS = 60 * 60 * 1000; // a correction after this long is treated as a new meal, not an edit
 
 // A follow-up text within this long of the save is assumed to be about
@@ -1049,6 +1058,17 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
       return;
     }
     const resolvedLabel = resolveMealLabel(pending.meal_type, new Date(), contactTimezone);
+    // A correction to an already-saved meal updates that row, not a second one.
+    const editingMealId = savedMealIdOf(pending);
+    if (editingMealId) {
+      await updateSavedMeal(editingMealId, pending, resolvedLabel);
+      await sendTextMessage(
+        msg.from,
+        `Since a new photo came in, I've updated your earlier ${formatMealLabel(resolvedLabel).toLowerCase()} using my best guess: ${pending.summary}.`
+      );
+      await setConvState("idle", { ...toPendingMeal(pending, "saved"), savedMealId: editingMealId });
+      return;
+    }
     const savedMealId = await saveMeal(pending, resolvedLabel);
     await sendTextMessage(
       msg.from,
@@ -1263,35 +1283,39 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
         ? buildHighImpactClarificationMessage(analysis, decision)
         : buildLowConfidenceClarificationMessage(decision, contactTimezone);
       await sendTextMessage(msg.from, clarificationMsg);
-      await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+      // Keeps the saved meal this is a correction of, so the answer updates it.
+      await setConvState("awaiting_clarification", {
+        ...toPendingMeal(analysis, "awaiting_clarification"),
+        savedMealId: savedMealIdOf(opts.existing),
+      });
       return;
     }
 
     const resolvedLabel = opts.statedMealType
       ? resolveMealLabel(opts.statedMealType, new Date(), contactTimezone, { userStated: true })
       : resolveMealLabel(analysis.meal_type, new Date(), contactTimezone);
-    const existing = opts.existing;
+    const editingMealId = savedMealIdOf(opts.existing);
 
-    // Updating an already-saved meal (a correction, or a clarification
-    // answer for a meal that — unusually — was already saved) happens in
-    // place: never a second meal_logs row for the same meal.
-    if (existing?.status === "saved" && existing.savedMealId) {
+    // Updating an already-saved meal (a correction, or the answer to a
+    // question that correction raised) happens in place: never a second
+    // meal_logs row for the same meal.
+    if (editingMealId) {
       // Loaded before the update, so today's rows still hold the old
       // version of this meal and totalsWith swaps it out. A meal from an
       // earlier day isn't in them, and gets the Tracking reply instead of
       // being counted against today.
       const guidance = await getGuidance();
-      const correctsToday = guidance?.mealsToday.some((m) => m.id === existing.savedMealId) ?? false;
-      await updateSavedMeal(existing.savedMealId, analysis, resolvedLabel);
+      const correctsToday = guidance?.mealsToday.some((m) => m.id === editingMealId) ?? false;
+      await updateSavedMeal(editingMealId, analysis, resolvedLabel);
       await sendTextMessage(
         msg.from,
         buildCorrectionUpdateMessage(
           resolvedLabel,
           analysis,
-          guidance && correctsToday ? guidanceLines(guidance, analysis, existing.savedMealId) : undefined
+          guidance && correctsToday ? guidanceLines(guidance, analysis, editingMealId) : undefined
         )
       );
-      await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId: existing.savedMealId });
+      await setConvState("idle", { ...toPendingMeal(analysis, "saved"), savedMealId: editingMealId });
       return;
     }
 
@@ -1399,12 +1423,15 @@ export async function handleIncomingMessage(msg: IncomingMessage, mediaBuffer?: 
 
     if (isZeroMacro(analysis) && !analysis.is_zero_calorie_item) {
       await sendTextMessage(msg.from, buildClarificationMessage(seed));
-      await setConvState("awaiting_clarification", toPendingMeal(analysis, "awaiting_clarification"));
+      await setConvState("awaiting_clarification", {
+        ...toPendingMeal(analysis, "awaiting_clarification"),
+        savedMealId: savedMealIdOf(previous),
+      });
       return;
     }
 
     if (previous) {
-      await recordPortionCorrectionFeedback(previous, analysis, correctionText, previous.status === "saved" ? previous.savedMealId : undefined);
+      await recordPortionCorrectionFeedback(previous, analysis, correctionText, savedMealIdOf(previous));
     }
 
     await finalizeEstimate(analysis, {
