@@ -2,6 +2,7 @@ import { regionContextForTimezone, regionPromptSection } from "./region-context"
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { classifyMeal } from "@nutriai/dashboard-core";
 import {
+  AIRY_SNACK_PROMPT_LINE,
   applyDishCalorieBounds,
   DISH_CLASS_ENUM,
   DISH_CLASS_PROMPT_LINES,
@@ -187,6 +188,13 @@ export interface FoodAnalysisResult {
    * item tofu, paneer, or chicken?" Must be concrete, never a generic
    * "What should I change?". */
   clarification_question?: string;
+  /** The number on a kitchen scale's display, when one is in the photo,
+   * and whether the person said the scale was zeroed with the container
+   * on it. A reading that may include the bowl always pauses for a
+   * question (see applyScaleReadingCheck): left to the prompt alone, the
+   * model sometimes logged a 406g reading as 406g of dal, bowl and all. */
+  scale_reading_grams?: number;
+  scale_zeroed?: "yes" | "no" | "unknown";
   /** Public URL of the uploaded meal photo, attached after analysis (not
    * part of the Gemini response) so it survives in conversation state
    * between the "awaiting confirmation" and "saved" steps. */
@@ -250,7 +258,8 @@ Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use th
 - Tofu: small 50-90g, medium 100-150g, large 180-250g — tofu is much leaner than paneer (roughly a third of the protein and calories per gram), so do not treat the two as interchangeable just because they can look similar in a curry.
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
-- Kitchen scale: a reading on a scale includes the plate or bowl on it, unless the person says they zeroed the scale with it on. If they haven't said, that is a high-impact ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below): ask whether the scale was zeroed with the container on it, and for your best guess subtract a typical container (glass or ceramic bowl 250-450g, dinner plate 350-600g, steel katori or plate 60-150g). If they say it was zeroed, the reading is the food's weight.
+${AIRY_SNACK_PROMPT_LINE}
+- Kitchen scale: whenever a scale's display is visible, put the number it shows in scale_reading_grams, and set scale_zeroed to "yes" only if the person says they zeroed the scale with the container on it ("no" if they say it wasn't, otherwise "unknown"). A reading includes the plate or bowl on it unless it was zeroed: if it wasn't, or you don't know, that is a high-impact ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below): ask whether the scale was zeroed with the container on it, and for your best guess subtract a typical container (glass or ceramic bowl 250-450g, dinner plate 350-600g, steel katori or plate 60-150g). If it was zeroed, the reading is the food's weight.
 
 COUNTABLE FOODS — count, and let the app weigh:
 - When an item is separate pieces you can count, set count_visible_pieces to the number you can actually see, piece_type to the kind of piece, and piece_size to the size of ONE piece (small|medium|large), judged against the plate, bowl, cutlery or hand. The app works out the weight from these, so count carefully rather than guessing grams.
@@ -351,6 +360,8 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
   "has_hidden_protein_food": boolean,
   "food_identity_confidence": "high|medium|low",
   "has_high_impact_ambiguity": boolean,
+  "scale_reading_grams": "number, optional — only when a kitchen scale's display is visible: the number it shows",
+  "scale_zeroed": "yes|no|unknown — only with scale_reading_grams",
   "high_impact_ambiguity_reason": "string, optional — only when has_high_impact_ambiguity is true",
   "clarification_question": "string, optional — only when has_high_impact_ambiguity is true (or food_identity_confidence is low); must be specific, e.g. 'Is the top-left cubed item tofu, paneer, or chicken?'"
 }
@@ -499,7 +510,7 @@ export async function analyzeFood(input: {
     // needsPortionConfirmation() and computeSaveDecision().
     const recalculated = recalculateNutritionFromPortions(parsed);
     const capped = applyPortionConsistencyCaps(recalculated);
-    return applyHighProteinSanityCheck(capped);
+    return applyScaleReadingCheck(applyHighProteinSanityCheck(capped), !!input.correctionContext);
   } catch {
     throw new Error(`Gemini returned invalid JSON: ${cleaned.slice(0, 200)}`);
   }
@@ -725,6 +736,26 @@ export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodA
  * asks the user to confirm the protein portion instead of jumping straight
  * to "Reply Yes to save". It never rewrites the numbers itself — only a
  * human correction or the model's own re-estimate should do that. */
+/** A kitchen-scale reading that may include the bowl or plate halves or
+ * doubles the meal, so it always pauses for one question rather than
+ * relying on the prompt alone: in live testing, an unrelated one-line
+ * prompt change was enough for the model to log a 406g reading as 406g of
+ * dal, confidently, without asking. Never applied to a correction, which
+ * is the person's answer: asking again there could loop. */
+export function applyScaleReadingCheck(analysis: FoodAnalysisResult, isCorrection: boolean): FoodAnalysisResult {
+  const reading = analysis.scale_reading_grams;
+  if (isCorrection || typeof reading !== "number" || !(reading > 0) || analysis.scale_zeroed === "yes") return analysis;
+  const question = `Was the scale zeroed with the bowl or plate on it, or does the ${Math.round(reading)} g include it?`;
+  const existing = analysis.has_high_impact_ambiguity ? analysis.clarification_question : undefined;
+  return {
+    ...analysis,
+    has_high_impact_ambiguity: true,
+    portion_confidence: "low",
+    high_impact_ambiguity_reason: analysis.high_impact_ambiguity_reason ?? "a scale reading may include the container's weight",
+    clarification_question: existing && !/zero|tare/i.test(existing) ? `${existing} Also: ${question.charAt(0).toLowerCase()}${question.slice(1)}` : existing ?? question,
+  };
+}
+
 function applyHighProteinSanityCheck(analysis: FoodAnalysisResult): FoodAnalysisResult {
   if (analysis.total_protein_max > 50 && analysis.confidence !== "high" && analysis.portion_confidence !== "low") {
     return { ...analysis, portion_confidence: "low" };

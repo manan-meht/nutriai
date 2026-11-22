@@ -18,6 +18,7 @@ jest.mock("@google/generative-ai", () => ({
 
 import {
   analyzeFood,
+  applyScaleReadingCheck,
   computeItemNutrition,
   recalculateNutritionFromPortions,
   type FoodAnalysisResult,
@@ -169,6 +170,26 @@ describe("calories per gram, bounded for the kind of dish", () => {
     expect(applyDishCalorieBounds(soupReadAsJelly, null)).toBe(soupReadAsJelly);
   });
 
+  it("weighs an airy pile by its size: crispy noodles a medium pile, not the model's 80-130g", () => {
+    // Live run: a loose pile of crispy noodles on a side plate came back as
+    // 80-130g and 360-650 kcal.
+    const noodles = item({
+      name: "Crispy fried noodles", dish_class: "crisps_namkeen", portion_size: "medium",
+      estimated_cooked_weight_grams: "80-130g", calories_min: 360, calories_max: 650, protein_min: 6, protein_max: 12,
+    });
+    const after = applyDishCalorieBounds(noodles, null);
+    expect(after.estimated_cooked_weight_grams).toBe("30-60g");
+    expect([after.calories_min, after.calories_max]).toEqual([135, 300]);
+    expect(after.protein_max).toBeLessThan(noodles.protein_max);
+  });
+
+  it("only ever lowers an airy snack: a weight within its pile size, or no pile size, is left alone", () => {
+    const within = item({ name: "Chips", dish_class: "crisps_namkeen", portion_size: "medium", estimated_cooked_weight_grams: "30-50g", calories_min: 150, calories_max: 270 });
+    const noSize = item({ name: "Chips", dish_class: "crisps_namkeen", estimated_cooked_weight_grams: "80-130g", calories_min: 400, calories_max: 700 });
+    expect(applyDishCalorieBounds(within, null)).toBe(within);
+    expect(applyDishCalorieBounds(noSize, null).estimated_cooked_weight_grams).toBe("80-130g");
+  });
+
   it("treats a bowl of chutney as a sauce, not a curry", () => {
     // Live run: a 50-70g bowl of momo chutney came back at 75-140 kcal.
     const chutney = item({ name: "Momo chutney", dish_class: "sauce_chutney", estimated_cooked_weight_grams: "50-70g", calories_min: 75, calories_max: 140 });
@@ -209,6 +230,35 @@ describe("calories per gram, bounded for the kind of dish", () => {
     expect(parseWeightRange("~40 g")).toEqual([40, 40]);
     expect(parseWeightRange("2 glasses")).toBeNull();
     expect(parseWeightRange("3-4 pieces")).toBeNull();
+  });
+});
+
+describe("a kitchen-scale reading always asks whether the bowl was zeroed", () => {
+  const dal = () => meal([item({ name: "Dal", food_category: "legume_dal", estimated_edible_weight_grams_min: 406, estimated_edible_weight_grams_max: 406 })]);
+
+  it("pauses with the question, even when the model was confident and didn't ask", () => {
+    // Live run: 406g on the scale, logged as 406g of dal with high confidence.
+    const checked = applyScaleReadingCheck({ ...dal(), scale_reading_grams: 406, scale_zeroed: "unknown", portion_confidence: "high" }, false);
+    expect(checked.has_high_impact_ambiguity).toBe(true);
+    expect(checked.portion_confidence).toBe("low");
+    expect(checked.clarification_question).toBe("Was the scale zeroed with the bowl or plate on it, or does the 406 g include it?");
+  });
+
+  it("adds the scale question to an identity question instead of replacing it", () => {
+    const checked = applyScaleReadingCheck(
+      { ...dal(), scale_reading_grams: 406, has_high_impact_ambiguity: true, clarification_question: "Is this dal or rajma?" },
+      false
+    );
+    expect(checked.clarification_question).toMatch(/^Is this dal or rajma\? Also: was the scale zeroed/);
+  });
+
+  it("doesn't ask when the scale was zeroed, when there's no scale, or when this is the person's answer", () => {
+    const zeroed = { ...dal(), scale_reading_grams: 406, scale_zeroed: "yes" as const };
+    expect(applyScaleReadingCheck(zeroed, false)).toBe(zeroed);
+    const noScale = dal();
+    expect(applyScaleReadingCheck(noScale, false)).toBe(noScale);
+    const answer = { ...dal(), scale_reading_grams: 406, scale_zeroed: "unknown" as const };
+    expect(applyScaleReadingCheck(answer, true)).toBe(answer);
   });
 });
 

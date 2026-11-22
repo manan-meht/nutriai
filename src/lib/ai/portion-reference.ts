@@ -75,7 +75,22 @@ interface DishClassSpec {
    * food_category, the pure-ingredient density must not be applied to the
    * whole dish: 4 chicken momos are not 80g of chicken. */
   composite: boolean;
+  /** For food that is mostly air (chips, crispy noodles): grams for each
+   * pile size. The model judges weight from how much space food fills,
+   * which for an airy pile is 2-3x too much, so code weighs it from the
+   * pile size instead (see applyDishCalorieBounds). */
+  gramsByPileSize?: Readonly<Record<NonNullable<FoodItem["portion_size"]>, GramRange>>;
 }
+
+/** Grams of an airy fried snack by the size of the pile. A cupped handful
+ * of chips is about 15-25g; a loose pile filling a side plate, 30-60g. */
+const AIRY_SNACK_GRAMS = {
+  tiny: [5, 15],
+  small: [15, 30],
+  medium: [30, 60],
+  large: [60, 100],
+  very_large: [100, 160],
+} as const satisfies Record<NonNullable<FoodItem["portion_size"]>, GramRange>;
 
 export const DISH_CLASSES = {
   clear_soup: { examples: "clear soup, broth, rasam", kcalPerGram: [0.1, 0.5], maxProteinPerGram: 0.06, composite: true },
@@ -89,7 +104,14 @@ export const DISH_CLASSES = {
   bread_roti: { examples: "roti, chapati, naan, paratha, bread, bun, sandwich", kcalPerGram: [2.0, 3.6], maxProteinPerGram: 0.12, composite: true },
   south_indian_batter: { examples: "idli, dosa, uttapam, appam, dhokla", kcalPerGram: [1.2, 2.6], maxProteinPerGram: 0.08, composite: true },
   deep_fried_snack: { examples: "samosa, pakora, vada, kachori, fried momos, spring rolls", kcalPerGram: [2.4, 3.6], maxProteinPerGram: 0.12, composite: true },
-  crisps_namkeen: { examples: "chips, bhujia, namkeen mixture, crispy fried noodles", kcalPerGram: [4.5, 5.8], maxProteinPerGram: 0.2, composite: true },
+  // Calories per gram were right on live photos (~5 kcal/g); the weight was
+  // not: a loose pile of crispy noodles on a side plate came back as
+  // 80-130g, about 600 kcal, for what is probably 30-50g.
+  crisps_namkeen: {
+    examples: "chips, bhujia, namkeen mixture, crispy fried noodles, popcorn, fried papad",
+    kcalPerGram: [4.5, 5.8], maxProteinPerGram: 0.2, composite: true,
+    gramsByPileSize: AIRY_SNACK_GRAMS,
+  },
   indian_sweet: { examples: "burfi, ladoo, peda, kaju katli, gulab jamun, jalebi, halwa", kcalPerGram: [2.5, 5.0], maxProteinPerGram: 0.12, composite: false },
   chocolate: { examples: "milk or dark chocolate", kcalPerGram: [5.0, 6.1], maxProteinPerGram: 0.1, composite: false },
   baked_dessert: { examples: "cake, pastry, brownie, cookies, muffin", kcalPerGram: [3.0, 5.0], maxProteinPerGram: 0.08, composite: false },
@@ -194,7 +216,8 @@ export const formatGramRange = ([min, max]: [number, number]) => (min === max ? 
  * is, but
  *   - cap that density at the most this kind of dish can plausibly be, and
  *   - apply it to the counted weight when there is one, rather than to the
- *     model's guessed weight.
+ *     model's guessed weight, and for airy food to the weight its pile size
+ *     allows, when the model's grams are heavier than that.
  * Protein, carbs, fat and fibre are scaled with calories so the item stays
  * self-consistent, and protein is capped for the kind of dish. Items with
  * no dish class and no counted pieces, no usable weight, or zero calories
@@ -205,7 +228,13 @@ export function applyDishCalorieBounds(item: FoodItem, countedWeight: [number, n
   if (!cls && !countedWeight) return item;
 
   const modelWeight = modelWeightRange(item);
-  const weight = countedWeight ?? modelWeight;
+  // Airy food is weighed from the pile size the model reported, but only
+  // when the model's own grams are heavier than that size allows: like the
+  // calorie cap, this only ever lowers an estimate.
+  const pileSizeGrams = cls?.gramsByPileSize && item.portion_size ? cls.gramsByPileSize[item.portion_size] : undefined;
+  const pileWeight: [number, number] | null =
+    !countedWeight && modelWeight && pileSizeGrams && modelWeight[1] > pileSizeGrams[1] ? [pileSizeGrams[0], pileSizeGrams[1]] : null;
+  const weight = countedWeight ?? pileWeight ?? modelWeight;
   if (!weight) return item;
 
   let densityMin: number;
@@ -255,7 +284,7 @@ export function applyDishCalorieBounds(item: FoodItem, countedWeight: [number, n
     fiber_min: scaled(item.fiber_min, scaleMin),
     fiber_max: scaled(item.fiber_max, scaleMax),
   };
-  if (countedWeight) next.estimated_cooked_weight_grams = formatGramRange(countedWeight);
+  if (countedWeight || pileWeight) next.estimated_cooked_weight_grams = formatGramRange(weight);
 
   const unchanged =
     next.calories_min === item.calories_min &&
@@ -369,3 +398,7 @@ export const PIECE_WEIGHT_PROMPT_LINES = (Object.entries(PIECE_WEIGHTS) as Array
 export const DISH_CLASS_PROMPT_LINES = (Object.entries(DISH_CLASSES) as Array<[DishClass, DishClassSpec]>)
   .map(([key, s]) => `  - ${key}: ${s.examples}`)
   .join("\n");
+
+export const AIRY_SNACK_PROMPT_LINE = `- Fried crispy snacks (${DISH_CLASSES.crisps_namkeen.examples}) are mostly air: judge them by the size of the pile, not by how much space it fills, and set portion_size from the pile. A cupped handful is 15-25g; a loose pile filling a side plate is 30-60g. By pile size: ${(Object.entries(AIRY_SNACK_GRAMS) as Array<[string, GramRange]>)
+  .map(([size, [min, max]]) => `${size} ${min}-${max}g`)
+  .join(", ")}.`;
