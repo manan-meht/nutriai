@@ -281,7 +281,7 @@ describe("end-user session", () => {
     expect(await getEndUserSession()).toBeNull();
   });
 
-  it("uses a 90-day session by default (parent-access spec), configurable via PARENT_TRUSTED_SESSION_DAYS", async () => {
+  it("uses a 365-day sliding session by default (2026-11-19), configurable via PARENT_TRUSTED_SESSION_DAYS", async () => {
     jest.resetModules();
     delete process.env.PARENT_TRUSTED_SESSION_DAYS;
     const db = freshDb();
@@ -293,8 +293,8 @@ describe("end-user session", () => {
     await createEndUserSession(contact);
     const expiresAt = new Date(db.sessions[0].expires_at).getTime();
     const daysFromNow = (expiresAt - Date.now()) / (24 * 60 * 60 * 1000);
-    expect(daysFromNow).toBeGreaterThan(89);
-    expect(daysFromNow).toBeLessThan(91);
+    expect(daysFromNow).toBeGreaterThan(364);
+    expect(daysFromNow).toBeLessThan(366);
   });
 });
 

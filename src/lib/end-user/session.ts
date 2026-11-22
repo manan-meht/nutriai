@@ -45,7 +45,10 @@ export async function createEndUserSession(contact: EndUserContact, deviceLabel?
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: ttlMs / 1000,
+    // The server-side expiry slides on every use (end-user-core), so the
+    // cookie is kept for as long as browsers allow (400 days) rather than
+    // the session's first window.
+    maxAge: 400 * 24 * 60 * 60,
   });
 }
 
