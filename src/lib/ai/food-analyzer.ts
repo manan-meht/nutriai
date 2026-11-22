@@ -1,6 +1,20 @@
 import { regionContextForTimezone, regionPromptSection } from "./region-context";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { classifyMeal } from "@nutriai/dashboard-core";
+import {
+  AIRY_SNACK_PROMPT_LINE,
+  applyDishCalorieBounds,
+  DISH_CLASS_ENUM,
+  DISH_CLASS_PROMPT_LINES,
+  formatGramRange,
+  isCompositeDish,
+  PIECE_TYPE_ENUM,
+  PIECE_WEIGHT_PROMPT_LINES,
+  pieceWeightRange,
+  type DishClass,
+  type PieceSize,
+  type PieceType,
+} from "./portion-reference";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -74,10 +88,23 @@ export interface FoodItem {
   estimated_edible_weight_grams_min?: number;
   estimated_edible_weight_grams_max?: number;
   count_visible_pieces?: number;
+  /** For countable items: what ONE piece is and how big it looks. With
+   * count_visible_pieces, code works out the weight (count x per-piece
+   * grams, see PIECE_WEIGHTS) instead of trusting the model's own grams —
+   * the model counts well but weighs small pieces badly. */
+  piece_type?: PieceType;
+  piece_size?: PieceSize;
+  /** The kind of dish, for items without a protein food_category. Bounds
+   * the calories per gram the model may claim (see DISH_CLASSES), which
+   * nothing checked before. */
+  dish_class?: DishClass;
   /** Only meaningful when food_category is "egg" (an omelette/fried egg
    * item) — how many eggs the visible size implies. */
   egg_count_min?: number;
   egg_count_max?: number;
+  /** Only for food_category "egg": boiled and poached eggs carry no
+   * cooking fat, so their calories per egg are lower. */
+  egg_preparation?: "boiled" | "poached" | "fried" | "omelette" | "scrambled" | "curry";
   /** True when THIS item is the one driving has_high_impact_ambiguity on
    * the overall result (e.g. the cubed item that could be tofu, paneer, or
    * chicken) — lets the clarification message list every OTHER item by
@@ -161,6 +188,13 @@ export interface FoodAnalysisResult {
    * item tofu, paneer, or chicken?" Must be concrete, never a generic
    * "What should I change?". */
   clarification_question?: string;
+  /** The number on a kitchen scale's display, when one is in the photo,
+   * and whether the person said the scale was zeroed with the container
+   * on it. A reading that may include the bowl always pauses for a
+   * question (see applyScaleReadingCheck): left to the prompt alone, the
+   * model sometimes logged a 406g reading as 406g of dal, bowl and all. */
+  scale_reading_grams?: number;
+  scale_zeroed?: "yes" | "no" | "unknown";
   /** Public URL of the uploaded meal photo, attached after analysis (not
    * part of the Gemini response) so it survives in conversation state
    * between the "awaiting confirmation" and "saved" steps. */
@@ -204,6 +238,7 @@ Your job is to help users log meals accurately with LOW friction. Follow these r
 PORTION ESTIMATION — go from what is visible to a weight, never from the food's name to a default serving:
   visible food -> visible count/area -> estimated portion size -> nutrition estimate
 - Be conservative. Count only visible pieces — do not infer food that might be hidden behind other items or off-frame.
+- Log only what this person is eating: their own plate, bowl or hand. Leave out shared bowls, serving dishes, condiment pots and other people's plates in the background unless the person says they ate from them.
 - Do not assume a standard restaurant portion just because you recognize the dish. A photo of 3 chicken pieces is 3 pieces, not "a typical tikka plate."
 - If the visible portion looks small, describe it and size it as small.
 - When portion size is genuinely uncertain, use a wider range and lower confidence rather than picking a confident midpoint.
@@ -211,17 +246,30 @@ PORTION ESTIMATION — go from what is visible to a weight, never from the food'
 - Your protein estimate must be consistent with your own portion description. If you describe the portion as small, do not output a high-protein estimate unless the image clearly shows enough food to justify it.
 - For each food item, fill visible_quantity (what you actually counted/saw, e.g. "3-4 small pieces"), portion_size (tiny/small/medium/large/very_large), estimated_cooked_weight_grams (display string), and — for chicken/fish/beef/pork/shellfish/red_meat/egg/paneer/tofu/avocado/seeds_nuts/legume_dal items — the structured fields below (food_category, estimated_edible_weight_grams_min/max, egg_count_min/max) so the app can calculate protein/calories from the portion instead of you inventing a final number.
 - Identify the specific meat correctly, not just "meat" generically — this matters beyond nutrition: many people who eat red meat generally still don't eat beef specifically (often for religious reasons), so confusing beef with mutton/lamb/goat (food_category: red_meat) or pork is a meaningfully different mistake from a portion-size error. If you cannot tell which red meat it is, treat that as a high-impact identity ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below) rather than guessing.
+- food_category names what the item IS, not an ingredient in it. Chicken momos, chicken noodles, chicken soup, egg fried rice, chicken biryani and a paneer paratha are dishes: give them food_category "other" and the matching dish_class (see DISH CLASS below). Use a protein food_category only when the item is that food itself (chicken pieces, paneer cubes, boiled eggs), including pieces sitting in a curry.
 
 Cooked EDIBLE-weight guardrails (excludes bone/char/marinade/air gaps — use these instead of a flat "typical serving"):
 - Chicken/beef/pork/mutton/lamb/goat/fish/shellfish: tiny 20-40g, small 40-80g, medium 90-130g, large 150-220g, very_large 220g+. Only use large/very_large if the image clearly shows that much food or the user says so.
 - Chicken piece sizing specifically: 1 small visible piece ~10-20g edible cooked chicken, 1 medium visible piece ~20-35g, 1 large visible piece ~40-60g. 3-4 small pieces is ~45-75g edible cooked chicken — never assume 5-6 pieces when only 3-4 are visible, and do not estimate 120g+ unless the pieces are clearly medium/large, or 180g+ unless the plate clearly shows a large serving.
-- Eggs/omelette: a small omelette is likely 1 egg, medium is likely 2 eggs, large/thick is likely 3 eggs. If unsure, say "likely 1-2 eggs" (egg_count_min: 1, egg_count_max: 2) rather than defaulting to the higher count. Only use 3 eggs if the omelette is clearly large/thick or the user says so.
+- Eggs/omelette: a small omelette is likely 1 egg, medium is likely 2 eggs, large/thick is likely 3 eggs. If unsure, say "likely 1-2 eggs" (egg_count_min: 1, egg_count_max: 2) rather than defaulting to the higher count. Only use 3 eggs if the omelette is clearly large/thick or the user says so. Boiled eggs: count the halves and divide by 2. Set egg_preparation (boiled|poached|fried|omelette|scrambled|curry) — boiled and poached eggs carry no cooking fat.
 - Avocado: 1/4 ~40-60g, 1/2 ~75-100g, 3/4 ~120-150g, whole ~150-200g. Avocado is low-protein (~2g/100g) — never assign it meaningful protein grams; half an avocado is usually only 1-2g protein.
 - Seeds/garnish: 1 tsp ~2-4g, 1 tbsp ~8-12g, a light sprinkle is near-negligible calories/protein (0-1g protein) — do not scale a few visible seeds into a real serving.
-- Paneer: small 40-70g, medium 80-120g, large 150-200g — do not assume large unless clearly visible.
+- Paneer: small 40-70g, medium 80-120g, large 150-200g as a serving — do not assume large unless clearly visible. For separate cubes you can count, use piece_type paneer_cube (see COUNTABLE FOODS) instead of a serving size.
 - Tofu: small 50-90g, medium 100-150g, large 180-250g — tofu is much leaner than paneer (roughly a third of the protein and calories per gram), so do not treat the two as interchangeable just because they can look similar in a curry.
 - Dal/legumes/curry: small katori 100-150ml, medium katori 150-200ml, large bowl 250-350ml. A dal's protein reflects the cooked, watered-down dish, not the protein content of dry raw lentils.
 - Rice/roti: estimate rice by the visible pile size in cups; count rotis/chapatis individually rather than guessing a typical stack.
+${AIRY_SNACK_PROMPT_LINE}
+- Kitchen scale: whenever a scale's display is visible, put the number it shows in scale_reading_grams, and set scale_zeroed to "yes" only if the person says they zeroed the scale with the container on it ("no" if they say it wasn't, otherwise "unknown"). A reading includes the plate or bowl on it unless it was zeroed: if it wasn't, or you don't know, that is a high-impact ambiguity (see AUTO-SAVE AND HIGH-IMPACT AMBIGUITY below): ask whether the scale was zeroed with the container on it, and for your best guess subtract a typical container (glass or ceramic bowl 250-450g, dinner plate 350-600g, steel katori or plate 60-150g). If it was zeroed, the reading is the food's weight.
+
+COUNTABLE FOODS — count, and let the app weigh:
+- When an item is separate pieces you can count, set count_visible_pieces to the number you can actually see, piece_type to the kind of piece, and piece_size to the size of ONE piece (small|medium|large), judged against the plate, bowl, cutlery or hand. The app works out the weight from these, so count carefully rather than guessing grams.
+- Weight of one piece (small / medium / large):
+${PIECE_WEIGHT_PROMPT_LINES}
+- piece_type must match food_category: paneer_cube for paneer, tofu_cube for tofu, meat_piece for any chicken, meat or fish pieces. cutlet_tikki_kebab is only for patties, tikkis and seekh kebabs, never for cubes of meat or paneer.
+- Three small paneer cubes are 3 x 8-14g, not a medium paneer serving. Two momos are 2 x one momo, not a plate.
+
+DISH CLASS — for every item whose food_category is "other", set dish_class to the closest of these (leave it out only if none fits). The app uses it to check calories per gram, so also give estimated_cooked_weight_grams for the whole item as eaten:
+${DISH_CLASS_PROMPT_LINES}
 
 Fiber (fiber_min/fiber_max per item, total_fiber_min/total_fiber_max overall) — use honest, conservative ranges, not zero by default:
 - Vegetables/salad/sabzi: roughly 2-4g fiber per 100g visible portion.
@@ -250,9 +298,10 @@ Worked example — a plate showing 3-4 small pieces of grilled/tikka chicken, ha
   Wrong: "5-6 medium chicken pieces", "180-250g chicken", or 49g+ total protein — that overstates what 3-4 small pieces actually are.
 
 AUTO-SAVE AND HIGH-IMPACT AMBIGUITY — your job is to help log meals with LOW friction. Most meals should be logged automatically, not held up waiting for confirmation. But a small set of ambiguities change the nutrition enough that guessing would actively mislead the user, so those must pause for one specific question instead of being guessed.
-- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, beef vs mutton/lamb/goat vs pork (a real-meat identity question, not just a portion one — see the food_category note above), fried vs grilled preparation, 1 egg vs 3 eggs, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
+- Set has_high_impact_ambiguity to true ONLY when a food's identity is genuinely unclear between options that would materially change calories/protein — for example: tofu vs paneer vs chicken, paneer vs chicken, potato vs chicken, egg vs paneer, fish vs chicken, beef vs mutton/lamb/goat vs pork (a real-meat identity question, not just a portion one — see the food_category note above), fried vs grilled preparation, 1 egg vs 3 eggs, a kitchen-scale reading that may include the bowl or plate, a small rice portion vs a large one, visible protein vs protein that might be hidden underneath other food, curry gravy vs dal, or a high-fat creamy curry vs a light vegetable curry. Do NOT set this for ordinary, correctly-identified food just because an exact gram weight is uncertain — that's normal portion fuzziness, not identity ambiguity.
 - When has_high_impact_ambiguity is true, set food_identity_confidence to "low", write a short high_impact_ambiguity_reason (e.g. "tofu vs paneer vs chicken changes protein significantly"), and write a SPECIFIC clarification_question naming exactly what's ambiguous and the plausible options — e.g. "Is the top-left cubed item tofu, paneer, or chicken?" or "Was the omelette 1 egg or 2 eggs?". Never ask a vague question like "What should I change?". Mark the specific food item this concerns with is_ambiguous: true so the app can list the other items separately.
 - Still fill in your best-guess foods/macros even when has_high_impact_ambiguity is true — the app won't use them to save until the user answers, but they're a useful fallback.
+- A filling or ingredient you cannot see, inside a dish where it is a small part of the portion (what is in momos, dumplings, samosas, parathas, wraps or sandwiches, or which protein is in a soup), is ordinary uncertainty, not a high-impact ambiguity: log the likeliest option for the region with medium confidence, name it in the summary so the person can correct it, and do not pause to ask.
 - When there is no high-impact ambiguity, do not invent one — leave has_high_impact_ambiguity false and clarification_question unset, and let the meal be logged normally.
 
 Example — a plate shows rice, mixed vegetable curry, an orange curry/stir-fry, and a top-left cubed item that could be tofu, paneer, or chicken:
@@ -268,12 +317,16 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
       "visible_quantity": "string — what you actually counted/saw, e.g. '3-4 small pieces'",
       "portion_size": "tiny|small|medium|large|very_large",
       "estimated_cooked_weight_grams": "string, e.g. '45-75g'",
-      "food_category": "chicken|fish|beef|pork|shellfish|red_meat|egg|paneer|tofu|avocado|seeds_nuts|legume_dal|other (set this for any protein-relevant item so the app can compute its macros from the portion; \\"red_meat\\" means mutton/lamb/goat specifically, NOT beef — beef is its own category; use \\"other\\" for rice/roti/vegetables/mixed curries)",
+      "food_category": "chicken|fish|beef|pork|shellfish|red_meat|egg|paneer|tofu|avocado|seeds_nuts|legume_dal|other (set this for any protein-relevant item so the app can compute its macros from the portion; \\"red_meat\\" means mutton/lamb/goat specifically, NOT beef — beef is its own category; use \\"other\\" for rice/roti/vegetables/mixed curries, and for dishes that contain a protein such as momos, noodles, soups and fried rice)",
       "estimated_edible_weight_grams_min": "number — edible cooked weight, excluding bone/char/marinade (omit for egg/other items)",
       "estimated_edible_weight_grams_max": "number",
-      "count_visible_pieces": "number, optional",
+      "count_visible_pieces": "number, optional — the pieces you can actually see, for countable items",
+      "piece_type": "${PIECE_TYPE_ENUM} — only with count_visible_pieces",
+      "piece_size": "small|medium|large — the size of ONE piece, only with piece_type",
+      "dish_class": "${DISH_CLASS_ENUM} — for food_category: other items",
       "egg_count_min": "number — only for food_category: egg items",
       "egg_count_max": "number — only for food_category: egg items",
+      "egg_preparation": "boiled|poached|fried|omelette|scrambled|curry — only for food_category: egg items",
       "is_ambiguous": "boolean, optional — true only for the one item driving has_high_impact_ambiguity below",
       "calories_min": number,
       "calories_max": number,
@@ -307,10 +360,12 @@ Respond ONLY with valid JSON in exactly this format (no markdown, no code blocks
   "has_hidden_protein_food": boolean,
   "food_identity_confidence": "high|medium|low",
   "has_high_impact_ambiguity": boolean,
+  "scale_reading_grams": "number, optional — only when a kitchen scale's display is visible: the number it shows",
+  "scale_zeroed": "yes|no|unknown — only with scale_reading_grams",
   "high_impact_ambiguity_reason": "string, optional — only when has_high_impact_ambiguity is true",
   "clarification_question": "string, optional — only when has_high_impact_ambiguity is true (or food_identity_confidence is low); must be specific, e.g. 'Is the top-left cubed item tofu, paneer, or chicken?'"
 }
-Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values — so it's more important that estimated_edible_weight_grams_min/max (or egg_count_min/max) are conservative and honest than that the calorie/protein fields are.`;
+Note: calories_min/max and protein_min/max are still required as your own best estimate, but for food_category items with edible-weight/egg-count data, the app will recompute them from that data using fixed density values, and for counted pieces and dish classes it will recompute the weight and bound the calories per gram — so it's more important that the counts, piece sizes, estimated_edible_weight_grams_min/max (or egg_count_min/max) and estimated_cooked_weight_grams are conservative and honest than that the calorie/protein fields are.`;
 
 /** Appended to SYSTEM_PROMPT only when GUIDANCE_MICRONUTRIENTS_ENABLED is
  * on. With the flag off the prompt is byte-for-byte what it was before
@@ -343,9 +398,30 @@ function micronutrientPromptEnabled(): boolean {
  * changing this number in either direction. */
 const THINKING_BUDGET = 512;
 
+/** Sampling temperature. Unset, Gemini 2.5 Flash samples at 1.0, and the
+ * same photo run twice came back up to 1.5x apart on 7 of 18 coach-client
+ * photos (Nov 2026) — more than any portion fix could correct, and enough
+ * for a coach to stop trusting the numbers. 0 makes repeat estimates of
+ * the same photo agree. */
+const TEMPERATURE = 0;
+
 /** Written to ai_meal_classifications.model_version so review-console
  * corrections can be sliced by analyzer configuration, not just model name. */
-export const ANALYZER_MODEL_VERSION = `thinking-${THINKING_BUDGET}`;
+export const ANALYZER_MODEL_VERSION = `thinking-${THINKING_BUDGET}-t${TEMPERATURE}`;
+
+/** Written to ai_meal_classifications.prompt_version. v3 added counted
+ * pieces, dish classes, egg preparation, the person's portion history,
+ * shared-bowl and kitchen-scale rules, so corrections before and after can
+ * be compared. */
+export const ANALYZER_PROMPT_VERSION = "v3";
+
+/** Appended only for a fresh analysis (never a correction) of someone who
+ * has corrected earlier portions: one line per correction, built by
+ * portionHistoryLines(). */
+function portionHistorySection(lines: string[] | undefined): string {
+  if (!lines?.length) return "";
+  return `\n\nPORTION HISTORY — this person corrected these earlier estimates of their meals. Use them to calibrate how big their usual portions are; what the current photo or message shows still comes first:\n${lines.map((l) => `- ${l}`).join("\n")}`;
+}
 
 export async function analyzeFood(input: {
   text?: string;
@@ -360,6 +436,10 @@ export async function analyzeFood(input: {
    * and only while GUIDANCE_MICRONUTRIENTS_ENABLED is on: everyone else's
    * prompt stays exactly as it was. */
   micronutrientFields?: boolean;
+  /** This person's recent portion corrections (see portionHistoryLines), so
+   * "the avocado is 1/4" carries over to their next photo. Ignored for a
+   * correction, which already carries its own context. */
+  portionHistory?: string[];
 }): Promise<FoodAnalysisResult> {
   // Reverted from gemini-3.1-flash-lite back to gemini-2.5-flash: flash-lite
   // was ~5x faster and did well in a 14-photo image-analysis comparison,
@@ -375,7 +455,7 @@ export async function analyzeFood(input: {
     // deprecated and no longer gains types), but the SDK serializes
     // generationConfig into the request verbatim and the v1beta REST API
     // accepts it — verified against production photos before shipping.
-    generationConfig: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
+    generationConfig: { temperature: TEMPERATURE, thinkingConfig: { thinkingBudget: THINKING_BUDGET } } as object,
   });
 
   const withMicronutrients = input.micronutrientFields === true && micronutrientPromptEnabled();
@@ -385,6 +465,7 @@ export async function analyzeFood(input: {
   } else if (input.text) {
     textPrompt += `\n\nMeal description: ${input.text}`;
   }
+  if (!input.correctionContext) textPrompt += portionHistorySection(input.portionHistory);
 
   const parts: any[] = [];
 
@@ -429,7 +510,7 @@ export async function analyzeFood(input: {
     // needsPortionConfirmation() and computeSaveDecision().
     const recalculated = recalculateNutritionFromPortions(parsed);
     const capped = applyPortionConsistencyCaps(recalculated);
-    return applyHighProteinSanityCheck(capped);
+    return applyScaleReadingCheck(applyHighProteinSanityCheck(capped), !!input.correctionContext);
   } catch {
     throw new Error(`Gemini returned invalid JSON: ${cleaned.slice(0, 200)}`);
   }
@@ -479,6 +560,10 @@ const CATEGORY_DENSITY: Record<Exclude<FoodCategory, "egg" | "other">, CategoryD
 
 const EGG_PROTEIN_PER_EGG = { min: 6, max: 7 };
 const EGG_CALORIES_PER_EGG = { min: 70, max: 100 }; // upper end accounts for omelette oil
+// A boiled or poached egg has no cooking fat: a large egg is ~72-78 kcal.
+// Applying the omelette-oil allowance to boiled eggs put four of them at up
+// to 400 kcal.
+const EGG_CALORIES_PER_EGG_NO_FAT = { min: 70, max: 80 };
 
 /** Recomputes one item's calories/protein from its portion estimate
  * (edible weight or egg count), using the density tables above. Returns
@@ -487,11 +572,13 @@ const EGG_CALORIES_PER_EGG = { min: 70, max: 100 }; // upper end accounts for om
 export function computeItemNutrition(item: FoodItem): { calories_min: number; calories_max: number; protein_min: number; protein_max: number } | null {
   if (item.food_category === "egg") {
     if (item.egg_count_min == null || item.egg_count_max == null) return null;
+    const perEgg =
+      item.egg_preparation === "boiled" || item.egg_preparation === "poached" ? EGG_CALORIES_PER_EGG_NO_FAT : EGG_CALORIES_PER_EGG;
     return {
       protein_min: Math.round(item.egg_count_min * EGG_PROTEIN_PER_EGG.min),
       protein_max: Math.round(item.egg_count_max * EGG_PROTEIN_PER_EGG.max),
-      calories_min: Math.round(item.egg_count_min * EGG_CALORIES_PER_EGG.min),
-      calories_max: Math.round(item.egg_count_max * EGG_CALORIES_PER_EGG.max),
+      calories_min: Math.round(item.egg_count_min * perEgg.min),
+      calories_max: Math.round(item.egg_count_max * perEgg.max),
     };
   }
   if (!item.food_category || item.food_category === "other") return null;
@@ -509,28 +596,77 @@ export function computeItemNutrition(item: FoodItem): { calories_min: number; ca
   };
 }
 
-/** Replaces each categorized item's calories/protein with the code-computed
- * value from its portion estimate, and re-sums the meal totals from the
- * (possibly now-corrected) items — so an inflated protein number the model
- * attached to a small visible portion never survives into the final
- * estimate. Items without a usable category/portion (rice, roti, mixed
- * curries, ...) are left exactly as the model reported them. */
-export function recalculateNutritionFromPortions(analysis: FoodAnalysisResult): FoodAnalysisResult {
-  const foods = analysis.foods.map((item) => {
-    const computed = computeItemNutrition(item);
-    return computed ? { ...item, ...computed } : item;
-  });
+/** One item's portion -> nutrition step:
+ *  - Counted pieces (count x per-piece grams) replace the model's own
+ *    weight, for protein categories and dishes alike.
+ *  - A protein-category item that is the food itself gets its calories and
+ *    protein from the density table, as before.
+ *  - Anything else, including a dish that merely contains a protein (chicken
+ *    momos, egg fried rice), keeps the model's calorie density but has it
+ *    bounded for its kind of dish and applied to the counted weight. */
+function recalculateItem(item: FoodItem): FoodItem {
+  const counted = pieceWeightRange(item);
+  const usesCategoryDensity = !!item.food_category && item.food_category !== "other" && !isCompositeDish(item);
 
-  const sum = (key: "calories_min" | "calories_max" | "protein_min" | "protein_max") =>
-    foods.reduce((total, f) => total + (f[key] ?? 0), 0);
+  if (usesCategoryDensity) {
+    const weighed =
+      counted && item.food_category !== "egg"
+        ? {
+            ...item,
+            estimated_edible_weight_grams_min: counted[0],
+            estimated_edible_weight_grams_max: counted[1],
+            estimated_cooked_weight_grams: formatGramRange(counted),
+          }
+        : item;
+    const computed = computeItemNutrition(weighed);
+    if (computed) return { ...weighed, ...computed };
+  }
+  return applyDishCalorieBounds(item, counted);
+}
+
+/** Replaces each categorized item's calories/protein with the code-computed
+ * value from its portion estimate, bounds every other item's calories per
+ * gram for its kind of dish, and re-sums the meal totals from the (possibly
+ * now-corrected) items — so an inflated number the model attached to a
+ * small visible portion never survives into the final estimate. Items with
+ * neither a usable category/portion nor a dish class or piece count are
+ * left exactly as the model reported them. */
+export function recalculateNutritionFromPortions(analysis: FoodAnalysisResult): FoodAnalysisResult {
+  const foods = analysis.foods.map(recalculateItem);
+
+  const sum = (key: keyof Pick<FoodItem, "calories_min" | "calories_max" | "protein_min" | "protein_max" | "carbs_min" | "carbs_max" | "fat_min" | "fat_max" | "fiber_min" | "fiber_max">) =>
+    Math.round(foods.reduce((total, f) => total + (f[key] ?? 0), 0));
+
+  // Carbs, fat and fibre are only ever rescaled by the dish bounds. Re-sum
+  // them only when that happened, so a meal no bound touched keeps the
+  // model's own totals exactly as before.
+  const macrosRescaled = foods.some(
+    (f, i) =>
+      f.carbs_min !== analysis.foods[i].carbs_min ||
+      f.carbs_max !== analysis.foods[i].carbs_max ||
+      f.fat_min !== analysis.foods[i].fat_min ||
+      f.fat_max !== analysis.foods[i].fat_max ||
+      f.fiber_min !== analysis.foods[i].fiber_min ||
+      f.fiber_max !== analysis.foods[i].fiber_max
+  );
 
   return {
     ...analysis,
     foods,
-    total_calories_min: Math.round(sum("calories_min")),
-    total_calories_max: Math.round(sum("calories_max")),
-    total_protein_min: Math.round(sum("protein_min")),
-    total_protein_max: Math.round(sum("protein_max")),
+    total_calories_min: sum("calories_min"),
+    total_calories_max: sum("calories_max"),
+    total_protein_min: sum("protein_min"),
+    total_protein_max: sum("protein_max"),
+    ...(macrosRescaled
+      ? {
+          total_carbs_min: sum("carbs_min"),
+          total_carbs_max: sum("carbs_max"),
+          total_fat_min: sum("fat_min"),
+          total_fat_max: sum("fat_max"),
+          total_fiber_min: sum("fiber_min"),
+          total_fiber_max: sum("fiber_max"),
+        }
+      : {}),
   };
 }
 
@@ -600,6 +736,26 @@ export function applyPortionConsistencyCaps(analysis: FoodAnalysisResult): FoodA
  * asks the user to confirm the protein portion instead of jumping straight
  * to "Reply Yes to save". It never rewrites the numbers itself — only a
  * human correction or the model's own re-estimate should do that. */
+/** A kitchen-scale reading that may include the bowl or plate halves or
+ * doubles the meal, so it always pauses for one question rather than
+ * relying on the prompt alone: in live testing, an unrelated one-line
+ * prompt change was enough for the model to log a 406g reading as 406g of
+ * dal, confidently, without asking. Never applied to a correction, which
+ * is the person's answer: asking again there could loop. */
+export function applyScaleReadingCheck(analysis: FoodAnalysisResult, isCorrection: boolean): FoodAnalysisResult {
+  const reading = analysis.scale_reading_grams;
+  if (isCorrection || typeof reading !== "number" || !(reading > 0) || analysis.scale_zeroed === "yes") return analysis;
+  const question = `Was the scale zeroed with the bowl or plate on it, or does the ${Math.round(reading)} g include it?`;
+  const existing = analysis.has_high_impact_ambiguity ? analysis.clarification_question : undefined;
+  return {
+    ...analysis,
+    has_high_impact_ambiguity: true,
+    portion_confidence: "low",
+    high_impact_ambiguity_reason: analysis.high_impact_ambiguity_reason ?? "a scale reading may include the container's weight",
+    clarification_question: existing && !/zero|tare/i.test(existing) ? `${existing} Also: ${question.charAt(0).toLowerCase()}${question.slice(1)}` : existing ?? question,
+  };
+}
+
 function applyHighProteinSanityCheck(analysis: FoodAnalysisResult): FoodAnalysisResult {
   if (analysis.total_protein_max > 50 && analysis.confidence !== "high" && analysis.portion_confidence !== "low") {
     return { ...analysis, portion_confidence: "low" };

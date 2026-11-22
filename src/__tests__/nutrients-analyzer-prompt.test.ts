@@ -1,9 +1,14 @@
 // The micronutrient flag must not change what production sends to the
 // meal analyzer. With GUIDANCE_MICRONUTRIENTS_ENABLED off, the prompt is
-// checked byte for byte against a fingerprint taken from the analyzer
-// before this feature existed (commit b6088d6). With it on, the only
-// difference is the extra section asking for grams, raw or cooked, and
-// ingredients, and never for nutrient values.
+// checked byte for byte against a fingerprint of the analyzer's own prompt.
+// With it on, the only difference is the extra section asking for grams,
+// raw or cooked, and ingredients, and never for nutrient values.
+//
+// The fingerprint was first taken before the micronutrient feature existed
+// (commit b6088d6) and retaken for prompt v3 (counted pieces, dish classes,
+// egg preparation, shared bowls, kitchen scales and airy snacks; see
+// src/lib/ai/portion-reference.ts), a deliberate change to the base prompt. Retake it only for a deliberate change like
+// that, never to make a micronutrient change pass.
 
 import { createHash } from "crypto";
 
@@ -44,11 +49,11 @@ import { analyzeFood, MICRONUTRIENT_PROMPT_SECTION } from "@/lib/ai/food-analyze
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-/** sha256 of the prompt analyzeFood sent at b6088d6, for each input below. */
+/** sha256 of the prompt analyzeFood sends at prompt v3, for each input below. */
 const BASELINE: Record<string, string> = {
-  photoIndia: "01b8c699aaca250d5f1274f4efef78e36f7caf0522baa2aebc158bb03dcaad7a",
-  textSingapore: "825b7209ab1be1e75401d1573a07673c158e66679b00c36285f6a3a6bfa7b3ab",
-  correction: "cc6efbe7e9ba66690167bca50250e7b4a8486dd8341ae1e5a1ccc99607af5137",
+  photoIndia: "acbe641cd6b936eac65360b39875f9e203087caf8d8ac1acabe9d27c9a79a451",
+  textSingapore: "e12f7a619751f61048651ecbcbe5a9c54a80d8629eb727fa686c7878b33a6ac7",
+  correction: "391b550a4526a8e69ad68eb41904f84fe44feeb0f83522ad3c9d86540aeecafe",
 };
 
 const INPUTS = {
